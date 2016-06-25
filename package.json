@@ -1,0 +1,15 @@
+{
+  "name": "octocat-slack",
+  "version": "1.0.0",
+  "description": "octocat slack integration",
+  "main": "index.js",
+  "author": "Matt Hauck <matt.hauck@tanium.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tanium/octocat-slack"
+  },
+  "dependencies": {
+    "express": "^4.14.0",
+    "node-slack": "0.0.7"
+  }
+}
