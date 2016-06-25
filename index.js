@@ -1,8 +1,8 @@
 
 var Slack = require('node-slack');
 var express = require('express');
-var bodyParser = require('body-parser')
-
+var bufferEq = require('buffer-equal-constant-time');
+var crypto = require('crypto');
 
 function initSlack() {
     if (process.env.HOOK_URL) {
@@ -25,10 +25,36 @@ function main()  {
     });
 }
 
+function hasValidSignature(sig, body) {
+    var secret = process.env.GITHUB_SECRET;
+    if (!secret) {
+        console.error("GITHUB_SECRET is not configured");
+        return true;
+    }
+    if (!sig) {
+        console.error("Request is unsigned");
+        return false;
+    }
+
+    var computedSig = 'sha1=' + crypto.createHmac('sha1', secret).update(body).digest('hex');
+    return bufferEq(new Buffer(sig), new Buffer(computedSig));
+}
+
 function newServer(slack) {
     var app = express();
 
-    app.use(bodyParser.json())
+    // concatenate raw body
+    app.use(function(req, res, next) {
+        var data = '';
+        req.setEncoding('utf8');
+        req.on('data', function(chunk) {
+            data += chunk;
+        });
+        req.on('end', function() {
+            req.rawBody = data;
+            next();
+        });
+    });
 
     var handlers = {};
 
@@ -43,6 +69,15 @@ function newServer(slack) {
     handlers['status'] = newHandler(statusHandler);
 
     app.post('/', function (req, res) {
+        var rawBody = req.rawBody;
+        var sig = req.headers['x-hub-signature'];
+        if (!hasValidSignature(sig, rawBody)) {
+            console.error("Invalid signature");
+            res.sendStatus(403);
+            res.end();
+            return;
+        }
+
         var event = req.headers['x-github-event'];
         if (!handlers[event]) {
             res.send('Unhandled event: ' + handlers[event]);
@@ -50,7 +85,9 @@ function newServer(slack) {
             return;
         }
 
-        res.sendStatus(handlers[event](req.body));
+        var json = JSON.parse(rawBody)
+
+        res.sendStatus(handlers[event](json));
         res.end();
     });
     return app;

@@ -12,7 +12,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "body-parser": "^1.15.2",
+    "buffer-equal-constant-time": "^1.0.1",
     "express": "^4.14.0",
     "node-slack": "0.0.7"
   }
