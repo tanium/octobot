@@ -1,15 +1,14 @@
 
-var fs = require('fs');
 var Slack = require('node-slack');
 
 function initSlack() {
-    var hookFile = '.secret-hook.txt';
-    if (!fs.existsSync(hookFile)) {
-        console.log("Hook file does not exist: " + hookFile);
+    if (process.env.HOOK_URL) {
+        hookURL = process.env.HOOK_URL;
+    } else {
+        console.log("Must configure HOOK_URL!");
         process.exit(1);
     }
-    var hook = fs.readFileSync(hookFile).toString().trim();
-    return new Slack(hook);
+    return new Slack(hookURL);
 }
 
 
