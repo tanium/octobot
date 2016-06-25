@@ -59,6 +59,10 @@ function newServer(slack) {
 
 function pingHandler(slack) {
     return function(data) {
+        slack.send({
+            text: 'Howdy ping!',
+            channel: '@matt.hauck',
+        });
         return 200;
     }
 }
