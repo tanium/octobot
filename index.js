@@ -167,7 +167,10 @@ function pingHandler(slack) {
 function commitCommentHandler(slack) {
     return function(data) {
         if (data.action == 'created' || data.action == 'edited') {
-            var msg = 'Comment on "' + data.comment.path + '" (' + data.comment.commit_id.substr(0, 7) + ')';
+            var commit = data.comment.commit_id.substr(0, 7);
+            var commit_url = data.repository.html_url + '/commit/' + data.comment.commit_id;
+
+            var msg = 'Comment on "' + data.comment.path + '" (<' + commit_url + '|' + commit + '>)';
             var attachments = [{
                 title: slackUser(data.comment.user.login) + ' said:',
                 title_link: data.comment.html_url,
@@ -218,7 +221,7 @@ function pullRequestHandler(slack) {
 function pullRequestCommentHandler(slack) {
     return function(data) {
         if (data.action == "created" || data.action == "edited") {
-            var msg = 'Comment on "' + data.pull_request.title + '"';
+            var msg = 'Comment on "<' + data.pull_request.html_url + '|' + data.pull_request.title + '>"';
             var attachments = [{
                 title: slackUser(data.comment.user.login) + ' said:',
                 title_link: data.comment.html_url,
@@ -235,7 +238,7 @@ function issueCommentHandler(slack) {
     return function(data) {
         // only notify on new/edited comments
         if (data.action == "created" || data.action == "edited") {
-            var msg = 'Comment on "' + data.issue.title + '"';
+            var msg = 'Comment on "<' + data.issue.html_url + '|' + data.issue.title + '>"';
             var attachments = [{
                 title: slackUser(data.comment.user.login) + ' said:',
                 title_link: data.comment.html_url,
