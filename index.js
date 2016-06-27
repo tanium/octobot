@@ -94,23 +94,6 @@ function newServer(slack) {
     return app;
 }
 
-
-function pingHandler(slack) {
-    return function(data) {
-        slack.send({
-            text: 'Howdy ping!',
-            channel: '@matt.hauck',
-        });
-        return 200;
-    }
-}
-
-function commitCommentHandler(slack) {
-    return function(data) {
-        return 200;
-    }
-}
-
 function slackUser(login) {
     // our slack convention is to use '.' but github replaces dots with dashes.
     return '@' + login.replace('-', '.');
@@ -127,6 +110,48 @@ function assignees(pullRequest) {
 
 function assigneesStr(pullRequest) {
     return assignees(pullRequest).join(', ');
+}
+
+function sendToAll(slack, item, msg, attachments) {
+    console.log("Sending message to channel");
+    slack.send({
+        text: msg,
+        attachments: attachments,
+    });
+
+    // try to find assignees and send to them
+    assignees(item).forEach(function(name) {
+        console.log("Sending private message to assignee " + name);
+        slack.send({
+            text: msg,
+            attachments: attachments,
+            channel: name,
+        });
+    });
+
+    // try to send to owner
+    if (item.user) {
+        var owner = slackUser(item.user.login);
+        console.log("Sending private message to owner " + owner);
+        slack.send({
+            text: msg,
+            attachments: attachments,
+            channel: owner,
+        });
+    }
+}
+
+
+function pingHandler(slack) {
+    return function(data) {
+        return 200;
+    }
+}
+
+function commitCommentHandler(slack) {
+    return function(data) {
+        return 200;
+    }
 }
 
 function pullRequestHandler(slack) {
@@ -157,25 +182,7 @@ function pullRequestHandler(slack) {
                 title_link: data.pull_request.html_url,
             }];
 
-            slack.send({
-                text: msg,
-                attachments: attachments,
-            });
-            assignees(data.pull_request).forEach(function(name) {
-                console.log("Sending private message to assignee " + name);
-                slack.send({
-                    text: msg,
-                    attachments: attachments,
-                    channel: name,
-                });
-            });
-            var owner = slackUser(data.pull_request.user.login);
-            console.log("Sending private message to owner " + owner);
-            slack.send({
-                text: msg,
-                attachments: attachments,
-                channel: owner,
-            });
+            sendToAll(slack, data.pull_request, msg, attachments);
         }
 
         return 200;
@@ -192,26 +199,7 @@ function pullRequestCommentHandler(slack) {
                 text: data.comment.body,
             }];
 
-            console.log("Sending message to main channel");
-            slack.send({
-                text: msg,
-                attachments: attachments,
-            });
-            assignees(data.pull_request).forEach(function(name) {
-                console.log("Sending private message to assignee " + name);
-                slack.send({
-                    text: msg,
-                    attachments: attachments,
-                    channel: name,
-                });
-            });
-            var owner = slackUser(data.pull_request.user.login);
-            console.log("Sending private message to issue owner " + owner);
-            slack.send({
-                text: msg,
-                attachments: attachments,
-                channel: owner,
-            });
+            sendToAll(slack, data.pull_request, msg, attachments);
         }
         return 200;
     }
@@ -227,27 +215,7 @@ function issueCommentHandler(slack) {
                 title_link: data.comment.html_url,
                 text: data.comment.body,
             }];
-
-            console.log("Sending message to main channel");
-            slack.send({
-                text: msg,
-                attachments: attachments,
-            });
-            assignees(data.issue).forEach(function(name) {
-                console.log("Sending private message to assignee " + name);
-                slack.send({
-                    text: msg,
-                    attachments: attachments,
-                    channel: name,
-                });
-            });
-            var owner = slackUser(data.issue.user.login);
-            console.log("Sending private message to issue owner " + owner);
-            slack.send({
-                text: msg,
-                attachments: attachments,
-                channel: owner,
-            });
+            sendToAll(slack, data.issue, msg, attachments);
         }
 
         return 200;
