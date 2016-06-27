@@ -3,6 +3,7 @@ var Slack = require('node-slack');
 var express = require('express');
 var bufferEq = require('buffer-equal-constant-time');
 var crypto = require('crypto');
+var users = require('./lib/users');
 
 function initSlack() {
     if (process.env.HOOK_URL) {
@@ -94,22 +95,18 @@ function newServer(slack) {
     return app;
 }
 
-function slackUser(login) {
-    // our slack convention is to use '.' but github replaces dots with dashes.
-    return '@' + login.replace('-', '.');
-}
 
-function assignees(pullRequest) {
+function assignees(pullRequest, repo) {
     if (!pullRequest) {
         return [];
     }
 
     if (pullRequest.assignees) {
         return pullRequest.assignees.map(function(a) {
-            return slackUser(a.login);
+            return users.slackUser(a.login, repo);
         });
     } else if (pullRequest.assignee) { // older api -- github enterprise
-        return [ slackUser(pullRequest.assignee.login) ];
+        return [ users.slackUser(pullRequest.assignee.login, repo) ];
     }
 
     return [];
@@ -143,7 +140,7 @@ function sendToAll(slack, msg, attachments, item, repo) {
 
     // try to send to owner
     if (item.user) {
-        var owner = slackUser(item.user.login);
+        var owner = users.slackUser(item.user.login, repo);
         console.log("Sending private message to owner " + owner);
         slack.send({
             text: msg,
@@ -154,7 +151,7 @@ function sendToAll(slack, msg, attachments, item, repo) {
 
     // try to send to author
     if (item.author) {
-        var owner = slackUser(item.author.login);
+        var owner = users.slackUser(item.author.login, repo);
         console.log("Sending private message to author " + owner);
         slack.send({
             text: msg,
@@ -180,7 +177,7 @@ function commitCommentHandler(slack) {
 
             var msg = 'Comment on "' + data.comment.path + '" (<' + commit_url + '|' + commit + '>)';
             var attachments = [{
-                title: slackUser(data.comment.user.login) + ' said:',
+                title: users.slackUser(data.comment.user.login, data.repository) + ' said:',
                 title_link: data.comment.html_url,
                 text: data.comment.body,
             }];
@@ -231,7 +228,7 @@ function pullRequestCommentHandler(slack) {
         if (data.action == "created" || data.action == "edited") {
             var msg = 'Comment on "<' + data.pull_request.html_url + '|' + data.pull_request.title + '>"';
             var attachments = [{
-                title: slackUser(data.comment.user.login) + ' said:',
+                title: users.slackUser(data.comment.user.login, data.repository) + ' said:',
                 title_link: data.comment.html_url,
                 text: data.comment.body,
             }];
@@ -248,7 +245,7 @@ function issueCommentHandler(slack) {
         if (data.action == "created" || data.action == "edited") {
             var msg = 'Comment on "<' + data.issue.html_url + '|' + data.issue.title + '>"';
             var attachments = [{
-                title: slackUser(data.comment.user.login) + ' said:',
+                title: users.slackUser(data.comment.user.login, data.repository) + ' said:',
                 title_link: data.comment.html_url,
                 text: data.comment.body,
             }];
