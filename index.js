@@ -139,6 +139,18 @@ function sendToAll(slack, item, msg, attachments) {
             channel: owner,
         });
     }
+
+    // try to send to author
+    if (item.author) {
+        var owner = slackUser(item.author.login);
+        console.log("Sending private message to author " + owner);
+        slack.send({
+            text: msg,
+            attachments: attachments,
+            channel: owner,
+        });
+    }
+
 }
 
 
@@ -234,6 +246,15 @@ function issueCommentHandler(slack) {
 
 function statusHandler(slack) {
     return function(data) {
+        var msg = 'Status set to ' + data.state + ' on "<' + data.commit.html_url + '|' + data.commit.commit.message + '>"';
+        var attachments = [{
+            title: 'Status: ' + data.context,
+            title_link: data.target_url,
+            text: data.description,
+        }];
+
+        sendToAll(slack, msg, attachments, data.commit);
+
         return 200;
     }
 }
