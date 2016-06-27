@@ -66,6 +66,7 @@ function newServer(slack) {
     handlers['commit_comment'] = newHandler(commitCommentHandler);
     handlers['pull_request'] = newHandler(pullRequestHandler);
     handlers['pull_request_review_comment'] = newHandler(pullRequestCommentHandler);
+    handlers['issue_comment'] = newHandler(issueCommentHandler);
     handlers['status'] = newHandler(statusHandler);
 
     app.post('/', function (req, res) {
@@ -110,8 +111,73 @@ function commitCommentHandler(slack) {
     }
 }
 
+function slackUser(login) {
+    // our slack convention is to use '.' but github replaces dots with dashes.
+    return '@' + login.replace('-', '.');
+}
+
+function assignees(pullRequest) {
+    if (!pullRequest || !pullRequest.assignees) {
+        return [];
+    }
+    return pullRequest.assignees.map(function(a) {
+        return slackUser(a.login);
+    });
+}
+
+function assigneesStr(pullRequest) {
+    return assignees(pullRequest).join(', ');
+}
+
 function pullRequestHandler(slack) {
     return function(data) {
+        var verb;
+        var extra = '';
+        if (data.action == 'opened') {
+            verb = 'opened';
+        } else if (data.action == 'closed') {
+            if (data.pull_request.merged) {
+                verb = 'merged';
+            } else {
+                verb = 'closed';
+            }
+        } else if (data.action == 'reopened') {
+            verb = 'reopened';
+        } else if (data.action == 'assigned') {
+            verb = 'assigned';
+            extra = ' to ' + assigneesStr(data.pull_request);
+        } else if (data.action == 'unassigned') {
+            verb = 'unassigned';
+        }
+
+        if (verb) {
+            var msg = 'Pull Request ' + verb + extra;
+            var attachments = [{
+                title: 'Pull Request #' + data.pull_request.number + ': "' + data.pull_request.title + '"',
+                title_link: data.pull_request.html_url,
+            }];
+
+            slack.send({
+                text: msg,
+                attachments: attachments,
+            });
+            assignees(data.pull_request).forEach(function(name) {
+                console.log("Sending private message to assignee " + name);
+                slack.send({
+                    text: msg,
+                    attachments: attachments,
+                    channel: name,
+                });
+            });
+            var owner = slackUser(data.pull_request.user.login);
+            console.log("Sending private message to owner " + owner);
+            slack.send({
+                text: msg,
+                attachments: attachments,
+                channel: owner,
+            });
+        }
+
         return 200;
     }
 }
