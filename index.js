@@ -113,8 +113,8 @@ function assignees(pullRequest, repo) {
 }
 
 
-function assigneesStr(pullRequest) {
-    return assignees(pullRequest).join(', ');
+function assigneesStr(pullRequest, repo) {
+    return assignees(pullRequest, repo).join(', ');
 }
 
 function sendToAll(slack, msg, attachments, item, repo) {
@@ -129,7 +129,7 @@ function sendToAll(slack, msg, attachments, item, repo) {
     });
 
     // try to find assignees and send to them
-    assignees(item).forEach(function(name) {
+    assignees(item, repo).forEach(function(name) {
         console.log("Sending private message to assignee " + name);
         slack.send({
             text: msg,
@@ -204,7 +204,7 @@ function pullRequestHandler(slack) {
             verb = 'reopened';
         } else if (data.action == 'assigned') {
             verb = 'assigned';
-            extra = ' to ' + assigneesStr(data.pull_request);
+            extra = ' to ' + assigneesStr(data.pull_request, data.repository);
         } else if (data.action == 'unassigned') {
             verb = 'unassigned';
         }
