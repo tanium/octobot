@@ -100,13 +100,21 @@ function slackUser(login) {
 }
 
 function assignees(pullRequest) {
-    if (!pullRequest || !pullRequest.assignees) {
+    if (!pullRequest) {
         return [];
     }
-    return pullRequest.assignees.map(function(a) {
-        return slackUser(a.login);
-    });
+
+    if (pullRequest.assignees) {
+        return pullRequest.assignees.map(function(a) {
+            return slackUser(a.login);
+        });
+    } else if (pullRequest.assignee) { // older api -- github enterprise
+        return [ slackUser(pullRequest.assignee.login) ];
+    }
+
+    return [];
 }
+
 
 function assigneesStr(pullRequest) {
     return assignees(pullRequest).join(', ');
