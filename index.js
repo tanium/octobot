@@ -184,6 +184,35 @@ function pullRequestHandler(slack) {
 
 function pullRequestCommentHandler(slack) {
     return function(data) {
+        if (data.action == "created" || data.action == "edited") {
+            var msg = 'Comment on "' + data.pull_request.title + '"';
+            var attachments = [{
+                title: slackUser(data.comment.user.login) + ' said:',
+                title_link: data.comment.html_url,
+                text: data.comment.body,
+            }];
+
+            console.log("Sending message to main channel");
+            slack.send({
+                text: msg,
+                attachments: attachments,
+            });
+            assignees(data.pull_request).forEach(function(name) {
+                console.log("Sending private message to assignee " + name);
+                slack.send({
+                    text: msg,
+                    attachments: attachments,
+                    channel: name,
+                });
+            });
+            var owner = slackUser(data.pull_request.user.login);
+            console.log("Sending private message to issue owner " + owner);
+            slack.send({
+                text: msg,
+                attachments: attachments,
+                channel: owner,
+            });
+        }
         return 200;
     }
 }
@@ -192,7 +221,7 @@ function issueCommentHandler(slack) {
     return function(data) {
         // only notify on new/edited comments
         if (data.action == "created" || data.action == "edited") {
-            var msg = 'Comment on "' + data.issue.title;
+            var msg = 'Comment on "' + data.issue.title + '"';
             var attachments = [{
                 title: slackUser(data.comment.user.login) + ' said:',
                 title_link: data.comment.html_url,
