@@ -150,6 +150,16 @@ function pingHandler(slack) {
 
 function commitCommentHandler(slack) {
     return function(data) {
+        if (data.action == 'created' || data.action == 'edited') {
+            var msg = 'Comment on "' + data.comment.path + '" (' + data.comment.commit_id.substr(0, 7) + ')';
+            var attachments = [{
+                title: slackUser(data.comment.user.login) + ' said:',
+                title_link: data.comment.html_url,
+                text: data.comment.body,
+            }];
+
+            sendToAll(slack, data.comment, msg, attachments);
+        }
         return 200;
     }
 }
