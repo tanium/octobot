@@ -256,6 +256,11 @@ function statusHandler(slack) {
             title_link: data.target_url,
             text: data.description,
         }];
+        if (data.state === 'failure') {
+            attachments[0].color = 'danger';
+        } else if (data.state === 'success') {
+            attachments[0].color = 'good';
+        }
 
         sendToAll(slack, msg, attachments, data.commit, data.repository);
 
