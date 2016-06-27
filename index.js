@@ -112,7 +112,11 @@ function assigneesStr(pullRequest) {
     return assignees(pullRequest).join(', ');
 }
 
-function sendToAll(slack, item, msg, attachments) {
+function sendToAll(slack, msg, attachments, item, repo) {
+    if (repo) {
+        msg = msg + ' (<' + repo.html_url + '|' + repo.full_name + '>)';
+    }
+
     console.log("Sending message to channel");
     slack.send({
         text: msg,
@@ -170,7 +174,7 @@ function commitCommentHandler(slack) {
                 text: data.comment.body,
             }];
 
-            sendToAll(slack, data.comment, msg, attachments);
+            sendToAll(slack, msg, attachments, data.comment, data.repository);
         }
         return 200;
     }
@@ -204,7 +208,7 @@ function pullRequestHandler(slack) {
                 title_link: data.pull_request.html_url,
             }];
 
-            sendToAll(slack, data.pull_request, msg, attachments);
+            sendToAll(slack, msg, attachments, data.pull_request, data.repository);
         }
 
         return 200;
@@ -221,7 +225,7 @@ function pullRequestCommentHandler(slack) {
                 text: data.comment.body,
             }];
 
-            sendToAll(slack, data.pull_request, msg, attachments);
+            sendToAll(slack, msg, attachments, data.pull_request, data.repository);
         }
         return 200;
     }
@@ -237,7 +241,7 @@ function issueCommentHandler(slack) {
                 title_link: data.comment.html_url,
                 text: data.comment.body,
             }];
-            sendToAll(slack, data.issue, msg, attachments);
+            sendToAll(slack, msg, attachments, data.issue, data.repository);
         }
 
         return 200;
@@ -253,7 +257,7 @@ function statusHandler(slack) {
             text: data.description,
         }];
 
-        sendToAll(slack, msg, attachments, data.commit);
+        sendToAll(slack, msg, attachments, data.commit, data.repository);
 
         return 200;
     }
