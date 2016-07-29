@@ -68,7 +68,8 @@ function newServer(slack) {
     handlers['pull_request'] = newHandler(pullRequestHandler);
     handlers['pull_request_review_comment'] = newHandler(pullRequestCommentHandler);
     handlers['issue_comment'] = newHandler(issueCommentHandler);
-    handlers['status'] = newHandler(statusHandler);
+    // disable status updates for now -- too noisy
+    //handlers['status'] = newHandler(statusHandler);
 
     app.post('/', function (req, res) {
         var rawBody = req.rawBody;
