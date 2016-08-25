@@ -129,37 +129,32 @@ function sendToAll(slack, msg, attachments, item, repo) {
         attachments: attachments,
     });
 
-    // try to find assignees and send to them
-    assignees(item, repo).forEach(function(name) {
-        console.log("Sending private message to assignee " + name);
+    var slackbots = assignees(item, repo);
+
+    if (item.user) {
+        var owner = users.slackUserRef(item.user.login, repo);
+        if (slackbots.indexOf(owner) < 0) {
+            slackbots.push(owner);
+        }
+    }
+
+    // make sure we do not send private message to author
+    if (item.author) {
+        var author = users.slackUserRef(item.author.login, repo);
+        var authorIndex = slackbots.indexOf(author);
+        if (authorIndex >= 0) {
+            slackbots.splice(authorIndex, 1);
+        }
+    }
+
+    // send direct messages
+    slackbots.forEach(function(name) {
         slack.send({
             text: msg,
             attachments: attachments,
             channel: name,
         });
     });
-
-    // try to send to owner
-    if (item.user) {
-        var owner = users.slackUserRef(item.user.login, repo);
-        console.log("Sending private message to owner " + owner);
-        slack.send({
-            text: msg,
-            attachments: attachments,
-            channel: owner,
-        });
-    }
-
-    // try to send to author
-    if (item.author) {
-        var owner = users.slackUserRef(item.author.login, repo);
-        console.log("Sending private message to author " + owner);
-        slack.send({
-            text: msg,
-            attachments: attachments,
-            channel: owner,
-        });
-    }
 
 }
 
