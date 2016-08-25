@@ -104,10 +104,10 @@ function assignees(pullRequest, repo) {
 
     if (pullRequest.assignees) {
         return pullRequest.assignees.map(function(a) {
-            return users.slackUser(a.login, repo);
+            return users.slackUserRef(a.login, repo);
         });
     } else if (pullRequest.assignee) { // older api -- github enterprise
-        return [ users.slackUser(pullRequest.assignee.login, repo) ];
+        return [ users.slackUserRef(pullRequest.assignee.login, repo) ];
     }
 
     return [];
@@ -141,7 +141,7 @@ function sendToAll(slack, msg, attachments, item, repo) {
 
     // try to send to owner
     if (item.user) {
-        var owner = users.slackUser(item.user.login, repo);
+        var owner = users.slackUserRef(item.user.login, repo);
         console.log("Sending private message to owner " + owner);
         slack.send({
             text: msg,
@@ -152,7 +152,7 @@ function sendToAll(slack, msg, attachments, item, repo) {
 
     // try to send to author
     if (item.author) {
-        var owner = users.slackUser(item.author.login, repo);
+        var owner = users.slackUserRef(item.author.login, repo);
         console.log("Sending private message to author " + owner);
         slack.send({
             text: msg,
@@ -178,7 +178,7 @@ function commitCommentHandler(slack) {
 
             var msg = 'Comment on "' + data.comment.path + '" (<' + commit_url + '|' + commit + '>)';
             var attachments = [{
-                title: users.slackUser(data.comment.user.login, data.repository) + ' said:',
+                title: users.slackUserName(data.comment.user.login, data.repository) + ' said:',
                 title_link: data.comment.html_url,
                 text: data.comment.body,
             }];
@@ -229,7 +229,7 @@ function pullRequestCommentHandler(slack) {
         if (data.action == "created" || data.action == "edited") {
             var msg = 'Comment on "<' + data.pull_request.html_url + '|' + data.pull_request.title + '>"';
             var attachments = [{
-                title: users.slackUser(data.comment.user.login, data.repository) + ' said:',
+                title: users.slackUserName(data.comment.user.login, data.repository) + ' said:',
                 title_link: data.comment.html_url,
                 text: data.comment.body,
             }];
@@ -246,7 +246,7 @@ function issueCommentHandler(slack) {
         if (data.action == "created" || data.action == "edited") {
             var msg = 'Comment on "<' + data.issue.html_url + '|' + data.issue.title + '>"';
             var attachments = [{
-                title: users.slackUser(data.comment.user.login, data.repository) + ' said:',
+                title: users.slackUserName(data.comment.user.login, data.repository) + ' said:',
                 title_link: data.comment.html_url,
                 text: data.comment.body,
             }];
