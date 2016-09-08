@@ -189,7 +189,7 @@ function pullRequestHandler(slack) {
         var verb;
         var extra = '';
         if (data.action == 'opened') {
-            verb = 'opened by ' + users.slackUserName(data.user.login, data.repository);
+            verb = 'opened by ' + users.slackUserName(data.pull_request.user.login, data.repository);
         } else if (data.action == 'closed') {
             if (data.pull_request.merged) {
                 verb = 'merged';
