@@ -11,4 +11,4 @@ fi
 
 set -x
 
-ssh -A $host_and_user "cd octocat-slack; git pull --ff-only; pm2 restart octocat-slack"
+ssh -A $host_and_user "cd octocat-slack && git pull --ff-only && npm install && npm test && pm2 restart octocat-slack"
