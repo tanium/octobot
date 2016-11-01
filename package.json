@@ -9,11 +9,16 @@
     "url": "https://github.com/tanium/octocat-slack"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node test.js"
   },
   "dependencies": {
     "buffer-equal-constant-time": "^1.0.1",
     "express": "^4.14.0",
     "node-slack": "0.0.7"
+  },
+  "devDependencies": {
+    "jasmine": "^2.5.2",
+    "jasmine-spec-reporter": "^2.7.0"
   }
 }
