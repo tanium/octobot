@@ -79,6 +79,15 @@ describe("messages", function() {
                 channel: '@bob'
             });
         });
+
+        it("it should not send messages to event sender", function () {
+            messages.sendToAll(slack, 'hello', attachments, { user: makeUser('bob') }, null, makeUser('bob'));
+            expect(slack.send).not.toHaveBeenCalledWith({
+                text: 'hello',
+                attachments: attachments,
+                channel: '@bob'
+            });
+        });
     });
 });
 
