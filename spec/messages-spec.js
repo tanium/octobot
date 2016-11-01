@@ -1,4 +1,5 @@
 var messages = require('../lib/messages');
+var repos = require('../lib/repos');
 
 describe("messages", function() {
 
@@ -7,6 +8,10 @@ describe("messages", function() {
             login: loginName
         }
     }
+
+    afterEach(function() {
+        repos.setReposMapForTesting({});
+    });
 
     describe("assignees", function() {
         it("should be empty if no PR given", function() {
@@ -37,19 +42,18 @@ describe("messages", function() {
             attachments = ['a', 'b'];
         });
 
-       it("should always send messages to channel", function () {
+        it("should not send messages without a channel", function () {
             messages.sendToAll(slack, 'hello', attachments, {}, null);
-            expect(slack.send).toHaveBeenCalledWith({
-                text: 'hello',
-                attachments: attachments,
-            });
+            expect(slack.send).not.toHaveBeenCalled();
         });
 
-        it("should always include the repo URL in the message", function () {
-            messages.sendToAll(slack, 'hello', attachments, {}, {  html_url: 'http://haha', full_name: 'TheRepo' });
+        it("should always send message to default channel (with the repo URL in the message)", function () {
+            repos.setReposMapForTesting({ 'haha': { 'TheRepo': 'TheChannel' } });
+            messages.sendToAll(slack, 'hello', attachments, {}, {  html_url: 'http://haha/', full_name: 'TheRepo' });
             expect(slack.send).toHaveBeenCalledWith({
-                text: 'hello (<http://haha|TheRepo>)',
+                text: 'hello (<http://haha/|TheRepo>)',
                 attachments: attachments,
+                channel: 'TheChannel',
             });
         });
 
