@@ -4,6 +4,7 @@ var express = require('express');
 var bufferEq = require('buffer-equal-constant-time');
 var crypto = require('crypto');
 var handlers = require('./lib/handlers');
+var messages = require('./lib/messages');
 
 function initSlack() {
     if (process.env.HOOK_URL) {
