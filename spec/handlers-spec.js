@@ -66,6 +66,23 @@ describe('handlers', function() {
             );
         });
 
+        it("should send review comments", function() {
+            data.review.state = 'commented';
+            handlers.pullRequestReviewHandler(messenger)(data);
+
+            expect(messenger.sendToAll).toHaveBeenCalledWith(
+                'Comment on "<http://the-pr|MyPR>"',
+                [{
+                    title: 'the.reviewer said:',
+                    title_link: 'http://the-review',
+                    text: 'i also commented',
+                }],
+                data.pull_request,
+                data.repository,
+                data.sender
+            );
+        });
+
     });
 
 });
