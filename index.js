@@ -57,20 +57,21 @@ function newServer(slack) {
         });
     });
 
-    var all_handlers = {};
+    var messenger = messages.newMessenger(slack);
 
     var newHandler = function(handler) {
-        return handler(slack);
+        return handler(messenger);
     };
 
-    all_handlers['ping'] = handlers.pingHandler(slack);
-    all_handlers['commit_comment'] = handlers.commitCommentHandler(slack);
-    all_handlers['pull_request'] = handlers.pullRequestHandler(slack);
-    all_handlers['pull_request_review_comment'] = handlers.pullRequestCommentHandler(slack);
-    all_handlers['pull_request_review'] = handlers.pullRequestReviewHandler(slack);
-    all_handlers['issue_comment'] = handlers.issueCommentHandler(slack);
+    var all_handlers = {};
+    all_handlers['ping'] = newHandler(handlers.pingHandler);
+    all_handlers['commit_comment'] = newHandler(handlers.commitCommentHandler)
+    all_handlers['pull_request'] = newHandler(handlers.pullRequestHandler);
+    all_handlers['pull_request_review_comment'] = newHandler(handlers.pullRequestCommentHandler);
+    all_handlers['pull_request_review'] = newHandler(handlers.pullRequestReviewHandler)
+    all_handlers['issue_comment'] = newHandler(handlers.issueCommentHandler);
     // disable status updates for now -- too noisy
-    //all_handlers['status'] = handlers.statusHandler.(slack);
+    //all_handlers['status'] = newHandler(handlers.statusHandler);
 
     app.post('/', function (req, res) {
         var rawBody = req.rawBody;
