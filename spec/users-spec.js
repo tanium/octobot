@@ -34,4 +34,13 @@ describe("users", function() {
             expect(users.slackUserRef("joe-smith", { html_url: 'http://git.company.com' })).toEqual("@the-real-joe-smith");
        });
     });
+
+    describe("desiresPeaceAndQuiet", function() {
+        it("should be true if user is configured for peace and quiet", function() {
+            users.setUsersMapForTesting({ 'git.company.com': { 'joe-smith': 'DO NOT DISTURB' } });
+            expect(users.desiresPeaceAndQuiet("joe-smith", { html_url: 'http://git.company.com' })).toBe(true);
+            expect(users.desiresPeaceAndQuiet("bob", { html_url: 'http://git.company.com' })).toBe(false);
+            expect(users.desiresPeaceAndQuiet('DO NOT DISTURB')).toBe(true);
+        });
+    });
 });

@@ -1,5 +1,6 @@
 var messages = require('../lib/messages');
 var repos = require('../lib/repos');
+var users = require('../lib/users');
 
 describe("messages", function() {
 
@@ -11,6 +12,7 @@ describe("messages", function() {
 
     afterEach(function() {
         repos.setReposMapForTesting({});
+        users.setUsersMapForTesting({});
     });
 
     describe("assignees", function() {
@@ -92,6 +94,15 @@ describe("messages", function() {
                 channel: '@bob'
             });
         });
+
+        it("it should not send messages to users or channels desiring peace and quiet", function () {
+            repos.setReposMapForTesting({ 'haha': { 'TheRepo': 'DO NOT DISTURB' } });
+            users.setUsersMapForTesting({ 'haha': { 'bob': 'DO NOT DISTURB' } });
+            messages.sendToAll(slack, 'hello', attachments, { user: makeUser('bob') }, {  html_url: 'http://haha/', full_name: 'TheRepo' });
+
+            expect(slack.send).not.toHaveBeenCalled();
+        });
+
     });
 });
 
