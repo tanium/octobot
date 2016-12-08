@@ -7,6 +7,57 @@ describe('handlers', function() {
         messenger= jasmine.createSpyObj('messenger', ['sendToAll']);
     });
 
+
+    describe("pullRequestCommentHandler ", function() {
+        var data;
+        beforeEach(function() {
+            data = {
+                action: 'created',
+                comment: {
+                    user: {
+                        login: 'the-commenter',
+                    },
+                    body: 'i have something to say',
+                    html_url: 'http://the-PR-comment',
+                },
+                pull_request: {
+                    html_url: 'http://the-pr',
+                    title: 'MyPR',
+                    user: {
+                        login: 'the-owner'
+                    },
+                }
+            };
+        });
+
+        it("should send comments", function() {
+            handlers.pullRequestCommentHandler (messenger)(data);
+
+            expect(messenger.sendToAll).toHaveBeenCalledWith(
+                'Comment on "<http://the-pr|MyPR>"',
+                [{
+                    title: 'the.commenter said:',
+                    title_link: 'http://the-PR-comment',
+                    text: 'i have something to say',
+                }],
+                data.pull_request,
+                data.repository,
+                data.sender
+            );
+        });
+
+        it("should not send empty comments", function() {
+            data.comment.body = '  ';
+            handlers.pullRequestCommentHandler(messenger)(data);
+
+            data.comment.body = null;
+            handlers.pullRequestCommentHandler(messenger)(data);
+
+            expect(messenger.sendToAll).not.toHaveBeenCalled();
+        });
+
+    });
+
     describe("pullRequestReviewHandler", function() {
         var data;
         beforeEach(function() {
@@ -83,6 +134,16 @@ describe('handlers', function() {
             );
         });
 
-    });
+        it("should not send empty review comments", function() {
+            data.review.state = 'commented';
 
+            data.review.body = '  ';
+            handlers.pullRequestReviewHandler(messenger)(data);
+
+            data.review.body = null;
+            handlers.pullRequestReviewHandler(messenger)(data);
+
+            expect(messenger.sendToAll).not.toHaveBeenCalled();
+        });
+    });
 });
