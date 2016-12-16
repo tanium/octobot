@@ -1,12 +1,28 @@
+#!/usr/bin/env node
+
+"use strict";
 
 var Slack = require('node-slack');
 var express = require('express');
 var bufferEq = require('buffer-equal-constant-time');
 var crypto = require('crypto');
+var Q =  require('q');
 var handlers = require('./lib/handlers');
 var messages = require('./lib/messages');
 
+var reqjs = require('requirejs');
+reqjs.config({
+    nodeRequire: require,
+    paths: {
+      "approve.js": "node_modules/approve.js",
+    },
+});
+
+// enable better Q stack traces -- comes with performance hit
+// Q.longStackSupport = true;
+
 function initSlack() {
+    var hookURL;
     if (process.env.HOOK_URL) {
         hookURL = process.env.HOOK_URL;
     } else {
