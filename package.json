@@ -13,9 +13,12 @@
     "test": "node test.js"
   },
   "dependencies": {
+    "approve.js": "git+ssh://git@github.com/tanium/approve.js.git",
     "buffer-equal-constant-time": "^1.0.1",
     "express": "^4.14.0",
-    "node-slack": "0.0.7"
+    "node-slack": "0.0.7",
+    "q": "^1.4.1",
+    "requirejs": "^2.3.2"
   },
   "devDependencies": {
     "jasmine": "^2.5.2",
