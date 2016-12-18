@@ -87,6 +87,7 @@ function newServer(slack) {
     all_handlers['pull_request_review_comment'] = newHandler(handlers.pullRequestCommentHandler);
     all_handlers['pull_request_review'] = newHandler(handlers.pullRequestReviewHandler)
     all_handlers['issue_comment'] = newHandler(handlers.issueCommentHandler);
+    all_handlers['push'] = newHandler(handlers.pushHandler);
     // disable status updates for now -- too noisy
     //all_handlers['status'] = newHandler(handlers.statusHandler);
 
