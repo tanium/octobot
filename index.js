@@ -78,6 +78,7 @@ function newServer(slack) {
 
     var githubAPI = {
         createMergePR: gitOctocat.createMergePR,
+        getPullRequestLabels: gitOctocat.getPullRequestLabels,
     };
 
     var messenger = messages.newMessenger(slack);

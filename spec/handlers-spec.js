@@ -6,7 +6,7 @@ describe('handlers', function() {
     var messenger, githubAPI;
     beforeEach(function() {
         messenger = jasmine.createSpyObj('messenger', ['sendToAll', 'sendToOwner']);
-        githubAPI = jasmine.createSpyObj('githubAPI', ['createMergePR']);
+        githubAPI = jasmine.createSpyObj('githubAPI', ['createMergePR', 'getPullRequestLabels']);
     });
 
     describe("pullRequestHandler ", function() {
@@ -68,6 +68,8 @@ describe('handlers', function() {
         it("should send messages on on merge", function() {
             data.action = 'closed';
             data.pull_request.merged = true;
+            githubAPI.getPullRequestLabels.and.returnValue(Q.when());
+
             handlers.pullRequestHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
@@ -81,6 +83,45 @@ describe('handlers', function() {
                 data.sender
             );
         });
+
+        it("should open merge PRs on merge", function(done) {
+            data.action = 'closed';
+            data.pull_request.merged = true;
+
+            var labelsPromise = Q.when({
+                data: [
+                    { name: 'backport-1.0' },
+                    { name: 'backport-2.0' },
+                    { name: 'some-other' },
+                ],
+            });
+            var mergePromise = Q.when();
+            githubAPI.getPullRequestLabels.and.returnValue(labelsPromise);
+            githubAPI.createMergePR.and.returnValue(mergePromise);
+
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
+
+            expect(messenger.sendToAll).toHaveBeenCalledWith(
+                'Pull Request merged',
+                [{
+                  title: 'Pull Request #22: "MyPR"',
+                    title_link: 'http://the-pr',
+                }],
+                data.pull_request,
+                data.repository,
+                data.sender
+            );
+
+            Q.all([labelsPromise, mergePromise]).then(function() {
+                expect(githubAPI.createMergePR.calls.allArgs()).toEqual([
+                    [ "git.com", "the-owner", "the-repo", 22, "release/1.0" ],
+                    [ "git.com", "the-owner", "the-repo", 22, "release/2.0" ],
+                ]);
+            }).finally(function() {
+                done();
+            });
+        });
+
 
         it("should send messages on on assign", function() {
             data.action = 'assigned';
