@@ -1,10 +1,11 @@
 var handlers = require('../lib/handlers');
+var Q = require('q');
 
 describe('handlers', function() {
 
     var messenger, githubAPI;
     beforeEach(function() {
-        messenger = jasmine.createSpyObj('messenger', ['sendToAll', 'sendToChannel']);
+        messenger = jasmine.createSpyObj('messenger', ['sendToAll', 'sendToOwner']);
         githubAPI = jasmine.createSpyObj('githubAPI', ['createMergePR']);
     });
 
@@ -20,13 +21,20 @@ describe('handlers', function() {
                         login: 'the-owner'
                     },
                     number: 22,
+                },
+                repository: {
+                    html_url: 'http://git.com/the-owner/the-repo',
+                    owner: {
+                        login: 'the-owner',
+                    },
+                    name: 'the-repo',
                 }
             };
         });
 
         it("should send messages on on open", function() {
             data.action = 'opened';
-            handlers.pullRequestHandler(messenger)(data);
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'Pull Request opened by the.owner',
@@ -43,7 +51,7 @@ describe('handlers', function() {
         it("should send messages on on close", function() {
             data.action = 'closed';
             data.pull_request.merged = false;
-            handlers.pullRequestHandler(messenger)(data);
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'Pull Request closed',
@@ -60,7 +68,7 @@ describe('handlers', function() {
         it("should send messages on on merge", function() {
             data.action = 'closed';
             data.pull_request.merged = true;
-            handlers.pullRequestHandler(messenger)(data);
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'Pull Request merged',
@@ -81,7 +89,7 @@ describe('handlers', function() {
                 { login: 'bob-smith' },
             ];
 
-            handlers.pullRequestHandler(messenger)(data);
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'Pull Request assigned to @joe, @bob.smith',
@@ -97,7 +105,7 @@ describe('handlers', function() {
 
         it("should send messages on on unassign", function() {
             data.action = 'unassigned';
-            handlers.pullRequestHandler(messenger)(data);
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'Pull Request unassigned',
@@ -109,6 +117,82 @@ describe('handlers', function() {
                 data.repository,
                 data.sender
             );
+        });
+
+        it("should create a merge PR on appropriate label", function(done) {
+            data.action = 'labeled';
+            data.pull_request.merged = true;
+            data.label = {
+                name: 'backport-1.5',
+            };
+
+            var successPromise = Q.when();
+
+            githubAPI.createMergePR.and.returnValue(successPromise);
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
+
+            expect(githubAPI.createMergePR).toHaveBeenCalledWith('git.com', 'the-owner', 'the-repo', 22, 'release/1.5');
+
+            successPromise.then(function() {
+                expect(messenger.sendToOwner).toHaveBeenCalledWith(
+                    'Created merge Pull Request',
+                    [{
+                        title: 'Pull Request #22: "MyPR"',
+                        title_link: 'http://the-pr'
+                    }],
+                    data.pull_request,
+                    data.repository
+                );
+             }).finally(done);
+        });
+
+        it("should send messages on failed merge PR creation", function(done) {
+            data.action = 'labeled';
+            data.pull_request.merged = true;
+            data.label = {
+                name: 'backport-1.5',
+            };
+
+            var failPromise = Q.reject("I just can't do it!");
+
+            githubAPI.createMergePR.and.returnValue(failPromise);
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
+
+            expect(githubAPI.createMergePR).toHaveBeenCalledWith('git.com', 'the-owner', 'the-repo', 22, 'release/1.5');
+
+            failPromise.finally(function() {
+                expect(messenger.sendToOwner).toHaveBeenCalledWith(
+                    'Error creating merge Pull Request',
+                    [{
+                        title: 'Pull Request #22: "MyPR"',
+                        title_link: 'http://the-pr',
+                        color: 'danger',
+                        text: "I just can't do it!"
+                    }],
+                    data.pull_request,
+                    data.repository
+                );
+             }).finally(done);
+        });
+
+        it("should not create a merge PR for non-merged PRs", function() {
+            data.action = 'labeled';
+            data.pull_request.merged = false;
+            data.label = {
+                name: 'backport-1.5',
+            };
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
+            expect(githubAPI.createMergePR).not.toHaveBeenCalled();
+        });
+
+        it("should not create a merge PR for non-backport labels", function() {
+            data.action = 'labeled';
+            data.pull_request.merged = false;
+            data.label = {
+                name: 'some-other-1.5',
+            };
+            handlers.pullRequestHandler(messenger, githubAPI)(data);
+            expect(githubAPI.createMergePR).not.toHaveBeenCalled();
         });
     });
 
@@ -135,7 +219,7 @@ describe('handlers', function() {
         });
 
         it("should send comments", function() {
-            handlers.pullRequestCommentHandler(messenger)(data);
+            handlers.pullRequestCommentHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'Comment on "<http://the-pr|MyPR>"',
@@ -152,10 +236,10 @@ describe('handlers', function() {
 
         it("should not send empty comments", function() {
             data.comment.body = '  ';
-            handlers.pullRequestCommentHandler(messenger)(data);
+            handlers.pullRequestCommentHandler(messenger, githubAPI)(data);
 
             data.comment.body = null;
-            handlers.pullRequestCommentHandler(messenger)(data);
+            handlers.pullRequestCommentHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).not.toHaveBeenCalled();
         });
@@ -187,7 +271,7 @@ describe('handlers', function() {
 
         it("should send approved reviews", function() {
             data.review.state = 'approved';
-            handlers.pullRequestReviewHandler(messenger)(data);
+            handlers.pullRequestReviewHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'the.reviewer approved PR "<http://the-pr|MyPR>"',
@@ -205,7 +289,7 @@ describe('handlers', function() {
 
         it("should send rejected reviews", function() {
             data.review.state = 'changes_requested';
-            handlers.pullRequestReviewHandler(messenger)(data);
+            handlers.pullRequestReviewHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'the.reviewer requested changes to PR "<http://the-pr|MyPR>"',
@@ -223,7 +307,7 @@ describe('handlers', function() {
 
         it("should send review comments", function() {
             data.review.state = 'commented';
-            handlers.pullRequestReviewHandler(messenger)(data);
+            handlers.pullRequestReviewHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'Comment on "<http://the-pr|MyPR>"',
@@ -242,10 +326,10 @@ describe('handlers', function() {
             data.review.state = 'commented';
 
             data.review.body = '  ';
-            handlers.pullRequestReviewHandler(messenger)(data);
+            handlers.pullRequestReviewHandler(messenger, githubAPI)(data);
 
             data.review.body = null;
-            handlers.pullRequestReviewHandler(messenger)(data);
+            handlers.pullRequestReviewHandler(messenger, githubAPI)(data);
 
             expect(messenger.sendToAll).not.toHaveBeenCalled();
         });
