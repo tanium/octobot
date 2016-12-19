@@ -18,6 +18,8 @@ reqjs.config({
     },
 });
 
+var gitOctocat = require('./lib/git-octocat');
+
 // enable better Q stack traces -- comes with performance hit
 // Q.longStackSupport = true;
 
@@ -74,10 +76,14 @@ function newServer(slack) {
         });
     });
 
+    var githubAPI = {
+        createMergePR: gitOctocat.createMergePR,
+    };
+
     var messenger = messages.newMessenger(slack);
 
     var newHandler = function(handler) {
-        return handler(messenger);
+        return handler(messenger, githubAPI);
     };
 
     var all_handlers = {};
