@@ -2,11 +2,115 @@ var handlers = require('../lib/handlers');
 
 describe('handlers', function() {
 
-    var messenger;
+    var messenger, githubAPI;
     beforeEach(function() {
-        messenger= jasmine.createSpyObj('messenger', ['sendToAll']);
+        messenger = jasmine.createSpyObj('messenger', ['sendToAll', 'sendToChannel']);
+        githubAPI = jasmine.createSpyObj('githubAPI', ['createMergePR']);
     });
 
+    describe("pullRequestHandler ", function() {
+        var data;
+        beforeEach(function() {
+            data = {
+                action: '',
+                pull_request: {
+                    html_url: 'http://the-pr',
+                    title: 'MyPR',
+                    user: {
+                        login: 'the-owner'
+                    },
+                    number: 22,
+                }
+            };
+        });
+
+        it("should send messages on on open", function() {
+            data.action = 'opened';
+            handlers.pullRequestHandler(messenger)(data);
+
+            expect(messenger.sendToAll).toHaveBeenCalledWith(
+                'Pull Request opened by the.owner',
+                [{
+                  title: 'Pull Request #22: "MyPR"',
+                    title_link: 'http://the-pr',
+                }],
+                data.pull_request,
+                data.repository,
+                data.sender
+            );
+        });
+
+        it("should send messages on on close", function() {
+            data.action = 'closed';
+            data.pull_request.merged = false;
+            handlers.pullRequestHandler(messenger)(data);
+
+            expect(messenger.sendToAll).toHaveBeenCalledWith(
+                'Pull Request closed',
+                [{
+                  title: 'Pull Request #22: "MyPR"',
+                    title_link: 'http://the-pr',
+                }],
+                data.pull_request,
+                data.repository,
+                data.sender
+            );
+        });
+
+        it("should send messages on on merge", function() {
+            data.action = 'closed';
+            data.pull_request.merged = true;
+            handlers.pullRequestHandler(messenger)(data);
+
+            expect(messenger.sendToAll).toHaveBeenCalledWith(
+                'Pull Request merged',
+                [{
+                  title: 'Pull Request #22: "MyPR"',
+                    title_link: 'http://the-pr',
+                }],
+                data.pull_request,
+                data.repository,
+                data.sender
+            );
+        });
+
+        it("should send messages on on assign", function() {
+            data.action = 'assigned';
+            data.pull_request.assignees = [
+                { login: 'joe' },
+                { login: 'bob-smith' },
+            ];
+
+            handlers.pullRequestHandler(messenger)(data);
+
+            expect(messenger.sendToAll).toHaveBeenCalledWith(
+                'Pull Request assigned to @joe, @bob.smith',
+                [{
+                    title: 'Pull Request #22: "MyPR"',
+                    title_link: 'http://the-pr',
+                }],
+                data.pull_request,
+                data.repository,
+                data.sender
+            );
+        });
+
+        it("should send messages on on unassign", function() {
+            data.action = 'unassigned';
+            handlers.pullRequestHandler(messenger)(data);
+
+            expect(messenger.sendToAll).toHaveBeenCalledWith(
+                'Pull Request unassigned',
+                [{
+                  title: 'Pull Request #22: "MyPR"',
+                    title_link: 'http://the-pr',
+                }],
+                data.pull_request,
+                data.repository,
+                data.sender
+            );
+        });
+    });
 
     describe("pullRequestCommentHandler ", function() {
         var data;
@@ -31,7 +135,7 @@ describe('handlers', function() {
         });
 
         it("should send comments", function() {
-            handlers.pullRequestCommentHandler (messenger)(data);
+            handlers.pullRequestCommentHandler(messenger)(data);
 
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'Comment on "<http://the-pr|MyPR>"',
