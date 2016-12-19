@@ -104,7 +104,7 @@ describe('handlers', function() {
             expect(messenger.sendToAll).toHaveBeenCalledWith(
                 'Pull Request merged',
                 [{
-                  title: 'Pull Request #22: "MyPR"',
+                    title: 'Pull Request #22: "MyPR"',
                     title_link: 'http://the-pr',
                 }],
                 data.pull_request,
@@ -178,7 +178,7 @@ describe('handlers', function() {
                 expect(messenger.sendToOwner).toHaveBeenCalledWith(
                     'Created merge Pull Request',
                     [{
-                        title: 'Pull Request #22: "MyPR"',
+                        title: 'Source PR: #22: "MyPR"',
                         title_link: 'http://the-pr'
                     }],
                     data.pull_request,
@@ -205,7 +205,7 @@ describe('handlers', function() {
                 expect(messenger.sendToOwner).toHaveBeenCalledWith(
                     'Error creating merge Pull Request',
                     [{
-                        title: 'Pull Request #22: "MyPR"',
+                        title: 'Source PR: #22: "MyPR"',
                         title_link: 'http://the-pr',
                         color: 'danger',
                         text: "I just can't do it!"
