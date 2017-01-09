@@ -1,5 +1,6 @@
 extern crate rustc_serialize;
 extern crate toml;
+extern crate ring;
 
 mod server;
 mod config;

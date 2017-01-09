@@ -5,6 +5,8 @@ version = "0.1.0"
 
 [dependencies]
 iron = "0.4.0"
+ring = "0.6.1"
 router = "0.4.0"
+rust-crypto = "0.2.36"
 rustc-serialize = "0.3.22"
 toml = "0.2.1"
