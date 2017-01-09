@@ -7,6 +7,8 @@ use super::iron::prelude::*;
 use super::iron::{status, BeforeMiddleware};
 use super::router::Router;
 use super::super::ring::{digest, hmac};
+use super::super::logger::Logger;
+use super::super::rustc_serialize::hex::FromHex;
 
 pub fn start(config: Config) -> Result<(), String> {
     let mut router = Router::new();
@@ -19,7 +21,15 @@ pub fn start(config: Config) -> Result<(), String> {
     };
 
     let mut chain = Chain::new(router);
+    let (logger_before, logger_after) = Logger::new(None);
+
+    // before first middleware
+    chain.link_before(logger_before);
+
     chain.link_before(GithubWebhookVerifier { secret: config.github_secret.clone() });
+
+    // after last middleware
+    chain.link_after(logger_after);
 
     match Iron::new(chain).http(addr_and_port.as_str()) {
         Ok(_) => {
@@ -47,36 +57,44 @@ struct GithubWebhookVerifier {
 }
 
 impl GithubWebhookVerifier {
-    fn is_valid(&self, body: &Vec<u8>, signature: &Vec<u8>) -> bool {
-        let key = hmac::VerificationKey::new(&digest::SHA1, self.secret.as_ref());
-        match hmac::verify(&key, &body.as_ref(), &signature.as_ref()) {
-            Ok(_) => true,
-            Err(_) => false,
+    fn is_valid(&self, body: &Vec<u8>, signature: String) -> IronResult<()> {
+        // assume it starts with 'sha1='
+        if signature.len() < 6 {
+            return Err(IronError::new(StringError("Invalid signature value".to_string()), status::BadRequest));
+        }
+        let sig_prefix = &signature[0..5];
+        if sig_prefix != "sha1=" {
+            return Err(IronError::new(StringError(format!("Invalid signature value. Expected 'sha1='; found: '{}'", sig_prefix)), status::BadRequest));
+        }
+        println!("SIG0={}", signature);
+        println!("SIG1={}", &signature[5..]);
+
+        let sig_bytes: Vec<u8> = match signature[5..].from_hex() {
+            Ok(s) => s,
+            Err(e) => return Err(IronError::new(StringError(format!("Invalid hex value: {}", e)), status::BadRequest)),
+        };
+
+        let key = hmac::VerificationKey::new(&digest::SHA1, self.secret.as_bytes());
+        match hmac::verify(&key, &body.as_ref(), &sig_bytes) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(IronError::new(StringError("Invalid signature!".to_string()), status::BadRequest))
         }
     }
 }
 
 impl BeforeMiddleware for GithubWebhookVerifier {
     fn before(&self, req: &mut Request) -> IronResult<()> {
-        let sig_header: &Vec<u8> = match req.headers.get_raw("x-hub-signature") {
+        let sig_header: String = match req.headers.get_raw("x-hub-signature") {
             Some(h) => {
                 if h.len() == 0 || h.len() > 1 {
                     return Err(IronError::new(StringError("Expected to find exactly one signature header".to_string()), status::BadRequest))
                 } else {
-                    &h[0]
+                    String::from_utf8_lossy(&h[0]).into_owned()
                 }
             },
             None => return Err(IronError::new(StringError("Expected to find exactly one signature header".to_string()), status::BadRequest)),
         };
 
-        // assume it starts with 'sha1='
-        if sig_header.len() < 6 {
-            return Err(IronError::new(StringError("Invalid signature value".to_string()), status::BadRequest));
-        }
-        if String::from_utf8_lossy(&sig_header[0..4]) != "sha1=" {
-            return Err(IronError::new(StringError("Invalid signature value. Expected SHA1".to_string()), status::BadRequest));
-        }
-        let sig_header = &sig_header[5..].to_vec();
 
         let mut body_raw: Vec<u8> = vec![];
         match req.body.read_to_end(&mut body_raw) {
@@ -84,11 +102,7 @@ impl BeforeMiddleware for GithubWebhookVerifier {
             Err(e) =>  return Err(IronError::new(StringError(format!("Error reading body: {}", e)), status::InternalServerError)),
         };
 
-        if self.is_valid(&body_raw, sig_header)  {
-            Ok(())
-        } else {
-            Err(IronError::new(StringError("Invalid signature!".to_string()), status::BadRequest))
-        }
+        self.is_valid(&body_raw, sig_header)
     }
 }
 
