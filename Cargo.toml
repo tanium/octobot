@@ -1,6 +1,8 @@
 [package]
+authors = ["Matt Hauck <matt.hauck@tanium.com>"]
 name = "octobot"
 version = "0.1.0"
-authors = ["Matt Hauck <matt.hauck@tanium.com>"]
 
 [dependencies]
+iron = "0.4.0"
+router = "0.4.0"
