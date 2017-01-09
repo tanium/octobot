@@ -1,11 +1,12 @@
 use super::super::std;
 
 use std::fmt;
-use std::io::Read;
 use super::super::ring::{digest, hmac};
 use super::iron::prelude::*;
 use super::iron::{status, BeforeMiddleware};
 use super::super::rustc_serialize::hex::FromHex;
+use super::persistent::Read;
+use super::bodyparser;
 
 #[derive(Debug)]
 struct StringError(String);
@@ -25,7 +26,7 @@ pub struct GithubWebhookVerifier {
 }
 
 impl GithubWebhookVerifier {
-    fn is_valid(&self, body: &Vec<u8>, signature: String) -> IronResult<()> {
+    fn is_valid(&self, body: &[u8], signature: String) -> IronResult<()> {
         // assume it starts with 'sha1='
         if signature.len() < 6 {
             return Err(IronError::new(StringError("Invalid signature value".to_string()), status::BadRequest));
@@ -41,7 +42,7 @@ impl GithubWebhookVerifier {
         };
 
         let key = hmac::VerificationKey::new(&digest::SHA1, self.secret.as_bytes());
-        match hmac::verify(&key, &body.as_ref(), &sig_bytes) {
+        match hmac::verify(&key, body, &sig_bytes) {
             Ok(_) => Ok(()),
             Err(_) => Err(IronError::new(StringError("Invalid signature!".to_string()), status::BadRequest))
         }
@@ -61,14 +62,13 @@ impl BeforeMiddleware for GithubWebhookVerifier {
             None => return Err(IronError::new(StringError("Expected to find exactly one signature header".to_string()), status::BadRequest)),
         };
 
-
-        let mut body_raw: Vec<u8> = vec![];
-        match req.body.read_to_end(&mut body_raw) {
-            Ok(_) => (),
-            Err(e) =>  return Err(IronError::new(StringError(format!("Error reading body: {}", e)), status::InternalServerError)),
+        let body = match req.get::<bodyparser::Raw>() {
+            Ok(Some(body)) => body,
+            Ok(None) => String::new(),
+            Err(e) => return Err(IronError::new(StringError(format!("Error reading body: {}", e)), status::InternalServerError)),
         };
 
-        self.is_valid(&body_raw, sig_header)
+        self.is_valid(body.as_bytes(), sig_header)
     }
 }
 

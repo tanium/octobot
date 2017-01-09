@@ -4,6 +4,8 @@ use super::iron::prelude::*;
 use super::iron::status;
 use super::router::Router;
 use super::super::logger::Logger;
+use super::persistent::Read;
+use super::bodyparser;
 
 use server::github_verify;
 
@@ -38,6 +40,10 @@ pub fn start(config: Config) -> Result<(), String> {
 }
 
 
-fn webhook_handler(_: &mut Request) -> IronResult<Response> {
+fn webhook_handler(req: &mut Request) -> IronResult<Response> {
+    let json_body = req.get::<bodyparser::Json>();
+    println!("BODY: {:?}", json_body);
+
+
     Ok(Response::with((status::Ok, "Hello, Octobot!")))
 }
