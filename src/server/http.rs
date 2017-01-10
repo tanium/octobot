@@ -4,7 +4,6 @@ use super::iron::prelude::*;
 use super::iron::status;
 use super::router::Router;
 use super::super::logger::Logger;
-use super::persistent::Read;
 use super::bodyparser;
 
 use server::github_verify;
@@ -34,16 +33,21 @@ pub fn start(config: Config) -> Result<(), String> {
         Ok(_) => {
             println!("Listening on port {}", addr_and_port);
             Ok(())
-        },
+        }
         Err(e) => Err(format!("{}", e)),
     }
 }
 
 
 fn webhook_handler(req: &mut Request) -> IronResult<Response> {
-    let json_body = req.get::<bodyparser::Json>();
-    println!("BODY: {:?}", json_body);
+    let json_body = match req.get::<bodyparser::Json>() {
+        Ok(Some(j)) => j,
+        Err(_) | Ok(None) => {
+            return Ok(Response::with((status::BadRequest, format!("Error parsing json"))))
+        }
+    };
 
+    println!("BODY: {:?}", json_body);
 
     Ok(Response::with((status::Ok, "Hello, Octobot!")))
 }

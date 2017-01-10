@@ -5,7 +5,6 @@ use super::super::ring::{digest, hmac};
 use super::iron::prelude::*;
 use super::iron::{status, BeforeMiddleware};
 use super::super::rustc_serialize::hex::FromHex;
-use super::persistent::Read;
 use super::bodyparser;
 
 #[derive(Debug)]
