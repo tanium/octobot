@@ -25,7 +25,7 @@ pub struct GithubWebhookVerifier {
 }
 
 impl GithubWebhookVerifier {
-    fn is_valid(&self, body: &[u8], signature: String) -> IronResult<()> {
+    fn is_valid(&self, data: &[u8], signature: &String) -> IronResult<()> {
         // assume it starts with 'sha1='
         if signature.len() < 6 {
             return Err(IronError::new(StringError("Invalid signature value".to_string()), status::BadRequest));
@@ -41,7 +41,7 @@ impl GithubWebhookVerifier {
         };
 
         let key = hmac::VerificationKey::new(&digest::SHA1, self.secret.as_bytes());
-        match hmac::verify(&key, body, &sig_bytes) {
+        match hmac::verify(&key, data, &sig_bytes) {
             Ok(_) => Ok(()),
             Err(_) => Err(IronError::new(StringError("Invalid signature!".to_string()), status::BadRequest))
         }
@@ -67,8 +67,55 @@ impl BeforeMiddleware for GithubWebhookVerifier {
             Err(e) => return Err(IronError::new(StringError(format!("Error reading body: {}", e)), status::InternalServerError)),
         };
 
-        self.is_valid(body.as_bytes(), sig_header)
+        self.is_valid(body.as_bytes(), &sig_header)
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::super::ring::{digest, hmac};
+    use super::super::super::rustc_serialize::hex::ToHex;
 
+    #[test]
+    fn verify_sig_valid() {
+        let key_value = String::from("this is my secret key!");
+        let key = hmac::SigningKey::new(&digest::SHA1, key_value.as_bytes());
+
+        let msg = "a message from the githubs.";
+        let signature = hmac::sign(&key, msg.as_bytes());
+        let signature_hex = "sha1=".to_string() + signature.as_ref().to_hex().as_str();
+
+        let verifier = GithubWebhookVerifier { secret: key_value.clone() };
+
+        assert!(verifier.is_valid(msg.as_bytes(), &signature_hex).is_ok());
+    }
+
+    #[test]
+    fn verify_sig_wrong_digest() {
+        let key_value = String::from("this is my secret key!");
+        let key = hmac::SigningKey::new(&digest::SHA1, key_value.as_bytes());
+
+        let msg = "a message from the githubs.";
+        let signature = hmac::sign(&key, msg.as_bytes());
+        let signature_hex = "sha9=".to_string() + signature.as_ref().to_hex().as_str();
+
+        let verifier = GithubWebhookVerifier { secret: key_value.clone() };
+
+        assert!(verifier.is_valid(msg.as_bytes(), &signature_hex).is_err());
+    }
+
+    #[test]
+    fn verify_sig_missing_header() {
+        let key_value = String::from("this is my secret key!");
+        let key = hmac::SigningKey::new(&digest::SHA1, key_value.as_bytes());
+
+        let msg = "a message from the githubs.";
+        let signature = hmac::sign(&key, msg.as_bytes());
+        let signature_hex = signature.as_ref().to_hex();
+
+        let verifier = GithubWebhookVerifier { secret: key_value.clone() };
+
+        assert!(verifier.is_valid(msg.as_bytes(), &signature_hex).is_err());
+    }
+}
