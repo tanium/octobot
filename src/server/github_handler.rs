@@ -31,12 +31,61 @@ impl Handler for GithubHandler {
             }
         };
 
-        self.handle_event(&event, &json_body)
+        match self.handle_event(&event, &json_body) {
+            Some(r) => Ok(r),
+            None => Ok(Response::with((status::Ok, format!("Unhandled event: {}", event))))
+        }
     }
 }
 
 impl GithubHandler {
-    fn handle_event(&self, event: &String, body: &Value) -> IronResult<Response> {
-        Ok(Response::with((status::Ok, "Hello, Octobot!")))
+    fn handle_event(&self, event: &String, body: &Value) -> Option<Response> {
+        info!("Received event: {}", event);
+        if event == "ping" {
+            Some(self.handle_ping(body))
+        } else if event == "pull_request" {
+            Some(self.handle_pr(body))
+        } else if event == "pull_request_review_comment" {
+            Some(self.handle_pr_review_comment(body))
+        } else if event == "pull_request_review" {
+            Some(self.handle_pr_review(body))
+        } else if event == "commit_comment" {
+            Some(self.handle_commit_comment(body))
+        } else if event == "issue_comment" {
+            Some(self.handle_issue_comment(body))
+        } else if event == "push" {
+            Some(self.handle_push(body))
+        } else {
+            None
+        }
     }
+
+    fn handle_ping(&self, body: &Value) -> Response {
+        Response::with((status::Ok, "ping"))
+    }
+
+    fn handle_pr(&self, body: &Value) -> Response {
+        Response::with((status::Ok, "pr"))
+    }
+
+    fn handle_pr_review_comment(&self, body: &Value) -> Response {
+        Response::with((status::Ok, "pr_review_comment"))
+    }
+
+    fn handle_pr_review(&self, body: &Value) -> Response {
+        Response::with((status::Ok, "pr_review"))
+    }
+
+    fn handle_commit_comment(&self, body: &Value) -> Response {
+        Response::with((status::Ok, "commit_comment"))
+    }
+
+    fn handle_issue_comment(&self, body: &Value) -> Response {
+        Response::with((status::Ok, "issue_comment"))
+    }
+
+    fn handle_push(&self, body: &Value) -> Response {
+        Response::with((status::Ok, "push"))
+    }
+
 }

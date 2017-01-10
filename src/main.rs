@@ -5,6 +5,9 @@ extern crate rustc_serialize;
 extern crate serde_json;
 extern crate toml;
 
+#[macro_use]
+extern crate log;
+
 mod config;
 mod git;
 mod messenger;
