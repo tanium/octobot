@@ -5,8 +5,10 @@ extern crate rustc_serialize;
 extern crate serde_json;
 extern crate toml;
 
-mod server;
 mod config;
+mod git;
+mod messenger;
+mod server;
 
 fn main() {
     if std::env::args().len() < 2 {

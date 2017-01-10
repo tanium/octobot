@@ -1,10 +1,18 @@
+use std::sync::Arc;
+
 use super::iron::prelude::*;
 use super::iron::status;
 use super::iron::middleware::Handler;
 use super::bodyparser;
 use super::super::serde_json::Value;
 
-pub struct GithubHandler;
+use super::super::git::Git;
+use super::super::messenger::Messenger;
+
+pub struct GithubHandler {
+    pub git: Arc<Git>,
+    pub messenger: Arc<Messenger>,
+}
 
 impl Handler for GithubHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {

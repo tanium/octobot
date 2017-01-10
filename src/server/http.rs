@@ -1,15 +1,23 @@
 use super::*;
 
+use std::sync::Arc;
 use super::iron::prelude::*;
 use super::router::Router;
 use super::super::logger::Logger;
 
 use server::github_verify;
 use server::github_handler;
+use super::super::git::GitOctocat;
+use super::super::messenger::SlackMessenger;
 
 pub fn start(config: Config) -> Result<(), String> {
+    let handler = github_handler::GithubHandler {
+        git: Arc::new( GitOctocat ),
+        messenger: Arc::new( SlackMessenger { slack_webhook_url: config.slack_webhook_url.clone() } )
+    };
+
     let mut router = Router::new();
-    router.post("/", github_handler::GithubHandler, "webhook");
+    router.post("/", handler, "webhook");
 
     let default_listen = String::from("0.0.0.0:3000");
     let addr_and_port = match config.listen_addr {
@@ -36,4 +44,3 @@ pub fn start(config: Config) -> Result<(), String> {
         Err(e) => Err(format!("{}", e)),
     }
 }
-
