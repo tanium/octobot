@@ -4,6 +4,7 @@ extern crate bodyparser;
 extern crate persistent;
 
 mod http;
+mod github_handler;
 mod github_verify;
 mod handlers;
 

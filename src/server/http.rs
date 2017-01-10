@@ -1,16 +1,15 @@
 use super::*;
 
 use super::iron::prelude::*;
-use super::iron::status;
 use super::router::Router;
 use super::super::logger::Logger;
-use super::bodyparser;
 
 use server::github_verify;
+use server::github_handler;
 
 pub fn start(config: Config) -> Result<(), String> {
     let mut router = Router::new();
-    router.post("/", webhook_handler, "webhook");
+    router.post("/", github_handler::GithubHandler, "webhook");
 
     let default_listen = String::from("0.0.0.0:3000");
     let addr_and_port = match config.listen_addr {
@@ -38,16 +37,3 @@ pub fn start(config: Config) -> Result<(), String> {
     }
 }
 
-
-fn webhook_handler(req: &mut Request) -> IronResult<Response> {
-    let json_body = match req.get::<bodyparser::Json>() {
-        Ok(Some(j)) => j,
-        Err(_) | Ok(None) => {
-            return Ok(Response::with((status::BadRequest, format!("Error parsing json"))))
-        }
-    };
-
-    println!("BODY: {:?}", json_body);
-
-    Ok(Response::with((status::Ok, "Hello, Octobot!")))
-}

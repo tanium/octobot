@@ -2,6 +2,7 @@ extern crate env_logger;
 extern crate logger;
 extern crate ring;
 extern crate rustc_serialize;
+extern crate serde_json;
 extern crate toml;
 
 mod server;
