@@ -5,15 +5,28 @@ use super::iron::prelude::*;
 use super::router::Router;
 use super::super::logger::Logger;
 
+use super::super::users;
+use super::super::repos;
 use server::github_verify;
 use server::github_handler;
 use super::super::git::GitOctocat;
 use super::super::messenger::SlackMessenger;
 
 pub fn start(config: Config) -> Result<(), String> {
+    let user_config = match users::load_config(config.users_config_file) {
+        Ok(c) => c,
+        Err(e) => panic!("Error reading user config file: {}", e),
+    };
+    let repo_config = match repos::load_config(config.repos_config_file) {
+        Ok(c) => c,
+        Err(e) => panic!("Error reading repo config file: {}", e),
+    };
+
     let handler = github_handler::GithubHandler {
-        git: Arc::new( GitOctocat ),
-        messenger: Arc::new( SlackMessenger { slack_webhook_url: config.slack_webhook_url.clone() } )
+        git: Arc::new(GitOctocat),
+        messenger: Arc::new(SlackMessenger { slack_webhook_url: config.slack_webhook_url.clone() }),
+        users: Arc::new(user_config),
+        repos: Arc::new(repo_config),
     };
 
     let mut router = Router::new();

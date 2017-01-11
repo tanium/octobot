@@ -22,7 +22,7 @@ pub struct RepoConfig {
     repos: RepoHostMap,
 }
 
-fn load_config(file: String) -> std::io::Result<RepoConfig> {
+pub fn load_config(file: String) -> std::io::Result<RepoConfig> {
     let mut f = try!(std::fs::File::open(&file));
     let mut contents = String::new();
     try!(f.read_to_string(&mut contents));

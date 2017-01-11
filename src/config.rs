@@ -7,6 +7,8 @@ pub struct Config {
     pub slack_webhook_url: String,
     pub github_secret: String,
     pub listen_addr: Option<String>,
+    pub users_config_file: String,
+    pub repos_config_file: String,
 }
 
 pub fn parse(config_file: String) -> Result<Config, String> {

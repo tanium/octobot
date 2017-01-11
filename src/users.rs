@@ -22,7 +22,7 @@ pub struct UserConfig {
     users: UserHostMap,
 }
 
-fn load_config(file: String) -> std::io::Result<UserConfig> {
+pub fn load_config(file: String) -> std::io::Result<UserConfig> {
     let mut f = try!(std::fs::File::open(&file));
     let mut contents = String::new();
     try!(f.read_to_string(&mut contents));

@@ -8,10 +8,14 @@ use super::super::serde_json::Value;
 
 use super::super::git::Git;
 use super::super::messenger::Messenger;
+use super::super::users::UserConfig;
+use super::super::repos::RepoConfig;
 
 pub struct GithubHandler {
     pub git: Arc<Git>,
     pub messenger: Arc<Messenger>,
+    pub users: Arc<UserConfig>,
+    pub repos: Arc<RepoConfig>,
 }
 
 impl Handler for GithubHandler {
