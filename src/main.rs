@@ -1,5 +1,6 @@
 extern crate env_logger;
 extern crate logger;
+extern crate url;
 extern crate ring;
 extern crate rustc_serialize;
 extern crate serde_json;
@@ -10,8 +11,11 @@ extern crate log;
 
 mod config;
 mod git;
+mod github;
 mod messenger;
+mod repos;
 mod server;
+mod users;
 mod util;
 
 fn main() {
