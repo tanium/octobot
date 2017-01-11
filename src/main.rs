@@ -12,6 +12,7 @@ mod config;
 mod git;
 mod messenger;
 mod server;
+mod util;
 
 fn main() {
     if std::env::args().len() < 2 {

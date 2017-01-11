@@ -33,7 +33,7 @@ impl Handler for GithubHandler {
 
         match self.handle_event(&event, &json_body) {
             Some(r) => Ok(r),
-            None => Ok(Response::with((status::Ok, format!("Unhandled event: {}", event))))
+            None => Ok(Response::with((status::Ok, format!("Unhandled event: {}", event)))),
         }
     }
 }
@@ -87,5 +87,4 @@ impl GithubHandler {
     fn handle_push(&self, body: &Value) -> Response {
         Response::with((status::Ok, "push"))
     }
-
 }
