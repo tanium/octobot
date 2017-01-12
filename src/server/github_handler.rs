@@ -5,7 +5,8 @@ use super::iron::status;
 use super::iron::middleware::Handler;
 use super::bodyparser;
 use super::super::rustc_serialize::json;
-use super::super::slack_hook::AttachmentBuilder;
+use super::super::slack_hook::{AttachmentBuilder, SlackLink, SlackText};
+use super::super::slack_hook::SlackTextContent::{Text, Link};
 use super::super::url::Url;
 
 use super::super::git::Git;
@@ -104,21 +105,23 @@ impl GithubHandler {
                     if let Some(ref path) = comment.path {
                         commit_path = path.to_string();
                     } else {
-                        commit_path = String::new();
+                        commit_path = commit.to_string();
                     }
 
-                    let msg = format!("Comment on \"{}\" ({})",
-                                      commit_path,
-                                      util::make_link(commit_url.as_str(), commit));
+                    let msg: SlackText = vec![Text(format!("Comment on \"{}\" (", commit_path)
+                                                  .into()),
+                                              Link(SlackLink::new(commit_url.as_str(), commit)),
+                                              Text(")".into())]
+                        .as_slice()
+                        .into();
                     let slack_user = self.users
                         .slack_user_name(comment.user.login.as_str(), &data.repository);
                     let attach = AttachmentBuilder::new(comment.body.as_str())
-                        .title(format!("{} said:", slack_user));
-                    if let Ok(url) = Url::parse(&comment.html_url) {
-                        // attach.title_link( &url );
-                    }
-                    self.messenger.send_to_all(msg.as_str(),
-                                               &vec![attach],
+                        .title(format!("{} said:", slack_user))
+                        .title_link(comment.html_url.as_str());
+
+                    self.messenger.send_to_all(msg,
+                                               vec![attach],
                                                &comment.user,
                                                &data.sender,
                                                &data.repository);
