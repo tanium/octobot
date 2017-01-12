@@ -32,13 +32,15 @@ pub struct PullRequest {
     pub html_url: String,
     pub state: String,
     pub user: User,
-    pub merged: bool,
+    pub merge_commit_sha: Option<String>,
+    pub assignees: Vec<User>,
 }
 
 #[derive(RustcDecodable, RustcEncodable, Clone)]
 pub struct Issue {
     pub html_url: String,
     pub title: String,
+    pub assignees: Vec<User>,
 }
 
 #[derive(RustcDecodable, RustcEncodable, Clone)]

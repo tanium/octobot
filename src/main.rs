@@ -4,6 +4,7 @@ extern crate url;
 extern crate ring;
 extern crate rustc_serialize;
 extern crate serde_json;
+extern crate slack_hook;
 extern crate toml;
 
 #[macro_use]
