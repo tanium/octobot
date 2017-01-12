@@ -5,12 +5,16 @@ use super::iron::status;
 use super::iron::middleware::Handler;
 use super::bodyparser;
 use super::super::rustc_serialize::json;
+use super::super::slack_hook::AttachmentBuilder;
+use super::super::url::Url;
 
 use super::super::git::Git;
 use super::super::github;
+use super::super::util;
 use super::super::messenger::Messenger;
 use super::super::users::UserConfig;
 use super::super::repos::RepoConfig;
+
 
 pub struct GithubHandler {
     pub git: Arc<Git>,
@@ -39,7 +43,8 @@ impl Handler for GithubHandler {
         let data: github::HookBody = match json::decode(body.as_str()) {
             Ok(h) => h,
             Err(e) => {
-                return Ok(Response::with((status::BadRequest, format!("Error parsing JSON: {}", e))))
+                return Ok(Response::with((status::BadRequest,
+                                          format!("Error parsing JSON: {}", e))))
             }
         };
 
@@ -89,6 +94,38 @@ impl GithubHandler {
     }
 
     fn handle_commit_comment(&self, data: &github::HookBody) -> Response {
+        if let Some(ref comment) = data.comment {
+            if let Some(ref action) = data.action {
+                if action == "created" {
+                    let commit: &str = &comment.commit_id[0..7];
+                    let commit_url =
+                        format!("{}/commit/{}", data.repository.html_url, comment.commit_id);
+                    let commit_path: String;
+                    if let Some(ref path) = comment.path {
+                        commit_path = path.to_string();
+                    } else {
+                        commit_path = String::new();
+                    }
+
+                    let msg = format!("Comment on \"{}\" ({})",
+                                      commit_path,
+                                      util::make_link(commit_url.as_str(), commit));
+                    let slack_user = self.users
+                        .slack_user_name(comment.user.login.as_str(), &data.repository);
+                    let attach = AttachmentBuilder::new(comment.body.as_str())
+                        .title(format!("{} said:", slack_user));
+                    if let Ok(url) = Url::parse(&comment.html_url) {
+                        // attach.title_link( &url );
+                    }
+                    self.messenger.send_to_all(msg.as_str(),
+                                               &vec![attach],
+                                               &comment.user,
+                                               &data.sender,
+                                               &data.repository);
+                }
+            }
+        }
+
         Response::with((status::Ok, "commit_comment"))
     }
 
