@@ -34,14 +34,14 @@ pub fn load_config(file: String) -> std::io::Result<RepoConfig> {
 }
 
 impl RepoConfig {
-    pub fn lookup_channel(&self, repo: &github::GithubRepo) -> Option<String> {
+    pub fn lookup_channel(&self, repo: &github::Repo) -> Option<String> {
         match self.lookup_info(repo) {
             Some(info) => Some(info.channel.clone()),
             None => None,
         }
     }
 
-    fn lookup_info(&self, repo: &github::GithubRepo) -> Option<&RepoInfo> {
+    fn lookup_info(&self, repo: &github::Repo) -> Option<&RepoInfo> {
         match Url::parse(&repo.html_url) {
             Ok(u) => {
                 u.host_str()
@@ -69,10 +69,10 @@ mod tests {
 
         let repos = RepoConfig { repos: host_map };
 
-        let repo = github::GithubRepo {
+        let repo = github::Repo {
             html_url: "http://git.company.com/some-user/the-repo".to_string(),
             full_name: "some-user/the-repo".to_string(),
-            owner: github::GithubUser { login: "someone-else".to_string() },
+            owner: github::User { login: "someone-else".to_string() },
         };
         assert_eq!("the-repo-reviews", repos.lookup_channel(&repo).unwrap());
     }
@@ -88,10 +88,10 @@ mod tests {
 
         let repos = RepoConfig { repos: host_map };
 
-        let repo = github::GithubRepo {
+        let repo = github::Repo {
             html_url: "http://git.company.com/some-user/the-repo".to_string(),
             full_name: "some-user/some-other-repo".to_string(),
-            owner: github::GithubUser { login: "some-user".to_string() },
+            owner: github::User { login: "some-user".to_string() },
         };
         assert_eq!("the-repo-reviews", repos.lookup_channel(&repo).unwrap());
     }
@@ -109,20 +109,20 @@ mod tests {
 
         // fail by channel/repo
         {
-            let repo = github::GithubRepo {
+            let repo = github::Repo {
                 html_url: "http://git.company.com/some-user/the-repo".to_string(),
                 full_name: "someone-else/some-other-repo".to_string(),
-                owner: github::GithubUser { login: "someone-else".to_string() },
+                owner: github::User { login: "someone-else".to_string() },
             };
             assert!(repos.lookup_channel(&repo).is_none());
         }
 
         // fail by git host
         {
-            let repo = github::GithubRepo {
+            let repo = github::Repo {
                 html_url: "http://git.other-company.com/some-user/the-repo".to_string(),
                 full_name: "some-user/some-other-repo".to_string(),
-                owner: github::GithubUser { login: "some-user".to_string() },
+                owner: github::User { login: "some-user".to_string() },
             };
             assert!(repos.lookup_channel(&repo).is_none());
         }
