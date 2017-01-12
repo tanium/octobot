@@ -1,9 +1,9 @@
-fn escape_for_slack(str: &str) -> String {
-    str.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+fn escape_for_slack<S: Into<String>>(str: S) -> String {
+    str.into().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 }
 
-pub fn make_link(url: &str, text: &str) -> String {
-    "<".to_string() + escape_for_slack(url).as_str() + "|" + escape_for_slack(text).as_str() + ">"
+pub fn make_link<S: Into<String>>(url: S, text: S) -> String {
+    format!("<{}|{}>", escape_for_slack(url.into()), escape_for_slack(text.into()))
 }
 
 #[cfg(test)]

@@ -36,15 +36,16 @@ pub fn load_config(file: String) -> std::io::Result<UserConfig> {
 impl UserConfig {
 
     // our slack convention is to use '.' but github replaces dots with dashes.
-    pub fn slack_user_name(&self, login: &str, repo: &github::Repo) -> String {
-        match self.lookup_name(login, repo) {
+    pub fn slack_user_name<S: Into<String>>(&self, login: S, repo: &github::Repo) -> String {
+        let login = login.into();
+        match self.lookup_name(login.as_str(), repo) {
             Some(name) => name,
-            None => login.to_string().replace('-', ".")
+            None => login.as_str().replace('-', ".")
         }
     }
 
-    pub fn slack_user_ref(&self, login: &str, repo: &github::Repo) -> String {
-        mention(self.slack_user_name(login, repo).as_str())
+    pub fn slack_user_ref<S: Into<String>>(&self, login: S, repo: &github::Repo) -> String {
+        mention(self.slack_user_name(login.into(), repo))
     }
 
     fn lookup_name(&self, login: &str, repo: &github::Repo) -> Option<String> {
@@ -66,8 +67,8 @@ impl UserConfig {
     }
 }
 
-pub fn mention(username: &str) -> String {
-    "@".to_string() + username
+pub fn mention<S: Into<String>>(username: S) -> String {
+    format!("@{}", username.into())
 }
 
 #[cfg(test)]
