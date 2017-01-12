@@ -34,7 +34,20 @@ pub fn load_config(file: String) -> std::io::Result<UserConfig> {
 }
 
 impl UserConfig {
-    pub fn lookup_slack_name(&self, login: &str, repo: &github::GithubRepo) -> Option<String> {
+
+    // our slack convention is to use '.' but github replaces dots with dashes.
+    pub fn slack_user_name(&self, login: &str, repo: &github::GithubRepo) -> String {
+        match self.lookup_name(login, repo) {
+            Some(name) => name,
+            None => login.to_string().replace('-', ".")
+        }
+    }
+
+    pub fn slack_user_ref(&self, login: &str, repo: &github::GithubRepo) -> String {
+        mention(self.slack_user_name(login, repo).as_str())
+    }
+
+    fn lookup_name(&self, login: &str, repo: &github::GithubRepo) -> Option<String> {
         match self.lookup_info(login, repo) {
             Some(info) => Some(info.slack.clone()),
             None => None,
@@ -53,13 +66,34 @@ impl UserConfig {
     }
 }
 
+pub fn mention(username: &str) -> String {
+    "@".to_string() + username
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use super::super::github;
 
     #[test]
-    fn lookup_slack_name() {
+    fn test_slack_user_name_defaults() {
+        let host_map = UserHostMap::new();
+        let users = UserConfig { users: host_map };
+
+        let repo = github::GithubRepo {
+            html_url: "http://git.company.com/some-user/the-repo".to_string(),
+            full_name: "".to_string(),
+            owner: github::GithubUser { login: "".to_string() },
+        };
+
+        assert_eq!("joe", users.slack_user_name("joe", &repo));
+        assert_eq!("@joe", users.slack_user_ref("joe", &repo));
+        assert_eq!("joe.smith", users.slack_user_name("joe-smith", &repo));
+        assert_eq!("@joe.smith", users.slack_user_ref("joe-smith", &repo));
+    }
+
+    #[test]
+    fn test_slack_user_name() {
         let mut user_map = UserMap::new();
         user_map.insert("some-git-user".to_string(),
                         UserInfo { slack: "the-slacker".to_string() });
@@ -74,12 +108,14 @@ mod tests {
             full_name: "some-user/the-repo".to_string(),
             owner: github::GithubUser { login: "someone-else".to_string() },
         };
-        assert_eq!(Some("the-slacker".to_string()), users.lookup_slack_name("some-git-user", &repo));
-        assert_eq!(None, users.lookup_slack_name("some-other-user", &repo));
+        assert_eq!("the-slacker", users.slack_user_name("some-git-user", &repo));
+        assert_eq!("@the-slacker", users.slack_user_ref("some-git-user", &repo));
+        assert_eq!("some.other.user", users.slack_user_name("some.other.user", &repo));
+        assert_eq!("@some.other.user", users.slack_user_ref("some.other.user", &repo));
     }
 
     #[test]
-    fn lookup_slack_name_wrong_repo() {
+    fn test_slack_user_name_wrong_repo() {
         let mut user_map = UserMap::new();
         user_map.insert("some-user".to_string(),
                         UserInfo { slack: "the-repo-reviews".to_string() });
@@ -96,8 +132,14 @@ mod tests {
                 full_name: "some-user/some-other-repo".to_string(),
                 owner: github::GithubUser { login: "some-user".to_string() },
             };
-            assert!(users.lookup_slack_name("some-user", &repo).is_none());
+            assert_eq!("some.user", users.slack_user_name("some.user", &repo));
+            assert_eq!("@some.user", users.slack_user_ref("some.user", &repo));
         }
+    }
+
+    #[test]
+    fn test_mention() {
+        assert_eq!("@me", mention("me"));
     }
 
 }
