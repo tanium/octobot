@@ -24,8 +24,6 @@ pub trait Messenger {
     fn send_to_channel(&self,
                        msg: &str,
                        attachments: &Vec<SlackAttachment>,
-                       item_owner: &github::User,
-                       sender: Option<&github::User>,
                        repo: &github::Repo);
 }
 
@@ -45,7 +43,7 @@ impl Messenger for SlackMessenger {
                    sender: &github::User,
                    repo: &github::Repo,
                    assignees: &Vec<github::User>) {
-        self.send_to_channel(msg, attachments, item_owner, Some(sender), repo);
+        self.send_to_channel(msg, attachments, repo);
 
         let mut users: Vec<github::User> = assignees.iter().map(|a| a.clone()).collect();
 
@@ -64,15 +62,13 @@ impl Messenger for SlackMessenger {
                      attachments: &Vec<SlackAttachment>,
                      item_owner: &github::User,
                      repo: &github::Repo) {
-        self.send_to_channel(msg, attachments, item_owner, None, repo);
+        self.send_to_channel(msg, attachments, repo);
         self.send_to_slackbots(vec![item_owner.clone()], repo, msg, attachments);
     }
 
     fn send_to_channel(&self,
                        msg: &str,
                        attachments: &Vec<SlackAttachment>,
-                       item_owner: &github::User,
-                       sender: Option<&github::User>,
                        repo: &github::Repo) {
         if let Some(channel) = self.repos.lookup_channel(repo) {
             self.send_to_slack(channel.as_str(), msg, attachments);

@@ -54,12 +54,6 @@ impl UserConfig {
             .collect()
     }
 
-    pub fn slack_user_refs(&self, users: &Vec<github::User>, repo: &github::Repo) -> Vec<String> {
-        users.iter()
-            .map(|a| self.slack_user_ref(a.login.as_str(), repo))
-            .collect()
-    }
-
     fn lookup_name(&self, login: &str, repo: &github::Repo) -> Option<String> {
         match self.lookup_info(login, repo) {
             Some(info) => Some(info.slack.clone()),

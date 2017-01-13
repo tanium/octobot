@@ -7,7 +7,6 @@ use super::iron::middleware::Handler;
 use super::bodyparser;
 use super::super::rustc_serialize::json;
 
-use super::super::git::Git;
 use super::super::github;
 use super::super::messenger::SlackMessenger;
 use super::super::slack::SlackAttachmentBuilder;

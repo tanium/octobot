@@ -1,5 +1,3 @@
-use rustc_serialize::json;
-
 // An incomplete container for all the kinds of events that we care about.
 #[derive(RustcDecodable, RustcEncodable, Clone)]
 pub struct HookBody {
