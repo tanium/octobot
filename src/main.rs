@@ -1,11 +1,11 @@
 extern crate env_logger;
 extern crate logger;
-extern crate url;
+extern crate hyper;
 extern crate ring;
 extern crate rustc_serialize;
 extern crate serde_json;
-extern crate slack_hook;
 extern crate toml;
+extern crate url;
 
 #[macro_use]
 extern crate log;
@@ -16,6 +16,7 @@ mod github;
 mod messenger;
 mod repos;
 mod server;
+mod slack;
 mod users;
 mod util;
 

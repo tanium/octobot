@@ -5,12 +5,11 @@ use super::iron::status;
 use super::iron::middleware::Handler;
 use super::bodyparser;
 use super::super::rustc_serialize::json;
-use super::super::slack_hook::{AttachmentBuilder, SlackLink, SlackText};
-use super::super::slack_hook::SlackTextContent::{Text, Link};
 use super::super::url::Url;
 
 use super::super::git::Git;
 use super::super::github;
+use super::super::slack::SlackAttachmentBuilder;
 use super::super::util;
 use super::super::messenger::Messenger;
 use super::super::users::UserConfig;
@@ -108,20 +107,18 @@ impl GithubHandler {
                         commit_path = commit.to_string();
                     }
 
-                    let msg: SlackText = vec![Text(format!("Comment on \"{}\" (", commit_path)
-                                                  .into()),
-                                              Link(SlackLink::new(commit_url.as_str(), commit)),
-                                              Text(")".into())]
-                        .as_slice()
-                        .into();
+                    let msg = format!("Comment on \"{}\" ({})", commit_path, util::make_link(commit_url.as_str(), commit));
+
                     let slack_user = self.users
                         .slack_user_name(comment.user.login.as_str(), &data.repository);
-                    let attach = AttachmentBuilder::new(comment.body.as_str())
-                        .title(format!("{} said:", slack_user))
-                        .title_link(comment.html_url.as_str());
 
-                    self.messenger.send_to_all(msg,
-                                               vec![attach],
+                    let attach = SlackAttachmentBuilder::new(comment.body.as_str())
+                        .title(format!("{} said:", slack_user))
+                        .title_link(comment.html_url.as_str())
+                        .build();
+
+                    self.messenger.send_to_all(&msg,
+                                               &vec![attach],
                                                &comment.user,
                                                &data.sender,
                                                &data.repository);
