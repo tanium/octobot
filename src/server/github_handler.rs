@@ -1,4 +1,5 @@
 use super::*;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use super::iron::prelude::*;
@@ -9,7 +10,7 @@ use super::super::rustc_serialize::json;
 
 use super::super::github;
 use super::super::messenger::SlackMessenger;
-use super::super::slack::SlackAttachmentBuilder;
+use super::super::slack::{Slack, SlackAttachmentBuilder};
 use super::super::util;
 use super::super::messenger::Messenger;
 use super::super::users::UserConfig;
@@ -67,7 +68,7 @@ impl Handler for GithubHandler {
             users: self.users.clone(),
             repos: self.repos.clone(),
             messenger: Box::new(SlackMessenger {
-                slack_webhook_url: self.config.slack_webhook_url.clone(),
+                slack: Rc::new(Slack { webhook_url: self.config.slack_webhook_url.clone() }),
                 users: self.users.clone(),
                 repos: self.repos.clone(),
             }),

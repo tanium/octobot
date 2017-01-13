@@ -1,10 +1,10 @@
 use std::sync::Arc;
+use std::rc::Rc;
 
 use super::github;
-use super::slack::{self, SlackAttachment};
+use super::slack::{SlackSender, SlackAttachment};
 use super::repos::RepoConfig;
 use super::users::UserConfig;
-
 
 pub trait Messenger {
     fn send_to_all(&self,
@@ -21,18 +21,15 @@ pub trait Messenger {
                      item_owner: &github::User,
                      repo: &github::Repo);
 
-    fn send_to_channel(&self,
-                       msg: &str,
-                       attachments: &Vec<SlackAttachment>,
-                       repo: &github::Repo);
+    fn send_to_channel(&self, msg: &str, attachments: &Vec<SlackAttachment>, repo: &github::Repo);
 }
 
 
 #[derive(Clone)]
 pub struct SlackMessenger {
-    pub slack_webhook_url: String,
     pub users: Arc<UserConfig>,
     pub repos: Arc<RepoConfig>,
+    pub slack: Rc<SlackSender>,
 }
 
 impl Messenger for SlackMessenger {
@@ -66,10 +63,7 @@ impl Messenger for SlackMessenger {
         self.send_to_slackbots(vec![item_owner.clone()], repo, msg, attachments);
     }
 
-    fn send_to_channel(&self,
-                       msg: &str,
-                       attachments: &Vec<SlackAttachment>,
-                       repo: &github::Repo) {
+    fn send_to_channel(&self, msg: &str, attachments: &Vec<SlackAttachment>, repo: &github::Repo) {
         if let Some(channel) = self.repos.lookup_channel(repo) {
             self.send_to_slack(channel.as_str(), msg, attachments);
         }
@@ -78,10 +72,7 @@ impl Messenger for SlackMessenger {
 
 impl SlackMessenger {
     fn send_to_slack(&self, channel: &str, msg: &str, attachments: &Vec<SlackAttachment>) {
-        if let Err(e) = slack::send(self.slack_webhook_url.as_str(),
-                                    channel,
-                                    msg,
-                                    attachments.clone()) {
+        if let Err(e) = self.slack.send(channel, msg, attachments.clone()) {
             error!("Error sending to slack: {:?}", e);
         }
     }
