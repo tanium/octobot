@@ -107,22 +107,24 @@ impl GithubHandler {
                         commit_path = commit.to_string();
                     }
 
-                    let msg = format!("Comment on \"{}\" ({})", commit_path, util::make_link(commit_url.as_str(), commit));
+                    let msg = format!("Comment on \"{}\" ({})",
+                                      commit_path,
+                                      util::make_link(commit_url.as_str(), commit));
 
                     let slack_user = self.users
                         .slack_user_name(comment.user.login.as_str(), &data.repository);
 
-                    let attach = SlackAttachmentBuilder::new(comment.body.as_str())
-                        .title(format!("{} said:", slack_user))
-                        .title_link(comment.html_url.as_str())
-                        .build();
+                    let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
+                                               .title(format!("{} said:", slack_user))
+                                               .title_link(comment.html_url.as_str())
+                                               .build()];
 
                     self.messenger.send_to_all(&msg,
-                                               &vec![attach],
+                                               &attachments,
                                                &comment.user,
                                                &data.sender,
                                                &data.repository,
-                                               vec![]);
+                                               &vec![]);
                 }
             }
         }
@@ -131,6 +133,30 @@ impl GithubHandler {
     }
 
     fn handle_issue_comment(&self, data: &github::HookBody) -> Response {
+        if let Some(ref issue) = data.issue {
+            if let Some(ref comment) = data.comment {
+                if let Some(ref action) = data.action {
+                    if action == "created" {
+                        let msg = format!("Comment on \"{}\"",
+                                          util::make_link(issue.html_url.as_str(), issue.title.as_str()));
+                        let slack_user = self.users
+                            .slack_user_name(comment.user.login.as_str(), &data.repository);
+
+                        let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
+                                                   .title(format!("{} said:", slack_user))
+                                                   .title_link(comment.html_url.as_str())
+                                                   .build()];
+
+                        self.messenger.send_to_all(&msg,
+                                                   &attachments,
+                                                   &issue.user,
+                                                   &data.sender,
+                                                   &data.repository,
+                                                   &issue.assignees);
+                    }
+                }
+            }
+        }
         Response::with((status::Ok, "issue_comment"))
     }
 

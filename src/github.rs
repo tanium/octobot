@@ -40,6 +40,7 @@ pub struct PullRequest {
 pub struct Issue {
     pub html_url: String,
     pub title: String,
+    pub user: User,
     pub assignees: Vec<User>,
 }
 

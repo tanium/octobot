@@ -13,7 +13,7 @@ pub trait Messenger: Send + Sync {
                    itemOwner: &github::User,
                    sender: &github::User,
                    repo: &github::Repo,
-                   assignees: Vec<&github::User>);
+                   assignees: &Vec<github::User>);
 
     fn send_to_owner(&self,
                      msg: &str,
@@ -47,13 +47,13 @@ impl Messenger for SlackMessenger {
                    itemOwner: &github::User,
                    sender: &github::User,
                    repo: &github::Repo,
-                   assignees: Vec<&github::User>) {
+                   assignees: &Vec<github::User>) {
         self.send_to_channel(msg, attachments, itemOwner, Some(sender), repo);
 
-        let mut users = assignees;
+        let mut users: Vec<github::User> = assignees.iter().map(|a| a.clone()).collect();
 
         if !users.iter().any(|u| u.login == itemOwner.login) {
-            users.push(itemOwner);
+            users.push(itemOwner.clone());
         }
 
         // make sure we do not send private message to author of that message
@@ -68,7 +68,7 @@ impl Messenger for SlackMessenger {
                      itemOwner: &github::User,
                      repo: &github::Repo) {
         self.send_to_channel(msg, attachments, itemOwner, None, repo);
-        self.send_to_slackbots(vec![itemOwner], repo, msg, attachments);
+        self.send_to_slackbots(vec![itemOwner.clone()], repo, msg, attachments);
     }
 
     fn send_to_channel(&self,
@@ -94,7 +94,7 @@ impl SlackMessenger {
     }
 
     fn send_to_slackbots(&self,
-                         users: Vec<&github::User>,
+                         users: Vec<github::User>,
                          repo: &github::Repo,
                          msg: &str,
                          attachments: &Vec<SlackAttachment>) {
