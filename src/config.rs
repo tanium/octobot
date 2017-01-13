@@ -2,7 +2,7 @@ use super::std::fs;
 use super::std::io::{Read};
 use super::toml;
 
-#[derive(RustcDecodable, Debug)]
+#[derive(RustcDecodable, Debug, Clone)]
 pub struct Config {
     pub slack_webhook_url: String,
     pub github_secret: String,

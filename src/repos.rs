@@ -18,12 +18,13 @@ pub type RepoMap = HashMap<String, RepoInfo>;
 // maps github host to repos map
 pub type RepoHostMap = HashMap<String, RepoMap>;
 
+#[derive(Clone)]
 pub struct RepoConfig {
     repos: RepoHostMap,
 }
 
-pub fn load_config(file: String) -> std::io::Result<RepoConfig> {
-    let mut f = try!(std::fs::File::open(&file));
+pub fn load_config(file: &str) -> std::io::Result<RepoConfig> {
+    let mut f = try!(std::fs::File::open(file));
     let mut contents = String::new();
     try!(f.read_to_string(&mut contents));
 

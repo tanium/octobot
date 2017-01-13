@@ -6,11 +6,11 @@ use super::repos::RepoConfig;
 use super::users::UserConfig;
 
 
-pub trait Messenger: Send + Sync {
+pub trait Messenger {
     fn send_to_all(&self,
                    msg: &str,
                    attachments: &Vec<SlackAttachment>,
-                   itemOwner: &github::User,
+                   item_owner: &github::User,
                    sender: &github::User,
                    repo: &github::Repo,
                    assignees: &Vec<github::User>);
@@ -18,13 +18,13 @@ pub trait Messenger: Send + Sync {
     fn send_to_owner(&self,
                      msg: &str,
                      attachments: &Vec<SlackAttachment>,
-                     itemOwner: &github::User,
+                     item_owner: &github::User,
                      repo: &github::Repo);
 
     fn send_to_channel(&self,
                        msg: &str,
                        attachments: &Vec<SlackAttachment>,
-                       itemOwner: &github::User,
+                       item_owner: &github::User,
                        sender: Option<&github::User>,
                        repo: &github::Repo);
 }
@@ -37,23 +37,20 @@ pub struct SlackMessenger {
     pub repos: Arc<RepoConfig>,
 }
 
-unsafe impl Send for SlackMessenger {}
-unsafe impl Sync for SlackMessenger {}
-
 impl Messenger for SlackMessenger {
     fn send_to_all(&self,
                    msg: &str,
                    attachments: &Vec<SlackAttachment>,
-                   itemOwner: &github::User,
+                   item_owner: &github::User,
                    sender: &github::User,
                    repo: &github::Repo,
                    assignees: &Vec<github::User>) {
-        self.send_to_channel(msg, attachments, itemOwner, Some(sender), repo);
+        self.send_to_channel(msg, attachments, item_owner, Some(sender), repo);
 
         let mut users: Vec<github::User> = assignees.iter().map(|a| a.clone()).collect();
 
-        if !users.iter().any(|u| u.login == itemOwner.login) {
-            users.push(itemOwner.clone());
+        if !users.iter().any(|u| u.login == item_owner.login) {
+            users.push(item_owner.clone());
         }
 
         // make sure we do not send private message to author of that message
@@ -65,16 +62,16 @@ impl Messenger for SlackMessenger {
     fn send_to_owner(&self,
                      msg: &str,
                      attachments: &Vec<SlackAttachment>,
-                     itemOwner: &github::User,
+                     item_owner: &github::User,
                      repo: &github::Repo) {
-        self.send_to_channel(msg, attachments, itemOwner, None, repo);
-        self.send_to_slackbots(vec![itemOwner.clone()], repo, msg, attachments);
+        self.send_to_channel(msg, attachments, item_owner, None, repo);
+        self.send_to_slackbots(vec![item_owner.clone()], repo, msg, attachments);
     }
 
     fn send_to_channel(&self,
                        msg: &str,
                        attachments: &Vec<SlackAttachment>,
-                       itemOwner: &github::User,
+                       item_owner: &github::User,
                        sender: Option<&github::User>,
                        repo: &github::Repo) {
         if let Some(channel) = self.repos.lookup_channel(repo) {
