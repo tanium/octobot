@@ -86,31 +86,151 @@ impl GithubHandler {
     }
 
     fn handle_pr_review_comment(&self, data: &github::HookBody) -> Response {
+        if let Some(ref pull_request) = data.pull_request {
+            if let Some(ref comment) = data.comment {
+                if data.action == Some("created".to_string()) {
+                    self.do_pull_request_comment(pull_request,
+                                                 &comment.user,
+                                                 comment.body.as_str(),
+                                                 comment.html_url.as_str(),
+                                                 data);
+                }
+
+            }
+        }
+
         Response::with((status::Ok, "pr_review_comment"))
     }
 
     fn handle_pr_review(&self, data: &github::HookBody) -> Response {
+        if let Some(ref pull_request) = data.pull_request {
+            if let Some(ref review) = data.review {
+                if data.action == Some("submitted".to_string()) {
+
+                    // just a comment. should just be handled by regular comment handler.
+                    if review.state == "commented" {
+                        self.do_pull_request_comment(pull_request,
+                                                     &review.user,
+                                                     review.body.as_str(),
+                                                     review.html_url.as_str(),
+                                                     data);
+                        return Response::with((status::Ok, "pr_review [comment]"));
+                    }
+
+                    let action_msg;
+                    let state_msg;
+                    let color;
+                    if review.state == "changes_requested" {
+                        action_msg = "requested changes to";
+                        state_msg = "Changes Requested";
+                        color = "danger";
+
+                    } else if review.state == "approved" {
+                        action_msg = "approved";
+                        state_msg = "Approved";
+                        color = "good";
+
+                    } else {
+                        return Response::with((status::Ok, "pr_review [ignored]"));
+                    }
+
+                    let slack_user = self.users
+                        .slack_user_name(review.user.login.as_str(), &data.repository);
+
+                    let msg = format!("{} {} PR \"{}\"",
+                                      slack_user,
+                                      action_msg,
+                                      util::make_link(pull_request.html_url.as_str(),
+                                                      pull_request.title.as_str()));
+
+                    let attachments = vec![SlackAttachmentBuilder::new(review.body.as_str())
+                                               .title(format!("Review: {}", state_msg))
+                                               .title_link(review.html_url.as_str())
+                                               .color(color)
+                                               .build()];
+
+                }
+            }
+        }
+
+
         Response::with((status::Ok, "pr_review"))
+    }
+
+    fn do_pull_request_comment(&self,
+                               pull_request: &github::PullRequest,
+                               commenter: &github::User,
+                               comment_body: &str,
+                               comment_url: &str,
+                               data: &github::HookBody) {
+        if comment_body.trim().len() == 0 {
+            return;
+        }
+
+        let msg = format!("Comment on \"{}\"",
+                          util::make_link(pull_request.html_url.as_str(),
+                                          pull_request.title.as_str()));
+        let slack_user = self.users
+            .slack_user_name(commenter.login.as_str(), &data.repository);
+
+        let attachments = vec![SlackAttachmentBuilder::new(comment_body)
+                                   .title(format!("{} said:", slack_user))
+                                   .title_link(comment_url)
+                                   .build()];
+
+        self.messenger.send_to_all(&msg,
+                                   &attachments,
+                                   &pull_request.user,
+                                   &data.sender,
+                                   &data.repository,
+                                   &pull_request.assignees);
+
     }
 
     fn handle_commit_comment(&self, data: &github::HookBody) -> Response {
         if let Some(ref comment) = data.comment {
-            if let Some(ref action) = data.action {
-                if action == "created" {
-                    let commit: &str = &comment.commit_id[0..7];
-                    let commit_url =
-                        format!("{}/commit/{}", data.repository.html_url, comment.commit_id);
-                    let commit_path: String;
-                    if let Some(ref path) = comment.path {
-                        commit_path = path.to_string();
-                    } else {
-                        commit_path = commit.to_string();
-                    }
+            if data.action == Some("created".to_string()) {
+                let commit: &str = &comment.commit_id[0..7];
+                let commit_url =
+                    format!("{}/commit/{}", data.repository.html_url, comment.commit_id);
+                let commit_path: String;
+                if let Some(ref path) = comment.path {
+                    commit_path = path.to_string();
+                } else {
+                    commit_path = commit.to_string();
+                }
 
-                    let msg = format!("Comment on \"{}\" ({})",
-                                      commit_path,
-                                      util::make_link(commit_url.as_str(), commit));
+                let msg = format!("Comment on \"{}\" ({})",
+                                  commit_path,
+                                  util::make_link(commit_url.as_str(), commit));
 
+                let slack_user = self.users
+                    .slack_user_name(comment.user.login.as_str(), &data.repository);
+
+                let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
+                                           .title(format!("{} said:", slack_user))
+                                           .title_link(comment.html_url.as_str())
+                                           .build()];
+
+                self.messenger.send_to_all(&msg,
+                                           &attachments,
+                                           &comment.user,
+                                           &data.sender,
+                                           &data.repository,
+                                           &vec![]);
+            }
+        }
+
+        Response::with((status::Ok, "commit_comment"))
+    }
+
+    fn handle_issue_comment(&self, data: &github::HookBody) -> Response {
+        if let Some(ref issue) = data.issue {
+            if let Some(ref comment) = data.comment {
+                if data.action == Some("created".to_string()) {
+                    let msg = format!("Comment on \"{}\"",
+                                      util::make_link(issue.html_url.as_str(),
+                                                      issue.title.as_str()));
                     let slack_user = self.users
                         .slack_user_name(comment.user.login.as_str(), &data.repository);
 
@@ -121,39 +241,10 @@ impl GithubHandler {
 
                     self.messenger.send_to_all(&msg,
                                                &attachments,
-                                               &comment.user,
+                                               &issue.user,
                                                &data.sender,
                                                &data.repository,
-                                               &vec![]);
-                }
-            }
-        }
-
-        Response::with((status::Ok, "commit_comment"))
-    }
-
-    fn handle_issue_comment(&self, data: &github::HookBody) -> Response {
-        if let Some(ref issue) = data.issue {
-            if let Some(ref comment) = data.comment {
-                if let Some(ref action) = data.action {
-                    if action == "created" {
-                        let msg = format!("Comment on \"{}\"",
-                                          util::make_link(issue.html_url.as_str(), issue.title.as_str()));
-                        let slack_user = self.users
-                            .slack_user_name(comment.user.login.as_str(), &data.repository);
-
-                        let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
-                                                   .title(format!("{} said:", slack_user))
-                                                   .title_link(comment.html_url.as_str())
-                                                   .build()];
-
-                        self.messenger.send_to_all(&msg,
-                                                   &attachments,
-                                                   &issue.user,
-                                                   &data.sender,
-                                                   &data.repository,
-                                                   &issue.assignees);
-                    }
+                                               &issue.assignees);
                 }
             }
         }

@@ -41,6 +41,11 @@ impl SlackAttachmentBuilder {
         self
     }
 
+    pub fn color<S: Into<String>>(&mut self, value: S) -> &mut SlackAttachmentBuilder {
+        self.attachment.color = Some(value.into());
+        self
+    }
+
     pub fn build(&self) -> SlackAttachment {
         self.attachment.clone()
     }
