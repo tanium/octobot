@@ -12,7 +12,8 @@ pub trait Messenger: Send + Sync {
                    attachments: &Vec<SlackAttachment>,
                    itemOwner: &github::User,
                    sender: &github::User,
-                   repo: &github::Repo);
+                   repo: &github::Repo,
+                   assignees: Vec<&github::User>);
 
     fn send_to_owner(&self,
                      msg: &str,
@@ -45,9 +46,20 @@ impl Messenger for SlackMessenger {
                    attachments: &Vec<SlackAttachment>,
                    itemOwner: &github::User,
                    sender: &github::User,
-                   repo: &github::Repo) {
+                   repo: &github::Repo,
+                   assignees: Vec<&github::User>) {
         self.send_to_channel(msg, attachments, itemOwner, Some(sender), repo);
-        println!("SEND TO ALL: {}", msg);
+
+        let mut users = assignees;
+
+        if !users.iter().any(|u| u.login == itemOwner.login) {
+            users.push(itemOwner);
+        }
+
+        // make sure we do not send private message to author of that message
+        users.retain(|u| u.login != sender.login);
+
+        self.send_to_slackbots(users, repo, msg, attachments);
     }
 
     fn send_to_owner(&self,
@@ -56,7 +68,7 @@ impl Messenger for SlackMessenger {
                      itemOwner: &github::User,
                      repo: &github::Repo) {
         self.send_to_channel(msg, attachments, itemOwner, None, repo);
-        // println!("SEND TO OWNER: {}", msg);
+        self.send_to_slackbots(vec![itemOwner], repo, msg, attachments);
     }
 
     fn send_to_channel(&self,
@@ -78,6 +90,18 @@ impl SlackMessenger {
                                     msg,
                                     attachments.clone()) {
             error!("Error sending to slack: {:?}", e);
+        }
+    }
+
+    fn send_to_slackbots(&self,
+                         users: Vec<&github::User>,
+                         repo: &github::Repo,
+                         msg: &str,
+                         attachments: &Vec<SlackAttachment>) {
+        for user in users {
+            // TODO: desiresPeaceAndQuiet.
+            let slack_ref = self.users.slack_user_ref(user.login.as_str(), repo);
+            self.send_to_slack(slack_ref.as_str(), msg, attachments);
         }
     }
 }

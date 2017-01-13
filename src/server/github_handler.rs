@@ -121,7 +121,8 @@ impl GithubHandler {
                                                &vec![attach],
                                                &comment.user,
                                                &data.sender,
-                                               &data.repository);
+                                               &data.repository,
+                                               vec![]);
                 }
             }
         }
