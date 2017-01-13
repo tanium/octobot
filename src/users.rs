@@ -34,18 +34,29 @@ pub fn load_config(file: String) -> std::io::Result<UserConfig> {
 }
 
 impl UserConfig {
-
     // our slack convention is to use '.' but github replaces dots with dashes.
     pub fn slack_user_name<S: Into<String>>(&self, login: S, repo: &github::Repo) -> String {
         let login = login.into();
         match self.lookup_name(login.as_str(), repo) {
             Some(name) => name,
-            None => login.as_str().replace('-', ".")
+            None => login.as_str().replace('-', "."),
         }
     }
 
     pub fn slack_user_ref<S: Into<String>>(&self, login: S, repo: &github::Repo) -> String {
         mention(self.slack_user_name(login.into(), repo))
+    }
+
+    pub fn slack_user_names(&self, users: &Vec<github::User>, repo: &github::Repo) -> Vec<String> {
+        users.iter()
+            .map(|a| self.slack_user_name(a.login.as_str(), repo))
+            .collect()
+    }
+
+    pub fn slack_user_refs(&self, users: &Vec<github::User>, repo: &github::Repo) -> Vec<String> {
+        users.iter()
+            .map(|a| self.slack_user_ref(a.login.as_str(), repo))
+            .collect()
     }
 
     fn lookup_name(&self, login: &str, repo: &github::Repo) -> Option<String> {
@@ -111,8 +122,10 @@ mod tests {
         };
         assert_eq!("the-slacker", users.slack_user_name("some-git-user", &repo));
         assert_eq!("@the-slacker", users.slack_user_ref("some-git-user", &repo));
-        assert_eq!("some.other.user", users.slack_user_name("some.other.user", &repo));
-        assert_eq!("@some.other.user", users.slack_user_ref("some.other.user", &repo));
+        assert_eq!("some.other.user",
+                   users.slack_user_name("some.other.user", &repo));
+        assert_eq!("@some.other.user",
+                   users.slack_user_ref("some.other.user", &repo));
     }
 
     #[test]

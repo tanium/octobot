@@ -77,11 +77,63 @@ impl GithubHandler {
         }
     }
 
+    fn slack_user_name(&self, user: &github::User, data: &github::HookBody) -> String {
+        self.users.slack_user_name(user.login.as_str(), &data.repository)
+    }
+
     fn handle_ping(&self, data: &github::HookBody) -> Response {
         Response::with((status::Ok, "ping"))
     }
 
     fn handle_pr(&self, data: &github::HookBody) -> Response {
+        if let Some(ref pull_request) = data.pull_request {
+            let verb: Option<String>;
+            if data.action == Some("opened".to_string()) {
+                verb = Some(format!("opened by {}",
+                                    self.slack_user_name(&pull_request.user, data)));
+            } else if data.action == Some("closed".to_string()) {
+                if pull_request.merged == Some(true) {
+                    verb = Some("merged".to_string());
+                } else {
+                    verb = Some("closed".to_string());
+                }
+            } else if data.action == Some("reopened".to_string()) {
+                verb = Some("reopened".to_string());
+            } else if data.action == Some("assigned".to_string()) {
+                let assignees_str = self.users
+                    .slack_user_names(&pull_request.assignees, &data.repository)
+                    .join(", ");
+                verb = Some(format!("assigned to {}", assignees_str));
+            } else if data.action == Some("unassigned".to_string()) {
+                verb = Some("unassigned".to_string());
+            } else {
+                verb = None;
+            }
+
+            if let Some(ref verb) = verb {
+                let msg = format!("Pull Request {}", verb);
+                let attachments = vec![SlackAttachmentBuilder::new("")
+                                           .title(format!("Pull Request #{}: \"{}\"",
+                                                          pull_request.number,
+                                                          pull_request.title.as_str()))
+                                           .title_link(pull_request.html_url.as_str())
+                                           .build()];
+
+                self.messenger.send_to_all(&msg,
+                                           &attachments,
+                                           &pull_request.user,
+                                           &data.sender,
+                                           &data.repository,
+                                           &pull_request.assignees);
+            }
+
+            if data.action == Some("labeled".to_string()) {
+                // mergePullRequest(messenger, githubAPI, data.pull_request, data.repository, data.label);
+            } else if verb == Some("merged".to_string()) {
+                // mergePullRequestAllLabels(messenger, githubAPI, data.pull_request, data.repository);
+            }
+        }
+
         Response::with((status::Ok, "pr"))
     }
 
@@ -134,11 +186,8 @@ impl GithubHandler {
                         return Response::with((status::Ok, "pr_review [ignored]"));
                     }
 
-                    let slack_user = self.users
-                        .slack_user_name(review.user.login.as_str(), &data.repository);
-
                     let msg = format!("{} {} PR \"{}\"",
-                                      slack_user,
+                                      self.slack_user_name(&review.user, data),
                                       action_msg,
                                       util::make_link(pull_request.html_url.as_str(),
                                                       pull_request.title.as_str()));
@@ -149,10 +198,16 @@ impl GithubHandler {
                                                .color(color)
                                                .build()];
 
+                    self.messenger.send_to_all(&msg,
+                                               &attachments,
+                                               &pull_request.user,
+                                               &data.sender,
+                                               &data.repository,
+                                               &pull_request.assignees);
+
                 }
             }
         }
-
 
         Response::with((status::Ok, "pr_review"))
     }
@@ -170,11 +225,10 @@ impl GithubHandler {
         let msg = format!("Comment on \"{}\"",
                           util::make_link(pull_request.html_url.as_str(),
                                           pull_request.title.as_str()));
-        let slack_user = self.users
-            .slack_user_name(commenter.login.as_str(), &data.repository);
 
         let attachments = vec![SlackAttachmentBuilder::new(comment_body)
-                                   .title(format!("{} said:", slack_user))
+                                   .title(format!("{} said:",
+                                                  self.slack_user_name(&commenter, data)))
                                    .title_link(comment_url)
                                    .build()];
 
@@ -204,11 +258,10 @@ impl GithubHandler {
                                   commit_path,
                                   util::make_link(commit_url.as_str(), commit));
 
-                let slack_user = self.users
-                    .slack_user_name(comment.user.login.as_str(), &data.repository);
-
                 let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
-                                           .title(format!("{} said:", slack_user))
+                                           .title(format!("{} said:",
+                                                          self.slack_user_name(&comment.user,
+                                                                               data)))
                                            .title_link(comment.html_url.as_str())
                                            .build()];
 
@@ -231,11 +284,11 @@ impl GithubHandler {
                     let msg = format!("Comment on \"{}\"",
                                       util::make_link(issue.html_url.as_str(),
                                                       issue.title.as_str()));
-                    let slack_user = self.users
-                        .slack_user_name(comment.user.login.as_str(), &data.repository);
 
                     let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
-                                               .title(format!("{} said:", slack_user))
+                                               .title(format!("{} said:",
+                                                              self.slack_user_name(&comment.user,
+                                                                                   data)))
                                                .title_link(comment.html_url.as_str())
                                                .build()];
 

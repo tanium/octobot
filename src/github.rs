@@ -32,6 +32,7 @@ pub struct PullRequest {
     pub html_url: String,
     pub state: String,
     pub user: User,
+    pub merged: Option<bool>,
     pub merge_commit_sha: Option<String>,
     pub assignees: Vec<User>,
 }
