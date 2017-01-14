@@ -35,6 +35,21 @@ pub fn load_config(file: &str) -> std::io::Result<RepoConfig> {
 }
 
 impl RepoConfig {
+
+    pub fn new() -> RepoConfig {
+        RepoConfig {
+            repos: RepoHostMap::new()
+        }
+    }
+
+    pub fn insert(&mut self, host: &str, repo_name: &str, channel: &str) {
+        self.repos
+            .entry(host.to_string())
+            .or_insert(RepoMap::new())
+            .insert(repo_name.to_string(),
+                    RepoInfo { channel: channel.to_string() });
+    }
+
     pub fn lookup_channel(&self, repo: &github::Repo) -> Option<String> {
         match self.lookup_info(repo) {
             Some(info) => Some(info.channel.clone()),
@@ -61,70 +76,36 @@ mod tests {
 
     #[test]
     fn lookup_channel_by_repo_full_name() {
-        let mut repo_map = RepoMap::new();
-        repo_map.insert("some-user/the-repo".to_string(),
-                        RepoInfo { channel: "the-repo-reviews".to_string() });
+        let mut repos = RepoConfig::new();
+        repos.insert("git.company.com", "some-user/the-repo", "the-repo-reviews");
 
-        let mut host_map = RepoHostMap::new();
-        host_map.insert("git.company.com".to_string(), repo_map);
-
-        let repos = RepoConfig { repos: host_map };
-
-        let repo = github::Repo {
-            html_url: "http://git.company.com/some-user/the-repo".to_string(),
-            full_name: "some-user/the-repo".to_string(),
-            owner: github::User { login: "someone-else".to_string() },
-        };
+        let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
         assert_eq!("the-repo-reviews", repos.lookup_channel(&repo).unwrap());
     }
 
     #[test]
     fn lookup_channel_by_repo_owner() {
-        let mut repo_map = RepoMap::new();
-        repo_map.insert("some-user".to_string(),
-                        RepoInfo { channel: "the-repo-reviews".to_string() });
+        let mut repos = RepoConfig::new();
+        repos.insert("git.company.com", "some-user", "the-repo-reviews");
 
-        let mut host_map = RepoHostMap::new();
-        host_map.insert("git.company.com".to_string(), repo_map);
-
-        let repos = RepoConfig { repos: host_map };
-
-        let repo = github::Repo {
-            html_url: "http://git.company.com/some-user/the-repo".to_string(),
-            full_name: "some-user/some-other-repo".to_string(),
-            owner: github::User { login: "some-user".to_string() },
-        };
+        let repo = github::Repo::parse("http://git.company.com/some-user/some-other-repo").unwrap();
         assert_eq!("the-repo-reviews", repos.lookup_channel(&repo).unwrap());
     }
 
     #[test]
     fn lookup_channel_none() {
-        let mut repo_map = RepoMap::new();
-        repo_map.insert("some-user".to_string(),
-                        RepoInfo { channel: "the-repo-reviews".to_string() });
-
-        let mut host_map = RepoHostMap::new();
-        host_map.insert("git.company.com".to_string(), repo_map);
-
-        let repos = RepoConfig { repos: host_map };
+        let mut repos = RepoConfig::new();
+        repos.insert("git.company.com", "some-user", "the-repo-reviews");
 
         // fail by channel/repo
         {
-            let repo = github::Repo {
-                html_url: "http://git.company.com/some-user/the-repo".to_string(),
-                full_name: "someone-else/some-other-repo".to_string(),
-                owner: github::User { login: "someone-else".to_string() },
-            };
+            let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo").unwrap();
             assert!(repos.lookup_channel(&repo).is_none());
         }
 
         // fail by git host
         {
-            let repo = github::Repo {
-                html_url: "http://git.other-company.com/some-user/the-repo".to_string(),
-                full_name: "some-user/some-other-repo".to_string(),
-                owner: github::User { login: "some-user".to_string() },
-            };
+            let repo = github::Repo::parse("http://git.other-company.com/some-user/the-repo").unwrap();
             assert!(repos.lookup_channel(&repo).is_none());
         }
     }

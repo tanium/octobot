@@ -35,6 +35,18 @@ pub fn load_config(file: &str) -> std::io::Result<UserConfig> {
 }
 
 impl UserConfig {
+    pub fn new() -> UserConfig {
+        UserConfig { users: UserHostMap::new() }
+    }
+
+    pub fn insert(&mut self, host: &str, git_user: &str, slack_user: &str) {
+        self.users
+            .entry(host.to_string())
+            .or_insert(UserMap::new())
+            .insert(git_user.to_string(),
+                    UserInfo { slack: slack_user.to_string() });
+    }
+
     // our slack convention is to use '.' but github replaces dots with dashes.
     pub fn slack_user_name<S: Into<String>>(&self, login: S, repo: &github::Repo) -> String {
         let login = login.into();
@@ -84,14 +96,9 @@ mod tests {
 
     #[test]
     fn test_slack_user_name_defaults() {
-        let host_map = UserHostMap::new();
-        let users = UserConfig { users: host_map };
+        let users = UserConfig::new();
 
-        let repo = github::Repo {
-            html_url: "http://git.company.com/some-user/the-repo".to_string(),
-            full_name: "".to_string(),
-            owner: github::User { login: "".to_string() },
-        };
+        let repo = github::Repo::new();
 
         assert_eq!("joe", users.slack_user_name("joe", &repo));
         assert_eq!("@joe", users.slack_user_ref("joe", &repo));
@@ -101,19 +108,13 @@ mod tests {
 
     #[test]
     fn test_slack_user_name() {
-        let mut user_map = UserMap::new();
-        user_map.insert("some-git-user".to_string(),
-                        UserInfo { slack: "the-slacker".to_string() });
-
-        let mut host_map = UserHostMap::new();
-        host_map.insert("git.company.com".to_string(), user_map);
-
-        let users = UserConfig { users: host_map };
+        let mut users = UserConfig::new();
+        users.insert("git.company.com", "some-git-user", "the-slacker");
 
         let repo = github::Repo {
-            html_url: "http://git.company.com/some-user/the-repo".to_string(),
+            html_url: "http://git.company.com/foo".to_string(),
             full_name: "some-user/the-repo".to_string(),
-            owner: github::User { login: "someone-else".to_string() },
+            owner: github::User::new("someone-else"),
         };
         assert_eq!("the-slacker", users.slack_user_name("some-git-user", &repo));
         assert_eq!("@the-slacker", users.slack_user_ref("some-git-user", &repo));
@@ -125,21 +126,15 @@ mod tests {
 
     #[test]
     fn test_slack_user_name_wrong_repo() {
-        let mut user_map = UserMap::new();
-        user_map.insert("some-user".to_string(),
-                        UserInfo { slack: "the-repo-reviews".to_string() });
-
-        let mut host_map = UserHostMap::new();
-        host_map.insert("git.company.com".to_string(), user_map);
-
-        let users = UserConfig { users: host_map };
+        let mut users = UserConfig::new();
+        users.insert("git.company.com", "some-user", "the-slacker");
 
         // fail by git host
         {
             let repo = github::Repo {
-                html_url: "http://git.other-company.com/some-user/the-repo".to_string(),
+                html_url: "http://git.other-company.com/foo".to_string(),
                 full_name: "some-user/some-other-repo".to_string(),
-                owner: github::User { login: "some-user".to_string() },
+                owner: github::User::new("some-user")
             };
             assert_eq!("some.user", users.slack_user_name("some.user", &repo));
             assert_eq!("@some.user", users.slack_user_ref("some.user", &repo));
