@@ -1,24 +1,8 @@
 extern crate env_logger;
-extern crate logger;
-extern crate hyper;
-extern crate ring;
-extern crate rustc_serialize;
-extern crate serde_json;
-extern crate toml;
-extern crate url;
+extern crate octobot;
 
-#[macro_use]
-extern crate log;
-
-mod config;
-mod git;
-mod github;
-mod messenger;
-mod repos;
-mod server;
-mod slack;
-mod users;
-mod util;
+use octobot::config;
+use octobot::server;
 
 fn main() {
     if std::env::args().len() < 2 {
