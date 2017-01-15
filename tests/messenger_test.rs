@@ -70,9 +70,9 @@ impl SlackSender for MockSlack {
 impl Drop for MockSlack {
     fn drop(&mut self) {
         if self.call_count.get() != self.expected_calls.len() {
-            panic!("Failed: Expected {} calls but only received {}",
-                   self.expected_calls.len(),
-                   self.call_count.get());
+            println!("Failed: Expected {} calls but only received {}",
+                     self.expected_calls.len(),
+                     self.call_count.get());
         }
     }
 }
@@ -188,5 +188,29 @@ fn test_sends_only_once() {
                           &github::User::new("the-owner"),
                           &github::User::new("the-sender"),
                           &github::Repo::new(),
+                          &vec![github::User::new("the-owner"), github::User::new("assign2")]);
+}
+
+#[test]
+fn test_peace_and_quiet() {
+    let mut users = UserConfig::new();
+    users.insert("git.foo.com", "the-owner", "DO NOT DISTURB");
+    let mut repos = RepoConfig::new();
+    repos.insert("git.foo.com", "the-owner/the-repo", "DO NOT DISTURB");
+
+    // should not send to channel or to owner, only to asignee
+    let slack = MockSlack::new(vec![SlackCall::new("@assign2", "hello there", vec![])]);
+
+    let messenger = SlackMessenger {
+        users: Arc::new(users),
+        repos: Arc::new(repos),
+        slack: Rc::new(slack),
+    };
+
+    messenger.send_to_all("hello there",
+                          &vec![],
+                          &github::User::new("the-owner"),
+                          &github::User::new("the-sender"),
+                          &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
                           &vec![github::User::new("the-owner"), github::User::new("assign2")]);
 }

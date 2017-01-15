@@ -4,7 +4,7 @@ use std::rc::Rc;
 use super::github;
 use super::slack::{SlackSender, SlackAttachment};
 use super::repos::RepoConfig;
-use super::users::UserConfig;
+use super::users::{self, UserConfig};
 use super::util;
 
 pub trait Messenger {
@@ -32,6 +32,8 @@ pub struct SlackMessenger {
     pub repos: Arc<RepoConfig>,
     pub slack: Rc<SlackSender>,
 }
+
+const DND_MARKER : &'static str= "DO NOT DISTURB";
 
 impl Messenger for SlackMessenger {
     fn send_to_all(&self,
@@ -72,6 +74,11 @@ impl Messenger for SlackMessenger {
 
 impl SlackMessenger {
     fn send_to_slack(&self, channel: &str, msg: &str, attachments: &Vec<SlackAttachment>) {
+        // user desires peace and quiet. do not disturb!
+        if channel == DND_MARKER || channel == users::mention(DND_MARKER) {
+            return;
+        }
+
         if let Err(e) = self.slack.send(channel, msg, attachments.clone()) {
             error!("Error sending to slack: {:?}", e);
         }
@@ -83,7 +90,6 @@ impl SlackMessenger {
                          msg: &str,
                          attachments: &Vec<SlackAttachment>) {
         for user in users {
-            // TODO: desiresPeaceAndQuiet.
             let slack_ref = self.users.slack_user_ref(user.login.as_str(), repo);
             self.send_to_slack(slack_ref.as_str(), msg, attachments);
         }
