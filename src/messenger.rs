@@ -5,6 +5,7 @@ use super::github;
 use super::slack::{SlackSender, SlackAttachment};
 use super::repos::RepoConfig;
 use super::users::UserConfig;
+use super::util;
 
 pub trait Messenger {
     fn send_to_all(&self,
@@ -42,16 +43,14 @@ impl Messenger for SlackMessenger {
                    assignees: &Vec<github::User>) {
         self.send_to_channel(msg, attachments, repo);
 
-        let mut users: Vec<github::User> = assignees.iter().map(|a| a.clone()).collect();
+        let mut slackbots: Vec<github::User> = vec![item_owner.clone()];
 
-        if !users.iter().any(|u| u.login == item_owner.login) {
-            users.push(item_owner.clone());
-        }
+        slackbots.extend(assignees.iter().filter(|a| a.login != item_owner.login).map(|a| a.clone()));
 
         // make sure we do not send private message to author of that message
-        users.retain(|u| u.login != sender.login);
+        slackbots.retain(|u| u.login != sender.login);
 
-        self.send_to_slackbots(users, repo, msg, attachments);
+        self.send_to_slackbots(slackbots, repo, msg, attachments);
     }
 
     fn send_to_owner(&self,
@@ -65,7 +64,8 @@ impl Messenger for SlackMessenger {
 
     fn send_to_channel(&self, msg: &str, attachments: &Vec<SlackAttachment>, repo: &github::Repo) {
         if let Some(channel) = self.repos.lookup_channel(repo) {
-            self.send_to_slack(channel.as_str(), msg, attachments);
+            let channel_msg = format!("{} ({})", msg, util::make_link(&repo.html_url, &repo.full_name));
+            self.send_to_slack(channel.as_str(), &channel_msg, attachments);
         }
     }
 }

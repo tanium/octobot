@@ -17,7 +17,7 @@ pub trait SlackSender {
             -> Result<(), String>;
 }
 
-#[derive(RustcEncodable, Clone)]
+#[derive(RustcEncodable, Clone, PartialEq, Eq, Debug)]
 pub struct SlackAttachment {
     pub text: String,
     pub title: Option<String>,
