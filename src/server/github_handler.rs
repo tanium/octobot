@@ -20,6 +20,7 @@ pub struct GithubHandler {
     pub users: Arc<UserConfig>,
     pub repos: Arc<RepoConfig>,
     pub config: Arc<Config>,
+    pub github_session: Arc<github::api::Session>,
 }
 
 pub struct GithubEventHandler {

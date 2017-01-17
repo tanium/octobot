@@ -9,6 +9,8 @@ pub struct Config {
     pub listen_addr: Option<String>,
     pub users_config_file: String,
     pub repos_config_file: String,
+    pub github_host: String,
+    pub github_token: String,
 }
 
 pub fn parse(config_file: String) -> Result<Config, String> {

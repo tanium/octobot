@@ -1,7 +1,7 @@
 use url::Url;
 
 // An incomplete container for all the kinds of events that we care about.
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct HookBody {
     pub repository: Repo,
     pub sender: User,
@@ -13,7 +13,7 @@ pub struct HookBody {
     pub review: Option<Review>,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct User {
     pub login: String,
 }
@@ -24,7 +24,7 @@ impl User {
     }
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct Repo {
     pub html_url: String,
     pub full_name: String,
@@ -67,7 +67,7 @@ impl Repo {
 
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct PullRequest {
     pub title: String,
     pub number: i32,
@@ -79,7 +79,7 @@ pub struct PullRequest {
     pub assignees: Vec<User>,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct Issue {
     pub html_url: String,
     pub title: String,
@@ -87,7 +87,7 @@ pub struct Issue {
     pub assignees: Vec<User>,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct Review {
     pub state: String,
     pub body: String,
@@ -95,7 +95,7 @@ pub struct Review {
     pub user: User,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct Comment {
     pub commit_id: String,
     pub path: Option<String>,

@@ -7,6 +7,7 @@ use super::super::logger::Logger;
 
 use super::super::users;
 use super::super::repos;
+use super::super::github;
 use server::github_verify;
 use server::github_handler;
 
@@ -20,10 +21,16 @@ pub fn start(config: Config) -> Result<(), String> {
         Err(e) => panic!("Error reading repo config file: {}", e),
     };
 
+    let github_session = match github::api::Session::new(&config.github_host, &config.github_token) {
+        Ok(s) => s,
+        Err(e) => panic!("Error initiating github session: {}", e),
+    };
+
     let handler = github_handler::GithubHandler {
         users: Arc::new(user_config.clone()),
         repos: Arc::new(repo_config.clone()),
         config: Arc::new(config.clone()),
+        github_session: Arc::new(github_session),
     };
 
     let mut router = Router::new();
