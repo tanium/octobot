@@ -1,4 +1,5 @@
 use url::Url;
+use rustc_serialize::{Decoder, Decodable, Encoder, Encodable};
 
 // An incomplete container for all the kinds of events that we care about.
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
@@ -11,6 +12,7 @@ pub struct HookBody {
     pub comment: Option<Comment>,
     pub pull_request: Option<PullRequest>,
     pub review: Option<Review>,
+    pub label: Option<Label>,
 }
 
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
@@ -59,12 +61,43 @@ impl Repo {
                     full_name: format!("{}/{}", user, repo),
                     owner: User::new(user),
                 })
-            },
-            Err(e) => return Err(format!("Error parsing url: {}", e))
+            }
+            Err(e) => return Err(format!("Error parsing url: {}", e)),
         }
 
     }
+}
 
+#[derive(Clone, Debug)]
+pub struct BranchRef {
+    // doh. `ref` is a keyword in rust.
+    // Add custom encode/decode to workaround.
+    // Not sure how to get 'user' or 'repo' working with this. Maybe dont' need them...
+    pub ref_name: String,
+    pub sha: String,
+}
+
+impl Decodable for BranchRef {
+    fn decode<D: Decoder>(d: &mut D) -> Result<BranchRef, D::Error> {
+        d.read_struct("BranchRef", 2, |d| {
+            let ref_name = try!(d.read_struct_field("ref", 0, |d| d.read_str()));
+            let sha = try!(d.read_struct_field("sha", 1, |d| d.read_str()));
+            Ok(BranchRef {
+                ref_name: ref_name,
+                sha: sha,
+            })
+        })
+    }
+}
+
+impl Encodable for BranchRef {
+    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+        s.emit_struct("BranchRef", 2, |s| {
+            try!(s.emit_struct_field("ref", 0, |s| s.emit_str(&self.ref_name)));
+            try!(s.emit_struct_field("sha", 1, |s| s.emit_str(&self.sha)));
+            Ok(())
+        })
+    }
 }
 
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
@@ -77,6 +110,8 @@ pub struct PullRequest {
     pub merged: Option<bool>,
     pub merge_commit_sha: Option<String>,
     pub assignees: Vec<User>,
+    pub head: BranchRef,
+    pub base: BranchRef,
 }
 
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
@@ -86,6 +121,12 @@ pub struct Issue {
     pub user: User,
     pub assignees: Vec<User>,
 }
+
+#[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
+pub struct Label {
+    pub name: String,
+}
+
 
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct Review {
@@ -104,6 +145,10 @@ pub struct Comment {
     pub user: User,
 }
 
+#[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
+pub struct AssignResponse {
+    pub assignees: Vec<User>,
+}
 
 #[cfg(test)]
 mod tests {
