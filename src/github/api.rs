@@ -98,7 +98,12 @@ impl Session {
         self.client.get(format!("repos/{}/{}/issues/{}/labels", owner, repo, number).as_str())
     }
 
-    pub fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<AssignResponse, String> {
+    pub fn assign_pull_request(&self,
+                               owner: &str,
+                               repo: &str,
+                               number: u32,
+                               assignees: Vec<String>)
+                               -> Result<AssignResponse, String> {
         #[derive(RustcEncodable)]
         struct AssignPR {
             assignees: Vec<String>,
@@ -106,7 +111,18 @@ impl Session {
 
         let body = AssignPR { assignees: assignees };
 
-        self.client.post(format!("repos/{}/{}/issues/{}/assignees", owner, repo, number).as_str(), &body)
+        self.client.post(format!("repos/{}/{}/issues/{}/assignees", owner, repo, number).as_str(),
+                         &body)
+    }
+
+    pub fn create_merge_pull_request(&self,
+                                     owner: &str,
+                                     repo: &str,
+                                     number: u32,
+                                     target_branch: &str)
+                                     -> Result<PullRequest, String> {
+
+        Err("Not implemented".to_string())
     }
 }
 

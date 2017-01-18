@@ -5,6 +5,7 @@ extern crate rustc_serialize;
 extern crate serde_json;
 extern crate toml;
 extern crate url;
+extern crate regex;
 
 #[macro_use]
 extern crate log;

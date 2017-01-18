@@ -7,6 +7,7 @@ use super::iron::status;
 use super::iron::middleware::Handler;
 use super::bodyparser;
 use super::super::rustc_serialize::json;
+use super::super::regex::Regex;
 
 use super::super::github;
 use super::super::messenger::SlackMessenger;
@@ -30,6 +31,7 @@ pub struct GithubEventHandler {
     pub event: String,
     pub data: github::HookBody,
     pub action: String,
+    pub github_session: Arc<github::api::Session>,
 }
 
 impl Handler for GithubHandler {
@@ -73,6 +75,7 @@ impl Handler for GithubHandler {
                 users: self.users.clone(),
                 repos: self.repos.clone(),
             }),
+            github_session: self.github_session.clone(),
         };
 
         match handler.handle_event() {
@@ -154,9 +157,13 @@ impl GithubEventHandler {
             }
 
             if self.action == "labeled" {
-                // mergePullRequest(messenger, githubAPI, data.pull_request, data.repository, data.label);
+                if let Some(ref label) = self.data.label {
+                    // mergePullRequest(messenger, githubAPI, data.pull_request, data.repository, data.label);
+                    self.merge_pull_request(pull_request, label);
+                }
             } else if verb == Some("merged".to_string()) {
                 // mergePullRequestAllLabels(messenger, githubAPI, data.pull_request, data.repository);
+                self.merge_pull_request_all_labels(pull_request);
             }
         }
 
@@ -327,5 +334,67 @@ impl GithubEventHandler {
 
     fn handle_push(&self) -> Response {
         Response::with((status::Ok, "push"))
+    }
+
+    fn merge_pull_request_all_labels(&self, pull_request: &github::PullRequest) {
+        match pull_request.merged {
+            Some(ref merged) if !merged => return,
+            None => return,
+            _ => (),
+        };
+
+        let labels = match self.github_session
+            .get_pull_request_labels(&self.data.repository.owner.login,
+                                     &self.data.repository.name,
+                                     pull_request.number) {
+            Ok(l) => l,
+            Err(e) => {
+                self.messenger.send_to_owner("Error getting Pull Request labels",
+                                             &vec![SlackAttachmentBuilder::new(&e)
+                                                       .color("danger")
+                                                       .build()],
+                                             &pull_request.user,
+                                             &self.data.repository);
+                return;
+            }
+        };
+
+        for label in &labels {
+            self.merge_pull_request(pull_request, label);
+        }
+    }
+
+    fn merge_pull_request(&self, pull_request: &github::PullRequest, label: &github::Label) {
+        let re = Regex::new(r"(?i)backport-([\d\.]+)").unwrap();
+        let backport = match re.captures(&label.name) {
+            Some(c) => c[1].to_string(),
+            None => return,
+        };
+        let target_branch = "release/".to_string() + &backport;
+        let mut attachment = SlackAttachmentBuilder::new("");
+
+        attachment.title(format!("Source PR: #{}: \"{}\"",
+                           pull_request.number,
+                           pull_request.title)
+                .as_str())
+            .title_link(pull_request.html_url.clone());
+
+        match self.github_session.create_merge_pull_request(&self.data.repository.owner.login,
+                                                            &self.data.repository.name,
+                                                            pull_request.number,
+                                                            &target_branch) {
+            Ok(_) => {
+                self.messenger.send_to_owner("Created merge Pull Request",
+                                             &vec![attachment.build()],
+                                             &pull_request.user,
+                                             &self.data.repository)
+            }
+            Err(e) => {
+                self.messenger.send_to_owner("Error creating merge Pull Request",
+                                             &vec![attachment.color("danger").text(e).build()],
+                                             &pull_request.user,
+                                             &self.data.repository)
+            }
+        }
     }
 }

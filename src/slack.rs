@@ -45,6 +45,11 @@ impl SlackAttachmentBuilder {
         SlackAttachmentBuilder { attachment: SlackAttachment::new(text) }
     }
 
+    pub fn text<S: Into<String>>(&mut self, value: S) -> &mut SlackAttachmentBuilder {
+        self.attachment.text = value.into();
+        self
+    }
+
     pub fn title<S: Into<String>>(&mut self, value: S) -> &mut SlackAttachmentBuilder {
         self.attachment.title = Some(value.into());
         self

@@ -30,6 +30,7 @@ impl User {
 pub struct Repo {
     pub html_url: String,
     pub full_name: String,
+    pub name: String,
     pub owner: User,
 }
 
@@ -38,6 +39,7 @@ impl Repo {
         Repo {
             html_url: String::new(),
             full_name: String::new(),
+            name: String::new(),
             owner: User::new(""),
         }
     }
@@ -59,6 +61,7 @@ impl Repo {
                 Ok(Repo {
                     html_url: html_url.to_string(),
                     full_name: format!("{}/{}", user, repo),
+                    name: repo.to_string(),
                     owner: User::new(user),
                 })
             }
@@ -103,7 +106,7 @@ impl Encodable for BranchRef {
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct PullRequest {
     pub title: String,
-    pub number: i32,
+    pub number: u32,
     pub html_url: String,
     pub state: String,
     pub user: User,

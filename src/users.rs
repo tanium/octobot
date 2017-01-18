@@ -111,11 +111,7 @@ mod tests {
         let mut users = UserConfig::new();
         users.insert("git.company.com", "some-git-user", "the-slacker");
 
-        let repo = github::Repo {
-            html_url: "http://git.company.com/foo".to_string(),
-            full_name: "some-user/the-repo".to_string(),
-            owner: github::User::new("someone-else"),
-        };
+        let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
         assert_eq!("the-slacker", users.slack_user_name("some-git-user", &repo));
         assert_eq!("@the-slacker", users.slack_user_ref("some-git-user", &repo));
         assert_eq!("some.other.user",
@@ -131,11 +127,7 @@ mod tests {
 
         // fail by git host
         {
-            let repo = github::Repo {
-                html_url: "http://git.other-company.com/foo".to_string(),
-                full_name: "some-user/some-other-repo".to_string(),
-                owner: github::User::new("some-user")
-            };
+            let repo = github::Repo::parse("http://git.other-company.com/some-user/some-other-repo").unwrap();
             assert_eq!("some.user", users.slack_user_name("some.user", &repo));
             assert_eq!("@some.user", users.slack_user_ref("some.user", &repo));
         }
