@@ -7,6 +7,10 @@ version = "0.1.0"
 name = "octobot"
 path = "src/main.rs"
 
+[[bin]]
+name = "octobot-ask-pass"
+path = "src/ask-pass.rs"
+
 [dependencies]
 bodyparser = "0.4.1"
 env_logger = "0.3.5"
