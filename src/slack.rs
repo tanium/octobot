@@ -89,6 +89,8 @@ impl SlackSender for Slack {
             channel: channel.to_string(),
         };
 
+        info!("Sending message to #{}", channel);
+
         let client = hyper::client::Client::new();
         let res = client.post(self.webhook_url.as_str())
             .header(ContentType(Mime(TopLevel::Application, SubLevel::Json, vec![])))

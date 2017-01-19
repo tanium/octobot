@@ -62,23 +62,26 @@ impl Handler for GithubHandler {
         let event: String = match req.headers.get_raw("x-github-event") {
             Some(ref h) if h.len() == 1 => String::from_utf8_lossy(&h[0]).into_owned(),
             None | Some(..) => {
+                error!("Expected to find exactly one event header");
                 return Ok(Response::with((status::BadRequest,
-                                          "Expected to find exactly one event header")))
+                                          "Expected to find exactly one event header")));
             }
         };
 
         let body = match req.get::<bodyparser::Raw>() {
             Ok(Some(j)) => j,
             Err(_) | Ok(None) => {
-                return Ok(Response::with((status::BadRequest, format!("Error reading json"))))
+                error!("Error reading json");
+                return Ok(Response::with((status::BadRequest, format!("Error reading json"))));
             }
         };
 
         let data: github::HookBody = match json::decode(body.as_str()) {
             Ok(h) => h,
             Err(e) => {
+                error!("Error parsing json: {}\n---\n{}\n---\n", e, body.as_str());
                 return Ok(Response::with((status::BadRequest,
-                                          format!("Error parsing JSON: {}", e))))
+                                          format!("Error parsing JSON: {}", e))));
             }
         };
 
@@ -297,33 +300,35 @@ impl GithubEventHandler {
     fn handle_commit_comment(&self) -> Response {
         if let Some(ref comment) = self.data.comment {
             if self.action == "created" {
-                let commit: &str = &comment.commit_id[0..7];
-                let commit_url = format!("{}/commit/{}",
-                                         self.data.repository.html_url,
-                                         comment.commit_id);
-                let commit_path: String;
-                if let Some(ref path) = comment.path {
-                    commit_path = path.to_string();
-                } else {
-                    commit_path = commit.to_string();
+                if let Some(ref commit_id) = comment.commit_id {
+                    let commit: &str = &commit_id[0..7];
+                    let commit_url = format!("{}/commit/{}",
+                                             self.data.repository.html_url,
+                                             commit_id);
+                    let commit_path: String;
+                    if let Some(ref path) = comment.path {
+                        commit_path = path.to_string();
+                    } else {
+                        commit_path = commit.to_string();
+                    }
+
+                    let msg = format!("Comment on \"{}\" ({})",
+                                      commit_path,
+                                      util::make_link(commit_url.as_str(), commit));
+
+                    let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
+                                               .title(format!("{} said:",
+                                                              self.slack_user_name(&comment.user)))
+                                               .title_link(comment.html_url.as_str())
+                                               .build()];
+
+                    self.messenger.send_to_all(&msg,
+                                               &attachments,
+                                               &comment.user,
+                                               &self.data.sender,
+                                               &self.data.repository,
+                                               &vec![]);
                 }
-
-                let msg = format!("Comment on \"{}\" ({})",
-                                  commit_path,
-                                  util::make_link(commit_url.as_str(), commit));
-
-                let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
-                                           .title(format!("{} said:",
-                                                          self.slack_user_name(&comment.user)))
-                                           .title_link(comment.html_url.as_str())
-                                           .build()];
-
-                self.messenger.send_to_all(&msg,
-                                           &attachments,
-                                           &comment.user,
-                                           &self.data.sender,
-                                           &self.data.repository,
-                                           &vec![]);
             }
         }
 

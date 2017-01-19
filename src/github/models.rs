@@ -152,7 +152,7 @@ pub struct Review {
 
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct Comment {
-    pub commit_id: String,
+    pub commit_id: Option<String>,
     pub path: Option<String>,
     pub body: String,
     pub html_url: String,
