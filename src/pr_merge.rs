@@ -81,7 +81,7 @@ impl<'a> Merger<'a> {
             .create_pull_request(owner, repo, &title, &body, &pr_branch_name, &target_branch));
 
         let assignees: Vec<String> =
-            pull_request.assignees.iter().map(|a| a.login.clone()).collect();
+            pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
         try!(self.session.assign_pull_request(owner, repo, new_pr.number, assignees));
 
         Ok(new_pr)
@@ -89,7 +89,7 @@ impl<'a> Merger<'a> {
 
     fn clone_repo(&self, owner: &str, repo: &str, clone_dir: &PathBuf) -> Result<(), String> {
         let url = format!("https://{}@{}/{}/{}",
-                          self.session.user().login,
+                          self.session.user().login(),
                           self.session.github_host(),
                           owner,
                           repo);

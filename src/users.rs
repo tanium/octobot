@@ -62,7 +62,7 @@ impl UserConfig {
 
     pub fn slack_user_names(&self, users: &Vec<github::User>, repo: &github::Repo) -> Vec<String> {
         users.iter()
-            .map(|a| self.slack_user_name(a.login.as_str(), repo))
+            .map(|a| self.slack_user_name(a.login(), repo))
             .collect()
     }
 

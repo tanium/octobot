@@ -17,12 +17,20 @@ pub struct HookBody {
 
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct User {
-    pub login: String,
+    pub login: Option<String>,
 }
 
 impl User {
     pub fn new(login: &str) -> User {
-        User { login: login.to_string() }
+        User { login: Some(login.to_string()) }
+    }
+
+    pub fn login(&self) -> &str {
+        if let Some(ref login) = self.login {
+            login
+        } else {
+            ""
+        }
     }
 }
 
@@ -175,7 +183,7 @@ mod tests {
 
         assert_eq!("http://git.company.com/users/repo/", repo.html_url);
         assert_eq!("users/repo", repo.full_name);
-        assert_eq!("users", repo.owner.login);
+        assert_eq!("users", repo.owner.login());
     }
 
     #[test]

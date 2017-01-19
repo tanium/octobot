@@ -135,7 +135,7 @@ impl GithubEventHandler {
     }
 
     fn slack_user_name(&self, user: &github::User) -> String {
-        self.users.slack_user_name(user.login.as_str(), &self.data.repository)
+        self.users.slack_user_name(user.login(), &self.data.repository)
     }
 
     fn handle_ping(&self) -> Response {
@@ -373,7 +373,7 @@ impl GithubEventHandler {
         };
 
         let labels = match self.github_session
-            .get_pull_request_labels(&self.data.repository.owner.login,
+            .get_pull_request_labels(&self.data.repository.owner.login(),
                                      &self.data.repository.name,
                                      pull_request.number) {
             Ok(l) => l,
@@ -410,7 +410,7 @@ impl GithubEventHandler {
 
         match pr_merge::merge_pull_request(&self.github_session,
                                            &self.dir_pool,
-                                           &self.data.repository.owner.login,
+                                           &self.data.repository.owner.login(),
                                            &self.data.repository.name,
                                            pull_request.number,
                                            &target_branch) {

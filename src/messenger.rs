@@ -50,7 +50,7 @@ impl Messenger for SlackMessenger {
         slackbots.extend(assignees.iter().filter(|a| a.login != item_owner.login).map(|a| a.clone()));
 
         // make sure we do not send private message to author of that message
-        slackbots.retain(|u| u.login != sender.login && u.login != "octobot");
+        slackbots.retain(|u| u.login != sender.login && u.login() != "octobot");
 
         self.send_to_slackbots(slackbots, repo, msg, attachments);
     }
@@ -90,7 +90,7 @@ impl SlackMessenger {
                          msg: &str,
                          attachments: &Vec<SlackAttachment>) {
         for user in users {
-            let slack_ref = self.users.slack_user_ref(user.login.as_str(), repo);
+            let slack_ref = self.users.slack_user_ref(user.login(), repo);
             self.send_to_slack(slack_ref.as_str(), msg, attachments);
         }
     }
