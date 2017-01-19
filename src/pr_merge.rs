@@ -8,12 +8,8 @@ use super::git::Git;
 use super::github;
 use super::github::api::Session;
 
-pub fn merge_pull_request(session: &Session,
-                          dir_pool: &DirPool,
-                          owner: &str,
-                          repo: &str,
-                          pull_request: &github::PullRequest,
-                          target_branch: &str)
+pub fn merge_pull_request(session: &Session, dir_pool: &DirPool, owner: &str, repo: &str,
+                          pull_request: &github::PullRequest, target_branch: &str)
                           -> Result<github::PullRequest, String> {
     Merger::new(session, dir_pool).merge_pull_request(owner, repo, pull_request, target_branch)
 }
@@ -34,10 +30,7 @@ impl<'a> Merger<'a> {
         }
     }
 
-    pub fn merge_pull_request(&self,
-                              owner: &str,
-                              repo: &str,
-                              pull_request: &github::PullRequest,
+    pub fn merge_pull_request(&self, owner: &str, repo: &str, pull_request: &github::PullRequest,
                               target_branch: &str)
                               -> Result<github::PullRequest, String> {
         if !pull_request.is_merged() {
@@ -57,7 +50,8 @@ impl<'a> Merger<'a> {
                                      regex.replace(&pull_request.head.ref_name, ""),
                                      regex.replace(&target_branch, ""));
 
-        let held_clone_dir = try!(self.dir_pool.take_directory(self.session.github_host(), owner, repo));
+        let held_clone_dir = try!(self.dir_pool
+            .take_directory(self.session.github_host(), owner, repo));
         let clone_dir = held_clone_dir.dir();
         try!(self.clone_repo(owner, repo, &clone_dir));
 
@@ -107,13 +101,8 @@ impl<'a> Merger<'a> {
         Ok(())
     }
 
-    fn cherry_pick(&self,
-                   clone_dir: &PathBuf,
-                   commit_hash: &str,
-                   pr_branch_name: &str,
-                   pr_number: u32,
-                   target_branch: &str,
-                   orig_base_branch: &str)
+    fn cherry_pick(&self, clone_dir: &PathBuf, commit_hash: &str, pr_branch_name: &str,
+                   pr_number: u32, target_branch: &str, orig_base_branch: &str)
                    -> Result<(String, String), String> {
         let real_target_branch = format!("origin/{}", target_branch);
 
@@ -170,9 +159,7 @@ impl<'a> Merger<'a> {
     }
 
     // returns (title, body)
-    fn get_commit_desc(&self,
-                       clone_dir: &PathBuf,
-                       commit_hash: &str)
+    fn get_commit_desc(&self, clone_dir: &PathBuf, commit_hash: &str)
                        -> Result<(String, String), String> {
         let lines: Vec<String> = try!(self.git
                 .run(&["log", "-1", "--pretty=%B", commit_hash], clone_dir))

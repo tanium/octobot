@@ -13,7 +13,6 @@ pub struct Session {
 }
 
 impl Session {
-
     pub fn new(host: &str, token: &str) -> Result<Session, String> {
         let api_base = if host.to_string() == "github.com" {
             "https://api.github.com".to_string()
@@ -51,18 +50,12 @@ impl Session {
         &self.client.token
     }
 
-    pub fn get_pull_request(&self,
-                            owner: &str,
-                            repo: &str,
-                            number: u32)
+    pub fn get_pull_request(&self, owner: &str, repo: &str, number: u32)
                             -> Result<PullRequest, String> {
         self.client.get(format!("repos/{}/{}/pulls/{}", owner, repo, number).as_str())
     }
 
-    pub fn get_pull_requests(&self,
-                             owner: &str,
-                             repo: &str,
-                             state: Option<&str>,
+    pub fn get_pull_requests(&self, owner: &str, repo: &str, state: Option<&str>,
                              head: Option<&str>)
                              -> Result<Vec<PullRequest>, String> {
         self.client.get(format!("repos/{}/{}/pulls?state={}&head={}",
@@ -73,13 +66,8 @@ impl Session {
             .as_str())
     }
 
-    pub fn create_pull_request(&self,
-                               owner: &str,
-                               repo: &str,
-                               title: &str,
-                               body: &str,
-                               head: &str,
-                               base: &str)
+    pub fn create_pull_request(&self, owner: &str, repo: &str, title: &str, body: &str,
+                               head: &str, base: &str)
                                -> Result<PullRequest, String> {
         #[derive(RustcEncodable)]
         struct CreatePR {
@@ -98,19 +86,13 @@ impl Session {
         self.client.post(format!("repos/{}/{}/pulls", owner, repo).as_str(), &pr)
     }
 
-    pub fn get_pull_request_labels(&self,
-                                   owner: &str,
-                                   repo: &str,
-                                   number: u32)
+    pub fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
                                    -> Result<Vec<Label>, String> {
 
         self.client.get(format!("repos/{}/{}/issues/{}/labels", owner, repo, number).as_str())
     }
 
-    pub fn assign_pull_request(&self,
-                               owner: &str,
-                               repo: &str,
-                               number: u32,
+    pub fn assign_pull_request(&self, owner: &str, repo: &str, number: u32,
                                assignees: Vec<String>)
                                -> Result<AssignResponse, String> {
         #[derive(RustcEncodable)]
@@ -140,10 +122,7 @@ impl GithubClient {
         self.request::<T, E>(Method::Post, path, Some(body))
     }
 
-    fn request<T: Decodable, E: Encodable>(&self,
-                                           method: Method,
-                                           path: &str,
-                                           body: Option<&E>)
+    fn request<T: Decodable, E: Encodable>(&self, method: Method, path: &str, body: Option<&E>)
                                            -> Result<T, String> {
         let url;
         if path.starts_with("/") {

@@ -20,12 +20,14 @@ pub fn start(config: Config) -> Result<(), String> {
         Err(e) => panic!("Error reading repo config file: {}", e),
     };
 
-    let github_session = match github::api::Session::new(&config.github_host, &config.github_token) {
+    let github_session = match github::api::Session::new(&config.github_host,
+                                                         &config.github_token) {
         Ok(s) => s,
         Err(e) => panic!("Error initiating github session: {}", e),
     };
 
-    let handler = github_handler::GithubHandler::new(&user_config, &repo_config, &config, github_session);
+    let handler =
+        github_handler::GithubHandler::new(&user_config, &repo_config, &config, github_session);
 
     let mut router = Router::new();
     router.post("/", handler, "webhook");
@@ -42,7 +44,7 @@ pub fn start(config: Config) -> Result<(), String> {
     // before first middleware
     chain.link_before(logger_before);
 
-    chain.link_before(github_verify::GithubWebhookVerifier { secret: config.github_secret.clone() });
+    chain.link_before( github_verify::GithubWebhookVerifier { secret: config.github_secret.clone() });
 
     // after last middleware
     chain.link_after(logger_after);

@@ -10,10 +10,7 @@ pub struct Slack {
 }
 
 pub trait SlackSender {
-    fn send(&self,
-            channel: &str,
-            msg: &str,
-            attachments: Vec<SlackAttachment>)
+    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>)
             -> Result<(), String>;
 }
 
@@ -78,10 +75,7 @@ struct SlackMessage {
 }
 
 impl SlackSender for Slack {
-    fn send(&self,
-            channel: &str,
-            msg: &str,
-            attachments: Vec<SlackAttachment>)
+    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>)
             -> Result<(), String> {
         let slack_msg = SlackMessage {
             text: msg.to_string(),

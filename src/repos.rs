@@ -35,11 +35,8 @@ pub fn load_config(file: &str) -> std::io::Result<RepoConfig> {
 }
 
 impl RepoConfig {
-
     pub fn new() -> RepoConfig {
-        RepoConfig {
-            repos: RepoHostMap::new()
-        }
+        RepoConfig { repos: RepoHostMap::new() }
     }
 
     pub fn insert(&mut self, host: &str, repo_name: &str, channel: &str) {
@@ -99,13 +96,15 @@ mod tests {
 
         // fail by channel/repo
         {
-            let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo").unwrap();
+            let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo")
+                .unwrap();
             assert!(repos.lookup_channel(&repo).is_none());
         }
 
         // fail by git host
         {
-            let repo = github::Repo::parse("http://git.other-company.com/some-user/the-repo").unwrap();
+            let repo = github::Repo::parse("http://git.other-company.com/some-user/the-repo")
+                .unwrap();
             assert!(repos.lookup_channel(&repo).is_none());
         }
     }

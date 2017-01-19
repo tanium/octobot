@@ -127,7 +127,9 @@ mod tests {
 
         // fail by git host
         {
-            let repo = github::Repo::parse("http://git.other-company.com/some-user/some-other-repo").unwrap();
+            let repo = github::Repo::parse("http://git.other-company.\
+                                            com/some-user/some-other-repo")
+                .unwrap();
             assert_eq!("some.user", users.slack_user_name("some.user", &repo));
             assert_eq!("@some.user", users.slack_user_ref("some.user", &repo));
         }

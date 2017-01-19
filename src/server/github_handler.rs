@@ -42,9 +42,7 @@ pub struct GithubEventHandler {
 const MAX_CONCURRENT_MERGES: usize = 20;
 
 impl GithubHandler {
-    pub fn new(users: &UserConfig,
-               repos: &RepoConfig,
-               config: &Config,
+    pub fn new(users: &UserConfig, repos: &RepoConfig, config: &Config,
                github_session: github::api::Session)
                -> GithubHandler {
         GithubHandler {
@@ -268,11 +266,8 @@ impl GithubEventHandler {
         Response::with((status::Ok, "pr_review"))
     }
 
-    fn do_pull_request_comment(&self,
-                               pull_request: &github::PullRequest,
-                               commenter: &github::User,
-                               comment_body: &str,
-                               comment_url: &str) {
+    fn do_pull_request_comment(&self, pull_request: &github::PullRequest,
+                               commenter: &github::User, comment_body: &str, comment_url: &str) {
         if comment_body.trim().len() == 0 {
             return;
         }
@@ -300,9 +295,8 @@ impl GithubEventHandler {
             if self.action == "created" {
                 if let Some(ref commit_id) = comment.commit_id {
                     let commit: &str = &commit_id[0..7];
-                    let commit_url = format!("{}/commit/{}",
-                                             self.data.repository.html_url,
-                                             commit_id);
+                    let commit_url =
+                        format!("{}/commit/{}", self.data.repository.html_url, commit_id);
                     let commit_path: String;
                     if let Some(ref path) = comment.path {
                         commit_path = path.to_string();

@@ -15,5 +15,3 @@ fn main() {
 
     server::start(config).expect("Failed to start server");
 }
-
-

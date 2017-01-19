@@ -126,7 +126,6 @@ pub struct PullRequest {
 }
 
 impl PullRequest {
-
     pub fn is_merged(&self) -> bool {
         self.merged.unwrap_or(false)
     }
