@@ -11,4 +11,4 @@ fi
 
 set -x
 
-ssh -A $host_and_user "cd octocat-slack && bash deploy-here.sh"
+ssh -A $host_and_user "cd octobot && bash deploy-here.sh"

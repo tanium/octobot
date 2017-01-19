@@ -2,4 +2,5 @@
 
 set -e
 
-git pull --ff-only && npm install && npm test && pm2 restart octocat-slack
+# note: may want to setup nopasswd sudo rule for this reload.
+git pull --ff-only && cargo test && cargo install && sudo systemctl reload supervisor
