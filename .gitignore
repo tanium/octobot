@@ -1,2 +1,5 @@
-node_modules
 repos
+target
+config.toml
+repos.json
+users.json
