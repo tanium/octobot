@@ -91,7 +91,7 @@ impl Git {
                         output))
         } else {
 
-            Ok(output)
+            Ok(output.trim().to_string())
         }
     }
 }
