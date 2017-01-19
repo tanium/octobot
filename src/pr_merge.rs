@@ -161,7 +161,7 @@ impl<'a> Merger<'a> {
             .as_str();
 
         // change commit message
-        try!(self.git.run_with_stdin(&["commit", "--amend", "-"],
+        try!(self.git.run_with_stdin(&["commit", "--amend", "-F", "-"],
                                      clone_dir,
                                      format!("{}\n\n{}", title, body).as_str()));
 
