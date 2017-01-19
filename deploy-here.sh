@@ -2,6 +2,8 @@
 
 set -e
 
+source $HOME/.cargo/env
+
 git pull --ff-only
 cargo test
 cargo install --force
