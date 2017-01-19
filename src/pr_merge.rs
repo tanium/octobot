@@ -12,10 +12,10 @@ pub fn merge_pull_request(session: &Session,
                           dir_pool: &DirPool,
                           owner: &str,
                           repo: &str,
-                          number: u32,
+                          pull_request: &github::PullRequest,
                           target_branch: &str)
                           -> Result<github::PullRequest, String> {
-    Merger::new(session, dir_pool).merge_pull_request(owner, repo, number, target_branch)
+    Merger::new(session, dir_pool).merge_pull_request(owner, repo, pull_request, target_branch)
 }
 
 
@@ -37,18 +37,19 @@ impl<'a> Merger<'a> {
     pub fn merge_pull_request(&self,
                               owner: &str,
                               repo: &str,
-                              number: u32,
+                              pull_request: &github::PullRequest,
                               target_branch: &str)
                               -> Result<github::PullRequest, String> {
-
-        let pull_request = try!(self.session.get_pull_request(owner, repo, number));
         if !pull_request.is_merged() {
-            return Err(format!("Pull Request #{} is not yet merged.", number));
+            return Err(format!("Pull Request #{} is not yet merged.", pull_request.number));
         }
-        if pull_request.merge_commit_sha.is_none() {
-            return Err(format!("Pull Request #{} has no merge commit.", number));
+
+        let merge_commit_sha;
+        if let Some(ref sha) = pull_request.merge_commit_sha {
+            merge_commit_sha = sha;
+        } else {
+            return Err(format!("Pull Request #{} has no merge commit.", pull_request.number));
         }
-        let merge_commit_sha = &pull_request.merge_commit_sha.unwrap();
 
         // strip everything before last slash
         let regex = Regex::new(r".*/").unwrap();
@@ -69,7 +70,7 @@ impl<'a> Merger<'a> {
         let (title, body) = try!(self.cherry_pick(&clone_dir,
                                                   &merge_commit_sha,
                                                   &pr_branch_name,
-                                                  number,
+                                                  pull_request.number,
                                                   &target_branch,
                                                   &pull_request.base.ref_name));
 

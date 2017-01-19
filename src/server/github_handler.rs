@@ -185,11 +185,9 @@ impl GithubEventHandler {
 
             if self.action == "labeled" {
                 if let Some(ref label) = self.data.label {
-                    // mergePullRequest(messenger, githubAPI, data.pull_request, data.repository, data.label);
                     self.merge_pull_request(pull_request, label);
                 }
             } else if verb == Some("merged".to_string()) {
-                // mergePullRequestAllLabels(messenger, githubAPI, data.pull_request, data.repository);
                 self.merge_pull_request_all_labels(pull_request);
             }
         }
@@ -366,11 +364,9 @@ impl GithubEventHandler {
     }
 
     fn merge_pull_request_all_labels(&self, pull_request: &github::PullRequest) {
-        match pull_request.merged {
-            Some(ref merged) if !merged => return,
-            None => return,
-            _ => (),
-        };
+        if !pull_request.is_merged() {
+            return;
+        }
 
         let labels = match self.github_session
             .get_pull_request_labels(&self.data.repository.owner.login(),
@@ -394,6 +390,10 @@ impl GithubEventHandler {
     }
 
     fn merge_pull_request(&self, pull_request: &github::PullRequest, label: &github::Label) {
+        if !pull_request.is_merged() {
+            return;
+        }
+
         let re = Regex::new(r"(?i)backport-([\d\.]+)").unwrap();
         let backport = match re.captures(&label.name) {
             Some(c) => c[1].to_string(),
@@ -412,7 +412,7 @@ impl GithubEventHandler {
                                            &self.dir_pool,
                                            &self.data.repository.owner.login(),
                                            &self.data.repository.name,
-                                           pull_request.number,
+                                           pull_request,
                                            &target_branch) {
             Ok(_) => {
                 self.messenger.send_to_owner("Created merge Pull Request",
