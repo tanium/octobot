@@ -125,11 +125,12 @@ impl<'a> Merger<'a> {
         if current_branch == pr_branch_name {
             try!(self.git.run(&["reset", "--hard", &real_target_branch], clone_dir));
         } else {
-            // delete if it exists, then recreate
-            match self.git.run(&["branch", "-d", pr_branch_name], clone_dir) {
-                // ignore errors
-                _ => (),
-            };
+            // delete if it exists
+            let has_branch = try!(self.git.has_branch(pr_branch_name, clone_dir));
+            if has_branch {
+                try!(self.git.run(&["branch", "-d", pr_branch_name], clone_dir));
+            }
+            // recreate branch
             try!(self.git.run(&["checkout", "-b", pr_branch_name, &real_target_branch],
                               clone_dir));
         }
