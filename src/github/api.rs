@@ -13,6 +13,7 @@ pub struct Session {
 }
 
 impl Session {
+
     pub fn new(host: &str, token: &str) -> Result<Session, String> {
         let api_base = if host.to_string() == "github.com" {
             "https://api.github.com".to_string()
@@ -40,6 +41,14 @@ impl Session {
 
     pub fn user(&self) -> &User {
         return &self.user;
+    }
+
+    pub fn github_host(&self) -> &str {
+        &self.client.host
+    }
+
+    pub fn github_token(&self) -> &str {
+        &self.client.token
     }
 
     pub fn get_pull_request(&self,
@@ -113,16 +122,6 @@ impl Session {
 
         self.client.post(format!("repos/{}/{}/issues/{}/assignees", owner, repo, number).as_str(),
                          &body)
-    }
-
-    pub fn create_merge_pull_request(&self,
-                                     owner: &str,
-                                     repo: &str,
-                                     number: u32,
-                                     target_branch: &str)
-                                     -> Result<PullRequest, String> {
-
-        Err("Not implemented".to_string())
     }
 }
 

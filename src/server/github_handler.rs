@@ -11,6 +11,7 @@ use super::super::regex::Regex;
 
 use super::super::github;
 use super::super::messenger::SlackMessenger;
+use super::super::pr_merge;
 use super::super::slack::{Slack, SlackAttachmentBuilder};
 use super::super::util;
 use super::super::messenger::Messenger;
@@ -379,10 +380,11 @@ impl GithubEventHandler {
                 .as_str())
             .title_link(pull_request.html_url.clone());
 
-        match self.github_session.create_merge_pull_request(&self.data.repository.owner.login,
-                                                            &self.data.repository.name,
-                                                            pull_request.number,
-                                                            &target_branch) {
+        match pr_merge::merge_pull_request(&self.github_session,
+                                           &self.data.repository.owner.login,
+                                           &self.data.repository.name,
+                                           pull_request.number,
+                                           &target_branch) {
             Ok(_) => {
                 self.messenger.send_to_owner("Created merge Pull Request",
                                              &vec![attachment.build()],

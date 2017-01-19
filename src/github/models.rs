@@ -117,6 +117,17 @@ pub struct PullRequest {
     pub base: BranchRef,
 }
 
+impl PullRequest {
+
+    pub fn is_merged(&self) -> bool {
+        if let Some(merged) = self.merged {
+            merged
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct Issue {
     pub html_url: String,

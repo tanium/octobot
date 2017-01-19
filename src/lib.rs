@@ -14,6 +14,7 @@ pub mod config;
 pub mod git;
 pub mod github;
 pub mod messenger;
+pub mod pr_merge;
 pub mod repos;
 pub mod server;
 pub mod slack;
