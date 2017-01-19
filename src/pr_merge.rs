@@ -57,7 +57,7 @@ impl<'a> Merger<'a> {
 
         // make sure there isn't already such a branch
         let current_remotes = try!(self.git.run(&["ls-remote", "--heads"], &clone_dir));
-        if current_remotes.contains(format!("refs/heads/{}", pr_branch_name).as_str()) {
+        if current_remotes.contains(&format!("refs/heads/{}", pr_branch_name)) {
             return Err(format!("PR branch already exists on origin: '{}'", pr_branch_name));
         }
 
@@ -69,7 +69,7 @@ impl<'a> Merger<'a> {
                                                   &pull_request.base.ref_name));
 
         try!(self.git
-            .run(&["push", "origin", format!("{}:{}", pr_branch_name, pr_branch_name).as_str()],
+            .run(&["push", "origin", &format!("{}:{}", pr_branch_name, pr_branch_name)],
                  &clone_dir));
 
         let new_pr = try!(self.session
@@ -153,7 +153,7 @@ impl<'a> Merger<'a> {
         // change commit message
         try!(self.git.run_with_stdin(&["commit", "--amend", "-F", "-"],
                                      clone_dir,
-                                     format!("{}\n\n{}", title, body).as_str()));
+                                     &format!("{}\n\n{}", title, body)));
 
         Ok((title, body))
     }

@@ -14,7 +14,7 @@ pub struct Session {
 
 impl Session {
     pub fn new(host: &str, token: &str) -> Result<Session, String> {
-        let api_base = if host.to_string() == "github.com" {
+        let api_base = if host == "github.com" {
             "https://api.github.com".to_string()
         } else {
             format!("https://{}/api/v3", host)
@@ -52,7 +52,7 @@ impl Session {
 
     pub fn get_pull_request(&self, owner: &str, repo: &str, number: u32)
                             -> Result<PullRequest, String> {
-        self.client.get(format!("repos/{}/{}/pulls/{}", owner, repo, number).as_str())
+        self.client.get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
     }
 
     pub fn get_pull_requests(&self, owner: &str, repo: &str, state: Option<&str>,
@@ -83,13 +83,13 @@ impl Session {
             base: base.to_string(),
         };
 
-        self.client.post(format!("repos/{}/{}/pulls", owner, repo).as_str(), &pr)
+        self.client.post(&format!("repos/{}/{}/pulls", owner, repo), &pr)
     }
 
     pub fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
                                    -> Result<Vec<Label>, String> {
 
-        self.client.get(format!("repos/{}/{}/issues/{}/labels", owner, repo, number).as_str())
+        self.client.get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number))
     }
 
     pub fn assign_pull_request(&self, owner: &str, repo: &str, number: u32,
@@ -102,7 +102,7 @@ impl Session {
 
         let body = AssignPR { assignees: assignees };
 
-        self.client.post(format!("repos/{}/{}/issues/{}/assignees", owner, repo, number).as_str(),
+        self.client.post(&format!("repos/{}/{}/issues/{}/assignees", owner, repo, number),
                          &body)
     }
 }

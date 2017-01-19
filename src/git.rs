@@ -38,9 +38,7 @@ impl Git {
     pub fn has_branch(&self, branch: &str, cwd: &Path) -> Result<bool, String> {
         let output = try!(self.run(&["branch"], cwd));
         // skip first two characters for the bullet point
-        let branches: Vec<String> =
-            output.split("\n").filter(|b| b.len() > 2).map(|b| b[2..].to_string()).collect();
-        Ok(branches.contains(&branch.to_string()))
+        Ok(output.lines().any(|b| b.len() > 2 && branch == &b[2..]))
     }
 
     fn do_run(&self, args: &[&str], cwd: &Path, stdin: Option<&str>) -> Result<String, String> {
@@ -80,12 +78,12 @@ impl Git {
 
         let mut output = String::new();
         if result.stdout.len() > 0 {
-            output += format!("{}", String::from_utf8_lossy(&result.stdout)).as_str();
+            output += String::from_utf8_lossy(&result.stdout).as_ref();
         }
 
         if !result.status.success() {
             if result.stderr.len() > 0 {
-                output += format!("{}", String::from_utf8_lossy(&result.stderr)).as_str();
+                output += String::from_utf8_lossy(&result.stderr).as_ref();
             }
             Err(format!("Error running git (exit code {}):\n{}",
                         result.status.code().unwrap_or(-1),
