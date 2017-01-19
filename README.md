@@ -63,7 +63,7 @@ As for the octobot user token, you need to:
 - Create an octobot user in github
 - Run the following command to get a token:
 
-    curl -u octobot https://git.company.com/api/v3/authorizations -d '{"scopes": ["repo"], "client_id": "<app id>", "client_secret": "<app secret>"}'
+        curl -u octobot https://git.company.com/api/v3/authorizations -d '{"scopes": ["repo"], "client_id": "<app id>", "client_secret": "<app secret>"}'
 
 - Grab the "token" value and put it in the config file.
   **Warning**: This token has read/write access to code. Guard it carefully and make sure config.toml is only readable by service account.
