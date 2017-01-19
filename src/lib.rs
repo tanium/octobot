@@ -11,6 +11,7 @@ extern crate regex;
 extern crate log;
 
 pub mod config;
+pub mod dir_pool;
 pub mod git;
 pub mod github;
 pub mod messenger;

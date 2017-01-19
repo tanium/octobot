@@ -1,6 +1,5 @@
 use super::*;
 
-use std::sync::Arc;
 use super::iron::prelude::*;
 use super::router::Router;
 use super::super::logger::Logger;
@@ -26,12 +25,7 @@ pub fn start(config: Config) -> Result<(), String> {
         Err(e) => panic!("Error initiating github session: {}", e),
     };
 
-    let handler = github_handler::GithubHandler {
-        users: Arc::new(user_config.clone()),
-        repos: Arc::new(repo_config.clone()),
-        config: Arc::new(config.clone()),
-        github_session: Arc::new(github_session),
-    };
+    let handler = github_handler::GithubHandler::new(&user_config, &repo_config, &config, github_session);
 
     let mut router = Router::new();
     router.post("/", handler, "webhook");

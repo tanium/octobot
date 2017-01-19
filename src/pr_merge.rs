@@ -3,30 +3,34 @@ use std::path::PathBuf;
 
 use super::regex::Regex;
 
+use super::dir_pool::DirPool;
 use super::git::Git;
 use super::github;
 use super::github::api::Session;
 
 pub fn merge_pull_request(session: &Session,
+                          dir_pool: &DirPool,
                           owner: &str,
                           repo: &str,
                           number: u32,
                           target_branch: &str)
                           -> Result<github::PullRequest, String> {
-    Merger::new(session).merge_pull_request(owner, repo, number, target_branch)
+    Merger::new(session, dir_pool).merge_pull_request(owner, repo, number, target_branch)
 }
 
 
 struct Merger<'a> {
     git: Git,
     session: &'a Session,
+    dir_pool: &'a DirPool,
 }
 
 impl<'a> Merger<'a> {
-    pub fn new(session: &Session) -> Merger {
+    pub fn new(session: &'a Session, dir_pool: &'a DirPool) -> Merger<'a> {
         Merger {
             git: Git::new(session.github_host(), session.github_token()),
             session: session,
+            dir_pool: dir_pool,
         }
     }
 
@@ -52,7 +56,8 @@ impl<'a> Merger<'a> {
                                      regex.replace(&pull_request.head.ref_name, ""),
                                      regex.replace(&target_branch, ""));
 
-        let clone_dir = self.take_clone_dir(owner, repo);
+        let held_clone_dir = try!(self.dir_pool.take_directory(self.session.github_host(), owner, repo));
+        let clone_dir = held_clone_dir.dir();
         try!(self.clone_repo(owner, repo, &clone_dir));
 
         // make sure there isn't already such a branch
@@ -99,11 +104,6 @@ impl<'a> Merger<'a> {
         }
 
         Ok(())
-    }
-
-    // TODO: have something that manages the clone dirs, returns them on Drop
-    fn take_clone_dir(&self, owner: &str, repo: &str) -> PathBuf {
-        return PathBuf::from("");
     }
 
     fn cherry_pick(&self,

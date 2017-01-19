@@ -11,6 +11,7 @@ pub struct Config {
     pub repos_config_file: String,
     pub github_host: String,
     pub github_token: String,
+    pub clone_root_dir: String,
 }
 
 pub fn parse(config_file: String) -> Result<Config, String> {

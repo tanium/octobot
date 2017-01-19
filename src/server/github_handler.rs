@@ -9,6 +9,7 @@ use super::bodyparser;
 use super::super::rustc_serialize::json;
 use super::super::regex::Regex;
 
+use super::super::dir_pool::DirPool;
 use super::super::github;
 use super::super::messenger::SlackMessenger;
 use super::super::pr_merge;
@@ -23,6 +24,7 @@ pub struct GithubHandler {
     pub repos: Arc<RepoConfig>,
     pub config: Arc<Config>,
     pub github_session: Arc<github::api::Session>,
+    pub dir_pool: Arc<DirPool>,
 }
 
 pub struct GithubEventHandler {
@@ -33,6 +35,26 @@ pub struct GithubEventHandler {
     pub data: github::HookBody,
     pub action: String,
     pub github_session: Arc<github::api::Session>,
+    pub dir_pool: Arc<DirPool>,
+}
+
+
+const MAX_CONCURRENT_MERGES: usize = 20;
+
+impl GithubHandler {
+    pub fn new(users: &UserConfig,
+               repos: &RepoConfig,
+               config: &Config,
+               github_session: github::api::Session)
+               -> GithubHandler {
+        GithubHandler {
+            users: Arc::new(users.clone()),
+            repos: Arc::new(repos.clone()),
+            config: Arc::new(config.clone()),
+            github_session: Arc::new(github_session),
+            dir_pool: Arc::new(DirPool::new(&config.clone_root_dir, MAX_CONCURRENT_MERGES)),
+        }
+    }
 }
 
 impl Handler for GithubHandler {
@@ -77,6 +99,7 @@ impl Handler for GithubHandler {
                 repos: self.repos.clone(),
             }),
             github_session: self.github_session.clone(),
+            dir_pool: self.dir_pool.clone(),
         };
 
         match handler.handle_event() {
@@ -381,6 +404,7 @@ impl GithubEventHandler {
             .title_link(pull_request.html_url.clone());
 
         match pr_merge::merge_pull_request(&self.github_session,
+                                           &self.dir_pool,
                                            &self.data.repository.owner.login,
                                            &self.data.repository.name,
                                            pull_request.number,
