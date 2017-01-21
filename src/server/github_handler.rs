@@ -1,5 +1,4 @@
 use super::*;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use super::iron::prelude::*;
@@ -11,17 +10,12 @@ use super::super::regex::Regex;
 
 use super::super::dir_pool::DirPool;
 use super::super::github;
-use super::super::messenger::SlackMessenger;
+use super::super::messenger::{self, Messenger};
 use super::super::pr_merge;
-use super::super::slack::{Slack, SlackAttachmentBuilder};
+use super::super::slack::SlackAttachmentBuilder;
 use super::super::util;
-use super::super::messenger::Messenger;
-use super::super::users::UserConfig;
-use super::super::repos::RepoConfig;
 
 pub struct GithubHandler {
-    pub users: Arc<UserConfig>,
-    pub repos: Arc<RepoConfig>,
     pub config: Arc<Config>,
     pub github_session: Arc<github::api::Session>,
     pub dir_pool: Arc<DirPool>,
@@ -29,8 +23,7 @@ pub struct GithubHandler {
 
 pub struct GithubEventHandler {
     pub messenger: Box<Messenger>,
-    pub users: Arc<UserConfig>,
-    pub repos: Arc<RepoConfig>,
+    pub config: Arc<Config>,
     pub event: String,
     pub data: github::HookBody,
     pub action: String,
@@ -42,15 +35,12 @@ pub struct GithubEventHandler {
 const MAX_CONCURRENT_MERGES: usize = 20;
 
 impl GithubHandler {
-    pub fn new(users: &UserConfig, repos: &RepoConfig, config: &Config,
-               github_session: github::api::Session)
+    pub fn new(config: Arc<Config>, github_session: github::api::Session)
                -> GithubHandler {
         GithubHandler {
-            users: Arc::new(users.clone()),
-            repos: Arc::new(repos.clone()),
-            config: Arc::new(config.clone()),
             github_session: Arc::new(github_session),
             dir_pool: Arc::new(DirPool::new(&config.clone_root_dir, MAX_CONCURRENT_MERGES)),
+            config: config,
         }
     }
 }
@@ -92,13 +82,8 @@ impl Handler for GithubHandler {
             event: event.clone(),
             data: data,
             action: action,
-            users: self.users.clone(),
-            repos: self.repos.clone(),
-            messenger: Box::new(SlackMessenger {
-                slack: Rc::new(Slack { webhook_url: self.config.slack_webhook_url.clone() }),
-                users: self.users.clone(),
-                repos: self.repos.clone(),
-            }),
+            config: self.config.clone(),
+            messenger: messenger::from_config(self.config.clone()),
             github_session: self.github_session.clone(),
             dir_pool: self.dir_pool.clone(),
         };
@@ -133,7 +118,7 @@ impl GithubEventHandler {
     }
 
     fn slack_user_name(&self, user: &github::User) -> String {
-        self.users.slack_user_name(user.login(), &self.data.repository)
+        self.config.users.slack_user_name(user.login(), &self.data.repository)
     }
 
     fn handle_ping(&self) -> Response {
@@ -154,7 +139,7 @@ impl GithubEventHandler {
             } else if self.action == "reopened" {
                 verb = Some("reopened".to_string());
             } else if self.action == "assigned" {
-                let assignees_str = self.users
+                let assignees_str = self.config.users
                     .slack_user_names(&pull_request.assignees, &self.data.repository)
                     .join(", ");
                 verb = Some(format!("assigned to {}", assignees_str));
