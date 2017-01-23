@@ -1,9 +1,24 @@
-use super::std::fs;
-use super::std::io::Read;
-use super::toml;
+use std::fs;
+use std::io::Read;
+use toml;
 
-#[derive(RustcDecodable, Debug, Clone)]
+use users;
+use repos;
+
 pub struct Config {
+    pub slack_webhook_url: String,
+    pub github_secret: String,
+    pub listen_addr: Option<String>,
+    pub github_host: String,
+    pub github_token: String,
+    pub clone_root_dir: String,
+    pub users: users::UserConfig,
+    pub repos: repos::RepoConfig,
+}
+
+
+#[derive(RustcDecodable, Debug)]
+pub struct ConfigModel {
     pub slack_webhook_url: String,
     pub github_secret: String,
     pub listen_addr: Option<String>,
@@ -12,6 +27,40 @@ pub struct Config {
     pub github_host: String,
     pub github_token: String,
     pub clone_root_dir: String,
+}
+
+impl Config {
+    pub fn new(users: users::UserConfig, repos: repos::RepoConfig) -> Config {
+        Config::new_with_model(ConfigModel::new(), users, repos)
+    }
+
+    pub fn new_with_model(config: ConfigModel, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
+        Config {
+            slack_webhook_url: config.slack_webhook_url,
+            github_secret: config.github_secret,
+            listen_addr: config.listen_addr,
+            github_host: config.github_host,
+            github_token: config.github_token,
+            clone_root_dir: config.clone_root_dir,
+            users: users,
+            repos: repos,
+        }
+    }
+}
+
+impl ConfigModel {
+    pub fn new() -> ConfigModel {
+        ConfigModel {
+            slack_webhook_url: String::new(),
+            github_secret: String::new(),
+            listen_addr: None,
+            users_config_file: String::new(),
+            repos_config_file: String::new(),
+            github_host: String::new(),
+            github_token: String::new(),
+            clone_root_dir: String::new(),
+        }
+    }
 }
 
 pub fn parse(config_file: String) -> Result<Config, String> {
@@ -30,7 +79,7 @@ pub fn parse(config_file: String) -> Result<Config, String> {
         None => return Err(format!("Could not decode config file '{}'", config_file)),
     };
 
-    let config: Config = match config_value.get("config") {
+    let config: ConfigModel = match config_value.get("config") {
         Some(c1) => {
             match toml::decode(c1.clone()) {
                 Some(c2) => c2,
@@ -40,5 +89,16 @@ pub fn parse(config_file: String) -> Result<Config, String> {
         None => return Err(format!("No config section found")),
     };
 
-    Ok(config)
+    let users = match users::load_config(&config.users_config_file) {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Error reading user config file: {}", e)),
+    };
+
+    let repos = match repos::load_config(&config.repos_config_file) {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Error reading repo config file: {}", e)),
+    };
+
+    Ok(Config::new_with_model(config, users, repos))
 }
+

@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use octobot::messenger::{Messenger, SlackMessenger};
 use octobot::slack::{SlackSender, SlackAttachment};
+use octobot::config::Config;
 use octobot::repos::RepoConfig;
 use octobot::users::UserConfig;
 use octobot::github;
@@ -81,8 +82,7 @@ impl Drop for MockSlack {
 
 fn new_messenger(slack: MockSlack) -> SlackMessenger {
     SlackMessenger {
-        users: Arc::new(UserConfig::new()),
-        repos: Arc::new(RepoConfig::new()),
+        config: Arc::new(Config::new(UserConfig::new(), RepoConfig::new())),
         slack: Rc::new(slack),
     }
 }
@@ -109,8 +109,7 @@ fn test_sends_to_mapped_usernames() {
         MockSlack::new(vec![SlackCall::new("@the-owners-slack-name", "hello there", vec![])]);
 
     let messenger = SlackMessenger {
-        users: Arc::new(users),
-        repos: Arc::new(RepoConfig::new()),
+        config: Arc::new(Config::new(users, RepoConfig::new())),
         slack: Rc::new(slack),
     };
 
@@ -136,8 +135,7 @@ fn test_sends_to_owner_with_channel() {
                                     SlackCall::new("@the.owner", "hello there", vec![])]);
 
     let messenger = SlackMessenger {
-        users: Arc::new(UserConfig::new()),
-        repos: Arc::new(repos),
+        config: Arc::new(Config::new(UserConfig::new(), repos)),
         slack: Rc::new(slack),
     };
 
@@ -202,8 +200,7 @@ fn test_peace_and_quiet() {
     let slack = MockSlack::new(vec![SlackCall::new("@assign2", "hello there", vec![])]);
 
     let messenger = SlackMessenger {
-        users: Arc::new(users),
-        repos: Arc::new(repos),
+        config: Arc::new(Config::new(users, repos)),
         slack: Rc::new(slack),
     };
 
