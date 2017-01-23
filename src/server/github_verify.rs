@@ -1,11 +1,11 @@
-use super::super::std;
+use std;
 
 use std::fmt;
-use super::super::ring::{digest, hmac};
-use super::iron::prelude::*;
-use super::iron::{status, BeforeMiddleware};
-use super::super::rustc_serialize::hex::FromHex;
-use super::bodyparser;
+use ring::{digest, hmac};
+use iron::prelude::*;
+use iron::{status, BeforeMiddleware};
+use rustc_serialize::hex::FromHex;
+use bodyparser;
 
 #[derive(Debug)]
 struct StringError(String);
@@ -87,8 +87,8 @@ impl BeforeMiddleware for GithubWebhookVerifier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::super::ring::{digest, hmac};
-    use super::super::super::rustc_serialize::hex::ToHex;
+    use ring::{digest, hmac};
+    use rustc_serialize::hex::ToHex;
 
     #[test]
     fn verify_sig_valid() {

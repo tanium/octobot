@@ -1,11 +1,11 @@
 use std::io::Read;
-use super::super::hyper;
-use super::super::hyper::header::{Accept, Authorization, Bearer, ContentType, qitem};
-use super::super::hyper::method::Method;
-use super::super::hyper::mime::{Mime, TopLevel, SubLevel};
-use super::super::rustc_serialize::{json, Decodable, Encodable};
+use hyper;
+use hyper::header::{Accept, Authorization, Bearer, ContentType, qitem};
+use hyper::method::Method;
+use hyper::mime::{Mime, TopLevel, SubLevel};
+use rustc_serialize::{json, Decodable, Encodable};
 
-use super::models::*;
+use github::models::*;
 
 pub struct Session {
     client: GithubClient,

@@ -4,16 +4,16 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Sender};
 use std::thread::{self, JoinHandle};
 
-use super::regex::Regex;
-use super::threadpool::ThreadPool;
+use regex::Regex;
+use threadpool::ThreadPool;
 
-use super::config::Config;
-use super::dir_pool::DirPool;
-use super::git::Git;
-use super::github;
-use super::github::api::Session;
-use super::messenger;
-use super::slack::SlackAttachmentBuilder;
+use config::Config;
+use dir_pool::DirPool;
+use git::Git;
+use github;
+use github::api::Session;
+use messenger;
+use slack::SlackAttachmentBuilder;
 
 pub fn merge_pull_request(session: &Session, dir_pool: &DirPool, owner: &str, repo: &str,
                           pull_request: &github::PullRequest, target_branch: &str)

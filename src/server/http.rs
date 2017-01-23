@@ -1,11 +1,11 @@
-use super::*;
 use std::sync::Arc;
 
-use super::iron::prelude::*;
-use super::router::Router;
-use super::super::logger::Logger;
+use iron::prelude::*;
+use router::Router;
+use logger::Logger;
 
-use super::super::github;
+use config::Config;
+use github;
 use server::github_verify;
 use server::github_handler;
 

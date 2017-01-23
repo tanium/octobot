@@ -1,19 +1,19 @@
-use super::*;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
-use super::iron::prelude::*;
-use super::iron::status;
-use super::iron::middleware::Handler;
-use super::bodyparser;
-use super::super::rustc_serialize::json;
-use super::super::regex::Regex;
+use iron::prelude::*;
+use iron::status;
+use iron::middleware::Handler;
+use bodyparser;
+use rustc_serialize::json;
+use regex::Regex;
 
-use super::super::github;
-use super::super::messenger::{self, Messenger};
-use super::super::pr_merge::{self, PRMergeMessage};
-use super::super::slack::SlackAttachmentBuilder;
-use super::super::util;
+use config::Config;
+use github;
+use messenger::{self, Messenger};
+use pr_merge::{self, PRMergeMessage};
+use slack::SlackAttachmentBuilder;
+use util;
 
 pub struct GithubHandler {
     pub config: Arc<Config>,
