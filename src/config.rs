@@ -1,9 +1,9 @@
 use std::fs;
 use std::io::Read;
-use super::toml;
+use toml;
 
-use super::users;
-use super::repos;
+use users;
+use repos;
 
 pub struct Config {
     pub slack_webhook_url: String,
