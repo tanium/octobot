@@ -11,7 +11,7 @@ use super::super::regex::Regex;
 
 use super::super::github;
 use super::super::messenger::{self, Messenger};
-use super::super::pr_merge::{self, MergeRequest};
+use super::super::pr_merge::{self, PRMergeRequest};
 use super::super::slack::SlackAttachmentBuilder;
 use super::super::util;
 
@@ -28,7 +28,7 @@ struct GithubEventHandler {
     pub data: github::HookBody,
     pub action: String,
     pub github_session: Arc<github::api::Session>,
-    pub pr_merge: Sender<MergeRequest>,
+    pub pr_merge: Sender<PRMergeRequest>,
 }
 
 const MAX_CONCURRENT_MERGES: usize = 20;
@@ -391,7 +391,7 @@ impl GithubEventHandler {
             .title_link(pull_request.html_url.clone());
 
         if let Err(e) = self.pr_merge
-            .send(MergeRequest::new(&self.data.repository, pull_request, &target_branch)) {
+            .send(PRMergeRequest::new(&self.data.repository, pull_request, &target_branch)) {
             error!("Error sending merge request message: {}", e)
         }
     }

@@ -191,17 +191,17 @@ impl<'a> Merger<'a> {
     }
 }
 
-pub struct MergeRequest {
+pub struct PRMergeRequest {
     repo: github::Repo,
     pull_request: github::PullRequest,
     target_branch: String,
 }
 
-impl MergeRequest {
+impl PRMergeRequest {
     pub fn new(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str)
-               -> MergeRequest {
+               -> PRMergeRequest {
 
-        MergeRequest {
+        PRMergeRequest {
             repo: repo.clone(),
             pull_request: pull_request.clone(),
             target_branch: target_branch.to_string(),
@@ -210,7 +210,7 @@ impl MergeRequest {
 }
 
 pub struct Worker {
-    sender: Mutex<Sender<MergeRequest>>,
+    sender: Mutex<Sender<PRMergeRequest>>,
     handle: Option<JoinHandle<()>>,
     stopped: Arc<bool>,
 }
@@ -226,7 +226,8 @@ impl Drop for Worker {
 }
 
 impl Worker {
-    pub fn new(max_concurrency: usize, config: Arc<Config>, github_session: Arc<Session>) -> Worker {
+    pub fn new(max_concurrency: usize, config: Arc<Config>, github_session: Arc<Session>)
+               -> Worker {
 
         let (tx, rx) = channel();
 
@@ -241,7 +242,7 @@ impl Worker {
             let thread_pool = ThreadPool::new(max_concurrency);
 
             while *stopped_copy == false {
-                let req: MergeRequest = match rx.recv_timeout(timeout) {
+                let req: PRMergeRequest = match rx.recv_timeout(timeout) {
                     Ok(r) => r,
                     Err(_) => continue,
                 };
@@ -284,7 +285,7 @@ impl Worker {
         }
     }
 
-    pub fn new_sender(&self) -> Sender<MergeRequest> {
+    pub fn new_sender(&self) -> Sender<PRMergeRequest> {
         let sender = self.sender.lock().unwrap();
         sender.clone()
     }
