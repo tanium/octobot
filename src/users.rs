@@ -1,5 +1,4 @@
-use super::std;
-
+use std;
 use std::collections::HashMap;
 use std::io::Read;
 use rustc_serialize::json;
@@ -92,7 +91,7 @@ pub fn mention<S: Into<String>>(username: S) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::github;
+    use github;
 
     #[test]
     fn test_slack_user_name_defaults() {

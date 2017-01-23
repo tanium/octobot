@@ -1,8 +1,8 @@
-use super::std::io::Read;
-use super::hyper;
-use super::hyper::header::ContentType;
-use super::hyper::mime::{Mime, TopLevel, SubLevel};
-use super::rustc_serialize::json;
+use std::io::Read;
+use hyper;
+use hyper::header::ContentType;
+use hyper::mime::{Mime, TopLevel, SubLevel};
+use rustc_serialize::json;
 
 // the main object for sending messages to slack
 pub struct Slack {

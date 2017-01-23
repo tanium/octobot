@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use std::rc::Rc;
 
-use super::github;
-use super::slack::{Slack, SlackSender, SlackAttachment};
-use super::config::Config;
-use super::users;
-use super::util;
+use github;
+use slack::{Slack, SlackSender, SlackAttachment};
+use config::Config;
+use users;
+use util;
 
 pub trait Messenger {
     fn send_to_all(&self, msg: &str, attachments: &Vec<SlackAttachment>,

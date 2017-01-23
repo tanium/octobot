@@ -1,5 +1,4 @@
-use super::std;
-
+use std;
 use std::collections::HashMap;
 use std::io::Read;
 use rustc_serialize::json;
@@ -69,7 +68,7 @@ impl RepoConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::github;
+    use github;
 
     #[test]
     fn lookup_channel_by_repo_full_name() {
