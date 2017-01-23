@@ -1,12 +1,19 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Sender};
+use std::thread::{self, JoinHandle};
 
 use super::regex::Regex;
+use super::threadpool::ThreadPool;
 
+use super::config::Config;
 use super::dir_pool::DirPool;
 use super::git::Git;
 use super::github;
 use super::github::api::Session;
+use super::messenger;
+use super::slack::SlackAttachmentBuilder;
 
 pub fn merge_pull_request(session: &Session, dir_pool: &DirPool, owner: &str, repo: &str,
                           pull_request: &github::PullRequest, target_branch: &str)
@@ -50,8 +57,7 @@ impl<'a> Merger<'a> {
                                      regex.replace(&pull_request.head.ref_name, ""),
                                      regex.replace(&target_branch, ""));
 
-        let held_clone_dir = try!(self.dir_pool
-            .take_directory(self.session.github_host(), owner, repo));
+        let held_clone_dir = self.dir_pool.take_directory(self.session.github_host(), owner, repo);
         let clone_dir = held_clone_dir.dir();
         try!(self.clone_repo(owner, repo, &clone_dir));
 
@@ -181,5 +187,112 @@ impl<'a> Merger<'a> {
         }
 
         Ok((title, body))
+    }
+}
+
+pub enum PRMergeMessage {
+    Stop,
+    Merge {
+        repo: github::Repo,
+        pull_request: github::PullRequest,
+        target_branch: String,
+    },
+}
+
+pub struct Worker {
+    sender: Mutex<Sender<PRMergeMessage>>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl PRMergeMessage {
+    pub fn merge(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str)
+                 -> PRMergeMessage {
+        PRMergeMessage::Merge {
+            repo: repo.clone(),
+            pull_request: pull_request.clone(),
+            target_branch: target_branch.to_string(),
+        }
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        let sender = self.new_sender();
+        match sender.send(PRMergeMessage::Stop) {
+            Ok(_) => {
+                match self.handle.take().unwrap().join() {
+                    Ok(_) => (),
+                    Err(e) => error!("Error shutting down worker: {:?}", e),
+                }
+            }
+            Err(e) => error!("Error sending stop message: {}", e),
+        }
+    }
+}
+
+impl Worker {
+    pub fn new(max_concurrency: usize, config: Arc<Config>, github_session: Arc<Session>)
+               -> Worker {
+
+        let (tx, rx) = channel();
+
+        let clone_root_dir = config.clone_root_dir.to_string();
+
+        let handle = thread::spawn(move || {
+            let dir_pool = Arc::new(DirPool::new(&clone_root_dir));
+            let thread_pool = ThreadPool::new(max_concurrency);
+
+            loop {
+                match rx.recv() {
+                    Ok(msg) => {
+                        match msg {
+                            PRMergeMessage::Stop => break,
+                            PRMergeMessage::Merge { repo, pull_request, target_branch } => {
+
+                                let github_session = github_session.clone();
+                                let dir_pool = dir_pool.clone();
+                                let config = config.clone();
+                                // launch another thread to do the merge
+                                thread_pool.execute(move || {
+                                    if let Err(e) = merge_pull_request(&github_session,
+                                                                       &dir_pool,
+                                                                       &repo.owner.login(),
+                                                                       &repo.name,
+                                                                       &pull_request,
+                                                                       &target_branch) {
+
+                                        let attach = SlackAttachmentBuilder::new(&e)
+                                            .title(format!("Source PR: #{}: \"{}\"",
+                                                           pull_request.number,
+                                                           pull_request.title)
+                                                .as_str())
+                                            .title_link(pull_request.html_url.clone())
+                                            .color("danger")
+                                            .build();
+
+                                        let messenger = messenger::from_config(config);
+                                        messenger.send_to_owner("Error creating merge Pull Request",
+                                                           &vec![attach],
+                                                           &pull_request.user,
+                                                           &repo);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    Err(e) => error!("Error receiving message: {}", e),
+                };
+            }
+        });
+
+        Worker {
+            sender: Mutex::new(tx),
+            handle: Some(handle),
+        }
+    }
+
+    pub fn new_sender(&self) -> Sender<PRMergeMessage> {
+        let sender = self.sender.lock().unwrap();
+        sender.clone()
     }
 }

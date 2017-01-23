@@ -1,5 +1,6 @@
 use super::*;
 use std::sync::Arc;
+use std::sync::mpsc::Sender;
 
 use super::iron::prelude::*;
 use super::iron::status;
@@ -8,39 +9,40 @@ use super::bodyparser;
 use super::super::rustc_serialize::json;
 use super::super::regex::Regex;
 
-use super::super::dir_pool::DirPool;
 use super::super::github;
 use super::super::messenger::{self, Messenger};
-use super::super::pr_merge;
+use super::super::pr_merge::{self, PRMergeMessage};
 use super::super::slack::SlackAttachmentBuilder;
 use super::super::util;
 
 pub struct GithubHandler {
     pub config: Arc<Config>,
     pub github_session: Arc<github::api::Session>,
-    pub dir_pool: Arc<DirPool>,
+    pr_merge_worker: pr_merge::Worker,
 }
 
-pub struct GithubEventHandler {
+struct GithubEventHandler {
     pub messenger: Box<Messenger>,
     pub config: Arc<Config>,
     pub event: String,
     pub data: github::HookBody,
     pub action: String,
     pub github_session: Arc<github::api::Session>,
-    pub dir_pool: Arc<DirPool>,
+    pub pr_merge: Sender<PRMergeMessage>,
 }
-
 
 const MAX_CONCURRENT_MERGES: usize = 20;
 
 impl GithubHandler {
-    pub fn new(config: Arc<Config>, github_session: github::api::Session)
-               -> GithubHandler {
+    pub fn new(config: Arc<Config>, github_session: github::api::Session) -> GithubHandler {
+
+        let session = Arc::new(github_session);
         GithubHandler {
-            github_session: Arc::new(github_session),
-            dir_pool: Arc::new(DirPool::new(&config.clone_root_dir, MAX_CONCURRENT_MERGES)),
-            config: config,
+            config: config.clone(),
+            github_session: session.clone(),
+            pr_merge_worker: pr_merge::Worker::new(MAX_CONCURRENT_MERGES,
+                                                   config.clone(),
+                                                   session.clone()),
         }
     }
 }
@@ -85,7 +87,7 @@ impl Handler for GithubHandler {
             config: self.config.clone(),
             messenger: messenger::from_config(self.config.clone()),
             github_session: self.github_session.clone(),
-            dir_pool: self.dir_pool.clone(),
+            pr_merge: self.pr_merge_worker.new_sender(),
         };
 
         match handler.handle_event() {
@@ -139,7 +141,8 @@ impl GithubEventHandler {
             } else if self.action == "reopened" {
                 verb = Some("reopened".to_string());
             } else if self.action == "assigned" {
-                let assignees_str = self.config.users
+                let assignees_str = self.config
+                    .users
                     .slack_user_names(&pull_request.assignees, &self.data.repository)
                     .join(", ");
                 verb = Some(format!("assigned to {}", assignees_str));
@@ -387,24 +390,9 @@ impl GithubEventHandler {
                 .as_str())
             .title_link(pull_request.html_url.clone());
 
-        match pr_merge::merge_pull_request(&self.github_session,
-                                           &self.dir_pool,
-                                           &self.data.repository.owner.login(),
-                                           &self.data.repository.name,
-                                           pull_request,
-                                           &target_branch) {
-            Ok(_) => {
-                self.messenger.send_to_owner("Created merge Pull Request",
-                                             &vec![attachment.build()],
-                                             &pull_request.user,
-                                             &self.data.repository)
-            }
-            Err(e) => {
-                self.messenger.send_to_owner("Error creating merge Pull Request",
-                                             &vec![attachment.color("danger").text(e).build()],
-                                             &pull_request.user,
-                                             &self.data.repository)
-            }
+        if let Err(e) = self.pr_merge
+            .send(PRMergeMessage::merge(&self.data.repository, pull_request, &target_branch)) {
+            error!("Error sending merge request message: {}", e)
         }
     }
 }

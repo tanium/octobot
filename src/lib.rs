@@ -3,6 +3,7 @@ extern crate hyper;
 extern crate ring;
 extern crate rustc_serialize;
 extern crate serde_json;
+extern crate threadpool;
 extern crate toml;
 extern crate url;
 extern crate regex;
