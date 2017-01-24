@@ -382,13 +382,6 @@ impl GithubEventHandler {
             None => return,
         };
         let target_branch = "release/".to_string() + &backport;
-        let mut attachment = SlackAttachmentBuilder::new("");
-
-        attachment.title(format!("Source PR: #{}: \"{}\"",
-                           pull_request.number,
-                           pull_request.title)
-                .as_str())
-            .title_link(pull_request.html_url.clone());
 
         if let Err(e) = self.pr_merge
             .send(PRMergeMessage::merge(&self.data.repository, pull_request, &target_branch)) {
