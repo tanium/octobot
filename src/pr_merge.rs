@@ -192,11 +192,13 @@ impl<'a> Merger<'a> {
 
 pub enum PRMergeMessage {
     Stop,
-    Merge {
-        repo: github::Repo,
-        pull_request: github::PullRequest,
-        target_branch: String,
-    },
+    Merge(PRMergeRequest),
+}
+
+pub struct PRMergeRequest {
+    repo: github::Repo,
+    pull_request: github::PullRequest,
+    target_branch: String,
 }
 
 pub struct Worker {
@@ -207,11 +209,11 @@ pub struct Worker {
 impl PRMergeMessage {
     pub fn merge(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str)
                  -> PRMergeMessage {
-        PRMergeMessage::Merge {
+        PRMergeMessage::Merge(PRMergeRequest {
             repo: repo.clone(),
             pull_request: pull_request.clone(),
             target_branch: target_branch.to_string(),
-        }
+        })
     }
 }
 
@@ -271,22 +273,14 @@ impl WorkerRunner {
     fn run(&self) {
         loop {
             match self.rx.recv() {
-                Ok(msg) => {
-                    match msg {
-                        PRMergeMessage::Stop => break,
-                        PRMergeMessage::Merge { repo, pull_request, target_branch } => {
-                            self.handle_merge(repo, pull_request, target_branch);
-                        }
-                    }
-                }
+                Ok(PRMergeMessage::Stop) => break,
+                Ok(PRMergeMessage::Merge(req)) => self.handle_merge(req),
                 Err(e) => error!("Error receiving message: {}", e),
             };
         }
     }
 
-    fn handle_merge(&self, repo: github::Repo, pull_request: github::PullRequest,
-                    target_branch: String) {
-
+    fn handle_merge(&self, req: PRMergeRequest) {
         let github_session = self.github_session.clone();
         let dir_pool = self.dir_pool.clone();
         let config = self.config.clone();
@@ -295,25 +289,25 @@ impl WorkerRunner {
         self.thread_pool.execute(move || {
             if let Err(e) = merge_pull_request(&github_session,
                                                &dir_pool,
-                                               &repo.owner.login(),
-                                               &repo.name,
-                                               &pull_request,
-                                               &target_branch) {
+                                               &req.repo.owner.login(),
+                                               &req.repo.name,
+                                               &req.pull_request,
+                                               &req.target_branch) {
 
                 let attach = SlackAttachmentBuilder::new(&e)
                     .title(format!("Source PR: #{}: \"{}\"",
-                                   pull_request.number,
-                                   pull_request.title)
+                                   req.pull_request.number,
+                                   req.pull_request.title)
                         .as_str())
-                    .title_link(pull_request.html_url.clone())
+                    .title_link(req.pull_request.html_url.clone())
                     .color("danger")
                     .build();
 
                 let messenger = messenger::from_config(config);
                 messenger.send_to_owner("Error creating merge Pull Request",
                                         &vec![attach],
-                                        &pull_request.user,
-                                        &repo);
+                                        &req.pull_request.user,
+                                        &req.repo);
             }
         });
     }
