@@ -187,7 +187,7 @@ impl GithubEventHandler {
                 if self.action == "created" {
                     self.do_pull_request_comment(pull_request,
                                                  &comment.user,
-                                                 comment.body.as_str(),
+                                                 comment.body(),
                                                  comment.html_url.as_str());
                 }
 
@@ -206,7 +206,7 @@ impl GithubEventHandler {
                     if review.state == "commented" {
                         self.do_pull_request_comment(pull_request,
                                                      &review.user,
-                                                     review.body.as_str(),
+                                                     review.body(),
                                                      review.html_url.as_str());
                         return Response::with((status::Ok, "pr_review [comment]"));
                     }
@@ -234,7 +234,7 @@ impl GithubEventHandler {
                                       util::make_link(pull_request.html_url.as_str(),
                                                       pull_request.title.as_str()));
 
-                    let attachments = vec![SlackAttachmentBuilder::new(review.body.as_str())
+                    let attachments = vec![SlackAttachmentBuilder::new(review.body())
                                                .title(format!("Review: {}", state_msg))
                                                .title_link(review.html_url.as_str())
                                                .color(color)
@@ -296,7 +296,7 @@ impl GithubEventHandler {
                                       commit_path,
                                       util::make_link(commit_url.as_str(), commit));
 
-                    let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
+                    let attachments = vec![SlackAttachmentBuilder::new(comment.body())
                                                .title(format!("{} said:",
                                                               self.slack_user_name(&comment.user)))
                                                .title_link(comment.html_url.as_str())
@@ -323,7 +323,7 @@ impl GithubEventHandler {
                                       util::make_link(issue.html_url.as_str(),
                                                       issue.title.as_str()));
 
-                    let attachments = vec![SlackAttachmentBuilder::new(comment.body.as_str())
+                    let attachments = vec![SlackAttachmentBuilder::new(comment.body())
                                                .title(format!("{} said:",
                                                               self.slack_user_name(&comment.user)))
                                                .title_link(comment.html_url.as_str())

@@ -148,18 +148,36 @@ pub struct Label {
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct Review {
     pub state: String,
-    pub body: String,
+    pub body: Option<String>,
     pub html_url: String,
     pub user: User,
+}
+
+impl Review {
+    pub fn body(&self) -> &str {
+        match self.body {
+            Some(ref body) => body,
+            None => "",
+        }
+    }
 }
 
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
 pub struct Comment {
     pub commit_id: Option<String>,
     pub path: Option<String>,
-    pub body: String,
+    pub body: Option<String>,
     pub html_url: String,
     pub user: User,
+}
+
+impl Comment {
+    pub fn body(&self) -> &str {
+        match self.body {
+            Some(ref body) => body,
+            None => "",
+        }
+    }
 }
 
 #[derive(RustcDecodable, RustcEncodable, Clone, Debug)]
