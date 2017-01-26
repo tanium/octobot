@@ -1,6 +1,7 @@
 extern crate env_logger;
 extern crate octobot;
 extern crate time;
+extern crate thread_id;
 
 #[macro_use]
 extern crate log;
@@ -26,9 +27,11 @@ fn main() {
 fn setup_logging() {
     let formatter = |record: &LogRecord| {
         let t = time::now();
-        format!("{},{:03} - {} - {}",
+        format!("[{},{:03}][{}:{}] - {} - {}",
                 time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
                 t.tm_nsec / 1000_000,
+                thread_id::get(),
+                std::thread::current().name().unwrap_or(""),
                 record.level(),
                 record.args())
     };
