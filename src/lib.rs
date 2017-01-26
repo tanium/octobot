@@ -7,6 +7,7 @@ extern crate regex;
 extern crate ring;
 extern crate router;
 extern crate rustc_serialize;
+extern crate serde;
 extern crate serde_json;
 extern crate threadpool;
 extern crate toml;
@@ -14,6 +15,8 @@ extern crate url;
 
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate serde_derive;
 
 pub mod config;
 pub mod dir_pool;

@@ -1,12 +1,12 @@
 use std;
 use std::collections::HashMap;
 use std::io::Read;
-use rustc_serialize::json;
+use serde_json;
 use url::Url;
 
 use github;
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct UserInfo {
     pub slack: String,
 }
@@ -27,7 +27,7 @@ pub fn load_config(file: &str) -> std::io::Result<UserConfig> {
     let mut contents = String::new();
     try!(f.read_to_string(&mut contents));
 
-    let users: UserHostMap = json::decode(&contents)
+    let users: UserHostMap = serde_json::from_str(&contents)
         .expect("Invalid JSON in users configuration file");
 
     Ok(UserConfig { users: users })
