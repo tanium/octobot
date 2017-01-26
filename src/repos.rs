@@ -58,7 +58,11 @@ impl RepoConfig {
             Ok(u) => {
                 u.host_str()
                     .and_then(|h| self.repos.get(h))
-                    .and_then(|m| m.get(&repo.full_name).or(m.get(repo.owner.login())))
+                    .and_then(|m| {
+                        m.get(&repo.full_name)
+                            .or(m.get(repo.owner.login()))
+                            .or(m.get(repo.owner.name()))
+                    })
             }
             Err(_) => None,
         }
