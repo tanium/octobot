@@ -1,12 +1,12 @@
 use std;
 use std::collections::HashMap;
 use std::io::Read;
-use rustc_serialize::json;
+use serde_json;
 use url::Url;
 
 use github;
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct RepoInfo {
     pub channel: String,
 }
@@ -27,7 +27,7 @@ pub fn load_config(file: &str) -> std::io::Result<RepoConfig> {
     let mut contents = String::new();
     try!(f.read_to_string(&mut contents));
 
-    let repos: RepoHostMap = json::decode(&contents)
+    let repos: RepoHostMap = serde_json::from_str(&contents)
         .expect("Invalid JSON in repos configuration file");
 
     Ok(RepoConfig { repos: repos })

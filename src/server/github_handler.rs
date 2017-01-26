@@ -5,8 +5,8 @@ use iron::prelude::*;
 use iron::status;
 use iron::middleware::Handler;
 use bodyparser;
-use rustc_serialize::json;
 use regex::Regex;
+use serde_json;
 
 use config::Config;
 use github;
@@ -66,10 +66,10 @@ impl Handler for GithubHandler {
             }
         };
 
-        let data: github::HookBody = match json::decode(body.as_str()) {
+        let data: github::HookBody = match serde_json::from_str(&body) {
             Ok(h) => h,
             Err(e) => {
-                error!("Error parsing json: {}\n---\n{}\n---\n", e, body.as_str());
+                error!("Error parsing json: {}\n---\n{}\n---\n", e, &body);
                 return Ok(Response::with((status::BadRequest,
                                           format!("Error parsing JSON: {}", e))));
             }

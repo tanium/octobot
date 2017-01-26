@@ -3,7 +3,9 @@ use hyper;
 use hyper::header::{Accept, Authorization, Bearer, ContentType, qitem};
 use hyper::method::Method;
 use hyper::mime::{Mime, TopLevel, SubLevel};
-use rustc_serialize::{json, Decodable, Encodable};
+use serde_json;
+use serde::ser::Serialize;
+use serde::de::Deserialize;
 
 use github::models::*;
 
@@ -69,7 +71,7 @@ impl Session {
     pub fn create_pull_request(&self, owner: &str, repo: &str, title: &str, body: &str,
                                head: &str, base: &str)
                                -> Result<PullRequest, String> {
-        #[derive(RustcEncodable)]
+        #[derive(Serialize)]
         struct CreatePR {
             title: String,
             body: String,
@@ -95,7 +97,7 @@ impl Session {
     pub fn assign_pull_request(&self, owner: &str, repo: &str, number: u32,
                                assignees: Vec<String>)
                                -> Result<AssignResponse, String> {
-        #[derive(RustcEncodable)]
+        #[derive(Serialize)]
         struct AssignPR {
             assignees: Vec<String>,
         }
@@ -114,16 +116,16 @@ pub struct GithubClient {
 }
 
 impl GithubClient {
-    pub fn get<T: Decodable>(&self, path: &str) -> Result<T, String> {
+    pub fn get<T: Deserialize>(&self, path: &str) -> Result<T, String> {
         self.request::<T, String>(Method::Get, path, None)
     }
 
-    pub fn post<T: Decodable, E: Encodable>(&self, path: &str, body: &E) -> Result<T, String> {
+    pub fn post<T: Deserialize, E: Serialize>(&self, path: &str, body: &E) -> Result<T, String> {
         self.request::<T, E>(Method::Post, path, Some(body))
     }
 
-    fn request<T: Decodable, E: Encodable>(&self, method: Method, path: &str, body: Option<&E>)
-                                           -> Result<T, String> {
+    fn request<T: Deserialize, E: Serialize>(&self, method: Method, path: &str, body: Option<&E>)
+                                             -> Result<T, String> {
         let url;
         if path.starts_with("/") {
             url = self.api_base.clone() + path;
@@ -140,7 +142,7 @@ impl GithubClient {
             .header(Authorization(Bearer { token: self.token.clone() }));
 
         if let Some(body) = body {
-            body_json = match json::encode(body) {
+            body_json = match serde_json::to_string(&body) {
                 Ok(j) => j,
                 Err(e) => return Err(format!("Error json-encoding body: {}", e)),
             };
@@ -154,7 +156,7 @@ impl GithubClient {
                 let mut res_str = String::new();
                 res.read_to_string(&mut res_str).unwrap_or(0);
                 if res.status.is_success() {
-                    let obj: T = match json::decode(&res_str) {
+                    let obj: T = match serde_json::from_str(&res_str) {
                         Ok(obj) => obj,
                         Err(e) => return Err(format!("Coudl not parse response: {}", e)),
                     };

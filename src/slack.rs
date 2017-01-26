@@ -2,7 +2,7 @@ use std::io::Read;
 use hyper;
 use hyper::header::ContentType;
 use hyper::mime::{Mime, TopLevel, SubLevel};
-use rustc_serialize::json;
+use serde_json;
 
 // the main object for sending messages to slack
 pub struct Slack {
@@ -14,7 +14,7 @@ pub trait SlackSender {
             -> Result<(), String>;
 }
 
-#[derive(RustcEncodable, Clone, PartialEq, Eq, Debug)]
+#[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct SlackAttachment {
     pub text: String,
     pub title: Option<String>,
@@ -67,7 +67,7 @@ impl SlackAttachmentBuilder {
 }
 
 
-#[derive(RustcEncodable)]
+#[derive(Serialize)]
 struct SlackMessage {
     text: String,
     attachments: Vec<SlackAttachment>,
@@ -88,7 +88,7 @@ impl SlackSender for Slack {
         let client = hyper::client::Client::new();
         let res = client.post(self.webhook_url.as_str())
             .header(ContentType(Mime(TopLevel::Application, SubLevel::Json, vec![])))
-            .body(json::encode(&slack_msg).unwrap_or(String::new()).as_str())
+            .body(serde_json::to_string(&slack_msg).unwrap_or(String::new()).as_str())
             .send();
 
         match res {
