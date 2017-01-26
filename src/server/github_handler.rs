@@ -342,6 +342,71 @@ impl GithubEventHandler {
     }
 
     fn handle_push(&self) -> Response {
+        if self.data.deleted() || self.data.created() {
+            // ignore
+            return Response::with((status::Ok, "push [ignored]"));
+        }
+        if self.data.ref_name().len() > 0 && self.data.after().len() > 0 &&
+           self.data.before().len() > 0 {
+
+            let branch_name = self.data.ref_name().replace("refs/heads/", "");
+
+            let prs = match self.github_session
+                .get_pull_requests(&self.data.repository.owner.name(),
+                                   &self.data.repository.name,
+                                   Some("open"),
+                                   Some(self.data.after())) {
+                Ok(p) => p,
+                Err(e) => {
+                    error!("Error looking up PR for '{}' ({}): {}",
+                           branch_name,
+                           self.data.after(),
+                           e);
+                    return Response::with((status::Ok, "push [no PR]"));
+                }
+            };
+            if prs.len() == 0 {
+                info!("No PRs found for '{}' ({})", branch_name, self.data.after());
+            } else {
+                let attachments: Vec<_>;
+                if let Some(ref commits) = self.data.commits {
+                    attachments = commits.iter()
+                        .map(|commit| {
+                            let msg = commit.message.lines().next().unwrap_or("");
+                            let hash: &str = &commit.id[0..7];
+                            let attach = format!("{}: {}", util::make_link(&commit.url, hash), msg);
+                            SlackAttachmentBuilder::new(&attach).build()
+                        })
+                        .collect();
+                } else {
+                    attachments = vec![];
+                }
+
+                let message = format!("{} pushed {} commit(s) to branch {}",
+                                      self.slack_user_name(&self.data.sender),
+                                      attachments.len(),
+                                      branch_name);
+
+                for pull_request in &prs {
+                    let mut attachments = attachments.clone();
+                    attachments.insert(0,
+                                       SlackAttachmentBuilder::new("")
+                                           .title(format!("Pull Request #{}: \"{}\"",
+                                                          pull_request.number,
+                                                          pull_request.title.as_str()))
+                                           .title_link(pull_request.html_url.as_str())
+                                           .build());
+
+                    self.messenger.send_to_all(&message,
+                                               &attachments,
+                                               &pull_request.user,
+                                               &self.data.sender,
+                                               &self.data.repository,
+                                               &pull_request.assignees);
+                }
+            }
+        }
+
         Response::with((status::Ok, "push"))
     }
 

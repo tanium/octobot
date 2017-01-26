@@ -60,12 +60,20 @@ impl Session {
     pub fn get_pull_requests(&self, owner: &str, repo: &str, state: Option<&str>,
                              head: Option<&str>)
                              -> Result<Vec<PullRequest>, String> {
-        self.client.get(format!("repos/{}/{}/pulls?state={}&head={}",
+        let prs: Vec<PullRequest> = try!(self.client.get(&format!("repos/{}/{}/pulls?state={}&head={}",
                                 owner,
                                 repo,
                                 state.unwrap_or(""),
-                                head.unwrap_or(""))
-            .as_str())
+                                head.unwrap_or(""))));
+
+        let prs: Vec<PullRequest> = prs.into_iter().filter(|p| {
+            if let Some(head) = head {
+                p.head.ref_name == head || p.head.sha == head
+            } else {
+                true
+            }
+        }).collect();
+        Ok(prs)
     }
 
     pub fn create_pull_request(&self, owner: &str, repo: &str, title: &str, body: &str,

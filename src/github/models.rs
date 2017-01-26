@@ -12,21 +12,80 @@ pub struct HookBody {
     pub pull_request: Option<PullRequest>,
     pub review: Option<Review>,
     pub label: Option<Label>,
+
+    // push event related stuff
+    #[serde(rename = "ref")]
+    pub ref_name: Option<String>,
+    pub after: Option<String>,
+    pub before: Option<String>,
+    pub compare: Option<String>,
+    pub forced: Option<bool>,
+    pub deleted: Option<bool>,
+    pub created: Option<bool>,
+    pub commits: Option<Vec<Commit>>,
 }
+
+impl HookBody {
+    pub fn ref_name(&self) -> &str {
+        match self.ref_name {
+            Some(ref v) => v,
+            None => "",
+        }
+    }
+
+    pub fn after(&self) -> &str {
+        match self.after {
+            Some(ref v) => v,
+            None => "",
+        }
+    }
+
+    pub fn before(&self) -> &str {
+        match self.before {
+            Some(ref v) => v,
+            None => "",
+        }
+    }
+
+    pub fn forced(&self) -> bool {
+        self.forced.unwrap_or(false)
+    }
+
+    pub fn created(&self) -> bool {
+        self.deleted.unwrap_or(false)
+    }
+
+    pub fn deleted(&self) -> bool {
+        self.deleted.unwrap_or(false)
+    }
+}
+
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct User {
     pub login: Option<String>,
+    pub name: Option<String>,
 }
 
 impl User {
     pub fn new(login: &str) -> User {
-        User { login: Some(login.to_string()) }
+        User {
+            login: Some(login.to_string()),
+            name: Some(login.to_string()),
+        }
     }
 
     pub fn login(&self) -> &str {
         if let Some(ref login) = self.login {
             login
+        } else {
+            ""
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        if let Some(ref name) = self.name {
+            name
         } else {
             ""
         }
@@ -83,6 +142,8 @@ pub struct BranchRef {
     #[serde(rename = "ref")]
     pub ref_name: String,
     pub sha: String,
+    pub user: User,
+    pub repo: Repo,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -152,6 +213,14 @@ impl Comment {
             None => "",
         }
     }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Commit {
+    pub id: String,
+    pub tree_id: String,
+    pub message: String,
+    pub url: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
