@@ -43,7 +43,7 @@ pub fn start(config: Config) -> Result<(), String> {
 
     match Iron::new(chain).http(addr_and_port.as_str()) {
         Ok(_) => {
-            println!("Listening on port {}", addr_and_port);
+            info!("Listening on port {}", addr_and_port);
             Ok(())
         }
         Err(e) => Err(format!("{}", e)),
