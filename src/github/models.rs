@@ -26,6 +26,27 @@ pub struct HookBody {
 }
 
 impl HookBody {
+    pub fn new() -> HookBody {
+        HookBody {
+            repository: Repo::new(),
+            sender: User::new(""),
+            action: None,
+            issue: None,
+            comment: None,
+            pull_request: None,
+            review: None,
+            label: None,
+            ref_name: None,
+            after: None,
+            before: None,
+            compare: None,
+            forced: None,
+            deleted: None,
+            created: None,
+            commits: None,
+        }
+    }
+
     pub fn ref_name(&self) -> &str {
         match self.ref_name {
             Some(ref v) => v,
@@ -52,7 +73,7 @@ impl HookBody {
     }
 
     pub fn created(&self) -> bool {
-        self.deleted.unwrap_or(false)
+        self.created.unwrap_or(false)
     }
 
     pub fn deleted(&self) -> bool {
@@ -258,5 +279,47 @@ mod tests {
     #[should_panic]
     fn test_repo_parse_too_many_parts() {
         Repo::parse("http://git.company.com/users/repo/huh").unwrap();
+    }
+
+    #[test]
+    fn test_hook_body_funcs() {
+        // test defaults
+        {
+            let body = HookBody::new();
+            assert_eq!("", body.ref_name());
+            assert_eq!("", body.after());
+            assert_eq!("", body.before());
+            assert_eq!(false, body.forced());
+            assert_eq!(false, body.created());
+            assert_eq!(false, body.deleted());
+        }
+
+        // test values
+        {
+            let mut body = HookBody::new();
+            body.ref_name = Some("the-ref".to_string());
+            body.after = Some("after".to_string());
+            body.before = Some("before".to_string());
+            assert_eq!("the-ref", body.ref_name());
+            assert_eq!("after", body.after());
+            assert_eq!("before", body.before());
+        }
+        // test bools one by one
+        {
+            let mut body = HookBody::new();
+            body.forced = Some(true);
+            assert_eq!(true, body.forced());
+        }
+
+        {
+            let mut body = HookBody::new();
+            body.created = Some(true);
+            assert_eq!(true, body.created());
+        }
+        {
+            let mut body = HookBody::new();
+            body.deleted = Some(true);
+            assert_eq!(true, body.deleted());
+        }
     }
 }
