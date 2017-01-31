@@ -52,7 +52,8 @@ repos.json
            "channel": "the-org-reviews"
         },
         "some-org/special-repo": {
-            "channel": "special-repo-reviews"
+           "channel": "special-repo-reviews",
+           "force_push_notify": false, // turn off force-push notifications
         }
       }
     }
