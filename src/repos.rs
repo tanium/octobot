@@ -6,9 +6,10 @@ use url::Url;
 
 use github;
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RepoInfo {
     pub channel: String,
+    pub force_push: Option<bool>,
 }
 
 // maps repo name to repo config
@@ -17,7 +18,7 @@ pub type RepoMap = HashMap<String, RepoInfo>;
 // maps github host to repos map
 pub type RepoHostMap = HashMap<String, RepoMap>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RepoConfig {
     repos: RepoHostMap,
 }
@@ -39,17 +40,39 @@ impl RepoConfig {
     }
 
     pub fn insert(&mut self, host: &str, repo_name: &str, channel: &str) {
+        self.insert_info(host,
+                         repo_name,
+                         RepoInfo {
+                             channel: channel.to_string(),
+                             force_push: None,
+                         });
+    }
+
+    pub fn insert_info(&mut self, host: &str, repo_name: &str, info: RepoInfo) {
         self.repos
             .entry(host.to_string())
             .or_insert(RepoMap::new())
-            .insert(repo_name.to_string(),
-                    RepoInfo { channel: channel.to_string() });
+            .insert(repo_name.to_string(), info);
     }
 
     pub fn lookup_channel(&self, repo: &github::Repo) -> Option<String> {
         match self.lookup_info(repo) {
             Some(info) => Some(info.channel.clone()),
             None => None,
+        }
+    }
+
+    // always force for unconfigured repos/orgs;
+    // defaults to true for configured repos/orgs w/ no value set
+    pub fn notify_force_push(&self, repo: &github::Repo) -> bool {
+        match self.lookup_info(repo) {
+            None => false,
+            Some(ref info) => {
+                match info.force_push {
+                    Some(value) => value,
+                    None => true,
+                }
+            }
         }
     }
 
@@ -112,4 +135,52 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_notify_force_push() {
+        let mut repos = RepoConfig::new();
+        repos.insert_info("git.company.com",
+                          "some-user/noisy-repo-by-default",
+                          RepoInfo {
+                              channel: "reviews".to_string(),
+                              force_push: None,
+                          });
+        repos.insert_info("git.company.com",
+                          "some-user/noisy-repo-on-purpose",
+                          RepoInfo {
+                              channel: "reviews".to_string(),
+                              force_push: Some(true),
+                          });
+        repos.insert_info("git.company.com",
+                          "some-user/quiet-repo",
+                          RepoInfo {
+                              channel: "reviews".to_string(),
+                              force_push: Some(false),
+                          });
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo")
+                .unwrap();
+            assert_eq!(false, repos.notify_force_push(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.\
+                                            com/some-user/noisy-repo-by-default")
+                .unwrap();
+            assert_eq!(true, repos.notify_force_push(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.\
+                                            com/some-user/noisy-repo-on-purpose")
+                .unwrap();
+            assert_eq!(true, repos.notify_force_push(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
+            assert_eq!(false, repos.notify_force_push(&repo));
+        }
+
+    }
 }

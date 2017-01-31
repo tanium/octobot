@@ -390,7 +390,7 @@ impl GithubEventHandler {
                                                &self.data.repository,
                                                &pull_request.assignees);
 
-                    if self.data.forced() {
+                    if self.data.forced() && self.config.repos.notify_force_push(&self.data.repository) {
                         let mut comment = format!("Force-push detected: before: {}, after: {}",
                                                   &self.data.before()[0..7],
                                                   &self.data.after()[0..7]);
