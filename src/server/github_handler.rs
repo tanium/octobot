@@ -397,11 +397,13 @@ impl GithubEventHandler {
                         if let Some(ref url) = self.data.compare {
                             comment += &format!(" ([compare]({}))", url);
                         }
-                        self.github_session
+                        if let Err(e) = self.github_session
                             .comment_pull_request(&self.data.repository.owner.name(),
                                                   &self.data.repository.name,
                                                   pull_request.number,
-                                                  &comment);
+                                                  &comment) {
+                            error!("Error sending github PR comment: {}", e);
+                        }
                     }
                 }
             }
