@@ -403,6 +403,20 @@ impl GithubEventHandler {
                                                &self.data.sender,
                                                &self.data.repository,
                                                &pull_request.assignees);
+
+                    if self.data.forced() {
+                        let mut comment = format!("Force-push detected: before: {}, after: {}",
+                                                  &self.data.before()[0..7],
+                                                  &self.data.after()[0..7]);
+                        if let Some(ref url) = self.data.compare {
+                            comment += &format!(" ([compare]({}))", url);
+                        }
+                        self.github_session
+                            .comment_pull_request(&self.data.repository.owner.name(),
+                                                  &self.data.repository.name,
+                                                  pull_request.number,
+                                                  &comment);
+                    }
                 }
             }
         }
