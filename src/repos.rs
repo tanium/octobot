@@ -9,7 +9,7 @@ use github;
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RepoInfo {
     pub channel: String,
-    pub force_push: Option<bool>,
+    pub force_push_notify: Option<bool>,
 }
 
 // maps repo name to repo config
@@ -44,7 +44,7 @@ impl RepoConfig {
                          repo_name,
                          RepoInfo {
                              channel: channel.to_string(),
-                             force_push: None,
+                             force_push_notify: None,
                          });
     }
 
@@ -68,7 +68,7 @@ impl RepoConfig {
         match self.lookup_info(repo) {
             None => false,
             Some(ref info) => {
-                match info.force_push {
+                match info.force_push_notify {
                     Some(value) => value,
                     None => true,
                 }
@@ -142,19 +142,19 @@ mod tests {
                           "some-user/noisy-repo-by-default",
                           RepoInfo {
                               channel: "reviews".to_string(),
-                              force_push: None,
+                              force_push_notify: None,
                           });
         repos.insert_info("git.company.com",
                           "some-user/noisy-repo-on-purpose",
                           RepoInfo {
                               channel: "reviews".to_string(),
-                              force_push: Some(true),
+                              force_push_notify: Some(true),
                           });
         repos.insert_info("git.company.com",
                           "some-user/quiet-repo",
                           RepoInfo {
                               channel: "reviews".to_string(),
-                              force_push: Some(false),
+                              force_push_notify: Some(false),
                           });
 
         {
