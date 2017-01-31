@@ -167,6 +167,13 @@ pub struct BranchRef {
     pub repo: Repo,
 }
 
+pub trait PullRequestLike {
+    fn user(&self) -> &User;
+    fn assignees(&self) -> &Vec<User>;
+    fn title(&self) -> &str;
+    fn html_url(&self) -> &str;
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PullRequest {
     pub title: String,
@@ -187,6 +194,24 @@ impl PullRequest {
     }
 }
 
+impl<'a> PullRequestLike for &'a PullRequest {
+    fn user(&self) -> &User {
+        &self.user
+    }
+
+    fn assignees(&self) -> &Vec<User> {
+        &self.assignees
+    }
+
+    fn title(&self) -> &str {
+        &self.title
+    }
+
+    fn html_url(&self) -> &str {
+        &self.html_url
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Issue {
     pub html_url: String,
@@ -195,9 +220,34 @@ pub struct Issue {
     pub assignees: Vec<User>,
 }
 
+impl<'a> PullRequestLike for &'a Issue {
+    fn user(&self) -> &User {
+        &self.user
+    }
+
+    fn assignees(&self) -> &Vec<User> {
+        &self.assignees
+    }
+
+    fn title(&self) -> &str {
+        &self.title
+    }
+
+    fn html_url(&self) -> &str {
+        &self.html_url
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Label {
     pub name: String,
+}
+
+
+pub trait CommentLike {
+    fn user(&self) -> &User;
+    fn body(&self) -> &str;
+    fn html_url(&self) -> &str;
 }
 
 
@@ -209,14 +259,23 @@ pub struct Review {
     pub user: User,
 }
 
-impl Review {
-    pub fn body(&self) -> &str {
+impl<'a> CommentLike for &'a Review {
+    fn body(&self) -> &str {
         match self.body {
             Some(ref body) => body,
             None => "",
         }
     }
+
+    fn user(&self) -> &User {
+        &self.user
+    }
+
+    fn html_url(&self) -> &str {
+        &self.html_url
+    }
 }
+
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Comment {
@@ -227,14 +286,23 @@ pub struct Comment {
     pub user: User,
 }
 
-impl Comment {
-    pub fn body(&self) -> &str {
+impl<'a> CommentLike for &'a Comment {
+    fn body(&self) -> &str {
         match self.body {
             Some(ref body) => body,
             None => "",
         }
     }
+
+    fn user(&self) -> &User {
+        &self.user
+    }
+
+    fn html_url(&self) -> &str {
+        &self.html_url
+    }
 }
+
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Commit {

@@ -10,6 +10,7 @@ use serde_json;
 
 use config::Config;
 use github;
+use github::CommentLike;
 use messenger::{self, Messenger};
 use pr_merge::{self, PRMergeMessage};
 use slack::SlackAttachmentBuilder;
@@ -185,10 +186,7 @@ impl GithubEventHandler {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref comment) = self.data.comment {
                 if self.action == "created" {
-                    self.do_pull_request_comment(pull_request,
-                                                 &comment.user,
-                                                 comment.body(),
-                                                 comment.html_url.as_str());
+                    self.do_pull_request_comment(&pull_request, &comment)
                 }
 
             }
@@ -204,10 +202,7 @@ impl GithubEventHandler {
 
                     // just a comment. should just be handled by regular comment handler.
                     if review.state == "commented" {
-                        self.do_pull_request_comment(pull_request,
-                                                     &review.user,
-                                                     review.body(),
-                                                     review.html_url.as_str());
+                        self.do_pull_request_comment(&pull_request, &review);
                         return Response::with((status::Ok, "pr_review [comment]"));
                     }
 
@@ -254,27 +249,33 @@ impl GithubEventHandler {
         Response::with((status::Ok, "pr_review"))
     }
 
-    fn do_pull_request_comment(&self, pull_request: &github::PullRequest,
-                               commenter: &github::User, comment_body: &str, comment_url: &str) {
-        if comment_body.trim().len() == 0 {
+    fn do_pull_request_comment(&self, pull_request: &github::PullRequestLike,
+                               comment: &github::CommentLike) {
+        if comment.body().trim().len() == 0 {
+            return;
+        }
+        if comment.user().login() == self.github_session.user().login() {
+            info!("Ignoring message from octobot ({}): {}",
+                  self.github_session.user().login(),
+                  comment.body());
             return;
         }
 
         let msg = format!("Comment on \"{}\"",
-                          util::make_link(pull_request.html_url.as_str(),
-                                          pull_request.title.as_str()));
+                          util::make_link(pull_request.html_url(), pull_request.title()));
 
-        let attachments = vec![SlackAttachmentBuilder::new(comment_body)
-                                   .title(format!("{} said:", self.slack_user_name(&commenter)))
-                                   .title_link(comment_url)
+        let attachments = vec![SlackAttachmentBuilder::new(comment.body().trim())
+                                   .title(format!("{} said:",
+                                                  self.slack_user_name(comment.user())))
+                                   .title_link(comment.html_url())
                                    .build()];
 
         self.messenger.send_to_all(&msg,
                                    &attachments,
-                                   &pull_request.user,
+                                   pull_request.user(),
                                    &self.data.sender,
                                    &self.data.repository,
-                                   &pull_request.assignees);
+                                   pull_request.assignees());
 
     }
 
@@ -319,22 +320,7 @@ impl GithubEventHandler {
         if let Some(ref issue) = self.data.issue {
             if let Some(ref comment) = self.data.comment {
                 if self.action == "created" {
-                    let msg = format!("Comment on \"{}\"",
-                                      util::make_link(issue.html_url.as_str(),
-                                                      issue.title.as_str()));
-
-                    let attachments = vec![SlackAttachmentBuilder::new(comment.body())
-                                               .title(format!("{} said:",
-                                                              self.slack_user_name(&comment.user)))
-                                               .title_link(comment.html_url.as_str())
-                                               .build()];
-
-                    self.messenger.send_to_all(&msg,
-                                               &attachments,
-                                               &issue.user,
-                                               &self.data.sender,
-                                               &self.data.repository,
-                                               &issue.assignees);
+                    self.do_pull_request_comment(&issue, &comment);
                 }
             }
         }
