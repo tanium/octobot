@@ -10,7 +10,7 @@ use util;
 pub trait Messenger {
     fn send_to_all(&self, msg: &str, attachments: &Vec<SlackAttachment>,
                    item_owner: &github::User, sender: &github::User, repo: &github::Repo,
-                   assignees: &Vec<github::User>);
+                   participants: &Vec<github::User>);
 
     fn send_to_owner(&self, msg: &str, attachments: &Vec<SlackAttachment>,
                      item_owner: &github::User, repo: &github::Repo);
@@ -37,12 +37,12 @@ const DND_MARKER: &'static str = "DO NOT DISTURB";
 impl Messenger for SlackMessenger {
     fn send_to_all(&self, msg: &str, attachments: &Vec<SlackAttachment>,
                    item_owner: &github::User, sender: &github::User, repo: &github::Repo,
-                   assignees: &Vec<github::User>) {
+                   participants: &Vec<github::User>) {
         self.send_to_channel(msg, attachments, repo);
 
         let mut slackbots: Vec<github::User> = vec![item_owner.clone()];
 
-        slackbots.extend(assignees.iter()
+        slackbots.extend(participants.iter()
             .filter(|a| a.login != item_owner.login)
             .map(|a| a.clone()));
 

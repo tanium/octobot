@@ -22,7 +22,7 @@ pub struct HookBody {
     pub forced: Option<bool>,
     pub deleted: Option<bool>,
     pub created: Option<bool>,
-    pub commits: Option<Vec<Commit>>,
+    pub commits: Option<Vec<PushCommit>>,
 }
 
 impl HookBody {
@@ -99,17 +99,17 @@ impl User {
     pub fn login(&self) -> &str {
         if let Some(ref login) = self.login {
             login
-        } else {
-            ""
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        if let Some(ref name) = self.name {
+        } else if let Some(ref name) = self.name {
             name
         } else {
             ""
         }
+    }
+}
+
+impl PartialEq for User {
+    fn eq(&self, other: &User) -> bool {
+        self.login() == other.login()
     }
 }
 
@@ -172,6 +172,7 @@ pub trait PullRequestLike {
     fn assignees(&self) -> &Vec<User>;
     fn title(&self) -> &str;
     fn html_url(&self) -> &str;
+    fn number(&self) -> u32;
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -210,10 +211,15 @@ impl<'a> PullRequestLike for &'a PullRequest {
     fn html_url(&self) -> &str {
         &self.html_url
     }
+
+    fn number(&self) -> u32 {
+        self.number
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Issue {
+    pub number: u32,
     pub html_url: String,
     pub title: String,
     pub user: User,
@@ -235,6 +241,10 @@ impl<'a> PullRequestLike for &'a Issue {
 
     fn html_url(&self) -> &str {
         &self.html_url
+    }
+
+    fn number(&self) -> u32 {
+        self.number
     }
 }
 
@@ -311,12 +321,28 @@ impl<'a> CommentLike for &'a Comment {
     }
 }
 
+// the 'Commit' objects that come from a push event have a different format from
+// the api that lists commits for a PR
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct Commit {
+pub struct PushCommit {
     pub id: String,
     pub tree_id: String,
     pub message: String,
     pub url: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Commit {
+    pub message: String,
+    pub sha: String,
+    pub html_url: String,
+    pub commit: CommitDetails,
+    pub author: Option<User>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct CommitDetails {
+    pub message: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
