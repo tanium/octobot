@@ -9,13 +9,36 @@ use serde::de::Deserialize;
 
 use github::models::*;
 
-pub struct Session {
+pub trait Session : Send + Sync {
+    fn user(&self) -> &User;
+    fn github_host(&self) -> &str;
+    fn github_token(&self) -> &str;
+    fn get_pull_request(&self, owner: &str, repo: &str, number: u32)
+                        -> Result<PullRequest, String>;
+    fn get_pull_requests(&self, owner: &str, repo: &str, state: Option<&str>, head: Option<&str>)
+                         -> Result<Vec<PullRequest>, String>;
+
+    fn create_pull_request(&self, owner: &str, repo: &str, title: &str, body: &str, head: &str,
+                           base: &str)
+                           -> Result<PullRequest, String>;
+
+    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
+                               -> Result<Vec<Label>, String>;
+
+    fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>)
+                           -> Result<AssignResponse, String>;
+
+    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str)
+                            -> Result<(), String>;
+}
+
+pub struct GithubSession {
     client: GithubClient,
     user: User,
 }
 
-impl Session {
-    pub fn new(host: &str, token: &str) -> Result<Session, String> {
+impl GithubSession {
+    pub fn new(host: &str, token: &str) -> Result<GithubSession, String> {
         let api_base = if host == "github.com" {
             "https://api.github.com".to_string()
         } else {
@@ -34,30 +57,32 @@ impl Session {
             Err(e) => return Err(format!("Error authenticating with token: {}", e)),
         };
 
-        Ok(Session {
+        Ok(GithubSession {
             client: client,
             user: user,
         })
     }
+}
 
-    pub fn user(&self) -> &User {
+impl Session for GithubSession {
+    fn user(&self) -> &User {
         return &self.user;
     }
 
-    pub fn github_host(&self) -> &str {
+    fn github_host(&self) -> &str {
         &self.client.host
     }
 
-    pub fn github_token(&self) -> &str {
+    fn github_token(&self) -> &str {
         &self.client.token
     }
 
-    pub fn get_pull_request(&self, owner: &str, repo: &str, number: u32)
+    fn get_pull_request(&self, owner: &str, repo: &str, number: u32)
                             -> Result<PullRequest, String> {
         self.client.get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
     }
 
-    pub fn get_pull_requests(&self, owner: &str, repo: &str, state: Option<&str>,
+    fn get_pull_requests(&self, owner: &str, repo: &str, state: Option<&str>,
                              head: Option<&str>)
                              -> Result<Vec<PullRequest>, String> {
         let prs: Vec<PullRequest> = try!(self.client
@@ -79,7 +104,7 @@ impl Session {
         Ok(prs)
     }
 
-    pub fn create_pull_request(&self, owner: &str, repo: &str, title: &str, body: &str,
+    fn create_pull_request(&self, owner: &str, repo: &str, title: &str, body: &str,
                                head: &str, base: &str)
                                -> Result<PullRequest, String> {
         #[derive(Serialize)]
@@ -99,13 +124,13 @@ impl Session {
         self.client.post(&format!("repos/{}/{}/pulls", owner, repo), &pr)
     }
 
-    pub fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
+    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
                                    -> Result<Vec<Label>, String> {
 
         self.client.get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number))
     }
 
-    pub fn assign_pull_request(&self, owner: &str, repo: &str, number: u32,
+    fn assign_pull_request(&self, owner: &str, repo: &str, number: u32,
                                assignees: Vec<String>)
                                -> Result<AssignResponse, String> {
         #[derive(Serialize)]
@@ -119,7 +144,7 @@ impl Session {
                          &body)
     }
 
-    pub fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str)
+    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str)
                                 -> Result<(), String> {
         #[derive(Serialize)]
         struct CommentPR {

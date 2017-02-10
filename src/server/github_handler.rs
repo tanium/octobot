@@ -35,9 +35,9 @@ struct GithubEventHandler {
 const MAX_CONCURRENT_MERGES: usize = 20;
 
 impl GithubHandler {
-    pub fn new(config: Arc<Config>, github_session: github::api::Session) -> GithubHandler {
+    pub fn new(config: Arc<Config>, github_session: github::api::GithubSession) -> GithubHandler {
 
-        let session = Arc::new(github_session);
+        let session: Arc<github::api::Session> = Arc::new(github_session);
         GithubHandler {
             config: config.clone(),
             github_session: session.clone(),
