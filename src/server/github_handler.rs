@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use iron::prelude::*;
-use iron::status;
+use iron::status::{self, Status};
 use iron::middleware::Handler;
 use bodyparser;
 use regex::Regex;
@@ -22,7 +22,7 @@ pub struct GithubHandler {
     pr_merge_worker: pr_merge::Worker,
 }
 
-struct GithubEventHandler {
+pub struct GithubEventHandler {
     pub messenger: Box<Messenger>,
     pub config: Arc<Config>,
     pub event: String,
@@ -92,14 +92,16 @@ impl Handler for GithubHandler {
         };
 
         match handler.handle_event() {
-            Some(r) => Ok(r),
+            Some(resp) => Ok(Response::with(resp)),
             None => Ok(Response::with((status::Ok, format!("Unhandled event: {}", event)))),
         }
     }
 }
 
+type EventResponse = (Status, String);
+
 impl GithubEventHandler {
-    fn handle_event(&self) -> Option<Response> {
+    pub fn handle_event(&self) -> Option<EventResponse> {
         info!("Received event: {}", self.event);
         if self.event == "ping" {
             Some(self.handle_ping())
@@ -124,11 +126,11 @@ impl GithubEventHandler {
         self.config.users.slack_user_name(user.login(), &self.data.repository)
     }
 
-    fn handle_ping(&self) -> Response {
-        Response::with((status::Ok, "ping"))
+    fn handle_ping(&self) -> EventResponse {
+        (status::Ok, "ping".into())
     }
 
-    fn handle_pr(&self) -> Response {
+    fn handle_pr(&self) -> EventResponse {
         if let Some(ref pull_request) = self.data.pull_request {
             let verb: Option<String>;
             if self.action == "opened" {
@@ -179,10 +181,10 @@ impl GithubEventHandler {
             }
         }
 
-        Response::with((status::Ok, "pr"))
+        (status::Ok, "pr".into())
     }
 
-    fn handle_pr_review_comment(&self) -> Response {
+    fn handle_pr_review_comment(&self) -> EventResponse {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref comment) = self.data.comment {
                 if self.action == "created" {
@@ -192,10 +194,10 @@ impl GithubEventHandler {
             }
         }
 
-        Response::with((status::Ok, "pr_review_comment"))
+        (status::Ok, "pr_review_comment".into())
     }
 
-    fn handle_pr_review(&self) -> Response {
+    fn handle_pr_review(&self) -> EventResponse {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref review) = self.data.review {
                 if self.action == "submitted" {
@@ -203,7 +205,7 @@ impl GithubEventHandler {
                     // just a comment. should just be handled by regular comment handler.
                     if review.state == "commented" {
                         self.do_pull_request_comment(&pull_request, &review);
-                        return Response::with((status::Ok, "pr_review [comment]"));
+                        return (status::Ok, "pr_review [comment]".into());
                     }
 
                     let action_msg;
@@ -220,7 +222,7 @@ impl GithubEventHandler {
                         color = "good";
 
                     } else {
-                        return Response::with((status::Ok, "pr_review [ignored]"));
+                        return (status::Ok, "pr_review [ignored]".into());
                     }
 
                     let msg = format!("{} {} PR \"{}\"",
@@ -246,7 +248,7 @@ impl GithubEventHandler {
             }
         }
 
-        Response::with((status::Ok, "pr_review"))
+        (status::Ok, "pr_review".into())
     }
 
     fn do_pull_request_comment(&self, pull_request: &github::PullRequestLike,
@@ -279,7 +281,7 @@ impl GithubEventHandler {
 
     }
 
-    fn handle_commit_comment(&self) -> Response {
+    fn handle_commit_comment(&self) -> EventResponse {
         if let Some(ref comment) = self.data.comment {
             if self.action == "created" {
                 if let Some(ref commit_id) = comment.commit_id {
@@ -313,10 +315,10 @@ impl GithubEventHandler {
             }
         }
 
-        Response::with((status::Ok, "commit_comment"))
+        (status::Ok, "commit_comment".into())
     }
 
-    fn handle_issue_comment(&self) -> Response {
+    fn handle_issue_comment(&self) -> EventResponse {
         if let Some(ref issue) = self.data.issue {
             if let Some(ref comment) = self.data.comment {
                 if self.action == "created" {
@@ -324,13 +326,13 @@ impl GithubEventHandler {
                 }
             }
         }
-        Response::with((status::Ok, "issue_comment"))
+        (status::Ok, "issue_comment".into())
     }
 
-    fn handle_push(&self) -> Response {
+    fn handle_push(&self) -> EventResponse {
         if self.data.deleted() || self.data.created() {
             // ignore
-            return Response::with((status::Ok, "push [ignored]"));
+            return (status::Ok, "push [ignored]".into());
         }
         if self.data.ref_name().len() > 0 && self.data.after().len() > 0 &&
            self.data.before().len() > 0 {
@@ -348,7 +350,7 @@ impl GithubEventHandler {
                            branch_name,
                            self.data.after(),
                            e);
-                    return Response::with((status::Ok, "push [no PR]"));
+                    return (status::Ok, "push [no PR]".into());
                 }
             };
             if prs.len() == 0 {
@@ -411,7 +413,7 @@ impl GithubEventHandler {
             }
         }
 
-        Response::with((status::Ok, "push"))
+        (status::Ok, "push".into())
     }
 
     fn merge_pull_request_all_labels(&self, pull_request: &github::PullRequest) {

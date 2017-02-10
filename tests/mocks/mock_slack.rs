@@ -35,10 +35,7 @@ impl MockSlack {
 }
 
 impl SlackSender for MockSlack {
-    fn send(&self,
-            channel: &str,
-            msg: &str,
-            attachments: Vec<SlackAttachment>)
+    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>)
             -> Result<(), String> {
 
         if self.call_count.get() >= self.expected_calls.len() {
@@ -68,4 +65,3 @@ impl Drop for MockSlack {
         }
     }
 }
-
