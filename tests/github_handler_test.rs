@@ -36,7 +36,7 @@ fn new_messenger(slack: MockSlack, config: Arc<Config>) -> SlackMessenger {
 }
 
 fn new_handler() -> GithubEventHandler {
-    let github = MockGithub::new(User::new("joe"));
+    let github = MockGithub::new();
     let (tx, _) = mpsc::channel();
     let slack = MockSlack::new(vec![]);
 
@@ -201,7 +201,7 @@ fn test_issue_comment() {
 }
 
 #[test]
-fn test_pull_request_review_comment() {
+fn test_pull_request_comment() {
     let mut handler = new_handler();
     handler.event = "pull_request_review_comment".into();
     handler.action = "created".into();
@@ -233,3 +233,79 @@ fn test_pull_request_review_comment() {
     let resp = handler.handle_event().unwrap();
     assert_eq!((status::Ok, "pr_review_comment".into()), resp);
 }
+
+#[test]
+fn test_pull_request_review_commented() {
+    let mut handler = new_handler();
+    handler.event = "pull_request_review".into();
+    handler.action = "submitted".into();
+    handler.data.pull_request = some_pr();
+    handler.data.review = Some(Review {
+        state: "commented".into(),
+        body: Some("I think this file should change".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    handler.data.sender = User::new("joe-reviewer");
+
+    let attach = vec![SlackAttachmentBuilder::new("I think this file should change")
+                          .title("joe.reviewer said:")
+                          .title_link("http://the-comment")
+                          .build()];
+    let msg = "Comment on \"<http://the-pr|The PR>\"";
+
+    handler.messenger = Box::new(new_messenger(
+        MockSlack::new(vec![
+            SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+            SlackCall::new("@the.pr.owner", msg, attach.clone()),
+            SlackCall::new("@assign1", msg, attach.clone())
+        ]),
+        handler.config.clone()
+    ));
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr_review [comment]".into()), resp);
+}
+
+#[test]
+fn test_pull_request_comments_ignore_empty_messages() {
+    let mut handler = new_handler();
+    handler.event = "pull_request_review_comment".into();
+    handler.action = "created".into();
+    handler.data.pull_request = some_pr();
+    handler.data.comment = Some(Comment {
+        commit_id: Some("abcdef00001111".into()),
+        path: Some("src/main.rs".into()),
+        body: Some("".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    handler.data.sender = User::new("joe-reviewer");
+
+    // no setting of MockSlack calls --> should fail if called.
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr_review_comment".into()), resp);
+}
+
+#[test]
+fn test_pull_request_comments_ignore_octobot() {
+    let mut handler = new_handler();
+    handler.event = "pull_request_review_comment".into();
+    handler.action = "created".into();
+    handler.data.pull_request = some_pr();
+    handler.data.comment = Some(Comment {
+        commit_id: Some("abcdef00001111".into()),
+        path: Some("src/main.rs".into()),
+        body: Some("I think this file should change".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("octobot"),
+    });
+    handler.data.sender = User::new("joe-reviewer");
+
+    // no setting of MockSlack calls --> should fail if called.
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr_review_comment".into()), resp);
+}
+
