@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -15,7 +16,7 @@ use github::api::Session;
 use messenger;
 use slack::SlackAttachmentBuilder;
 
-pub fn merge_pull_request(session: Arc<Session>, dir_pool: &DirPool, owner: &str, repo: &str,
+pub fn merge_pull_request(session: &Session, dir_pool: &DirPool, owner: &str, repo: &str,
                           pull_request: &github::PullRequest, target_branch: &str)
                           -> Result<github::PullRequest, String> {
     Merger::new(session, dir_pool).merge_pull_request(owner, repo, pull_request, target_branch)
@@ -24,12 +25,12 @@ pub fn merge_pull_request(session: Arc<Session>, dir_pool: &DirPool, owner: &str
 
 struct Merger<'a> {
     git: Git,
-    session: Arc<Session>,
+    session: &'a Session,
     dir_pool: &'a DirPool,
 }
 
 impl<'a> Merger<'a> {
-    pub fn new(session: Arc<Session>, dir_pool: &'a DirPool) -> Merger<'a> {
+    pub fn new(session: &'a Session, dir_pool: &'a DirPool) -> Merger<'a> {
         Merger {
             git: Git::new(session.github_host(), session.github_token()),
             session: session,
@@ -287,7 +288,7 @@ impl WorkerRunner {
 
         // launch another thread to do the merge
         self.thread_pool.execute(move || {
-            if let Err(e) = merge_pull_request(github_session,
+            if let Err(e) = merge_pull_request(github_session.borrow(),
                                                &dir_pool,
                                                &req.repo.owner.login(),
                                                &req.repo.name,
