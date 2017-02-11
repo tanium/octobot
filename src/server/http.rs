@@ -10,16 +10,15 @@ use server::github_verify;
 use server::github_handler;
 
 pub fn start(config: Config) -> Result<(), String> {
-    let github_session = match github::api::Session::new(&config.github_host,
-                                                         &config.github_token) {
+    let github_session = match github::api::GithubSession::new(&config.github_host,
+                                                               &config.github_token) {
         Ok(s) => s,
         Err(e) => panic!("Error initiating github session: {}", e),
     };
 
     let config = Arc::new(config);
 
-    let handler =
-        github_handler::GithubHandler::new(config.clone(), github_session);
+    let handler = github_handler::GithubHandler::new(config.clone(), github_session);
 
     let mut router = Router::new();
     router.post("/", handler, "webhook");

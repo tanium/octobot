@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -287,7 +288,7 @@ impl WorkerRunner {
 
         // launch another thread to do the merge
         self.thread_pool.execute(move || {
-            if let Err(e) = merge_pull_request(&github_session,
+            if let Err(e) = merge_pull_request(github_session.borrow(),
                                                &dir_pool,
                                                &req.repo.owner.login(),
                                                &req.repo.name,
