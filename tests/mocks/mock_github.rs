@@ -17,9 +17,9 @@ pub struct MockGithub {
 }
 
 impl MockGithub {
-    pub fn new(user: User) -> MockGithub {
+    pub fn new() -> MockGithub {
         MockGithub {
-            user: user,
+            user: User::new("octobot"),
             host: "the-github-host".to_string(),
             token: "the-github-token".to_string(),
 

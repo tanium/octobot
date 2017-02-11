@@ -303,7 +303,6 @@ impl<'a> CommentLike for &'a Comment {
     }
 }
 
-
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Commit {
     pub id: String,

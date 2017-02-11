@@ -39,7 +39,10 @@ impl SlackSender for MockSlack {
             -> Result<(), String> {
 
         if self.call_count.get() >= self.expected_calls.len() {
-            panic!("Failed: received unexpected slack call");
+            panic!("Failed: received unexpected slack call: ({}, {}, {:?})",
+                   channel,
+                   msg,
+                   attachments);
         }
 
         assert_eq!(self.expected_calls[self.call_count.get()].channel, channel);
