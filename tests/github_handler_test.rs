@@ -309,3 +309,253 @@ fn test_pull_request_comments_ignore_octobot() {
     assert_eq!((status::Ok, "pr_review_comment".into()), resp);
 }
 
+#[test]
+fn test_pull_request_review_approved() {
+    let mut handler = new_handler();
+    handler.event = "pull_request_review".into();
+    handler.action = "submitted".into();
+    handler.data.pull_request = some_pr();
+    handler.data.review = Some(Review {
+        state: "approved".into(),
+        body: Some("I like it!".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    handler.data.sender = User::new("joe-reviewer");
+
+    let attach = vec![SlackAttachmentBuilder::new("I like it!")
+                          .title("Review: Approved")
+                          .title_link("http://the-comment")
+                          .color("good")
+                          .build()];
+    let msg = "joe.reviewer approved PR \"<http://the-pr|The PR>\"";
+    handler.messenger = Box::new(new_messenger(
+        MockSlack::new(vec![
+            SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+            SlackCall::new("@the.pr.owner", msg, attach.clone()),
+            SlackCall::new("@assign1", msg, attach.clone())
+        ]),
+        handler.config.clone()
+    ));
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr_review".into()), resp);
+}
+
+#[test]
+fn test_pull_request_review_changes_requested() {
+    let mut handler = new_handler();
+    handler.event = "pull_request_review".into();
+    handler.action = "submitted".into();
+    handler.data.pull_request = some_pr();
+    handler.data.review = Some(Review {
+        state: "changes_requested".into(),
+        body: Some("It needs some work!".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    handler.data.sender = User::new("joe-reviewer");
+
+    let attach = vec![SlackAttachmentBuilder::new("It needs some work!")
+                          .title("Review: Changes Requested")
+                          .title_link("http://the-comment")
+                          .color("danger")
+                          .build()];
+    let msg = "joe.reviewer requested changes to PR \"<http://the-pr|The PR>\"";
+    handler.messenger = Box::new(new_messenger(
+        MockSlack::new(vec![
+            SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+            SlackCall::new("@the.pr.owner", msg, attach.clone()),
+            SlackCall::new("@assign1", msg, attach.clone())
+        ]),
+        handler.config.clone()
+    ));
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr_review".into()), resp);
+}
+
+#[test]
+fn test_pull_request_opened() {
+    let mut handler = new_handler();
+    handler.event = "pull_request".into();
+    handler.action = "opened".into();
+    handler.data.pull_request = some_pr();
+    handler.data.sender = User::new("the-pr-owner");
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"The PR\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request opened by the.pr.owner";
+
+    handler.messenger = Box::new(new_messenger(
+        MockSlack::new(vec![
+            SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+            SlackCall::new("@assign1", msg, attach.clone()),
+            SlackCall::new("@joe.reviewer", msg, attach.clone())
+        ]),
+        handler.config.clone()
+    ));
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_pull_request_closed() {
+    let mut handler = new_handler();
+    handler.event = "pull_request".into();
+    handler.action = "closed".into();
+    handler.data.pull_request = some_pr();
+    handler.data.sender = User::new("the-pr-closer");
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"The PR\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request closed";
+
+    handler.messenger = Box::new(new_messenger(
+        MockSlack::new(vec![
+            SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+            SlackCall::new("@the.pr.owner", msg, attach.clone()),
+            SlackCall::new("@assign1", msg, attach.clone()),
+            SlackCall::new("@joe.reviewer", msg, attach.clone()),
+        ]),
+        handler.config.clone()
+    ));
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_pull_request_reopened() {
+    let mut handler = new_handler();
+    handler.event = "pull_request".into();
+    handler.action = "reopened".into();
+    handler.data.pull_request = some_pr();
+    handler.data.sender = User::new("the-pr-closer");
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"The PR\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request reopened";
+
+    handler.messenger = Box::new(new_messenger(
+        MockSlack::new(vec![
+            SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+            SlackCall::new("@the.pr.owner", msg, attach.clone()),
+            SlackCall::new("@assign1", msg, attach.clone()),
+            SlackCall::new("@joe.reviewer", msg, attach.clone()),
+        ]),
+        handler.config.clone()
+    ));
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_pull_request_assigned() {
+    let mut handler = new_handler();
+    handler.event = "pull_request".into();
+    handler.action = "assigned".into();
+    handler.data.pull_request = some_pr();
+    handler.data.sender = User::new("the-pr-closer");
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"The PR\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request assigned to assign1, joe.reviewer";
+
+    handler.messenger = Box::new(new_messenger(
+        MockSlack::new(vec![
+            SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+            SlackCall::new("@the.pr.owner", msg, attach.clone()),
+            SlackCall::new("@assign1", msg, attach.clone()),
+            SlackCall::new("@joe.reviewer", msg, attach.clone()),
+        ]),
+        handler.config.clone()
+    ));
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_pull_request_unassigned() {
+    let mut handler = new_handler();
+    handler.event = "pull_request".into();
+    handler.action = "unassigned".into();
+    handler.data.pull_request = some_pr();
+    handler.data.sender = User::new("the-pr-closer");
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"The PR\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request unassigned";
+
+    handler.messenger = Box::new(new_messenger(
+        MockSlack::new(vec![
+            SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+            SlackCall::new("@the.pr.owner", msg, attach.clone()),
+            SlackCall::new("@assign1", msg, attach.clone()),
+            SlackCall::new("@joe.reviewer", msg, attach.clone()),
+        ]),
+        handler.config.clone()
+    ));
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_pull_request_other() {
+    let mut handler = new_handler();
+    handler.event = "pull_request".into();
+    handler.action = "some-other-action".into();
+    handler.data.pull_request = some_pr();
+    handler.data.sender = User::new("the-pr-closer");
+
+    // should not do anything!
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+#[ignore] // requires more mocking!
+fn test_pull_request_merged() {
+    let mut handler = new_handler();
+    handler.event = "pull_request".into();
+    handler.action = "closed".into();
+    handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = handler.data.pull_request {
+        pr.merged = Some(true);
+    }
+    handler.data.sender = User::new("the-pr-merger");
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"The PR\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request merged";
+
+    handler.messenger = Box::new(new_messenger(
+        MockSlack::new(vec![
+            SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+            SlackCall::new("@the.pr.owner", msg, attach.clone()),
+            SlackCall::new("@assign1", msg, attach.clone()),
+            SlackCall::new("@joe.reviewer", msg, attach.clone()),
+        ]),
+        handler.config.clone()
+    ));
+
+    let resp = handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
