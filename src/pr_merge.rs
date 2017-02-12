@@ -191,15 +191,17 @@ impl<'a> Merger<'a> {
     }
 }
 
+#[derive(Debug)]
 pub enum PRMergeMessage {
     Stop,
     Merge(PRMergeRequest),
 }
 
+#[derive(Debug)]
 pub struct PRMergeRequest {
-    repo: github::Repo,
-    pull_request: github::PullRequest,
-    target_branch: String,
+    pub repo: github::Repo,
+    pub pull_request: github::PullRequest,
+    pub target_branch: String,
 }
 
 pub struct Worker {
