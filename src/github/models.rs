@@ -243,6 +243,14 @@ pub struct Label {
     pub name: String,
 }
 
+impl Label {
+    pub fn new(name: &str) -> Label {
+        Label {
+            name: name.into(),
+        }
+    }
+}
+
 
 pub trait CommentLike {
     fn user(&self) -> &User;

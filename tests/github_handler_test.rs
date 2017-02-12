@@ -6,6 +6,8 @@ mod mocks;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::time::Duration;
+use std::thread::{self, JoinHandle};
 
 use iron::status;
 
@@ -34,7 +36,7 @@ struct GithubHandlerTest {
     github: Arc<MockGithub>,
     slack: Rc<MockSlack>,
     config: Arc<Config>,
-    rx: Receiver<PRMergeMessage>,
+    rx: Option<Receiver<PRMergeMessage>>,
     tx: Sender<PRMergeMessage>,
 }
 
@@ -44,6 +46,27 @@ impl GithubHandlerTest {
             config: self.config.clone(),
             slack: Rc::new(MockSlack::new(calls)),
         });
+    }
+
+    fn expect_will_merge_branches(&mut self, branches: Vec<String>) -> JoinHandle<()> {
+        let timeout = Duration::from_millis(300);
+        let rx = self.rx.take().unwrap();
+        thread::spawn(move || {
+            for branch in branches {
+                let msg = rx.recv_timeout(timeout).expect(&format!("expected to recv msg for branch: {}", branch));
+                match msg {
+                    PRMergeMessage::Merge(req) => {
+                        assert_eq!(branch, req.target_branch);
+                    },
+                    _ => {
+                        panic!("Unexpected messages: {:?}", msg);
+                    }
+                };
+           }
+
+            let last_message = rx.recv_timeout(timeout);
+            assert!(last_message.is_err());
+        })
     }
 }
 
@@ -68,7 +91,7 @@ fn new_test() -> GithubHandlerTest {
         github: github.clone(),
         slack: slack.clone(),
         config: config.clone(),
-        rx: rx,
+        rx: Some(rx),
         tx: tx.clone(),
         handler: GithubEventHandler {
             event: "ping".to_string(),
@@ -517,8 +540,67 @@ fn test_pull_request_other() {
 
 
 #[test]
-#[ignore]
-fn test_pull_request_merged() {
+fn test_pull_request_labeled_not_merged() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "labeled".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.merged = Some(false);
+    }
+    test.handler.data.sender = User::new("the-pr-owner");
+
+    // labeled but not merged --> noop
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_pull_request_merged_error_getting_labels() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "closed".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.merged = Some(true);
+    }
+    test.handler.data.sender = User::new("the-pr-merger");
+
+    // mock error on labels
+    test.github.get_pull_request_labels_ret.lock().unwrap().push(Err("whooops.".into()));
+
+    let msg1 = "Pull Request merged";
+    let attach1 = vec![
+        SlackAttachmentBuilder::new("")
+          .title("Pull Request #32: \"The PR\"")
+          .title_link("http://the-pr")
+          .build()
+    ];
+
+    let msg2 = "Error getting Pull Request labels";
+    let attach2 = vec![
+        SlackAttachmentBuilder::new("whooops.")
+            .color("danger")
+            .build()
+    ];
+
+    test.expect_slack_calls(vec![
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg1, REPO_MSG), attach1.clone()),
+        SlackCall::new("@the.pr.owner", msg1, attach1.clone()),
+        SlackCall::new("@assign1", msg1, attach1.clone()),
+        SlackCall::new("@joe.reviewer", msg1, attach1.clone()),
+
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg2, REPO_MSG), attach2.clone()),
+        SlackCall::new("@the.pr.owner", msg2, attach2.clone()),
+    ]);
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_pull_request_merged_no_labels() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
@@ -534,6 +616,9 @@ fn test_pull_request_merged() {
                           .build()];
     let msg = "Pull Request merged";
 
+    // mock no labels
+    test.github.get_pull_request_labels_ret.lock().unwrap().push(Ok(vec![]));
+
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
@@ -543,4 +628,77 @@ fn test_pull_request_merged() {
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_pull_request_merged_backport_labels() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "closed".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.merged = Some(true);
+    }
+    test.handler.data.sender = User::new("the-pr-merger");
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"The PR\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request merged";
+
+    // mock some labels
+    test.github.get_pull_request_labels_ret.lock().unwrap().push(Ok(vec![
+        Label::new("other"),
+        Label::new("backport-1.0"),
+        Label::new("BACKPORT-2.0"),
+        Label::new("non-matching"),
+    ]));
+
+    test.expect_slack_calls(vec![
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        SlackCall::new("@the.pr.owner", msg, attach.clone()),
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    let expect_thread = test.expect_will_merge_branches(vec!["release/1.0".into(), "release/2.0".into()]);
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+
+    expect_thread.join().unwrap();
+}
+
+#[test]
+fn test_pull_request_merged_retroactively_labeled() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "labeled".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.merged = Some(true);
+    }
+    test.handler.data.label = Some(Label::new("backport-7.123"));
+    test.handler.data.sender = User::new("the-pr-merger");
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"The PR\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request merged";
+
+    test.expect_slack_calls(vec![
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        SlackCall::new("@the.pr.owner", msg, attach.clone()),
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    let expect_thread = test.expect_will_merge_branches(vec!["release/7.123".into()]);
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+
+    expect_thread.join().unwrap();
 }
