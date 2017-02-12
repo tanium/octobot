@@ -32,6 +32,10 @@ impl MockSlack {
             expected_calls: calls,
         }
     }
+
+    pub fn expect(&mut self, calls: Vec<SlackCall>) {
+        self.expected_calls = calls;
+    }
 }
 
 impl SlackSender for MockSlack {
