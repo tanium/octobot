@@ -568,7 +568,7 @@ fn test_pull_request_merged_error_getting_labels() {
     test.handler.data.sender = User::new("the-pr-merger");
 
     // mock error on labels
-    test.github.get_pull_request_labels_ret.lock().unwrap().push(Err("whooops.".into()));
+    test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Err("whooops.".into()));
 
     let msg1 = "Pull Request merged";
     let attach1 = vec![
@@ -617,7 +617,7 @@ fn test_pull_request_merged_no_labels() {
     let msg = "Pull Request merged";
 
     // mock no labels
-    test.github.get_pull_request_labels_ret.lock().unwrap().push(Ok(vec![]));
+    test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Ok(vec![]));
 
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
@@ -648,7 +648,7 @@ fn test_pull_request_merged_backport_labels() {
     let msg = "Pull Request merged";
 
     // mock some labels
-    test.github.get_pull_request_labels_ret.lock().unwrap().push(Ok(vec![
+    test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Ok(vec![
         Label::new("other"),
         Label::new("backport-1.0"),
         Label::new("BACKPORT-2.0"),
@@ -711,9 +711,7 @@ fn test_push_no_pr() {
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
 
-    // TODO: need to make assertions on arguments...
-    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![]));
-
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "push".into()), resp);
@@ -747,8 +745,7 @@ fn test_push_with_pr() {
     pr2.number = 99;
     pr2.assignees = vec![User::new("assign2")];
 
-    // TODO: need to make assertions on arguments...
-    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![pr1, pr2]));
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![pr1, pr2]));
 
     let msg = "joe.sender pushed 2 commit(s) to branch some-branch";
     let attach_common = vec![
@@ -797,10 +794,10 @@ fn test_push_force_notify() {
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
     test.handler.data.forced = Some(true);
+    test.handler.data.compare = Some("http://compare-url".into());
 
-    // TODO: need to make assertions on arguments...
     let pr = some_pr().unwrap();
-    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![pr]));
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![pr]));
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![
@@ -816,8 +813,9 @@ fn test_push_force_notify() {
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    // TODO: assertions!
-    test.github.comment_pull_request_ret.lock().unwrap().push(Ok(()));
+    test.github.mock_comment_pull_request("some-user", "some-repo", 32,
+                                          "Force-push detected: before: abcdef0, after: 1111abc ([compare](http://compare-url))",
+                                          Ok(()));
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "push".into()), resp);
@@ -833,10 +831,9 @@ fn test_push_force_notify_wip() {
     test.handler.data.after = Some("1111abcdef".into());
     test.handler.data.forced = Some(true);
 
-    // TODO: need to make assertions on arguments...
     let mut pr = some_pr().unwrap();
     pr.title = "WIP: Awesome new feature".into();
-    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![pr]));
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![pr]));
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![
@@ -872,9 +869,8 @@ fn test_push_force_notify_ignored() {
     test.handler.data.repository =
         Repo::parse(&format!("http://{}/some-other-user/some-other-repo", test.github.github_host())).unwrap();
 
-    // TODO: need to make assertions on arguments...
     let pr = some_pr().unwrap();
-    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![pr]));
+    test.github.mock_get_pull_requests("some-other-user", "some-other-repo", Some("open"), Some("1111abcdef"), Ok(vec![pr]));
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![
