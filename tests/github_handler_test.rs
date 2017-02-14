@@ -702,3 +702,195 @@ fn test_pull_request_merged_retroactively_labeled() {
 
     expect_thread.join().unwrap();
 }
+
+#[test]
+fn test_push_no_pr() {
+    let mut test = new_test();
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/some-branch".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+
+    // TODO: need to make assertions on arguments...
+    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![]));
+
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "push".into()), resp);
+}
+
+#[test]
+fn test_push_with_pr() {
+    let mut test = new_test();
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/some-branch".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+
+    test.handler.data.commits = Some(vec![
+        Commit {
+            id: "aaaaaa000000".into(),
+            tree_id: "".into(),
+            message: "add stuff".into(),
+            url: "http://commit1".into(),
+        },
+        Commit {
+            id: "1111abcdef".into(),
+            tree_id: "".into(),
+            message: "fix stuff".into(),
+            url: "http://commit2".into(),
+        },
+    ]);
+
+    let pr1 = some_pr().unwrap();
+    let mut pr2 = pr1.clone();
+    pr2.number = 99;
+    pr2.assignees = vec![User::new("assign2")];
+
+    // TODO: need to make assertions on arguments...
+    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![pr1, pr2]));
+
+    let msg = "joe.sender pushed 2 commit(s) to branch some-branch";
+    let attach_common = vec![
+        SlackAttachmentBuilder::new("<http://commit1|aaaaaa0>: add stuff").build(),
+        SlackAttachmentBuilder::new("<http://commit2|1111abc>: fix stuff").build(),
+    ];
+
+    let mut attach1 = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    attach1.append(&mut attach_common.clone());
+
+    let mut attach2 = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #99: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    attach2.append(&mut attach_common.clone());
+
+    test.expect_slack_calls(vec![
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach1.clone()),
+        SlackCall::new("@the.pr.owner", msg, attach1.clone()),
+        SlackCall::new("@assign1", msg, attach1.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach1.clone()),
+
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach2.clone()),
+        SlackCall::new("@the.pr.owner", msg, attach2.clone()),
+        SlackCall::new("@assign2", msg, attach2.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach2.clone()),
+    ]);
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "push".into()), resp);
+}
+
+#[test]
+fn test_push_force_notify() {
+    let mut test = new_test();
+
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/some-branch".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+    test.handler.data.forced = Some(true);
+
+    // TODO: need to make assertions on arguments...
+    let pr = some_pr().unwrap();
+    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![pr]));
+
+    let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    test.expect_slack_calls(vec![
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        SlackCall::new("@the.pr.owner", msg, attach.clone()),
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    // TODO: assertions!
+    test.github.comment_pull_request_ret.lock().unwrap().push(Ok(()));
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "push".into()), resp);
+}
+
+#[test]
+fn test_push_force_notify_wip() {
+    let mut test = new_test();
+
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/some-branch".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+    test.handler.data.forced = Some(true);
+
+    // TODO: need to make assertions on arguments...
+    let mut pr = some_pr().unwrap();
+    pr.title = "WIP: Awesome new feature".into();
+    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![pr]));
+
+    let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"WIP: Awesome new feature\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    test.expect_slack_calls(vec![
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        SlackCall::new("@the.pr.owner", msg, attach.clone()),
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    // no assertions: should not comment about force-push
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "push".into()), resp);
+}
+
+#[test]
+fn test_push_force_notify_ignored() {
+    let mut test = new_test();
+
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/some-branch".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+    test.handler.data.forced = Some(true);
+
+    // change the repo to an unconfigured one
+    test.handler.data.repository =
+        Repo::parse(&format!("http://{}/some-other-user/some-other-repo", test.github.github_host())).unwrap();
+
+    // TODO: need to make assertions on arguments...
+    let pr = some_pr().unwrap();
+    test.github.get_pull_requests_ret.lock().unwrap().push(Ok(vec![pr]));
+
+    let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    test.expect_slack_calls(vec![
+        SlackCall::new("@the.pr.owner", msg, attach.clone()),
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    // no assertions: should not comment about force-push
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "push".into()), resp);
+}
