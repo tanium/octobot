@@ -5,7 +5,7 @@ mod mocks;
 
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
 use std::thread::{self, JoinHandle};
 
@@ -34,10 +34,8 @@ fn the_repo() -> Repo {
 struct GithubHandlerTest {
     handler: GithubEventHandler,
     github: Arc<MockGithub>,
-    slack: Rc<MockSlack>,
     config: Arc<Config>,
     rx: Option<Receiver<PRMergeMessage>>,
-    tx: Sender<PRMergeMessage>,
 }
 
 impl GithubHandlerTest {
@@ -89,10 +87,8 @@ fn new_test() -> GithubHandlerTest {
 
     GithubHandlerTest {
         github: github.clone(),
-        slack: slack.clone(),
         config: config.clone(),
         rx: Some(rx),
-        tx: tx.clone(),
         handler: GithubEventHandler {
             event: "ping".to_string(),
             data: data,
