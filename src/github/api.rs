@@ -25,6 +25,9 @@ pub trait Session : Send + Sync {
     fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
                                -> Result<Vec<Label>, String>;
 
+    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32)
+                                    -> Result<Vec<Commit>, String>;
+
     fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>)
                            -> Result<AssignResponse, String>;
 
@@ -126,8 +129,12 @@ impl Session for GithubSession {
 
     fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
                                    -> Result<Vec<Label>, String> {
-
         self.client.get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number))
+    }
+
+    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32)
+                                    -> Result<Vec<Commit>, String> {
+        self.client.get(&format!("repos/{}/{}/pulls/{}/commits", owner, repo, number))
     }
 
     fn assign_pull_request(&self, owner: &str, repo: &str, number: u32,

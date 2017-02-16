@@ -126,6 +126,31 @@ impl GithubEventHandler {
         self.config.users.slack_user_name(user.login(), &self.data.repository)
     }
 
+    fn all_participants(&self, pull_request: &github::PullRequestLike) -> Vec<github::User> {
+        // start with the assignees
+        let mut participants = pull_request.assignees().clone();
+        // add the author of the PR
+        participants.push(pull_request.user().clone());
+        // look up commits and add the authors of those
+        match self.github_session
+            .get_pull_request_commits(&self.data.repository.owner.login(),
+                                      &self.data.repository.name,
+                                      pull_request.number()) {
+            Ok(commits) => {
+                for commit in commits {
+                    if let Some(author) = commit.author {
+                        participants.push(author);
+                    }
+                }
+            }
+            Err(e) => error!("Error looking up PR commits: {}", e),
+        };
+
+        participants.sort_by(|a, b| a.login().cmp(b.login()));
+        participants.dedup();
+        participants
+    }
+
     fn handle_ping(&self) -> EventResponse {
         (status::Ok, "ping".into())
     }
@@ -169,7 +194,7 @@ impl GithubEventHandler {
                                            &pull_request.user,
                                            &self.data.sender,
                                            &self.data.repository,
-                                           &pull_request.assignees);
+                                           &self.all_participants(&pull_request));
             }
 
             if self.action == "labeled" {
@@ -242,7 +267,7 @@ impl GithubEventHandler {
                                                &pull_request.user,
                                                &self.data.sender,
                                                &self.data.repository,
-                                               &pull_request.assignees);
+                                               &self.all_participants(&pull_request));
 
                 }
             }
@@ -277,7 +302,7 @@ impl GithubEventHandler {
                                    pull_request.user(),
                                    &self.data.sender,
                                    &self.data.repository,
-                                   pull_request.assignees());
+                                   &self.all_participants(pull_request));
 
     }
 
@@ -340,7 +365,7 @@ impl GithubEventHandler {
             let branch_name = self.data.ref_name().replace("refs/heads/", "");
 
             let prs = match self.github_session
-                .get_pull_requests(&self.data.repository.owner.name(),
+                .get_pull_requests(&self.data.repository.owner.login(),
                                    &self.data.repository.name,
                                    Some("open"),
                                    Some(self.data.after())) {
@@ -390,7 +415,7 @@ impl GithubEventHandler {
                                                &pull_request.user,
                                                &self.data.sender,
                                                &self.data.repository,
-                                               &pull_request.assignees);
+                                               &self.all_participants(&pull_request));
 
                     if self.data.forced() &&
                        self.config.repos.notify_force_push(&self.data.repository) &&
@@ -402,7 +427,7 @@ impl GithubEventHandler {
                             comment += &format!(" ([compare]({}))", url);
                         }
                         if let Err(e) = self.github_session
-                            .comment_pull_request(&self.data.repository.owner.name(),
+                            .comment_pull_request(&self.data.repository.owner.login(),
                                                   &self.data.repository.name,
                                                   pull_request.number,
                                                   &comment) {

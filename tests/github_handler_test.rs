@@ -133,6 +133,31 @@ fn some_pr() -> Option<PullRequest> {
     })
 }
 
+fn some_commits() -> Vec<Commit> {
+    vec![
+        Commit {
+            message: "I made a commit!".into(),
+            sha: "ffeedd00110011".into(),
+            html_url: "http://commit/ffeedd00110011".into(),
+            author: Some(User::new("bob-author")),
+            commit: CommitDetails {
+                message: "here are the commit details".into(),
+            }
+        },
+        Commit {
+            message: "I also made a commit!".into(),
+            sha: "ffeedd00110022".into(),
+            html_url: "http://commit/ffeedd00110022".into(),
+            // duplicate author here to make sure dupes are removed
+            author: Some(User::new("the-pr-owner")),
+            commit: CommitDetails {
+                message: "here are the commit details".into(),
+            }
+        },
+    ]
+
+}
+
 #[test]
 fn test_ping() {
     let mut test = new_test();
@@ -206,6 +231,7 @@ fn test_issue_comment() {
     test.handler.event = "issue_comment".into();
     test.handler.action = "created".into();
     test.handler.data.issue = Some(Issue {
+        number: 5,
         title: "The Issue".into(),
         html_url: "http://the-issue".into(),
         user: User::new("the-pr-owner"),
@@ -219,6 +245,7 @@ fn test_issue_comment() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 5, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("I think this file should change")
                           .title("joe.reviewer said:")
@@ -229,7 +256,8 @@ fn test_issue_comment() {
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone())
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -250,6 +278,7 @@ fn test_pull_request_comment() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("I think this file should change")
                           .title("joe.reviewer said:")
@@ -260,7 +289,8 @@ fn test_pull_request_comment() {
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone())
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -280,6 +310,7 @@ fn test_pull_request_review_commented() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("I think this file should change")
                           .title("joe.reviewer said:")
@@ -290,7 +321,8 @@ fn test_pull_request_review_commented() {
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone())
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -352,6 +384,7 @@ fn test_pull_request_review_approved() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("I like it!")
                           .title("Review: Approved")
@@ -363,7 +396,8 @@ fn test_pull_request_review_approved() {
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone())
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -383,6 +417,7 @@ fn test_pull_request_review_changes_requested() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("It needs some work!")
                           .title("Review: Changes Requested")
@@ -393,7 +428,8 @@ fn test_pull_request_review_changes_requested() {
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone())
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -407,6 +443,7 @@ fn test_pull_request_opened() {
     test.handler.action = "opened".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-owner");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("")
                           .title("Pull Request #32: \"The PR\"")
@@ -417,7 +454,8 @@ fn test_pull_request_opened() {
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone())
+        SlackCall::new("@bob.author", msg, attach.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -431,6 +469,7 @@ fn test_pull_request_closed() {
     test.handler.action = "closed".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-closer");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("")
                           .title("Pull Request #32: \"The PR\"")
@@ -442,6 +481,7 @@ fn test_pull_request_closed() {
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
@@ -456,6 +496,7 @@ fn test_pull_request_reopened() {
     test.handler.action = "reopened".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-closer");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("")
                           .title("Pull Request #32: \"The PR\"")
@@ -467,6 +508,7 @@ fn test_pull_request_reopened() {
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
@@ -481,6 +523,7 @@ fn test_pull_request_assigned() {
     test.handler.action = "assigned".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-closer");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("")
                           .title("Pull Request #32: \"The PR\"")
@@ -492,6 +535,7 @@ fn test_pull_request_assigned() {
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
@@ -506,6 +550,7 @@ fn test_pull_request_unassigned() {
     test.handler.action = "unassigned".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-closer");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("")
                           .title("Pull Request #32: \"The PR\"")
@@ -517,6 +562,7 @@ fn test_pull_request_unassigned() {
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
@@ -567,7 +613,7 @@ fn test_pull_request_merged_error_getting_labels() {
     }
     test.handler.data.sender = User::new("the-pr-merger");
 
-    // mock error on labels
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
     test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Err("whooops.".into()));
 
     let msg1 = "Pull Request merged";
@@ -589,6 +635,7 @@ fn test_pull_request_merged_error_getting_labels() {
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg1, REPO_MSG), attach1.clone()),
         SlackCall::new("@the.pr.owner", msg1, attach1.clone()),
         SlackCall::new("@assign1", msg1, attach1.clone()),
+        SlackCall::new("@bob.author", msg1, attach1.clone()),
         SlackCall::new("@joe.reviewer", msg1, attach1.clone()),
 
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg2, REPO_MSG), attach2.clone()),
@@ -610,19 +657,20 @@ fn test_pull_request_merged_no_labels() {
     }
     test.handler.data.sender = User::new("the-pr-merger");
 
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
+    test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Ok(vec![]));
+
     let attach = vec![SlackAttachmentBuilder::new("")
                           .title("Pull Request #32: \"The PR\"")
                           .title_link("http://the-pr")
                           .build()];
     let msg = "Pull Request merged";
 
-    // mock no labels
-    test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Ok(vec![]));
-
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
@@ -647,7 +695,7 @@ fn test_pull_request_merged_backport_labels() {
                           .build()];
     let msg = "Pull Request merged";
 
-    // mock some labels
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
     test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Ok(vec![
         Label::new("other"),
         Label::new("backport-1.0"),
@@ -659,6 +707,7 @@ fn test_pull_request_merged_backport_labels() {
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
@@ -726,13 +775,13 @@ fn test_push_with_pr() {
     test.handler.data.after = Some("1111abcdef".into());
 
     test.handler.data.commits = Some(vec![
-        Commit {
+        PushCommit {
             id: "aaaaaa000000".into(),
             tree_id: "".into(),
             message: "add stuff".into(),
             url: "http://commit1".into(),
         },
-        Commit {
+        PushCommit {
             id: "1111abcdef".into(),
             tree_id: "".into(),
             message: "fix stuff".into(),
@@ -744,6 +793,9 @@ fn test_push_with_pr() {
     let mut pr2 = pr1.clone();
     pr2.number = 99;
     pr2.assignees = vec![User::new("assign2")];
+
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 99, Ok(some_commits()));
 
     test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![pr1, pr2]));
 
@@ -773,11 +825,13 @@ fn test_push_with_pr() {
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach1.clone()),
         SlackCall::new("@the.pr.owner", msg, attach1.clone()),
         SlackCall::new("@assign1", msg, attach1.clone()),
+        SlackCall::new("@bob.author", msg, attach1.clone()),
         SlackCall::new("@joe.reviewer", msg, attach1.clone()),
 
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach2.clone()),
         SlackCall::new("@the.pr.owner", msg, attach2.clone()),
         SlackCall::new("@assign2", msg, attach2.clone()),
+        SlackCall::new("@bob.author", msg, attach2.clone()),
         SlackCall::new("@joe.reviewer", msg, attach2.clone()),
     ]);
 
@@ -798,6 +852,7 @@ fn test_push_force_notify() {
 
     let pr = some_pr().unwrap();
     test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![pr]));
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![
@@ -810,6 +865,7 @@ fn test_push_force_notify() {
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
@@ -834,6 +890,7 @@ fn test_push_force_notify_wip() {
     let mut pr = some_pr().unwrap();
     pr.title = "WIP: Awesome new feature".into();
     test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![pr]));
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![
@@ -846,6 +903,7 @@ fn test_push_force_notify_wip() {
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
@@ -871,6 +929,7 @@ fn test_push_force_notify_ignored() {
 
     let pr = some_pr().unwrap();
     test.github.mock_get_pull_requests("some-other-user", "some-other-repo", Some("open"), Some("1111abcdef"), Ok(vec![pr]));
+    test.github.mock_get_pull_request_commits("some-other-user", "some-other-repo", 32, Ok(some_commits()));
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![
@@ -882,6 +941,7 @@ fn test_push_force_notify_ignored() {
     test.expect_slack_calls(vec![
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 

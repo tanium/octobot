@@ -13,6 +13,7 @@ pub struct MockGithub {
     get_prs_calls: Mutex<Vec< MockCall<Vec<PullRequest>> >>,
     create_pr_calls: Mutex<Vec< MockCall<PullRequest> >>,
     get_pr_labels_calls: Mutex<Vec< MockCall<Vec<Label>> >>,
+    get_pr_commits_calls: Mutex<Vec< MockCall<Vec<Commit>> >>,
     assign_pr_calls: Mutex<Vec< MockCall<AssignResponse> >>,
     comment_pr_calls: Mutex<Vec< MockCall<()> >>,
 }
@@ -43,6 +44,7 @@ impl MockGithub {
             get_prs_calls: Mutex::new(vec![]),
             create_pr_calls: Mutex::new(vec![]),
             get_pr_labels_calls: Mutex::new(vec![]),
+            get_pr_commits_calls: Mutex::new(vec![]),
             assign_pr_calls: Mutex::new(vec![]),
             comment_pr_calls: Mutex::new(vec![]),
         }
@@ -146,6 +148,20 @@ impl Session for MockGithub {
         call.ret
     }
 
+    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32)
+                                    -> Result<Vec<Commit>, String> {
+        let mut calls = self.get_pr_commits_calls.lock().unwrap();
+        if calls.len() == 0 {
+            panic!("Unexpected call to get_pull_request_commits");
+        }
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], number.to_string());
+
+        call.ret
+    }
+
     fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>)
                            -> Result<AssignResponse, String> {
         let mut calls = self.assign_pr_calls.lock().unwrap();
@@ -192,6 +208,10 @@ impl MockGithub {
 
     pub fn mock_get_pull_request_labels(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<Label>, String>) {
         self.get_pr_labels_calls.lock().unwrap().push(MockCall::new(ret, vec![owner, repo, &number.to_string()]));
+    }
+
+    pub fn mock_get_pull_request_commits(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<Commit>, String>) {
+        self.get_pr_commits_calls.lock().unwrap().push(MockCall::new(ret, vec![owner, repo, &number.to_string()]));
     }
 
     pub fn mock_comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str, ret: Result<(), String>) {

@@ -84,7 +84,6 @@ impl RepoConfig {
                     .and_then(|m| {
                         m.get(&repo.full_name)
                             .or(m.get(repo.owner.login()))
-                            .or(m.get(repo.owner.name()))
                     })
             }
             Err(_) => None,
