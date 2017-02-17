@@ -132,22 +132,20 @@ fn some_pr() -> Option<PullRequest> {
 fn some_commits() -> Vec<Commit> {
     vec![
         Commit {
-            message: "I made a commit!".into(),
             sha: "ffeedd00110011".into(),
             html_url: "http://commit/ffeedd00110011".into(),
             author: Some(User::new("bob-author")),
             commit: CommitDetails {
-                message: "here are the commit details".into(),
+                message: "I made a commit!".into(),
             }
         },
         Commit {
-            message: "I also made a commit!".into(),
             sha: "ffeedd00110022".into(),
             html_url: "http://commit/ffeedd00110022".into(),
             // duplicate author here to make sure dupes are removed
             author: Some(User::new("the-pr-owner")),
             commit: CommitDetails {
-                message: "here are the commit details".into(),
+                message: "I also made a commit!".into(),
             }
         },
     ]
