@@ -10,28 +10,38 @@ pub struct Config {
     pub slack_webhook_url: String,
     pub github_secret: String,
     pub listen_addr: Option<String>,
+    pub clone_root_dir: String,
     pub github_host: String,
     pub github_token: String,
-    pub clone_root_dir: String,
     pub users: users::UserConfig,
     pub repos: repos::RepoConfig,
     pub jira: Option<JiraConfig>,
 }
 
-
-#[derive(RustcDecodable, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct ConfigModel {
+    pub main: MainConfig,
+    pub github: GithubConfig,
+    pub jira: Option<JiraConfig>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct MainConfig {
     pub slack_webhook_url: String,
-    pub github_secret: String,
     pub listen_addr: Option<String>,
     pub users_config_file: String,
     pub repos_config_file: String,
-    pub github_host: String,
-    pub github_token: String,
     pub clone_root_dir: String,
 }
 
-#[derive(RustcDecodable, Clone, Debug)]
+#[derive(Deserialize, Debug)]
+pub struct GithubConfig {
+    pub webhook_secret: String,
+    pub host: String,
+    pub api_token: String,
+}
+
+#[derive(Deserialize, Clone, Debug)]
 pub struct JiraConfig {
     pub host: String,
     pub username: String,
@@ -53,20 +63,20 @@ impl Config {
     }
 
     pub fn new(users: users::UserConfig, repos: repos::RepoConfig) -> Config {
-        Config::new_with_model(ConfigModel::new(), None, users, repos)
+        Config::new_with_model(ConfigModel::new(), users, repos)
     }
 
-    pub fn new_with_model(config: ConfigModel, jira: Option<JiraConfig>, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
+    pub fn new_with_model(config: ConfigModel, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
         Config {
-            slack_webhook_url: config.slack_webhook_url,
-            github_secret: config.github_secret,
-            listen_addr: config.listen_addr,
-            github_host: config.github_host,
-            github_token: config.github_token,
-            clone_root_dir: config.clone_root_dir,
+            slack_webhook_url: config.main.slack_webhook_url,
+            github_secret: config.github.webhook_secret,
+            listen_addr: config.main.listen_addr,
+            github_host: config.github.host,
+            github_token: config.github.api_token,
+            clone_root_dir: config.main.clone_root_dir,
             users: users,
             repos: repos,
-            jira: jira,
+            jira: config.jira,
         }
     }
 }
@@ -74,14 +84,19 @@ impl Config {
 impl ConfigModel {
     pub fn new() -> ConfigModel {
         ConfigModel {
-            slack_webhook_url: String::new(),
-            github_secret: String::new(),
-            listen_addr: None,
-            users_config_file: String::new(),
-            repos_config_file: String::new(),
-            github_host: String::new(),
-            github_token: String::new(),
-            clone_root_dir: String::new(),
+            main: MainConfig {
+                slack_webhook_url: String::new(),
+                listen_addr: None,
+                users_config_file: String::new(),
+                repos_config_file: String::new(),
+                clone_root_dir: String::new(),
+            },
+            github: GithubConfig {
+                webhook_secret: String::new(),
+                host: String::new(),
+                api_token: String::new(),
+            },
+            jira: None,
         }
     }
 }
@@ -123,51 +138,63 @@ impl JiraConfig {
 pub fn parse(config_file: String) -> Result<Config, String> {
     let mut config_file_open = match fs::File::open(config_file.clone()) {
         Ok(f) => f,
-        Err(e) => return Err(format!("Could not open backup file '{}': {}", config_file, e)),
+        Err(e) => return Err(format!("Could not open config file '{}': {}", config_file, e)),
     };
     let mut config_contents = String::new();
     match config_file_open.read_to_string(&mut config_contents) {
         Ok(_) => (),
         Err(e) => return Err(format!("Could not read config file '{}': {}", config_file, e)),
     };
+    parse_string_and_load(&config_contents)
+}
 
-    let config_value = match toml::Parser::new(config_contents.as_str()).parse() {
-        Some(c) => c,
-        None => return Err(format!("Could not decode config file '{}'", config_file)),
-    };
+fn parse_string(config_contents: &str) -> Result<ConfigModel, String> {
+    match toml::from_str::<ConfigModel>(config_contents) {
+        Ok(c) => Ok(c),
+        Err(e) => return Err(format!("Error decoding config: {}", e)),
+    }
+}
 
-    let config: ConfigModel = match config_value.get("config") {
-        Some(c1) => {
-            match toml::decode(c1.clone()) {
-                Some(c2) => c2,
-                None => return Err(format!("Error decoding to config object")),
-            }
-        }
-        None => return Err(format!("No config section found")),
-    };
+fn parse_string_and_load(config_contents: &str) -> Result<Config, String> {
+    let config = try!(parse_string(config_contents));
 
-    // TODO: repetitive. improve toml parsing
-    let jira: Option<JiraConfig> = match config_value.get("jira") {
-        Some(c1) => {
-            match toml::decode(c1.clone()) {
-                Some(c2) => c2,
-                None => return Err(format!("Error decoding to JIRA config object")),
-            }
-        }
-        None => None,
-    };
-
-    // TODO: should probably move these configs into toml as well.
-    let users = match users::load_config(&config.users_config_file) {
+    let users = match users::load_config(&config.main.users_config_file) {
         Ok(c) => c,
         Err(e) => return Err(format!("Error reading user config file: {}", e)),
     };
 
-    let repos = match repos::load_config(&config.repos_config_file) {
+    let repos = match repos::load_config(&config.main.repos_config_file) {
         Ok(c) => c,
         Err(e) => return Err(format!("Error reading repo config file: {}", e)),
     };
 
-    Ok(Config::new_with_model(config, jira, users, repos))
+    Ok(Config::new_with_model(config, users, repos))
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse() {
+        let config_str = r#"
+[main]
+slack_webhook_url = "https://hooks.slack.com/foo"
+users_config_file = "users.json"
+repos_config_file = "repos.json"
+clone_root_dir = "./repos"
+
+[github]
+webhook_secret = "abcd"
+host = "git.company.com"
+api_token = "some-tokens"
+"#;
+        let config = parse_string(config_str).unwrap();
+
+        assert_eq!("https://hooks.slack.com/foo", config.main.slack_webhook_url);
+        assert_eq!("users.json", config.main.users_config_file);
+        assert_eq!("repos.json", config.main.repos_config_file);
+
+    }
+}
