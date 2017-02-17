@@ -333,7 +333,6 @@ pub struct PushCommit {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Commit {
-    pub message: String,
     pub sha: String,
     pub html_url: String,
     pub commit: CommitDetails,
