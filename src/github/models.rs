@@ -167,6 +167,17 @@ pub struct BranchRef {
     pub repo: Repo,
 }
 
+impl BranchRef {
+    pub fn new(name: &str) -> BranchRef {
+        BranchRef {
+            ref_name: name.into(),
+            sha: String::new(),
+            user: User::new(""),
+            repo: Repo::new(),
+        }
+    }
+}
+
 pub trait PullRequestLike {
     fn user(&self) -> &User;
     fn assignees(&self) -> &Vec<User>;
@@ -178,6 +189,7 @@ pub trait PullRequestLike {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PullRequest {
     pub title: String,
+    pub body: String,
     pub number: u32,
     pub html_url: String,
     pub state: String,
@@ -190,6 +202,22 @@ pub struct PullRequest {
 }
 
 impl PullRequest {
+    pub fn new() -> PullRequest {
+        PullRequest {
+            title: String::new(),
+            body: String::new(),
+            number: 0,
+            html_url: String::new(),
+            state: "open".into(),
+            user: User::new(""),
+            merged: None,
+            merge_commit_sha: None,
+            assignees: vec![],
+            head: BranchRef::new(""),
+            base: BranchRef::new(""),
+        }
+    }
+
     pub fn is_merged(&self) -> bool {
         self.merged.unwrap_or(false)
     }

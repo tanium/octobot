@@ -6,6 +6,7 @@ use logger::Logger;
 
 use config::Config;
 use github;
+use jira;
 use server::github_verify;
 use server::github_handler;
 
@@ -18,7 +19,20 @@ pub fn start(config: Config) -> Result<(), String> {
 
     let config = Arc::new(config);
 
-    let handler = github_handler::GithubHandler::new(config.clone(), github_session);
+    let jira_session;
+    if let Some(ref jira_config) = config.jira {
+        jira_session = match jira::api::JiraSession::new(&jira_config.host, &jira_config.username, &jira_config.password) {
+            Ok(s) => {
+                let arc : Arc<jira::api::Session> = Arc::new(s);
+                Some(arc)
+            }
+            Err(e) => panic!("Error initiating jira session: {}", e),
+        };
+    } else {
+        jira_session = None;
+    }
+
+    let handler = github_handler::GithubHandler::new(config.clone(), github_session, jira_session);
 
     let mut router = Router::new();
     router.post("/", handler, "webhook");

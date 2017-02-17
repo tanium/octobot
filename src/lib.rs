@@ -22,6 +22,7 @@ pub mod config;
 pub mod dir_pool;
 pub mod git;
 pub mod github;
+pub mod jira;
 pub mod messenger;
 pub mod pr_merge;
 pub mod repos;

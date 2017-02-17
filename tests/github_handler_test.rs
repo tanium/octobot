@@ -11,17 +11,19 @@ use std::thread::{self, JoinHandle};
 
 use iron::status;
 
-use octobot::config::Config;
+use octobot::config::{Config, JiraConfig};
 use octobot::repos::RepoConfig;
 use octobot::users::UserConfig;
 use octobot::github::*;
 use octobot::github::api::Session;
+use octobot::jira;
 use octobot::messenger::SlackMessenger;
 use octobot::slack::SlackAttachmentBuilder;
 use octobot::server::github_handler::GithubEventHandler;
 use octobot::pr_merge::PRMergeMessage;
 
 use mocks::mock_github::MockGithub;
+use mocks::mock_jira::MockJira;
 use mocks::mock_slack::{SlackCall, MockSlack};
 
 // this message gets appended only to review channel messages, not to slackbots
@@ -34,6 +36,7 @@ fn the_repo() -> Repo {
 struct GithubHandlerTest {
     handler: GithubEventHandler,
     github: Arc<MockGithub>,
+    jira: Option<Arc<MockJira>>,
     config: Arc<Config>,
     rx: Option<Receiver<PRMergeMessage>>,
 }
@@ -87,6 +90,7 @@ fn new_test() -> GithubHandlerTest {
 
     GithubHandlerTest {
         github: github.clone(),
+        jira: None,
         config: config.clone(),
         rx: Some(rx),
         handler: GithubEventHandler {
@@ -99,14 +103,41 @@ fn new_test() -> GithubHandlerTest {
                 slack: slack.clone(),
             }),
             github_session: github.clone(),
+            jira_session: None,
             pr_merge: tx.clone(),
         },
     }
 }
 
+fn new_test_with_jira() -> GithubHandlerTest {
+    let mut test = new_test();
+
+    {
+        let mut config: Config = (*test.config).clone();
+        config.jira = Some(JiraConfig {
+            host: "the-jira-host".into(),
+            username: "the-jira-user".into(),
+            password: "the-jira-pass".into(),
+            progress_states: Some(vec!["the-progress".into()]),
+            review_states: Some(vec!["the-review".into()]),
+            resolved_states: Some(vec!["the-resolved".into()]),
+            fixed_resolutions: Some(vec![":boom:".into()]),
+        });
+        test.config = Arc::new(config);
+        test.handler.config = test.config.clone();
+
+        let jira = Arc::new(MockJira::new());
+        test.jira = Some(jira.clone());
+        test.handler.jira_session = Some(jira.clone());
+    }
+
+    test
+}
+
 fn some_pr() -> Option<PullRequest> {
     Some(PullRequest {
         title: "The PR".into(),
+        body: "The body".into(),
         number: 32,
         html_url: "http://the-pr".into(),
         state: "open".into(),
@@ -943,4 +974,140 @@ fn test_push_force_notify_ignored() {
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "push".into()), resp);
+}
+
+fn new_transition(id: &str, name: &str) -> jira::Transition {
+    jira::Transition {
+        id: id.into(),
+        name: name.into(),
+        to: jira::TransitionTo {
+            id: String::new(),
+            name: format!("{}-inner", name),
+        },
+        fields: None,
+    }
+}
+
+fn new_transition_req(id: &str) -> jira::TransitionRequest {
+    jira::TransitionRequest {
+        transition: jira::IDOrName {
+            id: Some(id.into()),
+            name: None,
+        },
+        fields: None,
+    }
+}
+
+#[test]
+fn test_jira_pull_request_opened() {
+    let mut test = new_test_with_jira();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "opened".into();
+    test.handler.data.sender = User::new("the-pr-owner");
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
+
+    let mut pr = some_pr().unwrap();
+    pr.title = "[SER-1] Add the feature".into();
+    test.handler.data.pull_request = Some(pr);
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"[SER-1] Add the feature\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request opened by the.pr.owner";
+
+    test.expect_slack_calls(vec![
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    if let Some(ref jira) = test.jira {
+        jira.mock_comment_issue("SER-1", "Review submitted for branch master (pr-branch): http://the-pr", Ok(()));
+
+        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "the-progress")]));
+        jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
+
+        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("002", "the-review")]));
+        jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
+    }
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_jira_pull_request_merged() {
+    let mut test = new_test_with_jira();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "closed".into();
+    test.handler.data.sender = User::new("the-pr-owner");
+
+    let mut pr = some_pr().unwrap();
+    pr.title = "[SER-1] Add the feature".into();
+    pr.merged = Some(true);
+    test.handler.data.pull_request = Some(pr);
+
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
+    test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Ok(vec![]));
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"[SER-1] Add the feature\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request merged";
+
+    test.expect_slack_calls(vec![
+        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    if let Some(ref jira) = test.jira {
+        jira.mock_comment_issue("SER-1", "Merged into branch master: http://the-pr\n\n\
+                                         {quote}[SER-1] Add the feature\n\nThe body{quote}", Ok(()));
+
+        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
+        jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
+    }
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_jira_disabled() {
+    let mut test = new_test_with_jira();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "opened".into();
+    test.handler.data.sender = User::new("the-pr-owner");
+
+    // change the repo to an unconfigured one
+    test.handler.data.repository =
+        Repo::parse(&format!("http://{}/some-other-user/some-other-repo", test.github.github_host())).unwrap();
+
+    test.github.mock_get_pull_request_commits("some-other-user", "some-other-repo", 32, Ok(some_commits()));
+
+    let mut pr = some_pr().unwrap();
+    pr.title = "[SER-1] Add the feature".into();
+    test.handler.data.pull_request = Some(pr);
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+                          .title("Pull Request #32: \"[SER-1] Add the feature\"")
+                          .title_link("http://the-pr")
+                          .build()];
+    let msg = "Pull Request opened by the.pr.owner";
+
+    test.expect_slack_calls(vec![
+        SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@bob.author", msg, attach.clone()),
+        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    // no jira mocks: will fail if called
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "pr".into()), resp);
 }

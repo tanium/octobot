@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
@@ -11,6 +12,7 @@ use serde_json;
 use config::Config;
 use github;
 use github::CommentLike;
+use jira;
 use messenger::{self, Messenger};
 use pr_merge::{self, PRMergeMessage};
 use slack::SlackAttachmentBuilder;
@@ -19,6 +21,7 @@ use util;
 pub struct GithubHandler {
     pub config: Arc<Config>,
     pub github_session: Arc<github::api::Session>,
+    pub jira_session: Option<Arc<jira::api::Session>>,
     pr_merge_worker: pr_merge::Worker,
 }
 
@@ -29,21 +32,25 @@ pub struct GithubEventHandler {
     pub data: github::HookBody,
     pub action: String,
     pub github_session: Arc<github::api::Session>,
+    pub jira_session: Option<Arc<jira::api::Session>>,
     pub pr_merge: Sender<PRMergeMessage>,
 }
 
 const MAX_CONCURRENT_MERGES: usize = 20;
 
 impl GithubHandler {
-    pub fn new(config: Arc<Config>, github_session: github::api::GithubSession) -> GithubHandler {
+    pub fn new(config: Arc<Config>,
+               github_session: github::api::GithubSession,
+               jira_session: Option<Arc<jira::api::Session>>) -> GithubHandler {
 
-        let session: Arc<github::api::Session> = Arc::new(github_session);
+        let github_session: Arc<github::api::Session> = Arc::new(github_session);
         GithubHandler {
             config: config.clone(),
-            github_session: session.clone(),
+            github_session: github_session.clone(),
+            jira_session: jira_session,
             pr_merge_worker: pr_merge::Worker::new(MAX_CONCURRENT_MERGES,
                                                    config.clone(),
-                                                   session.clone()),
+                                                   github_session.clone()),
         }
     }
 }
@@ -88,6 +95,7 @@ impl Handler for GithubHandler {
             config: self.config.clone(),
             messenger: messenger::from_config(self.config.clone()),
             github_session: self.github_session.clone(),
+            jira_session: self.jira_session.clone(),
             pr_merge: self.pr_merge_worker.new_sender(),
         };
 
@@ -203,6 +211,19 @@ impl GithubEventHandler {
                 }
             } else if verb == Some("merged".to_string()) {
                 self.merge_pull_request_all_labels(pull_request);
+            }
+
+            // JIRA integration!
+            if self.config.repos.jira_enabled(&self.data.repository) {
+                if let Some(ref jira_config) = self.config.jira {
+                    if let Some(ref jira_session) = self.jira_session {
+                        if self.action == "opened" {
+                            jira::workflow::submit_for_review(&pull_request, jira_session.deref(), jira_config);
+                        } else if verb == Some("merged".to_string()) {
+                            jira::workflow::resolve_issue(&pull_request, jira_session.deref(), jira_config);
+                        }
+                    }
+                }
             }
         }
 

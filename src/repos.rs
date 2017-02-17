@@ -10,6 +10,7 @@ use github;
 pub struct RepoInfo {
     pub channel: String,
     pub force_push_notify: Option<bool>,
+    pub jira_enabled: Option<bool>,
 }
 
 // maps repo name to repo config
@@ -45,6 +46,7 @@ impl RepoConfig {
                          RepoInfo {
                              channel: channel.to_string(),
                              force_push_notify: None,
+                             jira_enabled: None,
                          });
     }
 
@@ -62,7 +64,7 @@ impl RepoConfig {
         }
     }
 
-    // always force for unconfigured repos/orgs;
+    // never notify for unconfigured repos/orgs;
     // defaults to true for configured repos/orgs w/ no value set
     pub fn notify_force_push(&self, repo: &github::Repo) -> bool {
         match self.lookup_info(repo) {
@@ -76,6 +78,19 @@ impl RepoConfig {
         }
     }
 
+    // never enable on unconfigured repos/orgs;
+    // defaults to true for configured repos/orgs w/ no value set
+    pub fn jira_enabled(&self, repo: &github::Repo) -> bool {
+        match self.lookup_info(repo) {
+            None => false,
+            Some(ref info) => {
+                match info.jira_enabled {
+                    Some(value) => value,
+                    None => true,
+                }
+            }
+        }
+    }
     fn lookup_info(&self, repo: &github::Repo) -> Option<&RepoInfo> {
         match Url::parse(&repo.html_url) {
             Ok(u) => {
@@ -142,18 +157,21 @@ mod tests {
                           RepoInfo {
                               channel: "reviews".to_string(),
                               force_push_notify: None,
+                              jira_enabled: None,
                           });
         repos.insert_info("git.company.com",
                           "some-user/noisy-repo-on-purpose",
                           RepoInfo {
                               channel: "reviews".to_string(),
                               force_push_notify: Some(true),
+                              jira_enabled: None,
                           });
         repos.insert_info("git.company.com",
                           "some-user/quiet-repo",
                           RepoInfo {
                               channel: "reviews".to_string(),
                               force_push_notify: Some(false),
+                              jira_enabled: None,
                           });
 
         {
@@ -179,6 +197,58 @@ mod tests {
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
             assert_eq!(false, repos.notify_force_push(&repo));
+        }
+
+    }
+
+    #[test]
+    fn test_jira_enabled() {
+        let mut repos = RepoConfig::new();
+        repos.insert_info("git.company.com",
+                          "some-user/noisy-repo-by-default",
+                          RepoInfo {
+                              channel: "reviews".to_string(),
+                              force_push_notify: None,
+                              jira_enabled: None,
+                          });
+        repos.insert_info("git.company.com",
+                          "some-user/noisy-repo-on-purpose",
+                          RepoInfo {
+                              channel: "reviews".to_string(),
+                              force_push_notify: None,
+                              jira_enabled: Some(true),
+                          });
+        repos.insert_info("git.company.com",
+                          "some-user/quiet-repo",
+                          RepoInfo {
+                              channel: "reviews".to_string(),
+                              force_push_notify: None,
+                              jira_enabled: Some(false),
+                          });
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo")
+                .unwrap();
+            assert_eq!(false, repos.jira_enabled(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.\
+                                            com/some-user/noisy-repo-by-default")
+                .unwrap();
+            assert_eq!(true, repos.jira_enabled(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.\
+                                            com/some-user/noisy-repo-on-purpose")
+                .unwrap();
+            assert_eq!(true, repos.jira_enabled(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
+            assert_eq!(false, repos.jira_enabled(&repo));
         }
 
     }
