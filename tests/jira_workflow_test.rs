@@ -69,8 +69,8 @@ fn test_submit_for_review() {
     let test = new_test();
     let pr = new_pr("[SER-1] I fixed it. And also [CLI-9999]", "");
 
-    test.jira.mock_comment_issue("SER-1", "Review submitted for branch master (pr-branch): http://the-pr", Ok(()));
-    test.jira.mock_comment_issue("CLI-9999", "Review submitted for branch master (pr-branch): http://the-pr", Ok(()));
+    test.jira.mock_comment_issue("SER-1", "Review submitted for branch master: http://the-pr", Ok(()));
+    test.jira.mock_comment_issue("CLI-9999", "Review submitted for branch master: http://the-pr", Ok(()));
 
     test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));

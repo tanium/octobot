@@ -1024,7 +1024,7 @@ fn test_jira_pull_request_opened() {
     ]);
 
     if let Some(ref jira) = test.jira {
-        jira.mock_comment_issue("SER-1", "Review submitted for branch master (pr-branch): http://the-pr", Ok(()));
+        jira.mock_comment_issue("SER-1", "Review submitted for branch master: http://the-pr", Ok(()));
 
         jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "the-progress")]));
         jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
