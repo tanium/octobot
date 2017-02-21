@@ -17,7 +17,7 @@ fn get_jira_keys(pr: &PullRequest) -> Vec<String> {
 pub fn submit_for_review(pr: &PullRequest, jira: &jira::api::Session, config: &JiraConfig) {
     for key in get_jira_keys(pr) {
         // add comment
-        if let Err(e) = jira.comment_issue(&key, &format!("Review submitted for branch {} ({}): {}", pr.base.ref_name, pr.head.ref_name, pr.html_url)) {
+        if let Err(e) = jira.comment_issue(&key, &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url)) {
             error!("Error commenting on key [{}]: {}", key, e);
             continue; // give up on transitioning if we can't comment.
         }
