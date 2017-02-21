@@ -10,6 +10,10 @@ to release branches for you. All you have to do is label pull requests with
 "backport-1.0" (for example) and he will auto-cherry-pick this PR after it is
 merged to "release/1.0" and open up a new PR for you.
 
+Yet still more, octobot also wants to help improve JIRA issue tracking.
+If a PR is submitted with jira issues in the title, they will be commented on and
+transitioned to in-progress/pending-review. When the PR is merged, they will be
+commented on again with the PR title/body, and transitioned to Resolved: Fixed.
 
 Setup
 -----
@@ -34,6 +38,19 @@ config.toml
     github_host = "git.company.com"
     github_token = "<token-for-octobot-user>"
 
+    [jira]
+    # required to enable jira support
+    host = "jira.company.com"
+    username = <jira username>
+    password = <jira password>
+
+    # optional. shown here with defaults:
+    progress_states = [ "In Progress" ]
+    review_states = [ "Pending Review" ]
+    resolved_states = [ "Resolved", "Done" ]
+    fixed_resolutions = [ "Fixed", "Done" ]
+
+
 users.json
 
     {
@@ -54,6 +71,7 @@ repos.json
         "some-org/special-repo": {
            "channel": "special-repo-reviews",
            "force_push_notify": false, // turn off force-push notifications
+           "jira_enabled": false, // turn off jira integration
         }
       }
     }
@@ -67,6 +85,7 @@ As for the octobot user token, you need to:
         curl -u octobot https://git.company.com/api/v3/authorizations -d '{"scopes": ["repo"], "client_id": "<app id>", "client_secret": "<app secret>"}'
 
 - Grab the "token" value and put it in the config file.
+
   **Warning**: This token has read/write access to code. Guard it carefully and make sure config.toml is only readable by service account.
 
 
