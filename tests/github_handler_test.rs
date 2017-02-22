@@ -998,20 +998,31 @@ fn new_transition_req(id: &str) -> jira::TransitionRequest {
     }
 }
 
+fn some_jira_commits() -> Vec<Commit> {
+    vec![
+        Commit {
+            sha: "ffeedd00110011".into(),
+            html_url: "http://commit/ffeedd00110011".into(),
+            author: Some(User::new("bob-author")),
+            commit: CommitDetails {
+                message: "[SER-1] Add the feature\n\nThe body".into(),
+            }
+        },
+    ]
+}
+
 #[test]
 fn test_jira_pull_request_opened() {
     let mut test = new_test_with_jira();
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
+    test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-owner");
-    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
-    let mut pr = some_pr().unwrap();
-    pr.title = "[SER-1] Add the feature".into();
-    test.handler.data.pull_request = Some(pr);
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_jira_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("")
-                          .title("Pull Request #32: \"[SER-1] Add the feature\"")
+                          .title("Pull Request #32: \"The PR\"")
                           .title_link("http://the-pr")
                           .build()];
     let msg = "Pull Request opened by the.pr.owner";
@@ -1042,18 +1053,18 @@ fn test_jira_pull_request_merged() {
     let mut test = new_test_with_jira();
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
+    test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-owner");
 
-    let mut pr = some_pr().unwrap();
-    pr.title = "[SER-1] Add the feature".into();
-    pr.merged = Some(true);
-    test.handler.data.pull_request = Some(pr);
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.merged = Some(true);
+    }
 
-    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
+    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_jira_commits()));
     test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Ok(vec![]));
 
     let attach = vec![SlackAttachmentBuilder::new("")
-                          .title("Pull Request #32: \"[SER-1] Add the feature\"")
+                          .title("Pull Request #32: \"The PR\"")
                           .title_link("http://the-pr")
                           .build()];
     let msg = "Pull Request merged";
@@ -1067,7 +1078,7 @@ fn test_jira_pull_request_merged() {
 
     if let Some(ref jira) = test.jira {
         jira.mock_comment_issue("SER-1", "Merged into branch master: http://the-pr\n\n\
-                                         {quote}[SER-1] Add the feature\n\nThe body{quote}", Ok(()));
+                                         [ffeedd0|http://commit/ffeedd00110011]\n{quote}[SER-1] Add the feature\n\nThe body{quote}", Ok(()));
 
         jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
         jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
@@ -1083,19 +1094,16 @@ fn test_jira_disabled() {
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
     test.handler.data.sender = User::new("the-pr-owner");
+    test.handler.data.pull_request = some_pr();
 
     // change the repo to an unconfigured one
     test.handler.data.repository =
         Repo::parse(&format!("http://{}/some-other-user/some-other-repo", test.github.github_host())).unwrap();
 
-    test.github.mock_get_pull_request_commits("some-other-user", "some-other-repo", 32, Ok(some_commits()));
-
-    let mut pr = some_pr().unwrap();
-    pr.title = "[SER-1] Add the feature".into();
-    test.handler.data.pull_request = Some(pr);
+    test.github.mock_get_pull_request_commits("some-other-user", "some-other-repo", 32, Ok(some_jira_commits()));
 
     let attach = vec![SlackAttachmentBuilder::new("")
-                          .title("Pull Request #32: \"[SER-1] Add the feature\"")
+                          .title("Pull Request #32: \"The PR\"")
                           .title_link("http://the-pr")
                           .build()];
     let msg = "Pull Request opened by the.pr.owner";

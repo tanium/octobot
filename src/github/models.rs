@@ -372,6 +372,36 @@ pub struct CommitDetails {
     pub message: String,
 }
 
+impl Commit {
+    pub fn new() -> Commit {
+        Commit {
+            sha: String::new(),
+            html_url: String::new(),
+            author: None,
+            commit: CommitDetails {
+                message: String::new(),
+            }
+        }
+    }
+
+    pub fn short_hash(&self) -> &str {
+        if self.sha.len() < 7 {
+            &self.sha
+        } else {
+            &self.sha[0..7]
+        }
+    }
+
+    pub fn title(&self) -> String {
+        self.commit.message.lines().next().unwrap_or("").into()
+    }
+
+    pub fn body(&self) -> String {
+        let lines: Vec<&str> = self.commit.message.lines().skip(1).skip_while(|ref l| l.trim().len() == 0).collect();
+        lines.join("\n")
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct AssignResponse {
     pub assignees: Vec<User>,
@@ -449,5 +479,50 @@ mod tests {
             body.deleted = Some(true);
             assert_eq!(true, body.deleted());
         }
+    }
+
+    #[test]
+    fn test_commit_title() {
+        let mut commit = Commit::new();
+
+        commit.commit.message = "1 Hello there".into();
+        assert_eq!("1 Hello there", commit.title());
+        assert_eq!("", commit.body());
+
+        commit.commit.message = "2 Hello there\n".into();
+        assert_eq!("2 Hello there", commit.title());
+        assert_eq!("", commit.body());
+
+        commit.commit.message = "3 Hello there\n\n".into();
+        assert_eq!("3 Hello there", commit.title());
+        assert_eq!("", commit.body());
+
+        commit.commit.message = "4 Hello there\n\nand then some more\nwith\nmultiple\n\nlines".into();
+        assert_eq!("4 Hello there", commit.title());
+        assert_eq!("and then some more\nwith\nmultiple\n\nlines", commit.body());
+
+        commit.commit.message = "5 Hello there\r\n\r\nmaybe also support\r\ncarriage\r\nreturns?".into();
+        assert_eq!("5 Hello there", commit.title());
+        assert_eq!("maybe also support\ncarriage\nreturns?", commit.body());
+    }
+
+    #[test]
+    fn test_commit_short_hash() {
+        let mut commit = Commit::new();
+
+        commit.sha = "".into();
+        assert_eq!("", commit.short_hash());
+
+        commit.sha = "12345".into();
+        assert_eq!("12345", commit.short_hash());
+
+        commit.sha = "123456".into();
+        assert_eq!("123456", commit.short_hash());
+
+        commit.sha = "1234567".into();
+        assert_eq!("1234567", commit.short_hash());
+
+        commit.sha = "12345678".into();
+        assert_eq!("1234567", commit.short_hash());
     }
 }
