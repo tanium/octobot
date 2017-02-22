@@ -5,13 +5,13 @@ use github::{Commit, PullRequest};
 use jira;
 use jira::Transition;
 
-fn get_jira_keys(commits: &Vec<Commit>) -> Vec<String> {
+fn get_jira_keys(strings: Vec<String>) -> Vec<String> {
     let re = Regex::new(r"\[([A-Z]+-[0-9]+)\]").unwrap();
 
     let mut all_keys = vec![];
-    for commit in commits {
+    for s in strings {
         // TODO: should references to jiras in the commit body count the same?
-        all_keys.extend(re.captures_iter(&commit.title()).map(|c| c[1].to_string()));
+        all_keys.extend(re.captures_iter(&s).map(|c| c[1].to_string()));
     }
 
     all_keys.sort();
@@ -20,8 +20,16 @@ fn get_jira_keys(commits: &Vec<Commit>) -> Vec<String> {
     all_keys
 }
 
+fn get_fixed_jira_keys(commits: &Vec<Commit>) -> Vec<String> {
+    get_jira_keys(commits.iter().map(|ref c| c.title()).collect())
+}
+
+fn get_referenced_jira_keys(commits: &Vec<Commit>) -> Vec<String> {
+    get_jira_keys(commits.iter().map(|ref c| c.body()).collect())
+}
+
 pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::api::Session, config: &JiraConfig) {
-    for key in get_jira_keys(commits) {
+    for key in get_fixed_jira_keys(commits) {
         // add comment
         if let Err(e) = jira.comment_issue(&key, &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url)) {
             error!("Error commenting on key [{}]: {}", key, e);
@@ -36,13 +44,14 @@ pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::a
 }
 
 pub fn resolve_issue(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::api::Session, config: &JiraConfig) {
-    for key in get_jira_keys(commits) {
-        let descs: Vec<String> = commits.iter().map(|ref commit| {
-            format!("[{}|{}]\n{{quote}}{}{{quote}}", commit.short_hash(), commit.html_url, commit.commit.message)
-        }).collect();
+    let descs: Vec<String> = commits.iter().map(|ref commit| {
+        format!("[{}|{}]\n{{quote}}{}{{quote}}", commit.short_hash(), commit.html_url, commit.commit.message)
+    }).collect();
+    let descs = descs.join("\n");
 
+    for key in get_fixed_jira_keys(commits) {
         // add comment
-        let msg = format!("Merged into branch {}: {}\n\n{}", pr.base.ref_name, pr.html_url, descs.join("\n"));
+        let msg = format!("Merged into branch {}: {}\n\n{}", pr.base.ref_name, pr.html_url, descs);
         if let Err(e) = jira.comment_issue(&key, &msg) {
             error!("Error commenting on key [{}]: {}", key, e);
         }
@@ -80,6 +89,15 @@ pub fn resolve_issue(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::api::
             Ok(None) => info!("JIRA [{}] cannot be transitioned to  any of [{:?}]", key, to),
             Err(e) => error!("{}", e),
         };
+    }
+
+
+    for key in get_referenced_jira_keys(commits) {
+        // add comment
+        let msg = format!("Referenced by commit merged into branch {}: {}\n\n{}", pr.base.ref_name, pr.html_url, descs);
+        if let Err(e) = jira.comment_issue(&key, &msg) {
+            error!("Error commenting on key [{}]: {}", key, e);
+        }
     }
 }
 
@@ -127,15 +145,18 @@ mod tests {
     #[test]
     pub fn test_get_jira_keys() {
         let mut commit = Commit::new();
-        assert_eq!(Vec::<String>::new(), get_jira_keys(&vec![commit.clone()]));
+        assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()]));
+        assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()]));
 
         // should include the commit message title
         commit.commit.message = "[KEY-1][KEY-2] Some thing that also fixed [KEY-3][KEY-3]".into();
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_jira_keys(&vec![commit.clone()]));
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_fixed_jira_keys(&vec![commit.clone()]));
+        assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()]));
 
         // should ignore the commit message body.
         commit.commit.message += "\n\nOh, I forgot it also fixes [KEY-4]";
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_jira_keys(&vec![commit.clone()]));
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_fixed_jira_keys(&vec![commit.clone()]));
+        assert_eq!(vec!["KEY-4"], get_referenced_jira_keys(&vec![commit.clone()]));
     }
 
     #[test]
