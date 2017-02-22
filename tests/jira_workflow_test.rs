@@ -118,11 +118,16 @@ fn test_resolve_issue_no_resolution() {
 fn test_resolve_issue_with_resolution() {
     let test = new_test();
     let pr = new_pr();
-    let commit = new_commit("[SER-1] I fixed it.\n\nand now I'm saying something about it", "aabbccddee");
+    let commit = new_commit("[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
 
-    let comment = "Merged into branch master: http://the-pr\n\n\
-                  [aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand now I'm saying something about it{quote}";
-    test.jira.mock_comment_issue("SER-1", comment, Ok(()));
+    let comment1 = "Merged into branch master: http://the-pr\n\n\
+                   [aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}";
+    test.jira.mock_comment_issue("SER-1", comment1, Ok(()));
+
+    let comment2 = "Referenced by commit merged into branch master: http://the-pr\n\n\
+                   [aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}";
+    test.jira.mock_comment_issue("CLI-45", comment2, Ok(()));
+
 
     let mut trans = new_transition("003", "resolved1");
     trans.fields = Some(TransitionFields {
