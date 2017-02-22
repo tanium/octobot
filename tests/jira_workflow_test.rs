@@ -32,14 +32,20 @@ fn new_test() -> JiraWorkflowTest {
     }
 }
 
-fn new_pr(title: &str, body: &str) -> github::PullRequest {
+fn new_pr() -> github::PullRequest {
     let mut pr = github::PullRequest::new();
     pr.head.ref_name = "pr-branch".into();
     pr.base.ref_name = "master".into();
     pr.html_url = "http://the-pr".into();
-    pr.title = title.to_string();
-    pr.body = body.to_string();
     pr
+}
+
+fn new_commit(msg: &str, hash: &str) -> github::Commit {
+    let mut commit = github::Commit::new();
+    commit.commit.message = msg.into();
+    commit.sha = hash.into();
+    commit.html_url = format!("http://the-commit/{}", hash);
+    commit
 }
 
 fn new_transition(id: &str, name: &str) -> Transition {
@@ -67,10 +73,15 @@ fn new_transition_req(id: &str) -> TransitionRequest {
 #[test]
 fn test_submit_for_review() {
     let test = new_test();
-    let pr = new_pr("[SER-1] I fixed it. And also [CLI-9999]", "");
+    let pr = new_pr();
+    let commit = new_commit("[SER-1] I fixed it. And also [CLI-9999]", "aabbccddee");
 
-    test.jira.mock_comment_issue("SER-1", "Review submitted for branch master: http://the-pr", Ok(()));
     test.jira.mock_comment_issue("CLI-9999", "Review submitted for branch master: http://the-pr", Ok(()));
+    test.jira.mock_comment_issue("SER-1", "Review submitted for branch master: http://the-pr", Ok(()));
+
+    // empty twice: once for in-progress, once for in-review
+    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("009", "other")]));
+    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("009", "other")]));
 
     test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
@@ -78,38 +89,39 @@ fn test_submit_for_review() {
     test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
     test.jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
 
-    // empty twice: once for in-progress, once for in-review
-    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("009", "other")]));
-    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("009", "other")]));
-
-    jira::workflow::submit_for_review(&pr, &test.jira, &test.config);
+    jira::workflow::submit_for_review(&pr, &vec![commit], &test.jira, &test.config);
 }
 
 #[test]
 fn test_resolve_issue_no_resolution() {
     let test = new_test();
-    let pr = new_pr("[SER-1] I fixed it. And also [CLI-9999]", "\n\n\n\n");
+    let pr = new_pr();
+    let commit1 = new_commit("[SER-1] I fixed it. And also [CLI-9999]\n\n\n\n", "aabbccddee");
+    let commit2 = new_commit("Really fix [CLI-9999]\n\n\n\n", "ffbbccddee");
 
-    let comment = "Merged into branch master: http://the-pr\n\n{quote}[SER-1] I fixed it. And also [CLI-9999]{quote}";
-    test.jira.mock_comment_issue("SER-1", comment, Ok(()));
+    let comment = "Merged into branch master: http://the-pr\n\n\
+                   [aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it. And also [CLI-9999]\n\n\n\n{quote}\n\
+                   [ffbbccd|http://the-commit/ffbbccddee]\n{quote}Really fix [CLI-9999]\n\n\n\n{quote}";
     test.jira.mock_comment_issue("CLI-9999", comment, Ok(()));
-
-    test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "resolved1")]));
-    test.jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
+    test.jira.mock_comment_issue("SER-1", comment, Ok(()));
 
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("004", "resolved2")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("004"), Ok(()));
 
-    jira::workflow::resolve_issue(&pr, &test.jira, &test.config);
+    test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "resolved1")]));
+    test.jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
+
+    jira::workflow::resolve_issue(&pr, &vec![commit1, commit2], &test.jira, &test.config);
 }
 
 #[test]
 fn test_resolve_issue_with_resolution() {
     let test = new_test();
-    let pr = new_pr("[SER-1] I fixed it.", "and now I'm saying something about it");
+    let pr = new_pr();
+    let commit = new_commit("[SER-1] I fixed it.\n\nand now I'm saying something about it", "aabbccddee");
 
     let comment = "Merged into branch master: http://the-pr\n\n\
-                  {quote}[SER-1] I fixed it.\n\nand now I'm saying something about it{quote}";
+                  [aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand now I'm saying something about it{quote}";
     test.jira.mock_comment_issue("SER-1", comment, Ok(()));
 
     let mut trans = new_transition("003", "resolved1");
@@ -139,6 +151,6 @@ fn test_resolve_issue_with_resolution() {
     test.jira.mock_get_transitions("SER-1", Ok(vec![trans]));
     test.jira.mock_transition_issue("SER-1", &req, Ok(()));
 
-    jira::workflow::resolve_issue(&pr, &test.jira, &test.config);
+    jira::workflow::resolve_issue(&pr, &vec![commit], &test.jira, &test.config);
 }
 

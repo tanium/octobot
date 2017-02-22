@@ -1,21 +1,27 @@
 use regex::Regex;
 
 use config::JiraConfig;
-use github::PullRequest;
+use github::{Commit, PullRequest};
 use jira;
 use jira::Transition;
 
-fn get_jira_keys(pr: &PullRequest) -> Vec<String> {
+fn get_jira_keys(commits: &Vec<Commit>) -> Vec<String> {
     let re = Regex::new(r"\[([A-Z]+-[0-9]+)\]").unwrap();
 
-    // TODO: should references to jiras in the PR body count the same?
-    let title_and_body = pr.title.clone();
+    let mut all_keys = vec![];
+    for commit in commits {
+        // TODO: should references to jiras in the commit body count the same?
+        all_keys.extend(re.captures_iter(&commit.title()).map(|c| c[1].to_string()));
+    }
 
-    re.captures_iter(&title_and_body).map(|c| c[1].to_string()).collect()
+    all_keys.sort();
+    all_keys.dedup();
+
+    all_keys
 }
 
-pub fn submit_for_review(pr: &PullRequest, jira: &jira::api::Session, config: &JiraConfig) {
-    for key in get_jira_keys(pr) {
+pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::api::Session, config: &JiraConfig) {
+    for key in get_jira_keys(commits) {
         // add comment
         if let Err(e) = jira.comment_issue(&key, &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url)) {
             error!("Error commenting on key [{}]: {}", key, e);
@@ -29,17 +35,14 @@ pub fn submit_for_review(pr: &PullRequest, jira: &jira::api::Session, config: &J
     }
 }
 
-pub fn resolve_issue(pr: &PullRequest, jira: &jira::api::Session, config: &JiraConfig) {
-    for key in get_jira_keys(pr) {
-        let pr_desc;
-        if pr.body.trim().len() == 0 {
-            pr_desc = pr.title.clone();
-        } else {
-            pr_desc = format!("{}\n\n{}", pr.title, pr.body);
-        }
+pub fn resolve_issue(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::api::Session, config: &JiraConfig) {
+    for key in get_jira_keys(commits) {
+        let descs: Vec<String> = commits.iter().map(|ref commit| {
+            format!("[{}|{}]\n{{quote}}{}{{quote}}", commit.short_hash(), commit.html_url, commit.commit.message)
+        }).collect();
 
         // add comment
-        let msg = format!("Merged into branch {}: {}\n\n{{quote}}{}{{quote}}", pr.base.ref_name, pr.html_url, pr_desc);
+        let msg = format!("Merged into branch {}: {}\n\n{}", pr.base.ref_name, pr.html_url, descs.join("\n"));
         if let Err(e) = jira.comment_issue(&key, &msg) {
             error!("Error commenting on key [{}]: {}", key, e);
         }
@@ -123,14 +126,16 @@ mod tests {
 
     #[test]
     pub fn test_get_jira_keys() {
-        let mut pr = PullRequest::new();
-        assert_eq!(Vec::<String>::new(), get_jira_keys(&pr));
+        let mut commit = Commit::new();
+        assert_eq!(Vec::<String>::new(), get_jira_keys(&vec![commit.clone()]));
 
-        pr.title = "[KEY-1][KEY-2] Some thing that also fixed [KEY-3]".into();
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_jira_keys(&pr));
+        // should include the commit message title
+        commit.commit.message = "[KEY-1][KEY-2] Some thing that also fixed [KEY-3][KEY-3]".into();
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_jira_keys(&vec![commit.clone()]));
 
-        pr.body = "Oh, I forgot it also fixes [KEY-4]".into();
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_jira_keys(&pr));
+        // should ignore the commit message body.
+        commit.commit.message += "\n\nOh, I forgot it also fixes [KEY-4]";
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_jira_keys(&vec![commit.clone()]));
     }
 
     #[test]

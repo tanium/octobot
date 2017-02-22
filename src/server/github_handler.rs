@@ -134,25 +134,33 @@ impl GithubEventHandler {
         self.config.users.slack_user_name(user.login(), &self.data.repository)
     }
 
+    fn pull_request_commits(&self, pull_request: &github::PullRequestLike) -> Vec<github::Commit> {
+        match self.github_session.get_pull_request_commits(&self.data.repository.owner.login(),
+                                                           &self.data.repository.name,
+                                                           pull_request.number()) {
+            Ok(commits) => commits,
+            Err(e) => {
+                error!("Error looking up PR commits: {}", e);
+                vec![]
+            }
+        }
+    }
+
     fn all_participants(&self, pull_request: &github::PullRequestLike) -> Vec<github::User> {
+        self.all_participants_with_commits(pull_request, &self.pull_request_commits(pull_request))
+    }
+
+    fn all_participants_with_commits(&self, pull_request: &github::PullRequestLike, pr_commits: &Vec<github::Commit>) -> Vec<github::User> {
         // start with the assignees
         let mut participants = pull_request.assignees().clone();
         // add the author of the PR
         participants.push(pull_request.user().clone());
         // look up commits and add the authors of those
-        match self.github_session
-            .get_pull_request_commits(&self.data.repository.owner.login(),
-                                      &self.data.repository.name,
-                                      pull_request.number()) {
-            Ok(commits) => {
-                for commit in commits {
-                    if let Some(author) = commit.author {
-                        participants.push(author);
-                    }
-                }
+        for commit in pr_commits {
+            if let Some(ref author) = commit.author {
+                participants.push(author.clone());
             }
-            Err(e) => error!("Error looking up PR commits: {}", e),
-        };
+        }
 
         participants.sort_by(|a, b| a.login().cmp(b.login()));
         participants.dedup();
@@ -189,6 +197,8 @@ impl GithubEventHandler {
             }
 
             if let Some(ref verb) = verb {
+                let commits = self.pull_request_commits(&pull_request);
+
                 let msg = format!("Pull Request {}", verb);
                 let attachments = vec![SlackAttachmentBuilder::new("")
                                            .title(format!("Pull Request #{}: \"{}\"",
@@ -202,7 +212,20 @@ impl GithubEventHandler {
                                            &pull_request.user,
                                            &self.data.sender,
                                            &self.data.repository,
-                                           &self.all_participants(&pull_request));
+                                           &self.all_participants_with_commits(&pull_request, &commits));
+
+                // JIRA integration!
+                if self.config.repos.jira_enabled(&self.data.repository) {
+                    if let Some(ref jira_config) = self.config.jira {
+                        if let Some(ref jira_session) = self.jira_session {
+                            if self.action == "opened" {
+                                jira::workflow::submit_for_review(&pull_request, &commits, jira_session.deref(), jira_config);
+                            } else if verb == "merged" {
+                                jira::workflow::resolve_issue(&pull_request, &commits, jira_session.deref(), jira_config);
+                            }
+                        }
+                    }
+                }
             }
 
             if self.action == "labeled" {
@@ -211,19 +234,6 @@ impl GithubEventHandler {
                 }
             } else if verb == Some("merged".to_string()) {
                 self.merge_pull_request_all_labels(pull_request);
-            }
-
-            // JIRA integration!
-            if self.config.repos.jira_enabled(&self.data.repository) {
-                if let Some(ref jira_config) = self.config.jira {
-                    if let Some(ref jira_session) = self.jira_session {
-                        if self.action == "opened" {
-                            jira::workflow::submit_for_review(&pull_request, jira_session.deref(), jira_config);
-                        } else if verb == Some("merged".to_string()) {
-                            jira::workflow::resolve_issue(&pull_request, jira_session.deref(), jira_config);
-                        }
-                    }
-                }
             }
         }
 
