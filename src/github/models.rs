@@ -349,6 +349,12 @@ impl<'a> CommentLike for &'a Comment {
     }
 }
 
+pub trait CommitLike {
+    fn sha(&self) -> &str;
+    fn html_url(&self) -> &str;
+    fn message(&self) -> &str;
+}
+
 // the 'Commit' objects that come from a push event have a different format from
 // the api that lists commits for a PR
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -372,6 +378,63 @@ pub struct CommitDetails {
     pub message: String,
 }
 
+impl CommitLike for PushCommit {
+    fn sha(&self) -> &str {
+        &self.id
+    }
+
+    fn html_url(&self) -> &str {
+        &self.url
+    }
+
+    fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl<'a> CommitLike for &'a PushCommit {
+    fn sha(&self) -> &str {
+        &self.id
+    }
+
+    fn html_url(&self) -> &str {
+        &self.url
+    }
+
+    fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl CommitLike for Commit {
+    fn sha(&self) -> &str {
+        &self.sha
+    }
+
+    fn html_url(&self) -> &str {
+        &self.html_url
+    }
+
+    fn message(&self) -> &str {
+        &self.commit.message
+    }
+}
+
+
+impl<'a> CommitLike for &'a Commit {
+    fn sha(&self) -> &str {
+        &self.sha
+    }
+
+    fn html_url(&self) -> &str {
+        &self.html_url
+    }
+
+    fn message(&self) -> &str {
+        &self.commit.message
+    }
+}
+
 impl Commit {
     pub fn new() -> Commit {
         Commit {
@@ -384,21 +447,34 @@ impl Commit {
         }
     }
 
-    pub fn short_hash(&self) -> &str {
-        if self.sha.len() < 7 {
-            &self.sha
+    pub fn short_hash(commit: &CommitLike) -> &str {
+        if commit.sha().len() < 7 {
+            commit.sha()
         } else {
-            &self.sha[0..7]
+            &commit.sha()[0..7]
         }
     }
 
-    pub fn title(&self) -> String {
-        self.commit.message.lines().next().unwrap_or("").into()
+    pub fn title(commit: &CommitLike) -> String {
+        commit.message().lines().next().unwrap_or("").into()
     }
 
-    pub fn body(&self) -> String {
-        let lines: Vec<&str> = self.commit.message.lines().skip(1).skip_while(|ref l| l.trim().len() == 0).collect();
+    pub fn body(commit: &CommitLike) -> String {
+        let lines: Vec<&str> = commit.message().lines().skip(1).skip_while(|ref l| l.trim().len() == 0).collect();
         lines.join("\n")
+    }
+
+}
+
+impl PushCommit {
+    pub fn new() -> PushCommit {
+        PushCommit {
+            id: String::new(),
+            tree_id: String::new(),
+            url: String::new(),
+            message: String::new(),
+
+        }
     }
 }
 
@@ -486,24 +562,24 @@ mod tests {
         let mut commit = Commit::new();
 
         commit.commit.message = "1 Hello there".into();
-        assert_eq!("1 Hello there", commit.title());
-        assert_eq!("", commit.body());
+        assert_eq!("1 Hello there", Commit::title(&commit));
+        assert_eq!("", Commit::body(&commit));
 
         commit.commit.message = "2 Hello there\n".into();
-        assert_eq!("2 Hello there", commit.title());
-        assert_eq!("", commit.body());
+        assert_eq!("2 Hello there", Commit::title(&commit));
+        assert_eq!("", Commit::body(&commit));
 
         commit.commit.message = "3 Hello there\n\n".into();
-        assert_eq!("3 Hello there", commit.title());
-        assert_eq!("", commit.body());
+        assert_eq!("3 Hello there", Commit::title(&commit));
+        assert_eq!("", Commit::body(&commit));
 
         commit.commit.message = "4 Hello there\n\nand then some more\nwith\nmultiple\n\nlines".into();
-        assert_eq!("4 Hello there", commit.title());
-        assert_eq!("and then some more\nwith\nmultiple\n\nlines", commit.body());
+        assert_eq!("4 Hello there", Commit::title(&commit));
+        assert_eq!("and then some more\nwith\nmultiple\n\nlines", Commit::body(&commit));
 
         commit.commit.message = "5 Hello there\r\n\r\nmaybe also support\r\ncarriage\r\nreturns?".into();
-        assert_eq!("5 Hello there", commit.title());
-        assert_eq!("maybe also support\ncarriage\nreturns?", commit.body());
+        assert_eq!("5 Hello there", Commit::title(&commit));
+        assert_eq!("maybe also support\ncarriage\nreturns?", Commit::body(&commit));
     }
 
     #[test]
@@ -511,18 +587,18 @@ mod tests {
         let mut commit = Commit::new();
 
         commit.sha = "".into();
-        assert_eq!("", commit.short_hash());
+        assert_eq!("", Commit::short_hash(&commit));
 
         commit.sha = "12345".into();
-        assert_eq!("12345", commit.short_hash());
+        assert_eq!("12345", Commit::short_hash(&commit));
 
         commit.sha = "123456".into();
-        assert_eq!("123456", commit.short_hash());
+        assert_eq!("123456", Commit::short_hash(&commit));
 
         commit.sha = "1234567".into();
-        assert_eq!("1234567", commit.short_hash());
+        assert_eq!("1234567", Commit::short_hash(&commit));
 
         commit.sha = "12345678".into();
-        assert_eq!("1234567", commit.short_hash());
+        assert_eq!("1234567", Commit::short_hash(&commit));
     }
 }
