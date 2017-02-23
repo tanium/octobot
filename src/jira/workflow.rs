@@ -59,7 +59,7 @@ pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::a
 
 pub fn resolve_issue(branch: &str, commits: &Vec<PushCommit>, jira: &jira::api::Session, config: &JiraConfig) {
     for commit in commits {
-        let desc = format!("[{}|{}]\n{{quote}}{}{{quote}}", Commit::short_hash(&commit), commit.html_url(), commit.message());
+        let desc = format!("[{}|{}]\n{{quote}}{}{{quote}}", Commit::short_hash(&commit), commit.html_url(), Commit::title(&commit));
 
         for key in get_fixed_jira_keys(&vec![commit]) {
             let msg = format!("Merged into branch {}: {}", branch, desc);
