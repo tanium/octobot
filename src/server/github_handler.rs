@@ -12,6 +12,7 @@ use serde_json;
 use config::Config;
 use github;
 use github::CommentLike;
+use git_clone_manager::GitCloneManager;
 use jira;
 use messenger::{self, Messenger};
 use pr_merge::{self, PRMergeMessage};
@@ -23,6 +24,7 @@ pub struct GithubHandler {
     pub github_session: Arc<github::api::Session>,
     pub jira_session: Option<Arc<jira::api::Session>>,
     pr_merge_worker: pr_merge::Worker,
+    git_clone_manager: Arc<GitCloneManager>,
 }
 
 pub struct GithubEventHandler {
@@ -34,6 +36,7 @@ pub struct GithubEventHandler {
     pub github_session: Arc<github::api::Session>,
     pub jira_session: Option<Arc<jira::api::Session>>,
     pub pr_merge: Sender<PRMergeMessage>,
+    pub git_clone_manager: Arc<GitCloneManager>,
 }
 
 const MAX_CONCURRENT_MERGES: usize = 20;
@@ -44,13 +47,17 @@ impl GithubHandler {
                jira_session: Option<Arc<jira::api::Session>>) -> GithubHandler {
 
         let github_session: Arc<github::api::Session> = Arc::new(github_session);
+        let git_clone_manager = Arc::new(GitCloneManager::new(github_session.clone(), config.clone()));
+
         GithubHandler {
             config: config.clone(),
             github_session: github_session.clone(),
             jira_session: jira_session,
+            git_clone_manager: git_clone_manager.clone(),
             pr_merge_worker: pr_merge::Worker::new(MAX_CONCURRENT_MERGES,
                                                    config.clone(),
-                                                   github_session.clone()),
+                                                   github_session.clone(),
+                                                   git_clone_manager.clone()),
         }
     }
 }
@@ -95,6 +102,7 @@ impl Handler for GithubHandler {
             config: self.config.clone(),
             messenger: messenger::from_config(self.config.clone()),
             github_session: self.github_session.clone(),
+            git_clone_manager: self.git_clone_manager.clone(),
             jira_session: self.jira_session.clone(),
             pr_merge: self.pr_merge_worker.new_sender(),
         };
