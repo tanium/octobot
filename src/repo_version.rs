@@ -7,13 +7,14 @@ use std::thread::{self, JoinHandle};
 
 use threadpool::ThreadPool;
 
-use config::Config;
+use config::{Config, JiraConfig};
 use git::Git;
 use github;
 use git_clone_manager::GitCloneManager;
 use jira;
 
 pub fn comment_repo_version(version_script: &Vec<String>,
+                            jira_config: &JiraConfig,
                             jira: &jira::api::Session,
                             github: &github::api::Session,
                             clone_mgr: &GitCloneManager,
@@ -46,9 +47,14 @@ pub fn comment_repo_version(version_script: &Vec<String>,
 
     let version = try!(run_script(version_script, clone_dir));
 
-    if version.len() > 0 {
-        jira::workflow::version_comment(branch_name, &version, commits, jira);
-    }
+    let maybe_version = if version.len() > 0 {
+        Some(version.as_str())
+    } else {
+        None
+    };
+
+    // resolve with version
+    jira::workflow::resolve_issue(branch_name, maybe_version, commits, jira, jira_config);
 
     Ok(())
 }
@@ -204,16 +210,24 @@ impl WorkerRunner {
         self.thread_pool.execute(move || {
             if let Some(version_script) = config.repos.version_script(&req.repo) {
                 if let Some(ref jira_session) = jira_session {
-                    if let Err(e) = comment_repo_version(version_script,
-                                                         jira_session.borrow(),
-                                                         github_session.borrow(),
-                                                         &clone_mgr,
-                                                         &req.repo.owner.login(),
-                                                         &req.repo.name,
-                                                         &req.branch,
-                                                         &req.commit_hash,
-                                                         &req.commits) {
-                        error!("Error running version script: {}", e);
+                    if let Some(ref jira_config) = config.jira {
+
+                        let jira = jira_session.borrow();
+
+                        if let Err(e) = comment_repo_version(version_script,
+                                                             jira_config,
+                                                             jira,
+                                                             github_session.borrow(),
+                                                             &clone_mgr,
+                                                             &req.repo.owner.login(),
+                                                             &req.repo.name,
+                                                             &req.branch,
+                                                             &req.commit_hash,
+                                                             &req.commits) {
+                            error!("Error running version script: {}", e);
+                            // resolve the issue with no version
+                            jira::workflow::resolve_issue(&req.branch, None, &req.commits, jira, jira_config);
+                        }
                     }
                 }
             }

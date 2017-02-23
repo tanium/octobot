@@ -57,12 +57,17 @@ pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::a
     }
 }
 
-pub fn resolve_issue(branch: &str, commits: &Vec<PushCommit>, jira: &jira::api::Session, config: &JiraConfig) {
+pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushCommit>, jira: &jira::api::Session, config: &JiraConfig) {
     for commit in commits {
         let desc = format!("[{}|{}]\n{{quote}}{}{{quote}}", Commit::short_hash(&commit), commit.html_url(), Commit::title(&commit));
 
+        let branch_and_version = match version {
+            None => format!("branch {}", branch),
+            Some(v) => format!("branch {} (version {})", branch, v),
+        };
+
         for key in get_fixed_jira_keys(&vec![commit]) {
-            let msg = format!("Merged into branch {}: {}", branch, desc);
+            let msg = format!("Merged into {}: {}", branch_and_version, desc);
             if let Err(e) = jira.comment_issue(&key, &msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
@@ -104,25 +109,13 @@ pub fn resolve_issue(branch: &str, commits: &Vec<PushCommit>, jira: &jira::api::
 
         // add comment only to referenced jiras
         for key in get_referenced_jira_keys(&vec![commit]) {
-            let msg = format!("Referenced by commit merged into branch {}: {}", branch, desc);
+            let msg = format!("Referenced by commit merged into {}: {}", branch_and_version, desc);
             if let Err(e) = jira.comment_issue(&key, &msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
         }
     }
 }
-
-pub fn version_comment(branch: &str, version: &str, commits: &Vec<PushCommit>, jira: &jira::api::Session) {
-    for commit in commits {
-        for key in get_fixed_jira_keys(&vec![commit]) {
-            let msg = format!("Fixed on branch {} in version {}", branch, version);
-            if let Err(e) = jira.comment_issue(&key, &msg) {
-                error!("Error commenting on key [{}]: {}", key, e);
-            }
-        }
-    }
-}
-
 
 fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {
     match find_transition(&key, to, jira) {
