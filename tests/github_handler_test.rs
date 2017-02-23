@@ -1157,14 +1157,8 @@ fn test_jira_push_triggers_version_script() {
 
     test.github.mock_get_pull_requests("some-user", "versioning-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
 
-    if let Some(ref jira) = test.jira {
-        jira.mock_comment_issue("SER-1", "Merged into branch master: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
-
-        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
-        jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
-    }
-
-    // setup background thread to validate version msg
+    // Setup background thread to validate version msg
+    // Note: no expectations are set on mock_jira since we have stubbed out the background worker thread
     {
         let timeout = Duration::from_millis(300);
         let rx = test.repo_version_rx.take().unwrap();

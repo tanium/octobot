@@ -488,13 +488,22 @@ impl GithubEventHandler {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
                             if let Some(ref commits) = self.data.commits {
-                                jira::workflow::resolve_issue(&branch_name, commits, jira_session.deref(), jira_config);
 
-                                if self.config.repos.version_script(&self.data.repository).is_some() {
-                                    let msg = RepoVersionMessage::version(&self.data.repository, &branch_name, self.data.after(), commits);
-                                    if let Err(e) = self.repo_version.send(msg) {
-                                        error!("Error sending version request message: {}", e)
-                                    }
+                                // try to send resolve message w/ a version in it if possible
+                                let has_version = match self.config.repos.version_script(&self.data.repository) {
+                                    Some(_) => {
+                                        let msg = RepoVersionMessage::version(&self.data.repository, &branch_name, self.data.after(), commits);
+                                        if let Err(e) = self.repo_version.send(msg) {
+                                            error!("Error sending version request message: {}", e);
+                                            false
+                                        } else {
+                                            true
+                                        }
+                                    },
+                                    None => false,
+                                };
+                                if !has_version {
+                                    jira::workflow::resolve_issue(&branch_name, None, commits, jira_session.deref(), jira_config);
                                 }
                             }
                         }
