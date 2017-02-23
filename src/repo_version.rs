@@ -211,9 +211,7 @@ impl WorkerRunner {
             if let Some(version_script) = config.repos.version_script(&req.repo) {
                 if let Some(ref jira_session) = jira_session {
                     if let Some(ref jira_config) = config.jira {
-
                         let jira = jira_session.borrow();
-
                         if let Err(e) = comment_repo_version(version_script,
                                                              jira_config,
                                                              jira,
