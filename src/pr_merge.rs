@@ -92,12 +92,10 @@ impl<'a> Merger<'a> {
                    -> Result<(String, String), String> {
         let real_target_branch = format!("origin/{}", target_branch);
 
-        // clean up state
-        try!(self.git.run(&["reset", "--hard"], clone_dir));
-        try!(self.git.run(&["clean", "-fdx"], clone_dir));
+        try!(self.git.clean(clone_dir));
 
         // setup branch
-        let current_branch = try!(self.git.run(&["rev-parse", "--abbrev-ref", "HEAD"], clone_dir));
+        let current_branch = try!(self.git.current_branch(clone_dir));
         if current_branch == pr_branch_name {
             try!(self.git.run(&["reset", "--hard", &real_target_branch], clone_dir));
         } else {

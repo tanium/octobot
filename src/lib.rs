@@ -27,6 +27,7 @@ pub mod jira;
 pub mod messenger;
 pub mod pr_merge;
 pub mod repos;
+pub mod repo_version;
 pub mod server;
 pub mod slack;
 pub mod users;

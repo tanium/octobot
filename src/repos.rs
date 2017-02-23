@@ -11,6 +11,7 @@ pub struct RepoInfo {
     pub channel: String,
     pub force_push_notify: Option<bool>,
     pub jira_enabled: Option<bool>,
+    pub version_script: Option<Vec<String>>,
 }
 
 // maps repo name to repo config
@@ -47,6 +48,7 @@ impl RepoConfig {
                              channel: channel.to_string(),
                              force_push_notify: None,
                              jira_enabled: None,
+                             version_script: None,
                          });
     }
 
@@ -91,6 +93,20 @@ impl RepoConfig {
             }
         }
     }
+
+    pub fn version_script(&self, repo: &github::Repo) -> Option<&Vec<String>> {
+        match self.lookup_info(repo) {
+            None => None,
+            Some(ref info) => {
+                match info.version_script {
+                    Some(ref value) if value.len() > 0 => Some(value),
+                    _ => None
+                }
+            }
+        }
+    }
+
+
     fn lookup_info(&self, repo: &github::Repo) -> Option<&RepoInfo> {
         match Url::parse(&repo.html_url) {
             Ok(u) => {
@@ -158,6 +174,7 @@ mod tests {
                               channel: "reviews".to_string(),
                               force_push_notify: None,
                               jira_enabled: None,
+                              version_script: None,
                           });
         repos.insert_info("git.company.com",
                           "some-user/noisy-repo-on-purpose",
@@ -165,6 +182,7 @@ mod tests {
                               channel: "reviews".to_string(),
                               force_push_notify: Some(true),
                               jira_enabled: None,
+                              version_script: None,
                           });
         repos.insert_info("git.company.com",
                           "some-user/quiet-repo",
@@ -172,6 +190,7 @@ mod tests {
                               channel: "reviews".to_string(),
                               force_push_notify: Some(false),
                               jira_enabled: None,
+                              version_script: None,
                           });
 
         {
@@ -210,6 +229,7 @@ mod tests {
                               channel: "reviews".to_string(),
                               force_push_notify: None,
                               jira_enabled: None,
+                              version_script: None,
                           });
         repos.insert_info("git.company.com",
                           "some-user/noisy-repo-on-purpose",
@@ -217,6 +237,7 @@ mod tests {
                               channel: "reviews".to_string(),
                               force_push_notify: None,
                               jira_enabled: Some(true),
+                              version_script: None,
                           });
         repos.insert_info("git.company.com",
                           "some-user/quiet-repo",
@@ -224,6 +245,7 @@ mod tests {
                               channel: "reviews".to_string(),
                               force_push_notify: None,
                               jira_enabled: Some(false),
+                              version_script: None,
                           });
 
         {
