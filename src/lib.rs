@@ -21,6 +21,7 @@ extern crate serde_derive;
 pub mod config;
 pub mod dir_pool;
 pub mod git;
+pub mod git_clone_manager;
 pub mod github;
 pub mod jira;
 pub mod messenger;

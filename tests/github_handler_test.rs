@@ -16,6 +16,7 @@ use octobot::repos::RepoConfig;
 use octobot::users::UserConfig;
 use octobot::github::*;
 use octobot::github::api::Session;
+use octobot::git_clone_manager::GitCloneManager;
 use octobot::jira;
 use octobot::messenger::SlackMessenger;
 use octobot::slack::SlackAttachmentBuilder;
@@ -87,6 +88,7 @@ fn new_test() -> GithubHandlerTest {
     data.sender = User::new("joe-sender");
 
     let config = Arc::new(Config::new(UserConfig::new(), repos));
+    let git_clone_manager = Arc::new(GitCloneManager::new(github.clone(), config.clone()));
 
     GithubHandlerTest {
         github: github.clone(),
@@ -103,6 +105,7 @@ fn new_test() -> GithubHandlerTest {
                 slack: slack.clone(),
             }),
             github_session: github.clone(),
+            git_clone_manager: git_clone_manager.clone(),
             jira_session: None,
             pr_merge: tx.clone(),
         },
