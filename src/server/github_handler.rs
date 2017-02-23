@@ -214,15 +214,11 @@ impl GithubEventHandler {
                                            &self.data.repository,
                                            &self.all_participants_with_commits(&pull_request, &commits));
 
-                // JIRA integration!
-                if self.config.repos.jira_enabled(&self.data.repository) {
+                // Mark JIRAs in review for PR open
+                if self.action == "opened" && self.config.repos.jira_enabled(&self.data.repository) {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
-                            if self.action == "opened" {
-                                jira::workflow::submit_for_review(&pull_request, &commits, jira_session.deref(), jira_config);
-                            } else if verb == "merged" {
-                                jira::workflow::resolve_issue(&pull_request, &commits, jira_session.deref(), jira_config);
-                            }
+                            jira::workflow::submit_for_review(&pull_request, &commits, jira_session.deref(), jira_config);
                         }
                     }
                 }
@@ -463,6 +459,19 @@ impl GithubEventHandler {
                                                   pull_request.number,
                                                   &comment) {
                             error!("Error sending github PR comment: {}", e);
+                        }
+                    }
+                }
+            }
+
+            // Mark JIRAs as merged
+            if branch_name == "master" || branch_name.starts_with("release") {
+                if self.config.repos.jira_enabled(&self.data.repository) {
+                    if let Some(ref jira_config) = self.config.jira {
+                        if let Some(ref jira_session) = self.jira_session {
+                            if let Some(ref commits) = self.data.commits {
+                                jira::workflow::resolve_issue(&prs, commits, jira_session.deref(), jira_config);
+                            }
                         }
                     }
                 }

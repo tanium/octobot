@@ -48,6 +48,14 @@ fn new_commit(msg: &str, hash: &str) -> github::Commit {
     commit
 }
 
+fn new_push_commit(msg: &str, hash: &str) -> github::PushCommit {
+    let mut commit = github::PushCommit::new();
+    commit.message = msg.into();
+    commit.id = hash.into();
+    commit.url = format!("http://the-commit/{}", hash);
+    commit
+}
+
 fn new_transition(id: &str, name: &str) -> Transition {
     Transition {
         id: id.into(),
@@ -96,36 +104,43 @@ fn test_submit_for_review() {
 fn test_resolve_issue_no_resolution() {
     let test = new_test();
     let pr = new_pr();
-    let commit1 = new_commit("[SER-1] I fixed it. And also [CLI-9999]\n\n\n\n", "aabbccddee");
-    let commit2 = new_commit("Really fix [CLI-9999]\n\n\n\n", "ffbbccddee");
+    let commit1 = new_push_commit("[SER-1] I fixed it. And also [CLI-9999]\n\n\n\n", "aabbccddee");
+    let commit2 = new_push_commit("Really fix [CLI-9999]\n\n\n\n", "ffbbccddee");
 
-    let comment = "Merged into branch master: http://the-pr\n\n\
-                   [aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it. And also [CLI-9999]\n\n\n\n{quote}\n\
-                   [ffbbccd|http://the-commit/ffbbccddee]\n{quote}Really fix [CLI-9999]\n\n\n\n{quote}";
-    test.jira.mock_comment_issue("CLI-9999", comment, Ok(()));
-    test.jira.mock_comment_issue("SER-1", comment, Ok(()));
+    let comment1 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it. And also [CLI-9999]\n\n\n\n{quote}\
+                    \nMerged into branch master: http://the-pr";
+    let comment2 = "[ffbbccd|http://the-commit/ffbbccddee]\n{quote}Really fix [CLI-9999]\n\n\n\n{quote}\
+                    \nMerged into branch master: http://the-pr";
 
+    test.jira.mock_comment_issue("CLI-9999", comment1, Ok(()));
+    test.jira.mock_comment_issue("SER-1", comment1, Ok(()));
+    test.jira.mock_comment_issue("CLI-9999", comment2, Ok(()));
+
+    // commit 1
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("004", "resolved2")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("004"), Ok(()));
-
     test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "resolved1")]));
     test.jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
 
-    jira::workflow::resolve_issue(&pr, &vec![commit1, commit2], &test.jira, &test.config);
+    // commit 2
+    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("004", "resolved2")]));
+    test.jira.mock_transition_issue("CLI-9999", &new_transition_req("004"), Ok(()));
+
+    jira::workflow::resolve_issue(&vec![pr], &vec![commit1, commit2], &test.jira, &test.config);
 }
 
 #[test]
 fn test_resolve_issue_with_resolution() {
     let test = new_test();
     let pr = new_pr();
-    let commit = new_commit("[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
+    let commit = new_push_commit("[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
 
-    let comment1 = "Merged into branch master: http://the-pr\n\n\
-                   [aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}";
+    let comment1 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}\
+                   \nMerged into branch master: http://the-pr";
     test.jira.mock_comment_issue("SER-1", comment1, Ok(()));
 
-    let comment2 = "Referenced by commit merged into branch master: http://the-pr\n\n\
-                   [aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}";
+    let comment2 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}\
+                   \nReferenced by commit merged into branch master: http://the-pr";
     test.jira.mock_comment_issue("CLI-45", comment2, Ok(()));
 
 
@@ -156,6 +171,6 @@ fn test_resolve_issue_with_resolution() {
     test.jira.mock_get_transitions("SER-1", Ok(vec![trans]));
     test.jira.mock_transition_issue("SER-1", &req, Ok(()));
 
-    jira::workflow::resolve_issue(&pr, &vec![commit], &test.jira, &test.config);
+    jira::workflow::resolve_issue(&vec![pr], &vec![commit], &test.jira, &test.config);
 }
 

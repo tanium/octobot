@@ -1011,6 +1011,16 @@ fn some_jira_commits() -> Vec<Commit> {
     ]
 }
 
+fn some_jira_push_commits() -> Vec<PushCommit> {
+    vec![
+        PushCommit {
+            id: "ffeedd00110011".into(),
+            tree_id: "ffeedd00110011".into(),
+            url: "http://commit/ffeedd00110011".into(),
+            message: "[SER-1] Add the feature\n\nThe body".into(),
+        },
+    ]
+}
 #[test]
 fn test_jira_pull_request_opened() {
     let mut test = new_test_with_jira();
@@ -1049,73 +1059,63 @@ fn test_jira_pull_request_opened() {
 }
 
 #[test]
-fn test_jira_pull_request_merged() {
+fn test_jira_push_master() {
     let mut test = new_test_with_jira();
-    test.handler.event = "pull_request".into();
-    test.handler.action = "closed".into();
-    test.handler.data.pull_request = some_pr();
-    test.handler.data.sender = User::new("the-pr-owner");
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/master".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+    test.handler.data.commits = Some(some_jira_push_commits());
 
-    if let Some(ref mut pr) = test.handler.data.pull_request {
-        pr.merged = Some(true);
-    }
-
-    test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_jira_commits()));
-    test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Ok(vec![]));
-
-    let attach = vec![SlackAttachmentBuilder::new("")
-                          .title("Pull Request #32: \"The PR\"")
-                          .title_link("http://the-pr")
-                          .build()];
-    let msg = "Pull Request merged";
-
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
-    ]);
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
 
     if let Some(ref jira) = test.jira {
-        jira.mock_comment_issue("SER-1", "Merged into branch master: http://the-pr\n\n\
-                                         [ffeedd0|http://commit/ffeedd00110011]\n{quote}[SER-1] Add the feature\n\nThe body{quote}", Ok(()));
+        jira.mock_comment_issue("SER-1", "[ffeedd0|http://commit/ffeedd00110011]\n{quote}[SER-1] Add the feature\n\nThe body{quote}", Ok(()));
 
         jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
         jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
     }
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((status::Ok, "pr".into()), resp);
+    assert_eq!((status::Ok, "push".into()), resp);
 }
+
+#[test]
+fn test_jira_push_other_branch() {
+    let mut test = new_test_with_jira();
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/some-branch".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+
+    test.handler.data.commits = Some(some_jira_push_commits());
+
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
+
+    // no jira mocks: will fail if called
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "push".into()), resp);
+}
+
 
 #[test]
 fn test_jira_disabled() {
     let mut test = new_test_with_jira();
-    test.handler.event = "pull_request".into();
-    test.handler.action = "opened".into();
-    test.handler.data.sender = User::new("the-pr-owner");
-    test.handler.data.pull_request = some_pr();
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/master".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+    test.handler.data.commits = Some(some_jira_push_commits());
+
+    test.github.mock_get_pull_requests("some-other-user", "some-other-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
 
     // change the repo to an unconfigured one
     test.handler.data.repository =
         Repo::parse(&format!("http://{}/some-other-user/some-other-repo", test.github.github_host())).unwrap();
 
-    test.github.mock_get_pull_request_commits("some-other-user", "some-other-repo", 32, Ok(some_jira_commits()));
-
-    let attach = vec![SlackAttachmentBuilder::new("")
-                          .title("Pull Request #32: \"The PR\"")
-                          .title_link("http://the-pr")
-                          .build()];
-    let msg = "Pull Request opened by the.pr.owner";
-
-    test.expect_slack_calls(vec![
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
-    ]);
-
     // no jira mocks: will fail if called
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((status::Ok, "pr".into()), resp);
+    assert_eq!((status::Ok, "push".into()), resp);
 }
