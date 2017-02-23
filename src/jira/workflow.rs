@@ -61,14 +61,16 @@ pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushComm
     for commit in commits {
         let desc = format!("[{}|{}]\n{{quote}}{}{{quote}}", Commit::short_hash(&commit), commit.html_url(), Commit::title(&commit));
 
-        let branch_and_version = match version {
-            None => format!("branch {}", branch),
-            Some(v) => format!("branch {} (version {})", branch, v),
+        let version_desc = match version {
+            None => String::new(),
+            Some(v) => format!("\nIncluded in version {}", v),
         };
 
+        let fix_msg = format!("Merged into branch {}: {}{}", branch, desc, version_desc);
+        let ref_msg = format!("Referenced by commit merged into branch {}: {}{}", branch, desc, version_desc);
+
         for key in get_fixed_jira_keys(&vec![commit]) {
-            let msg = format!("Merged into {}: {}", branch_and_version, desc);
-            if let Err(e) = jira.comment_issue(&key, &msg) {
+            if let Err(e) = jira.comment_issue(&key, &fix_msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
 
@@ -109,8 +111,7 @@ pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushComm
 
         // add comment only to referenced jiras
         for key in get_referenced_jira_keys(&vec![commit]) {
-            let msg = format!("Referenced by commit merged into {}: {}", branch_and_version, desc);
-            if let Err(e) = jira.comment_issue(&key, &msg) {
+            if let Err(e) = jira.comment_issue(&key, &ref_msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
         }

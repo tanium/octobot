@@ -133,12 +133,14 @@ fn test_resolve_issue_with_resolution() {
     let test = new_test();
     let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
 
-    let comment1 = "Merged into branch release/99 (version 5.6.7): [aabbccd|http://the-commit/aabbccddee]\n\
-                   {quote}Fix [SER-1] I fixed it.{quote}";
+    let comment1 = "Merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
+                   {quote}Fix [SER-1] I fixed it.{quote}\n\
+                   Included in version 5.6.7";
     test.jira.mock_comment_issue("SER-1", comment1, Ok(()));
 
-    let comment2 = "Referenced by commit merged into branch release/99 (version 5.6.7): [aabbccd|http://the-commit/aabbccddee]\n\
-                   {quote}Fix [SER-1] I fixed it.{quote}";
+    let comment2 = "Referenced by commit merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
+                   {quote}Fix [SER-1] I fixed it.{quote}\n\
+                   Included in version 5.6.7";
     test.jira.mock_comment_issue("CLI-45", comment2, Ok(()));
 
 
