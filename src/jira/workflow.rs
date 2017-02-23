@@ -6,11 +6,10 @@ use jira;
 use jira::Transition;
 
 fn get_jira_keys(strings: Vec<String>) -> Vec<String> {
-    let re = Regex::new(r"\[([A-Z]+-[0-9]+)\]").unwrap();
+    let re = Regex::new(r"\b([A-Z]+-[0-9]+)\b").unwrap();
 
     let mut all_keys = vec![];
     for s in strings {
-        // TODO: should references to jiras in the commit body count the same?
         all_keys.extend(re.captures_iter(&s).map(|c| c[1].to_string()));
     }
 
@@ -21,11 +20,26 @@ fn get_jira_keys(strings: Vec<String>) -> Vec<String> {
 }
 
 fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
-    get_jira_keys(commits.iter().map(|c| Commit::title(c)).collect())
+    // Fix [ABC-123][OTHER-567], [YEAH-999]
+    let re = Regex::new(r"(?i)(?:Fix\w*):?\s*(?-i)((\[?([A-Z]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
+
+    // first extract jiras with fix markers
+    let mut all_refs = vec![];
+    for c in commits {
+        all_refs.extend(re.captures_iter(c.message()).map(|c| c[1].to_string()));
+    }
+
+    get_jira_keys(all_refs)
 }
 
 fn get_referenced_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
-    get_jira_keys(commits.iter().map(|c| Commit::body(c)).collect())
+    let fixed = get_fixed_jira_keys(commits);
+
+    let mut refd = get_jira_keys(commits.iter().map(|c| c.message().to_string()).collect());
+
+    // only return ones not marked as fixed
+    refd.retain(|s| fixed.iter().position(|s2| s == s2).is_none());
+    refd
 }
 
 pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::api::Session, config: &JiraConfig) {
@@ -153,15 +167,21 @@ mod tests {
         assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()]));
         assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()]));
 
-        // should include the commit message title
-        commit.commit.message = "[KEY-1][KEY-2] Some thing that also fixed [KEY-3][KEY-3]".into();
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_fixed_jira_keys(&vec![commit.clone()]));
+        commit.commit.message = "Fix [KEY-1][KEY-2] Some thing that also fixed [KEY-3], [KEY-4]".into();
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4"], get_fixed_jira_keys(&vec![commit.clone()]));
         assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()]));
 
-        // should ignore the commit message body.
-        commit.commit.message += "\n\nOh, I forgot it also fixes [KEY-4]";
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_fixed_jira_keys(&vec![commit.clone()]));
-        assert_eq!(vec!["KEY-4"], get_referenced_jira_keys(&vec![commit.clone()]));
+        commit.commit.message += "\n\nOh, I forgot it also fixes [KEY-4], and also mentions [KEY-4], [KEY-5] but not [lowercase-99]";
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4"], get_fixed_jira_keys(&vec![commit.clone()]));
+        assert_eq!(vec!["KEY-5"], get_referenced_jira_keys(&vec![commit.clone()]));
+    }
+
+    #[test]
+    pub fn test_get_jira_keys_alt_format() {
+        let mut commit = Commit::new();
+        commit.commit.message = "KEY-1, KEY-2:Some thing that also fixed\n\nAlso [KEY-3], OTHER-5".into();
+        assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()]));
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "OTHER-5"], get_referenced_jira_keys(&vec![commit.clone()]));
     }
 
     #[test]

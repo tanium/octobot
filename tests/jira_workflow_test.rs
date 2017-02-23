@@ -82,7 +82,7 @@ fn new_transition_req(id: &str) -> TransitionRequest {
 fn test_submit_for_review() {
     let test = new_test();
     let pr = new_pr();
-    let commit = new_commit("[SER-1] I fixed it. And also [CLI-9999]", "aabbccddee");
+    let commit = new_commit("Fix [SER-1] I fixed it. And also fix [CLI-9999]", "aabbccddee");
 
     test.jira.mock_comment_issue("CLI-9999", "Review submitted for branch master: http://the-pr", Ok(()));
     test.jira.mock_comment_issue("SER-1", "Review submitted for branch master: http://the-pr", Ok(()));
@@ -104,10 +104,10 @@ fn test_submit_for_review() {
 fn test_resolve_issue_no_resolution() {
     let test = new_test();
     let pr = new_pr();
-    let commit1 = new_push_commit("[SER-1] I fixed it. And also [CLI-9999]\n\n\n\n", "aabbccddee");
+    let commit1 = new_push_commit("Fix [SER-1] I fixed it. And also fix [CLI-9999]\n\n\n\n", "aabbccddee");
     let commit2 = new_push_commit("Really fix [CLI-9999]\n\n\n\n", "ffbbccddee");
 
-    let comment1 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it. And also [CLI-9999]\n\n\n\n{quote}\
+    let comment1 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}Fix [SER-1] I fixed it. And also fix [CLI-9999]\n\n\n\n{quote}\
                     \nMerged into branch master: http://the-pr";
     let comment2 = "[ffbbccd|http://the-commit/ffbbccddee]\n{quote}Really fix [CLI-9999]\n\n\n\n{quote}\
                     \nMerged into branch master: http://the-pr";
@@ -133,13 +133,13 @@ fn test_resolve_issue_no_resolution() {
 fn test_resolve_issue_with_resolution() {
     let test = new_test();
     let pr = new_pr();
-    let commit = new_push_commit("[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
+    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
 
-    let comment1 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}\
+    let comment1 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}\
                    \nMerged into branch master: http://the-pr";
     test.jira.mock_comment_issue("SER-1", comment1, Ok(()));
 
-    let comment2 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}[SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}\
+    let comment2 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}\
                    \nReferenced by commit merged into branch master: http://the-pr";
     test.jira.mock_comment_issue("CLI-45", comment2, Ok(()));
 
