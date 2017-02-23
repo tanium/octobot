@@ -57,16 +57,12 @@ pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::a
     }
 }
 
-pub fn resolve_issue(prs: &Vec<PullRequest>, commits: &Vec<PushCommit>, jira: &jira::api::Session, config: &JiraConfig) {
+pub fn resolve_issue(branch: &str, commits: &Vec<PushCommit>, jira: &jira::api::Session, config: &JiraConfig) {
     for commit in commits {
         let desc = format!("[{}|{}]\n{{quote}}{}{{quote}}", Commit::short_hash(&commit), commit.html_url(), commit.message());
 
         for key in get_fixed_jira_keys(&vec![commit]) {
-            let mut msg = desc.clone();
-            for pr in prs {
-                msg += &format!("\nMerged into branch {}: {}", pr.base.ref_name, pr.html_url);
-            }
-
+            let msg = format!("Merged into branch {}: {}", branch, desc);
             if let Err(e) = jira.comment_issue(&key, &msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
@@ -108,10 +104,7 @@ pub fn resolve_issue(prs: &Vec<PullRequest>, commits: &Vec<PushCommit>, jira: &j
 
         // add comment only to referenced jiras
         for key in get_referenced_jira_keys(&vec![commit]) {
-            let mut msg = desc.clone();
-            for pr in prs {
-                msg += &format!("\nReferenced by commit merged into branch {}: {}", pr.base.ref_name, pr.html_url);
-            }
+            let msg = format!("Referenced by commit merged into branch {}: {}", branch, desc);
             if let Err(e) = jira.comment_issue(&key, &msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }

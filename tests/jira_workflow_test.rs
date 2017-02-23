@@ -103,14 +103,13 @@ fn test_submit_for_review() {
 #[test]
 fn test_resolve_issue_no_resolution() {
     let test = new_test();
-    let pr = new_pr();
     let commit1 = new_push_commit("Fix [SER-1] I fixed it. And also fix [CLI-9999]\n\n\n\n", "aabbccddee");
     let commit2 = new_push_commit("Really fix [CLI-9999]\n\n\n\n", "ffbbccddee");
 
-    let comment1 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}Fix [SER-1] I fixed it. And also fix [CLI-9999]\n\n\n\n{quote}\
-                    \nMerged into branch master: http://the-pr";
-    let comment2 = "[ffbbccd|http://the-commit/ffbbccddee]\n{quote}Really fix [CLI-9999]\n\n\n\n{quote}\
-                    \nMerged into branch master: http://the-pr";
+    let comment1 = "Merged into branch master: [aabbccd|http://the-commit/aabbccddee]\n\
+                   {quote}Fix [SER-1] I fixed it. And also fix [CLI-9999]\n\n\n\n{quote}";
+    let comment2 = "Merged into branch master: [ffbbccd|http://the-commit/ffbbccddee]\n\
+                    {quote}Really fix [CLI-9999]\n\n\n\n{quote}";
 
     test.jira.mock_comment_issue("CLI-9999", comment1, Ok(()));
     test.jira.mock_comment_issue("SER-1", comment1, Ok(()));
@@ -126,21 +125,20 @@ fn test_resolve_issue_no_resolution() {
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("004", "resolved2")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("004"), Ok(()));
 
-    jira::workflow::resolve_issue(&vec![pr], &vec![commit1, commit2], &test.jira, &test.config);
+    jira::workflow::resolve_issue("master", &vec![commit1, commit2], &test.jira, &test.config);
 }
 
 #[test]
 fn test_resolve_issue_with_resolution() {
     let test = new_test();
-    let pr = new_pr();
     let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
 
-    let comment1 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}\
-                   \nMerged into branch master: http://the-pr";
+    let comment1 = "Merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
+                   {quote}Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}";
     test.jira.mock_comment_issue("SER-1", comment1, Ok(()));
 
-    let comment2 = "[aabbccd|http://the-commit/aabbccddee]\n{quote}Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}\
-                   \nReferenced by commit merged into branch master: http://the-pr";
+    let comment2 = "Referenced by commit merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
+                   {quote}Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]{quote}";
     test.jira.mock_comment_issue("CLI-45", comment2, Ok(()));
 
 
@@ -171,6 +169,6 @@ fn test_resolve_issue_with_resolution() {
     test.jira.mock_get_transitions("SER-1", Ok(vec![trans]));
     test.jira.mock_transition_issue("SER-1", &req, Ok(()));
 
-    jira::workflow::resolve_issue(&vec![pr], &vec![commit], &test.jira, &test.config);
+    jira::workflow::resolve_issue("release/99", &vec![commit], &test.jira, &test.config);
 }
 
