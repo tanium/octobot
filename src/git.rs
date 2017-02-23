@@ -41,6 +41,16 @@ impl Git {
         Ok(output.lines().any(|b| b.len() > 2 && branch == &b[2..]))
     }
 
+    pub fn current_branch(&self, cwd: &Path) -> Result<String, String> {
+        self.run(&["rev-parse", "--abbrev-ref", "HEAD"], cwd)
+    }
+
+    pub fn clean(&self, cwd: &Path) -> Result<(), String> {
+        try!(self.run(&["reset", "--hard"], cwd));
+        try!(self.run(&["clean", "-fdx"], cwd));
+        Ok(())
+    }
+
     fn do_run(&self, args: &[&str], cwd: &Path, stdin: Option<&str>) -> Result<String, String> {
         debug!("Running git with args: {:?}", args);
         let cmd = Command::new("git")

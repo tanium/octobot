@@ -15,6 +15,7 @@ use github::CommentLike;
 use git_clone_manager::GitCloneManager;
 use jira;
 use messenger::{self, Messenger};
+use repo_version::{self, RepoVersionMessage};
 use pr_merge::{self, PRMergeMessage};
 use slack::SlackAttachmentBuilder;
 use util;
@@ -23,8 +24,9 @@ pub struct GithubHandler {
     pub config: Arc<Config>,
     pub github_session: Arc<github::api::Session>,
     pub jira_session: Option<Arc<jira::api::Session>>,
-    pr_merge_worker: pr_merge::Worker,
     git_clone_manager: Arc<GitCloneManager>,
+    pr_merge_worker: pr_merge::Worker,
+    repo_version_worker: repo_version::Worker,
 }
 
 pub struct GithubEventHandler {
@@ -36,10 +38,12 @@ pub struct GithubEventHandler {
     pub github_session: Arc<github::api::Session>,
     pub jira_session: Option<Arc<jira::api::Session>>,
     pub pr_merge: Sender<PRMergeMessage>,
+    pub repo_version: Sender<RepoVersionMessage>,
     pub git_clone_manager: Arc<GitCloneManager>,
 }
 
 const MAX_CONCURRENT_MERGES: usize = 20;
+const MAX_CONCURRENT_VERSIONS: usize = 20;
 
 impl GithubHandler {
     pub fn new(config: Arc<Config>,
@@ -52,12 +56,17 @@ impl GithubHandler {
         GithubHandler {
             config: config.clone(),
             github_session: github_session.clone(),
-            jira_session: jira_session,
+            jira_session: jira_session.clone(),
             git_clone_manager: git_clone_manager.clone(),
             pr_merge_worker: pr_merge::Worker::new(MAX_CONCURRENT_MERGES,
                                                    config.clone(),
                                                    github_session.clone(),
                                                    git_clone_manager.clone()),
+            repo_version_worker: repo_version::Worker::new(MAX_CONCURRENT_VERSIONS,
+                                                           config.clone(),
+                                                           github_session.clone(),
+                                                           jira_session.clone(),
+                                                           git_clone_manager.clone()),
         }
     }
 }
@@ -105,6 +114,7 @@ impl Handler for GithubHandler {
             git_clone_manager: self.git_clone_manager.clone(),
             jira_session: self.jira_session.clone(),
             pr_merge: self.pr_merge_worker.new_sender(),
+            repo_version: self.repo_version_worker.new_sender(),
         };
 
         match handler.handle_event() {
@@ -479,6 +489,13 @@ impl GithubEventHandler {
                         if let Some(ref jira_session) = self.jira_session {
                             if let Some(ref commits) = self.data.commits {
                                 jira::workflow::resolve_issue(&prs, commits, jira_session.deref(), jira_config);
+
+                                if self.config.repos.version_script(&self.data.repository).is_some() {
+                                    let msg = RepoVersionMessage::version(&self.data.repository, &branch_name, self.data.after(), commits);
+                                    if let Err(e) = self.repo_version.send(msg) {
+                                        error!("Error sending version request message: {}", e)
+                                    }
+                                }
                             }
                         }
                     }

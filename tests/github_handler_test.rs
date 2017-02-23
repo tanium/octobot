@@ -22,6 +22,8 @@ use octobot::messenger::SlackMessenger;
 use octobot::slack::SlackAttachmentBuilder;
 use octobot::server::github_handler::GithubEventHandler;
 use octobot::pr_merge::PRMergeMessage;
+use octobot::repo_version::RepoVersionMessage;
+use octobot::repos;
 
 use mocks::mock_github::MockGithub;
 use mocks::mock_jira::MockJira;
@@ -39,7 +41,8 @@ struct GithubHandlerTest {
     github: Arc<MockGithub>,
     jira: Option<Arc<MockJira>>,
     config: Arc<Config>,
-    rx: Option<Receiver<PRMergeMessage>>,
+    pr_merge_rx: Option<Receiver<PRMergeMessage>>,
+    repo_version_rx: Option<Receiver<RepoVersionMessage>>,
 }
 
 impl GithubHandlerTest {
@@ -52,7 +55,7 @@ impl GithubHandlerTest {
 
     fn expect_will_merge_branches(&mut self, branches: Vec<String>) -> JoinHandle<()> {
         let timeout = Duration::from_millis(300);
-        let rx = self.rx.take().unwrap();
+        let rx = self.pr_merge_rx.take().unwrap();
         thread::spawn(move || {
             for branch in branches {
                 let msg = rx.recv_timeout(timeout).expect(&format!("expected to recv msg for branch: {}", branch));
@@ -75,7 +78,8 @@ impl GithubHandlerTest {
 fn new_test() -> GithubHandlerTest {
     let github = Arc::new(MockGithub::new());
     let slack = Rc::new(MockSlack::new(vec![]));
-    let (tx, rx) = channel();
+    let (pr_merge_tx, pr_merge_rx) = channel();
+    let (repo_version_tx, repo_version_rx) = channel();
 
     let mut repos = RepoConfig::new();
     let mut data = HookBody::new();
@@ -94,7 +98,8 @@ fn new_test() -> GithubHandlerTest {
         github: github.clone(),
         jira: None,
         config: config.clone(),
-        rx: Some(rx),
+        pr_merge_rx: Some(pr_merge_rx),
+        repo_version_rx: Some(repo_version_rx),
         handler: GithubEventHandler {
             event: "ping".to_string(),
             data: data,
@@ -107,7 +112,8 @@ fn new_test() -> GithubHandlerTest {
             github_session: github.clone(),
             git_clone_manager: git_clone_manager.clone(),
             jira_session: None,
-            pr_merge: tx.clone(),
+            pr_merge: pr_merge_tx.clone(),
+            repo_version: repo_version_tx.clone(),
         },
     }
 }
@@ -1118,6 +1124,66 @@ fn test_jira_disabled() {
         Repo::parse(&format!("http://{}/some-other-user/some-other-repo", test.github.github_host())).unwrap();
 
     // no jira mocks: will fail if called
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "push".into()), resp);
+}
+
+#[test]
+fn test_jira_push_triggers_version_script() {
+    let mut test = new_test_with_jira();
+
+    let mut config: Config = (*test.config).clone();
+    config.repos.insert_info(test.github.github_host(),
+                 "some-user/versioning-repo", repos::RepoInfo {
+                     channel: "the-reviews-channel".into(),
+                     force_push_notify: None,
+                     jira_enabled: None,
+                     version_script: Some(vec!["echo".into(), "1.2.3.4".into()]),
+                 });
+
+    test.config = Arc::new(config);
+    test.handler.config = test.config.clone();
+
+    // change the repo to an unconfigured one
+    test.handler.data.repository =
+        Repo::parse(&format!("http://{}/some-user/versioning-repo", test.github.github_host())).unwrap();
+
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/master".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+    test.handler.data.commits = Some(some_jira_push_commits());
+
+    test.github.mock_get_pull_requests("some-user", "versioning-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
+
+    if let Some(ref jira) = test.jira {
+        jira.mock_comment_issue("SER-1", "[ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature\n\nThe body{quote}", Ok(()));
+
+        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
+        jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
+    }
+
+    // setup background thread to validate version msg
+    {
+        let timeout = Duration::from_millis(300);
+        let rx = test.repo_version_rx.take().unwrap();
+        thread::spawn(move || {
+            let msg = rx.recv_timeout(timeout).expect(&format!("expected to recv msg"));
+            match msg {
+                RepoVersionMessage::Version(req) => {
+                    assert_eq!("master", req.branch);
+                    assert_eq!("1111abcdef", req.commit_hash);
+                },
+                _ => {
+                    panic!("Unexpected messages: {:?}", msg);
+                }
+            };
+
+            let last_message = rx.recv_timeout(timeout);
+            assert!(last_message.is_err());
+        });
+    }
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "push".into()), resp);

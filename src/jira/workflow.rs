@@ -117,8 +117,19 @@ pub fn resolve_issue(prs: &Vec<PullRequest>, commits: &Vec<PushCommit>, jira: &j
             }
         }
     }
-
 }
+
+pub fn version_comment(branch: &str, version: &str, commits: &Vec<PushCommit>, jira: &jira::api::Session) {
+    for commit in commits {
+        for key in get_fixed_jira_keys(&vec![commit]) {
+            let msg = format!("Fixed on branch {} in version {}", branch, version);
+            if let Err(e) = jira.comment_issue(&key, &msg) {
+                error!("Error commenting on key [{}]: {}", key, e);
+            }
+        }
+    }
+}
+
 
 fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {
     match find_transition(&key, to, jira) {
