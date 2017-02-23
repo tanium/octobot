@@ -1005,7 +1005,7 @@ fn some_jira_commits() -> Vec<Commit> {
             html_url: "http://commit/ffeedd00110011".into(),
             author: Some(User::new("bob-author")),
             commit: CommitDetails {
-                message: "[SER-1] Add the feature\n\nThe body".into(),
+                message: "Fix [SER-1] Add the feature\n\nThe body".into(),
             }
         },
     ]
@@ -1017,7 +1017,7 @@ fn some_jira_push_commits() -> Vec<PushCommit> {
             id: "ffeedd00110011".into(),
             tree_id: "ffeedd00110011".into(),
             url: "http://commit/ffeedd00110011".into(),
-            message: "[SER-1] Add the feature\n\nThe body".into(),
+            message: "Fix [SER-1] Add the feature\n\nThe body".into(),
         },
     ]
 }
@@ -1070,7 +1070,7 @@ fn test_jira_push_master() {
     test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
 
     if let Some(ref jira) = test.jira {
-        jira.mock_comment_issue("SER-1", "[ffeedd0|http://commit/ffeedd00110011]\n{quote}[SER-1] Add the feature\n\nThe body{quote}", Ok(()));
+        jira.mock_comment_issue("SER-1", "[ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature\n\nThe body{quote}", Ok(()));
 
         jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
         jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
