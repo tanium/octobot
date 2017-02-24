@@ -55,22 +55,22 @@ impl Drop for MockGithub {
     fn drop(&mut self) {
         if !thread::panicking() {
             if self.get_pr_calls.lock().unwrap().len() > 0 {
-                println!("Unmet get_pull_request calls: {:?}", *self.get_pr_calls.lock().unwrap());
+                panic!("Unmet get_pull_request calls: {:?}", *self.get_pr_calls.lock().unwrap());
             }
             if self.get_prs_calls.lock().unwrap().len() > 0 {
-                println!("Unmet get_pull_requests calls: {:?}", *self.get_prs_calls.lock().unwrap());
+                panic!("Unmet get_pull_requests calls: {:?}", *self.get_prs_calls.lock().unwrap());
             }
             if self.create_pr_calls.lock().unwrap().len() > 0 {
-                println!("Unmet create_pull_request calls: {:?}", *self.create_pr_calls.lock().unwrap());
+                panic!("Unmet create_pull_request calls: {:?}", *self.create_pr_calls.lock().unwrap());
             }
             if self.get_pr_labels_calls.lock().unwrap().len() > 0 {
-                println!("Unmet get_pull_request_labels calls: {:?}", *self.get_pr_labels_calls.lock().unwrap());
+                panic!("Unmet get_pull_request_labels calls: {:?}", *self.get_pr_labels_calls.lock().unwrap());
             }
             if self.assign_pr_calls.lock().unwrap().len() > 0 {
-                println!("Unmet assign_pull_request calls: {:?}", *self.assign_pr_calls.lock().unwrap());
+                panic!("Unmet assign_pull_request calls: {:?}", *self.assign_pr_calls.lock().unwrap());
             }
             if self.comment_pr_calls.lock().unwrap().len() > 0 {
-                println!("Unmet comment_pull_request calls: {:?}", *self.comment_pr_calls.lock().unwrap());
+                panic!("Unmet comment_pull_request calls: {:?}", *self.comment_pr_calls.lock().unwrap());
             }
         }
     }

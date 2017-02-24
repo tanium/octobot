@@ -765,19 +765,6 @@ fn test_pull_request_merged_retroactively_labeled() {
     test.handler.data.label = Some(Label::new("backport-7.123"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    let attach = vec![SlackAttachmentBuilder::new("")
-                          .title("Pull Request #32: \"The PR\"")
-                          .title_link("http://the-pr")
-                          .build()];
-    let msg = "Pull Request merged";
-
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
-    ]);
-
     let expect_thread = test.expect_will_merge_branches(vec!["release/7.123".into()]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -866,7 +853,6 @@ fn test_push_with_pr() {
         SlackCall::new("@the.pr.owner", msg, attach2.clone()),
         SlackCall::new("@assign2", msg, attach2.clone()),
         SlackCall::new("@bob.author", msg, attach2.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach2.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
