@@ -17,6 +17,7 @@ use jira;
 use messenger::{self, Messenger};
 use repo_version::{self, RepoVersionMessage};
 use pr_merge::{self, PRMergeMessage};
+use force_push::{self, ForcePushMessage};
 use slack::SlackAttachmentBuilder;
 use util;
 
@@ -27,6 +28,7 @@ pub struct GithubHandler {
     git_clone_manager: Arc<GitCloneManager>,
     pr_merge_worker: pr_merge::Worker,
     repo_version_worker: repo_version::Worker,
+    force_push_worker: force_push::Worker,
 }
 
 pub struct GithubEventHandler {
@@ -39,11 +41,13 @@ pub struct GithubEventHandler {
     pub jira_session: Option<Arc<jira::api::Session>>,
     pub pr_merge: Sender<PRMergeMessage>,
     pub repo_version: Sender<RepoVersionMessage>,
+    pub force_push: Sender<ForcePushMessage>,
     pub git_clone_manager: Arc<GitCloneManager>,
 }
 
 const MAX_CONCURRENT_MERGES: usize = 20;
 const MAX_CONCURRENT_VERSIONS: usize = 20;
+const MAX_CONCURRENT_FORCE_PUSH: usize = 20;
 
 impl GithubHandler {
     pub fn new(config: Arc<Config>,
@@ -67,6 +71,10 @@ impl GithubHandler {
                                                            github_session.clone(),
                                                            jira_session.clone(),
                                                            git_clone_manager.clone()),
+            force_push_worker: force_push::Worker::new(MAX_CONCURRENT_FORCE_PUSH,
+                                                       config.clone(),
+                                                       github_session.clone(),
+                                                       git_clone_manager.clone()),
         }
     }
 }
@@ -115,6 +123,7 @@ impl Handler for GithubHandler {
             jira_session: self.jira_session.clone(),
             pr_merge: self.pr_merge_worker.new_sender(),
             repo_version: self.repo_version_worker.new_sender(),
+            force_push: self.force_push_worker.new_sender(),
         };
 
         match handler.handle_event() {
@@ -465,18 +474,10 @@ impl GithubEventHandler {
                     if self.data.forced() &&
                        self.config.repos.notify_force_push(&self.data.repository) &&
                        !pull_request.title.starts_with("WIP:") {
-                        let mut comment = format!("Force-push detected: before: {}, after: {}",
-                                                  &self.data.before()[0..7],
-                                                  &self.data.after()[0..7]);
-                        if let Some(ref url) = self.data.compare {
-                            comment += &format!(" ([compare]({}))", url);
-                        }
-                        if let Err(e) = self.github_session
-                            .comment_pull_request(&self.data.repository.owner.login(),
-                                                  &self.data.repository.name,
-                                                  pull_request.number,
-                                                  &comment) {
-                            error!("Error sending github PR comment: {}", e);
+
+                        let msg = ForcePushMessage::check(&self.data.repository, pull_request, self.data.before(), self.data.after());
+                        if let Err(e) = self.force_push.send(msg) {
+                            error!("Error sending force push message: {}", e);
                         }
                     }
                 }

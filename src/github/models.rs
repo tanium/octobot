@@ -448,10 +448,14 @@ impl Commit {
     }
 
     pub fn short_hash(commit: &CommitLike) -> &str {
-        if commit.sha().len() < 7 {
-            commit.sha()
+        Commit::short_hash_str(commit.sha())
+    }
+
+    pub fn short_hash_str(hash: &str) -> &str {
+        if hash.len() < 7 {
+            hash
         } else {
-            &commit.sha()[0..7]
+            &hash[0..7]
         }
     }
 

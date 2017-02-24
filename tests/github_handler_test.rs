@@ -23,6 +23,7 @@ use octobot::slack::SlackAttachmentBuilder;
 use octobot::server::github_handler::GithubEventHandler;
 use octobot::pr_merge::PRMergeMessage;
 use octobot::repo_version::RepoVersionMessage;
+use octobot::force_push::ForcePushMessage;
 use octobot::repos;
 
 use mocks::mock_github::MockGithub;
@@ -43,6 +44,7 @@ struct GithubHandlerTest {
     config: Arc<Config>,
     pr_merge_rx: Option<Receiver<PRMergeMessage>>,
     repo_version_rx: Option<Receiver<RepoVersionMessage>>,
+    force_push_rx: Option<Receiver<ForcePushMessage>>,
 }
 
 impl GithubHandlerTest {
@@ -80,6 +82,7 @@ fn new_test() -> GithubHandlerTest {
     let slack = Rc::new(MockSlack::new(vec![]));
     let (pr_merge_tx, pr_merge_rx) = channel();
     let (repo_version_tx, repo_version_rx) = channel();
+    let (force_push_tx, force_push_rx) = channel();
 
     let mut repos = RepoConfig::new();
     let mut data = HookBody::new();
@@ -100,6 +103,7 @@ fn new_test() -> GithubHandlerTest {
         config: config.clone(),
         pr_merge_rx: Some(pr_merge_rx),
         repo_version_rx: Some(repo_version_rx),
+        force_push_rx: Some(force_push_rx),
         handler: GithubEventHandler {
             event: "ping".to_string(),
             data: data,
@@ -114,6 +118,7 @@ fn new_test() -> GithubHandlerTest {
             jira_session: None,
             pr_merge: pr_merge_tx.clone(),
             repo_version: repo_version_tx.clone(),
+            force_push: force_push_tx.clone(),
         },
     }
 }
@@ -889,12 +894,32 @@ fn test_push_force_notify() {
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    test.github.mock_comment_pull_request("some-user", "some-repo", 32,
-                                          "Force-push detected: before: abcdef0, after: 1111abc ([compare](http://compare-url))",
-                                          Ok(()));
+    // Setup background thread to validate force-push msg
+    let expect_thread;
+    {
+        let timeout = Duration::from_millis(300);
+        let rx = test.force_push_rx.take().unwrap();
+        expect_thread = thread::spawn(move || {
+            let msg = rx.recv_timeout(timeout).expect(&format!("expected to recv msg"));
+            match msg {
+                ForcePushMessage::Check(req) => {
+                    assert_eq!("abcdef0000", req.before_hash);
+                    assert_eq!("1111abcdef", req.after_hash);
+                },
+                _ => {
+                    panic!("Unexpected messages: {:?}", msg);
+                }
+            };
+
+            let last_message = rx.recv_timeout(timeout);
+            assert!(last_message.is_err());
+        });
+    }
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "push".into()), resp);
+
+    expect_thread.join().unwrap();
 }
 
 #[test]
@@ -927,10 +952,21 @@ fn test_push_force_notify_wip() {
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    // no assertions: should not comment about force-push
+    // Setup background thread to validate force-push msg
+    let expect_thread;
+    {
+        let timeout = Duration::from_millis(300);
+        let rx = test.force_push_rx.take().unwrap();
+        expect_thread = thread::spawn(move || {
+            let last_message = rx.recv_timeout(timeout);
+            assert!(last_message.is_err());
+        });
+    }
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "push".into()), resp);
+
+    expect_thread.join().unwrap();
 }
 
 #[test]
@@ -965,10 +1001,21 @@ fn test_push_force_notify_ignored() {
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    // no assertions: should not comment about force-push
+    // Setup background thread to validate force-push msg
+    let expect_thread;
+    {
+        let timeout = Duration::from_millis(300);
+        let rx = test.force_push_rx.take().unwrap();
+        expect_thread = thread::spawn(move || {
+            let last_message = rx.recv_timeout(timeout);
+            assert!(last_message.is_err());
+        });
+    }
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "push".into()), resp);
+
+    expect_thread.join().unwrap();
 }
 
 fn new_transition(id: &str, name: &str) -> jira::Transition {
@@ -1189,10 +1236,11 @@ fn test_jira_push_triggers_version_script() {
 
     // Setup background thread to validate version msg
     // Note: no expectations are set on mock_jira since we have stubbed out the background worker thread
+    let expect_thread;
     {
         let timeout = Duration::from_millis(300);
         let rx = test.repo_version_rx.take().unwrap();
-        thread::spawn(move || {
+        expect_thread = thread::spawn(move || {
             let msg = rx.recv_timeout(timeout).expect(&format!("expected to recv msg"));
             match msg {
                 RepoVersionMessage::Version(req) => {
@@ -1211,4 +1259,6 @@ fn test_jira_push_triggers_version_script() {
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "push".into()), resp);
+
+    expect_thread.join().unwrap()
 }
