@@ -82,20 +82,21 @@ fn new_transition_req(id: &str) -> TransitionRequest {
 fn test_submit_for_review() {
     let test = new_test();
     let pr = new_pr();
-    let commit = new_commit("Fix [SER-1] I fixed it. And also fix [CLI-9999]", "aabbccddee");
+    let commit = new_commit("Fix [SER-1] I fixed it. And also relates to [CLI-9999]", "aabbccddee");
 
-    test.jira.mock_comment_issue("CLI-9999", "Review submitted for branch master: http://the-pr", Ok(()));
     test.jira.mock_comment_issue("SER-1", "Review submitted for branch master: http://the-pr", Ok(()));
-
-    // empty twice: once for in-progress, once for in-review
-    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("009", "other")]));
-    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("009", "other")]));
 
     test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
 
     test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
     test.jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
+
+    test.jira.mock_comment_issue("CLI-9999", "Referenced by review submitted for branch master: http://the-pr", Ok(()));
+
+    // mentioned JIRAs should go to in-progress but not "pending review"
+    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
+    test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
     jira::workflow::submit_for_review(&pr, &vec![commit], &test.jira, &test.config);
 }

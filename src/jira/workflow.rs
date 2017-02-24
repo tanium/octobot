@@ -55,6 +55,17 @@ pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::a
         // try transition to pending-review
         try_transition(&key, &config.review_states(), jira);
     }
+
+    for key in get_referenced_jira_keys(commits) {
+        // add comment
+        if let Err(e) = jira.comment_issue(&key, &format!("Referenced by review submitted for branch {}: {}", pr.base.ref_name, pr.html_url)) {
+            error!("Error commenting on key [{}]: {}", key, e);
+            continue; // give up on transitioning if we can't comment.
+        }
+
+        // try to transition to in-progress
+        try_transition(&key, &config.progress_states(), jira);
+    }
 }
 
 pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushCommit>, jira: &jira::api::Session, config: &JiraConfig) {
