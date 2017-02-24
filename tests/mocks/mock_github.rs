@@ -54,24 +54,18 @@ impl MockGithub {
 impl Drop for MockGithub {
     fn drop(&mut self) {
         if !thread::panicking() {
-            if self.get_pr_calls.lock().unwrap().len() > 0 {
-                panic!("Unmet get_pull_request calls: {:?}", *self.get_pr_calls.lock().unwrap());
-            }
-            if self.get_prs_calls.lock().unwrap().len() > 0 {
-                panic!("Unmet get_pull_requests calls: {:?}", *self.get_prs_calls.lock().unwrap());
-            }
-            if self.create_pr_calls.lock().unwrap().len() > 0 {
-                panic!("Unmet create_pull_request calls: {:?}", *self.create_pr_calls.lock().unwrap());
-            }
-            if self.get_pr_labels_calls.lock().unwrap().len() > 0 {
-                panic!("Unmet get_pull_request_labels calls: {:?}", *self.get_pr_labels_calls.lock().unwrap());
-            }
-            if self.assign_pr_calls.lock().unwrap().len() > 0 {
-                panic!("Unmet assign_pull_request calls: {:?}", *self.assign_pr_calls.lock().unwrap());
-            }
-            if self.comment_pr_calls.lock().unwrap().len() > 0 {
-                panic!("Unmet comment_pull_request calls: {:?}", *self.comment_pr_calls.lock().unwrap());
-            }
+            assert!(self.get_pr_calls.lock().unwrap().len() == 0,
+                    "Unmet get_pull_request calls: {:?}", *self.get_pr_calls.lock().unwrap());
+            assert!(self.get_prs_calls.lock().unwrap().len() == 0,
+                    "Unmet get_pull_requests calls: {:?}", *self.get_prs_calls.lock().unwrap());
+            assert!(self.create_pr_calls.lock().unwrap().len() == 0,
+                    "Unmet create_pull_request calls: {:?}", *self.create_pr_calls.lock().unwrap());
+            assert!(self.get_pr_labels_calls.lock().unwrap().len() == 0,
+                    "Unmet get_pull_request_labels calls: {:?}", *self.get_pr_labels_calls.lock().unwrap());
+            assert!(self.assign_pr_calls.lock().unwrap().len() == 0,
+                    "Unmet assign_pull_request calls: {:?}", *self.assign_pr_calls.lock().unwrap());
+            assert!(self.comment_pr_calls.lock().unwrap().len() == 0,
+                    "Unmet comment_pull_request calls: {:?}", *self.comment_pr_calls.lock().unwrap());
         }
     }
 }
@@ -105,9 +99,7 @@ impl Session for MockGithub {
     fn get_pull_requests(&self, owner: &str, repo: &str, state: Option<&str>, head: Option<&str>)
                          -> Result<Vec<PullRequest>, String> {
         let mut calls = self.get_prs_calls.lock().unwrap();
-        if calls.len() == 0 {
-            panic!("Unexpected call to get_pull_requests");
-        }
+        assert!(calls.len() > 0, "Unexpected call to get_pull_requests");
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -120,9 +112,7 @@ impl Session for MockGithub {
     fn create_pull_request(&self, owner: &str, repo: &str, title: &str, body: &str, head: &str, base: &str)
                            -> Result<PullRequest, String> {
         let mut calls = self.create_pr_calls.lock().unwrap();
-        if calls.len() == 0 {
-            panic!("Unexpected call to create_pull_request");
-        }
+        assert!(calls.len() > 0, "Unexpected call to create_pull_request");
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -137,9 +127,7 @@ impl Session for MockGithub {
     fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
                                -> Result<Vec<Label>, String> {
         let mut calls = self.get_pr_labels_calls.lock().unwrap();
-        if calls.len() == 0 {
-            panic!("Unexpected call to get_pull_request_labels");
-        }
+        assert!(calls.len() > 0, "Unexpected call to get_pull_request_labels");
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -151,9 +139,7 @@ impl Session for MockGithub {
     fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32)
                                     -> Result<Vec<Commit>, String> {
         let mut calls = self.get_pr_commits_calls.lock().unwrap();
-        if calls.len() == 0 {
-            panic!("Unexpected call to get_pull_request_commits");
-        }
+        assert!(calls.len() > 0, "Unexpected call to get_pull_request_commits");
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -165,9 +151,7 @@ impl Session for MockGithub {
     fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>)
                            -> Result<AssignResponse, String> {
         let mut calls = self.assign_pr_calls.lock().unwrap();
-        if calls.len() == 0 {
-            panic!("Unexpected call to assign_pull_request");
-        }
+        assert!(calls.len() > 0, "Unexpected call to assign_pull_request");
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -180,9 +164,7 @@ impl Session for MockGithub {
     fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str)
                             -> Result<(), String> {
         let mut calls = self.comment_pr_calls.lock().unwrap();
-        if calls.len() == 0 {
-            panic!("Unexpected call to comment_pull_request");
-        }
+        assert!(calls.len() > 0, "Unexpected call to comment_pull_request");
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
