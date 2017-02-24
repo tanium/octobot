@@ -176,11 +176,11 @@ mod tests {
         assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()]));
         assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()]));
 
-        commit.commit.message = "Fix [KEY-1][KEY-2] Some thing that also fixed [KEY-3], [KEY-4]".into();
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4"], get_fixed_jira_keys(&vec![commit.clone()]));
-        assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()]));
+        commit.commit.message = "Fix [KEY-1][KEY-2], [KEY-3] Some thing that also fixed [KEY-4]".into();
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_fixed_jira_keys(&vec![commit.clone()]));
+        assert_eq!(vec!["KEY-4"], get_referenced_jira_keys(&vec![commit.clone()]));
 
-        commit.commit.message += "\n\nOh, I forgot it also fixes [KEY-4], and also mentions [KEY-4], [KEY-5] but not [lowercase-99]";
+        commit.commit.message += "\n\nFix: [KEY-4], and also mentions [KEY-4], [KEY-5] but not [lowercase-99]";
         assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4"], get_fixed_jira_keys(&vec![commit.clone()]));
         assert_eq!(vec!["KEY-5"], get_referenced_jira_keys(&vec![commit.clone()]));
     }
