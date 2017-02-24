@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::thread;
 
 use octobot::slack::{SlackSender, SlackAttachment};
 
@@ -65,10 +66,12 @@ impl SlackSender for MockSlack {
 
 impl Drop for MockSlack {
     fn drop(&mut self) {
-        if self.call_count.get() != self.expected_calls.len() {
-            println!("Failed: Expected {} calls but only received {}",
-                     self.expected_calls.len(),
-                     self.call_count.get());
+        if !thread::panicking() {
+            if self.call_count.get() != self.expected_calls.len() {
+                panic!("Failed: Expected {} calls but only received {}",
+                       self.expected_calls.len(),
+                       self.call_count.get());
+            }
         }
     }
 }
