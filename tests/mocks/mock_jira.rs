@@ -38,15 +38,12 @@ impl MockJira {
 impl Drop for MockJira {
     fn drop(&mut self) {
         if !thread::panicking() {
-            if self.get_transitions_calls.lock().unwrap().len() > 0 {
-                panic!("Unmet get_transitions calls: {:?}", *self.get_transitions_calls.lock().unwrap());
-            }
-            if self.transition_issue_calls.lock().unwrap().len() > 0 {
-                panic!("Unmet transition_issue calls: {:?}", *self.transition_issue_calls.lock().unwrap());
-            }
-            if self.comment_issue_calls.lock().unwrap().len() > 0 {
-                panic!("Unmet comment_issue calls: {:?}", *self.comment_issue_calls.lock().unwrap());
-            }
+            assert!(self.get_transitions_calls.lock().unwrap().len() == 0,
+                    "Unmet get_transitions calls: {:?}", *self.get_transitions_calls.lock().unwrap());
+            assert!(self.transition_issue_calls.lock().unwrap().len() == 0,
+                    "Unmet transition_issue calls: {:?}", *self.transition_issue_calls.lock().unwrap());
+            assert!(self.comment_issue_calls.lock().unwrap().len() == 0,
+                    "Unmet comment_issue calls: {:?}", *self.comment_issue_calls.lock().unwrap());
         }
     }
 }
@@ -54,9 +51,7 @@ impl Drop for MockJira {
 impl Session for MockJira {
     fn get_transitions(&self, key: &str) -> Result<Vec<Transition>, String> {
         let mut calls = self.get_transitions_calls.lock().unwrap();
-        if calls.len() == 0 {
-            panic!("Unexpected call to get_transitions");
-        }
+        assert!(calls.len() > 0, "Unexpected call to get_transitions");
         let call = calls.remove(0);
         assert_eq!(call.args[0], key);
 
@@ -65,9 +60,7 @@ impl Session for MockJira {
 
     fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<(), String> {
         let mut calls = self.transition_issue_calls.lock().unwrap();
-        if calls.len() == 0 {
-            panic!("Unexpected call to transition_issue");
-        }
+        assert!(calls.len() > 0, "Unexpected call to transition_issue");
         let call = calls.remove(0);
         assert_eq!(call.args[0], key);
         assert_eq!(call.args[1], format!("{:?}", req));
@@ -77,9 +70,7 @@ impl Session for MockJira {
 
     fn comment_issue(&self, key: &str, comment: &str) -> Result<(), String> {
         let mut calls = self.comment_issue_calls.lock().unwrap();
-        if calls.len() == 0 {
-            panic!("Unexpected call to comment_issue");
-        }
+        assert!(calls.len() > 0, "Unexpected call to comment_issue");
         let call = calls.remove(0);
         assert_eq!(call.args[0], key);
         assert_eq!(call.args[1], comment);

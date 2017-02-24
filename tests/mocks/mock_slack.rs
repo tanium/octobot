@@ -43,13 +43,8 @@ impl SlackSender for MockSlack {
     fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>)
             -> Result<(), String> {
 
-        if self.call_count.get() >= self.expected_calls.len() {
-            panic!("Failed: received unexpected slack call: ({}, {}, {:?})",
-                   channel,
-                   msg,
-                   attachments);
-        }
-
+        assert!(self.call_count.get() < self.expected_calls.len(),
+                "Failed: received unexpected slack call: ({}, {}, {:?})", channel, msg, attachments);
         assert_eq!(self.expected_calls[self.call_count.get()].channel, channel);
         assert_eq!(self.expected_calls[self.call_count.get()].msg, msg);
         assert_eq!(self.expected_calls[self.call_count.get()].attachments,
@@ -67,11 +62,8 @@ impl SlackSender for MockSlack {
 impl Drop for MockSlack {
     fn drop(&mut self) {
         if !thread::panicking() {
-            if self.call_count.get() != self.expected_calls.len() {
-                panic!("Failed: Expected {} calls but only received {}",
-                       self.expected_calls.len(),
-                       self.call_count.get());
-            }
+            assert!(self.call_count.get() == self.expected_calls.len(),
+                    "Failed: Expected {} calls but only received {}", self.expected_calls.len(), self.call_count.get());
         }
     }
 }
