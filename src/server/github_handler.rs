@@ -483,7 +483,7 @@ impl GithubEventHandler {
             }
 
             // Mark JIRAs as merged
-            if branch_name == "master" || branch_name.starts_with("release") {
+            if branch_name == "master" || branch_name == "develop" || branch_name.starts_with("release") {
                 if self.config.repos.jira_enabled(&self.data.repository) {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {

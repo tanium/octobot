@@ -1076,6 +1076,50 @@ fn test_jira_push_master() {
 }
 
 #[test]
+fn test_jira_push_develop() {
+    let mut test = new_test_with_jira();
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/develop".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+    test.handler.data.commits = Some(some_jira_push_commits());
+
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
+
+    if let Some(ref jira) = test.jira {
+        jira.mock_comment_issue("SER-1", "Merged into branch develop: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
+
+        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
+        jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
+    }
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "push".into()), resp);
+}
+
+#[test]
+fn test_jira_push_release() {
+    let mut test = new_test_with_jira();
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/release/55".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+    test.handler.data.commits = Some(some_jira_push_commits());
+
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
+
+    if let Some(ref jira) = test.jira {
+        jira.mock_comment_issue("SER-1", "Merged into branch release/55: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
+
+        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
+        jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
+    }
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((status::Ok, "push".into()), resp);
+}
+
+#[test]
 fn test_jira_push_other_branch() {
     let mut test = new_test_with_jira();
     test.handler.event = "push".into();
