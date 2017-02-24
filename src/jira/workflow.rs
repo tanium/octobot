@@ -21,7 +21,7 @@ fn get_jira_keys(strings: Vec<String>) -> Vec<String> {
 
 fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
     // Fix [ABC-123][OTHER-567], [YEAH-999]
-    let re = Regex::new(r"(?i)(?:Fix\w*):?\s*(?-i)((\[?([A-Z]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
+    let re = Regex::new(r"(?i)(?:Fix):?\s*(?-i)((\[?([A-Z]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
 
     // first extract jiras with fix markers
     let mut all_refs = vec![];
