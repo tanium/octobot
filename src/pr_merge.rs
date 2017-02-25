@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{self, JoinHandle};
@@ -23,7 +22,6 @@ pub fn merge_pull_request(session: &Session, clone_mgr: &GitCloneManager, owner:
 
 
 struct Merger<'a> {
-    git: Git,
     session: &'a Session,
     clone_mgr: &'a GitCloneManager,
 }
@@ -31,7 +29,6 @@ struct Merger<'a> {
 impl<'a> Merger<'a> {
     pub fn new(session: &'a Session, clone_mgr: &'a GitCloneManager) -> Merger<'a> {
         Merger {
-            git: Git::new(session.github_host(), session.github_token()),
             session: session,
             clone_mgr: clone_mgr,
         }
@@ -60,22 +57,22 @@ impl<'a> Merger<'a> {
         let held_clone_dir = try!(self.clone_mgr.clone(owner, repo));
         let clone_dir = held_clone_dir.dir();
 
+        let git = Git::new(self.session.github_host(), self.session.github_token(), clone_dir);
+
         // make sure there isn't already such a branch
-        let current_remotes = try!(self.git.run(&["ls-remote", "--heads"], &clone_dir));
+        let current_remotes = try!(git.run(&["ls-remote", "--heads"]));
         if current_remotes.contains(&format!("refs/heads/{}", pr_branch_name)) {
             return Err(format!("PR branch already exists on origin: '{}'", pr_branch_name));
         }
 
-        let (title, body) = try!(self.cherry_pick(&clone_dir,
+        let (title, body) = try!(self.cherry_pick(&git,
                                                   &merge_commit_sha,
                                                   &pr_branch_name,
                                                   pull_request.number,
                                                   &target_branch,
                                                   &pull_request.base.ref_name));
 
-        try!(self.git
-            .run(&["push", "origin", &format!("{}:{}", pr_branch_name, pr_branch_name)],
-                 &clone_dir));
+        try!(git.run(&["push", "origin", &format!("{}:{}", pr_branch_name, pr_branch_name)]));
 
         let new_pr = try!(self.session
             .create_pull_request(owner, repo, &title, &body, &pr_branch_name, &target_branch));
@@ -87,33 +84,15 @@ impl<'a> Merger<'a> {
         Ok(new_pr)
     }
 
-    fn cherry_pick(&self, clone_dir: &PathBuf, commit_hash: &str, pr_branch_name: &str,
+    fn cherry_pick(&self, git: &Git, commit_hash: &str, pr_branch_name: &str,
                    pr_number: u32, target_branch: &str, orig_base_branch: &str)
                    -> Result<(String, String), String> {
-        let real_target_branch = format!("origin/{}", target_branch);
-
-        try!(self.git.clean(clone_dir));
-
-        // setup branch
-        let current_branch = try!(self.git.current_branch(clone_dir));
-        if current_branch == pr_branch_name {
-            try!(self.git.run(&["reset", "--hard", &real_target_branch], clone_dir));
-        } else {
-            // delete if it exists
-            let has_branch = try!(self.git.has_branch(pr_branch_name, clone_dir));
-            if has_branch {
-                try!(self.git.run(&["branch", "-D", pr_branch_name], clone_dir));
-            }
-            // recreate branch
-            try!(self.git.run(&["checkout", "-b", pr_branch_name, &real_target_branch],
-                              clone_dir));
-        }
+        try!(git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch)));
 
         // cherry-pick!
-        try!(self.git.run(&["cherry-pick", "-X", "ignore-all-space", commit_hash],
-                          clone_dir));
+        try!(git.run(&["cherry-pick", "-X", "ignore-all-space", commit_hash]));
 
-        let desc = try!(self.get_commit_desc(clone_dir, commit_hash));
+        let desc = try!(git.get_commit_desc(commit_hash));
 
         // grab original title and strip out the PR number at the end
         let pr_regex = Regex::new(r"(\s*\(#\d+\))+$").unwrap();
@@ -135,34 +114,7 @@ impl<'a> Merger<'a> {
             .as_str();
 
         // change commit message
-        try!(self.git.run_with_stdin(&["commit", "--amend", "-F", "-"],
-                                     clone_dir,
-                                     &format!("{}\n\n{}", title, body)));
-
-        Ok((title, body))
-    }
-
-    // returns (title, body)
-    fn get_commit_desc(&self, clone_dir: &PathBuf, commit_hash: &str)
-                       -> Result<(String, String), String> {
-        let lines: Vec<String> = try!(self.git
-                .run(&["log", "-1", "--pretty=%B", commit_hash], clone_dir))
-            .split("\n")
-            .map(|l| l.trim().to_string())
-            .collect();
-
-        if lines.len() == 0 {
-            return Err(format!("Empty commit message found!"));
-        }
-
-        let title = lines[0].clone();
-
-        let mut body = String::new();
-        // skip the blank line
-        if lines.len() > 2 {
-            body = lines[2..].join("\n");
-            body += "\n";
-        }
+        try!(git.run_with_stdin(&["commit", "--amend", "-F", "-"], &format!("{}\n\n{}", title, body)));
 
         Ok((title, body))
     }

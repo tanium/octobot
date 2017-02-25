@@ -26,24 +26,10 @@ pub fn comment_repo_version(version_script: &Vec<String>,
     let held_clone_dir = try!(clone_mgr.clone(owner, repo));
     let clone_dir = held_clone_dir.dir();
 
-    let git = Git::new(github.github_host(), github.github_token());
-
-    // clean up state
-    try!(git.clean(clone_dir));
+    let git = Git::new(github.github_host(), github.github_token(), &clone_dir);
 
     // setup branch
-    let current_branch = try!(git.current_branch(clone_dir));
-    if current_branch == branch_name {
-        try!(git.run(&["reset", "--hard", commit_hash], clone_dir));
-    } else {
-        // delete if it exists
-        let has_branch = try!(git.has_branch(branch_name, clone_dir));
-        if has_branch {
-            try!(git.run(&["branch", "-D", branch_name], clone_dir));
-        }
-        // recreate branch
-        try!(git.run(&["checkout", "-b", branch_name, commit_hash], clone_dir));
-    }
+    try!(git.checkout_branch(branch_name, commit_hash));
 
     let version = try!(run_script(version_script, clone_dir));
 
