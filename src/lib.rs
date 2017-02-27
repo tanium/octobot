@@ -20,6 +20,7 @@ extern crate serde_derive;
 
 pub mod config;
 pub mod dir_pool;
+pub mod force_push;
 pub mod git;
 pub mod git_clone_manager;
 pub mod github;

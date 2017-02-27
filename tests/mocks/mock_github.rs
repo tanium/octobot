@@ -16,6 +16,8 @@ pub struct MockGithub {
     get_pr_commits_calls: Mutex<Vec< MockCall<Vec<Commit>> >>,
     assign_pr_calls: Mutex<Vec< MockCall<AssignResponse> >>,
     comment_pr_calls: Mutex<Vec< MockCall<()> >>,
+    create_branch_calls: Mutex<Vec< MockCall<()> >>,
+    delete_branch_calls: Mutex<Vec< MockCall<()> >>,
 }
 
 #[derive(Debug)]
@@ -47,6 +49,8 @@ impl MockGithub {
             get_pr_commits_calls: Mutex::new(vec![]),
             assign_pr_calls: Mutex::new(vec![]),
             comment_pr_calls: Mutex::new(vec![]),
+            create_branch_calls: Mutex::new(vec![]),
+            delete_branch_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -66,6 +70,10 @@ impl Drop for MockGithub {
                     "Unmet assign_pull_request calls: {:?}", *self.assign_pr_calls.lock().unwrap());
             assert!(self.comment_pr_calls.lock().unwrap().len() == 0,
                     "Unmet comment_pull_request calls: {:?}", *self.comment_pr_calls.lock().unwrap());
+            assert!(self.create_branch_calls.lock().unwrap().len() == 0,
+                    "Unmet create_branch calls: {:?}", *self.create_branch_calls.lock().unwrap());
+            assert!(self.delete_branch_calls.lock().unwrap().len() == 0,
+                    "Unmet delete_branch calls: {:?}", *self.delete_branch_calls.lock().unwrap());
         }
     }
 }
@@ -173,6 +181,30 @@ impl Session for MockGithub {
 
         call.ret
     }
+
+    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String> {
+        let mut calls = self.create_branch_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to create_branch");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], branch_name);
+        assert_eq!(call.args[3], sha);
+
+        call.ret
+    }
+
+    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String> {
+        let mut calls = self.create_branch_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to delete_branch");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], branch_name);
+
+        call.ret
+    }
+
 }
 
 impl MockGithub {
@@ -203,5 +235,14 @@ impl MockGithub {
     pub fn mock_assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>, ret: Result<AssignResponse, String>) {
         self.assign_pr_calls.lock().unwrap().push(MockCall::new(ret, vec![owner, repo, &number.to_string(), &assignees.join(",")]));
     }
+
+    pub fn mock_create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str, ret: Result<(), String>) {
+        self.create_branch_calls.lock().unwrap().push(MockCall::new(ret, vec![owner, repo, branch_name, sha]));
+    }
+
+    pub fn mock_delete_branch(&self, owner: &str, repo: &str, branch_name: &str, ret: Result<(), String>) {
+        self.delete_branch_calls.lock().unwrap().push(MockCall::new(ret, vec![owner, repo, branch_name]));
+    }
+
 
 }

@@ -33,11 +33,20 @@ pub trait Session : Send + Sync {
 
     fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str)
                             -> Result<(), String>;
+
+    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String>;
+    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String>;
 }
 
 pub struct GithubSession {
     client: GithubClient,
     user: User,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct EmptyResponse {
+    empty: Option<String>,
 }
 
 impl GithubSession {
@@ -159,8 +168,27 @@ impl Session for GithubSession {
         }
         let body = CommentPR { body: comment.to_string() };
 
-        self.client.post(&format!("repos/{}/{}/issues/{}/comments", owner, repo, number),
-                         &body)
+        let _: EmptyResponse = try!(self.client.post(&format!("repos/{}/{}/issues/{}/comments", owner, repo, number), &body));
+        Ok(())
+    }
+
+    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String> {
+        #[derive(Serialize)]
+        struct CreateRef {
+            #[serde(rename = "ref")]
+            ref_name: String,
+            sha: String,
+        }
+
+        let body = CreateRef { ref_name: format!("refs/heads/{}", branch_name), sha: sha.into() };
+
+        let _: EmptyResponse = try!(self.client.post(&format!("repos/{}/{}/git/refs", owner, repo), &body));
+        Ok(())
+    }
+
+    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String> {
+        let _: EmptyResponse = try!(self.client.delete(&format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name)));
+        Ok(())
     }
 }
 
@@ -177,6 +205,10 @@ impl GithubClient {
 
     pub fn post<T: Deserialize, E: Serialize>(&self, path: &str, body: &E) -> Result<T, String> {
         self.request::<T, E>(Method::Post, path, Some(body))
+    }
+
+    pub fn delete<T: Deserialize>(&self, path: &str) -> Result<T, String> {
+        self.request::<T, String>(Method::Delete, path, None)
     }
 
     fn request<T: Deserialize, E: Serialize>(&self, method: Method, path: &str, body: Option<&E>)
@@ -211,6 +243,9 @@ impl GithubClient {
             Ok(mut res) => {
                 let mut res_str = String::new();
                 res.read_to_string(&mut res_str).unwrap_or(0);
+                if res_str.len() == 0 {
+                    res_str = "{}".into();
+                }
                 if res.status.is_success() {
                     let obj: T = match serde_json::from_str(&res_str) {
                         Ok(obj) => obj,

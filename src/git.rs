@@ -46,6 +46,19 @@ impl Git {
         self.run(&["rev-parse", "--abbrev-ref", "HEAD"])
     }
 
+    pub fn does_branch_contain(&self, git_ref: &str, branch: &str) -> Result<bool, String> {
+        let output = try!(self.run(&["branch", "--contains", git_ref]));
+        // return branches, stripping out the bullet point
+        Ok(output.lines().any(|b| b.len() > 2 && branch == &b[2..]))
+    }
+
+    // Find the commit at which |leaf_ref| forked from |base_branch|.
+    // This can find which commits belong to a PR.
+    // Returns the ref found in the base branch that this git_ref came from.
+    pub fn find_base_branch_commit(&self, leaf_ref: &str, base_branch: &str) -> Result<String, String> {
+        self.run(&["merge-base", "--fork-point", base_branch, leaf_ref])
+    }
+
     pub fn clean(&self) -> Result<(), String> {
         try!(self.run(&["reset", "--hard"]));
         try!(self.run(&["clean", "-fdx"]));
@@ -69,6 +82,10 @@ impl Git {
         }
 
         Ok(())
+    }
+
+    pub fn diff(&self, base: &str, head: &str) -> Result<String, String> {
+        self.run(&["diff", base, head, "-w"])
     }
 
     // returns (title, body)
