@@ -10,6 +10,8 @@ use github;
 pub struct RepoInfo {
     pub channel: String,
     pub force_push_notify: Option<bool>,
+    // white-listed statuses to reapply on force-push w/ identical diff
+    pub force_push_reapply_statuses: Option<Vec<String>>,
     pub jira_enabled: Option<bool>,
     pub version_script: Option<Vec<String>>,
 }
@@ -36,20 +38,44 @@ pub fn load_config(file: &str) -> std::io::Result<RepoConfig> {
     Ok(RepoConfig { repos: repos })
 }
 
+impl RepoInfo {
+    pub fn new(channel: &str) -> RepoInfo {
+        RepoInfo {
+            channel: channel.into(),
+            force_push_notify: None,
+            force_push_reapply_statuses: None,
+            jira_enabled: None,
+            version_script: None,
+        }
+    }
+
+    pub fn with_force_push(self, value: Option<bool>) -> RepoInfo {
+        let mut info = self;
+        info.force_push_notify = value;
+        info
+    }
+
+    pub fn with_jira(self, value: Option<bool>) -> RepoInfo {
+        let mut info = self;
+        info.jira_enabled = value;
+        info
+    }
+
+
+    pub fn with_version_script(self, value: Option<Vec<String>>) -> RepoInfo {
+        let mut info = self;
+        info.version_script = value;
+        info
+    }
+}
+
 impl RepoConfig {
     pub fn new() -> RepoConfig {
         RepoConfig { repos: RepoHostMap::new() }
     }
 
     pub fn insert(&mut self, host: &str, repo_name: &str, channel: &str) {
-        self.insert_info(host,
-                         repo_name,
-                         RepoInfo {
-                             channel: channel.to_string(),
-                             force_push_notify: None,
-                             jira_enabled: None,
-                             version_script: None,
-                         });
+        self.insert_info(host, repo_name, RepoInfo::new(channel));
     }
 
     pub fn insert_info(&mut self, host: &str, repo_name: &str, info: RepoInfo) {
@@ -75,6 +101,18 @@ impl RepoConfig {
                 match info.force_push_notify {
                     Some(value) => value,
                     None => true,
+                }
+            }
+        }
+    }
+
+    pub fn force_push_reapply_statuses(&self, repo: &github::Repo) -> Vec<String> {
+        match self.lookup_info(repo) {
+            None => vec![],
+            Some(ref info) => {
+                match info.force_push_reapply_statuses {
+                    Some(ref value) => value.clone(),
+                    None => vec![],
                 }
             }
         }
@@ -170,29 +208,13 @@ mod tests {
         let mut repos = RepoConfig::new();
         repos.insert_info("git.company.com",
                           "some-user/noisy-repo-by-default",
-                          RepoInfo {
-                              channel: "reviews".to_string(),
-                              force_push_notify: None,
-                              jira_enabled: None,
-                              version_script: None,
-                          });
+                          RepoInfo::new("reviews"));
         repos.insert_info("git.company.com",
                           "some-user/noisy-repo-on-purpose",
-                          RepoInfo {
-                              channel: "reviews".to_string(),
-                              force_push_notify: Some(true),
-                              jira_enabled: None,
-                              version_script: None,
-                          });
+                          RepoInfo::new("reviews").with_force_push(Some(true)));
         repos.insert_info("git.company.com",
                           "some-user/quiet-repo",
-                          RepoInfo {
-                              channel: "reviews".to_string(),
-                              force_push_notify: Some(false),
-                              jira_enabled: None,
-                              version_script: None,
-                          });
-
+                          RepoInfo::new("reviews").with_force_push(Some(false)));
         {
             let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo")
                 .unwrap();
@@ -217,7 +239,6 @@ mod tests {
             let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
             assert_eq!(false, repos.notify_force_push(&repo));
         }
-
     }
 
     #[test]
@@ -225,28 +246,13 @@ mod tests {
         let mut repos = RepoConfig::new();
         repos.insert_info("git.company.com",
                           "some-user/noisy-repo-by-default",
-                          RepoInfo {
-                              channel: "reviews".to_string(),
-                              force_push_notify: None,
-                              jira_enabled: None,
-                              version_script: None,
-                          });
+                          RepoInfo::new("reviews"));
         repos.insert_info("git.company.com",
                           "some-user/noisy-repo-on-purpose",
-                          RepoInfo {
-                              channel: "reviews".to_string(),
-                              force_push_notify: None,
-                              jira_enabled: Some(true),
-                              version_script: None,
-                          });
+                          RepoInfo::new("reviews").with_jira(Some(true)));
         repos.insert_info("git.company.com",
                           "some-user/quiet-repo",
-                          RepoInfo {
-                              channel: "reviews".to_string(),
-                              force_push_notify: None,
-                              jira_enabled: Some(false),
-                              version_script: None,
-                          });
+                          RepoInfo::new("revies").with_jira(Some(false)));
 
         {
             let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo")

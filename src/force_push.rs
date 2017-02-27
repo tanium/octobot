@@ -12,6 +12,7 @@ use github::Commit;
 use git_clone_manager::GitCloneManager;
 
 pub fn comment_force_push(diffs: Result<(String, String), String>,
+                          reapply_statuses: Vec<String>,
                           github: &github::api::Session,
                           owner: &str,
                           repo: &str,
@@ -20,19 +21,24 @@ pub fn comment_force_push(diffs: Result<(String, String), String>,
                           after_hash: &str) -> Result<(), String> {
     let mut comment = format!("Force-push detected: before: {}, after: {}: ",
                               Commit::short_hash_str(before_hash), Commit::short_hash_str(after_hash));
+
+    let identical_diff;
     match diffs {
         Ok(ref diffs) => {
             if diffs.0 == diffs.1 {
                 comment += "Identical diff post-rebase";
+                identical_diff = true;
             } else {
                 // TODO: How to expose this diff -- maybe create a secret gist?
                 // But that may raise permissions concerns for users who can read octobot's gists,
                 // but perhaps not the original repo...
                 comment += "Diff changed post-rebase";
+                identical_diff = false;
             }
         },
         Err(e) => {
             comment += "Unable to calculate diff";
+            identical_diff = false;
             error!("Error calculating force push diff: {}", e);
         }
     };
@@ -41,7 +47,39 @@ pub fn comment_force_push(diffs: Result<(String, String), String>,
         error!("Error sending github PR comment: {}", e);
     }
 
-    // TODO: reapply statuses if no change in force-push.
+    if identical_diff {
+        let statuses = match github.get_statuses(owner, repo, before_hash) {
+            Ok(s) => s,
+            Err(e) => return Err(format!("Error looking up github statuses: {}",e ))
+        };
+
+        // keep track of seen statuses to only track latest ones
+        let mut seen = vec![];
+        for status in &statuses {
+            if let Some(ref context) = status.context {
+                if seen.contains(&context) {
+                    continue;
+                }
+                seen.push(context.into());
+
+                if reapply_statuses.contains(&context) {
+                    let mut new_status = status.clone();
+                    new_status.creator = None;
+                    let octobot_was_here = "(reapplied by octobot)";
+                    if let Some(ref mut desc) = new_status.description {
+                        desc.push_str(" ");
+                        desc.push_str(octobot_was_here);
+                    } else {
+                        new_status.description = Some(octobot_was_here.into());
+                    }
+
+                    if let Err(e) = github.create_status(owner, repo, after_hash, &new_status) {
+                        error!("Error re-applying status to new commit {}, {:?}: {}", after_hash, new_status, e);
+                    }
+                }
+            }
+        }
+    }
 
     Ok(())
 }
@@ -174,7 +212,8 @@ impl WorkerRunner {
     fn handle_check(&self, req: ForcePushRequest) {
         let github_session = self.github_session.clone();
         let clone_mgr = self.clone_mgr.clone();
-        let _ = self.config.clone(); // TODO
+        let config = self.config.clone();
+        let statuses = config.repos.force_push_reapply_statuses(&req.repo);
 
         // launch another thread to do the version calculation
         self.thread_pool.execute(move || {
@@ -188,6 +227,7 @@ impl WorkerRunner {
                                         &req.after_hash);
 
             let comment = comment_force_push(diffs,
+                                             statuses,
                                              github,
                                              &req.repo.owner.login(),
                                              &req.repo.name,
