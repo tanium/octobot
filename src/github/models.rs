@@ -487,6 +487,15 @@ pub struct AssignResponse {
     pub assignees: Vec<User>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Status {
+    pub state: String,
+    pub target_url: Option<String>,
+    pub context: Option<String>,
+    pub description: Option<String>,
+    pub creator: Option<User>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

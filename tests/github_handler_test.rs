@@ -1211,13 +1211,8 @@ fn test_jira_push_triggers_version_script() {
     let mut test = new_test_with_jira();
 
     let mut config: Config = (*test.config).clone();
-    config.repos.insert_info(test.github.github_host(),
-                 "some-user/versioning-repo", repos::RepoInfo {
-                     channel: "the-reviews-channel".into(),
-                     force_push_notify: None,
-                     jira_enabled: None,
-                     version_script: Some(vec!["echo".into(), "1.2.3.4".into()]),
-                 });
+    config.repos.insert_info(test.github.github_host(), "some-user/versioning-repo",
+                             repos::RepoInfo::new("the-reviews-channel").with_version_script(Some(vec!["echo".into(), "1.2.3.4".into()])));
 
     test.config = Arc::new(config);
     test.handler.config = test.config.clone();

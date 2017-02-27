@@ -33,9 +33,10 @@ pub trait Session : Send + Sync {
 
     fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str)
                             -> Result<(), String>;
-
     fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String>;
     fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String>;
+    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>, String>;
+    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<(), String>;
 }
 
 pub struct GithubSession {
@@ -188,6 +189,16 @@ impl Session for GithubSession {
 
     fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String> {
         let _: EmptyResponse = try!(self.client.delete(&format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name)));
+        Ok(())
+    }
+
+    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>, String> {
+        self.client.get(&format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name))
+    }
+
+    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<(), String> {
+        let _: Status = try!(
+            self.client.post(&format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name), status));
         Ok(())
     }
 }

@@ -18,6 +18,8 @@ pub struct MockGithub {
     comment_pr_calls: Mutex<Vec< MockCall<()> >>,
     create_branch_calls: Mutex<Vec< MockCall<()> >>,
     delete_branch_calls: Mutex<Vec< MockCall<()> >>,
+    get_status_calls: Mutex<Vec< MockCall<Vec<Status>> >>,
+    create_status_calls: Mutex<Vec< MockCall<()> >>,
 }
 
 #[derive(Debug)]
@@ -51,6 +53,8 @@ impl MockGithub {
             comment_pr_calls: Mutex::new(vec![]),
             create_branch_calls: Mutex::new(vec![]),
             delete_branch_calls: Mutex::new(vec![]),
+            get_status_calls: Mutex::new(vec![]),
+            create_status_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -205,6 +209,28 @@ impl Session for MockGithub {
         call.ret
     }
 
+    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>, String> {
+        let mut calls = self.get_status_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_statuses");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], ref_name);
+
+        call.ret
+    }
+
+    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<(), String> {
+        let mut calls = self.create_status_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to create_status");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], ref_name);
+        assert_eq!(call.args[3], format!("{:?}", status));
+
+        call.ret
+    }
 }
 
 impl MockGithub {
@@ -244,5 +270,11 @@ impl MockGithub {
         self.delete_branch_calls.lock().unwrap().push(MockCall::new(ret, vec![owner, repo, branch_name]));
     }
 
+    pub fn mock_get_statuses(&self, owner: &str, repo: &str, ref_name: &str, ret: Result<Vec<Status>, String>) {
+        self.get_status_calls.lock().unwrap().push(MockCall::new(ret, vec![owner, repo, ref_name]));
+    }
 
+    pub fn mock_create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status, ret: Result<(), String>) {
+        self.create_status_calls.lock().unwrap().push(MockCall::new(ret, vec![owner, repo, ref_name, &format!("{:?}", status)]));
+    }
 }
