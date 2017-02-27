@@ -62,6 +62,12 @@ pub fn diff_force_push(github: &github::api::Session,
     let base_branch = &pull_request.base.ref_name;
     try!(git.checkout_branch(base_branch, &format!("origin/{}", base_branch)));
 
+    // create a branch for the before hash then fetch, then delete it to get the ref
+    let temp_branch = format!("octobot-{}-{}", pull_request.head.ref_name, before_hash);
+    try!(github.create_branch(owner, repo, &temp_branch, before_hash));
+    try!(git.run(&["fetch"]));
+    try!(github.delete_branch(owner, repo, &temp_branch));
+
     // find the first commits in base_branch that `before`/`after` came from
     let before_base_commit = try!(git.find_base_branch_commit(before_hash, base_branch));
     let after_base_commit = try!(git.find_base_branch_commit(after_hash, base_branch));

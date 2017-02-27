@@ -11,6 +11,7 @@ use octobot::github;
 fn test_force_push_identical() {
     let mut pr = github::PullRequest::new();
     pr.number = 32;
+    pr.head.ref_name = "the-pr-branch".into();
 
     let diff = "this is a big diff\n\nIt has lots of lines,\n\nbut it is the same".to_string();
     let diffs = Ok((diff.clone(), diff.clone()));
