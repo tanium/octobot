@@ -10,7 +10,6 @@ use github;
 // clones git repos with given github session into a managed directory pool
 pub struct GitCloneManager {
     dir_pool: Arc<DirPool>,
-    git: Git,
     github_session: Arc<github::api::Session>,
 }
 
@@ -20,7 +19,6 @@ impl GitCloneManager {
 
         GitCloneManager {
             dir_pool: Arc::new(DirPool::new(&clone_root_dir)),
-            git: Git::new(github_session.github_host(), github_session.github_token()),
             github_session: github_session.clone(),
         }
     }
@@ -39,17 +37,23 @@ impl GitCloneManager {
                           owner,
                           repo);
 
+        let git = Git::new(self.github_session.github_host(),
+                           self.github_session.github_token(),
+                           clone_dir);
+
         if clone_dir.join(".git").exists() {
-            try!(self.git.run(&["fetch", "--prune"], clone_dir));
+            try!(git.run(&["fetch", "--prune"]));
         } else {
             if let Err(e) = fs::create_dir_all(&clone_dir) {
                 return Err(format!("Error creating clone directory '{:?}': {}", clone_dir, e));
             }
-            try!(self.git.run(&["clone", &url, "."], clone_dir));
+            try!(git.run(&["clone", &url, "."]));
         }
 
         // always fetch latest tags
-        try!(self.git.run(&["fetch", "--tags"], clone_dir));
+        try!(git.run(&["fetch", "--tags"]));
+        // clean up state
+        try!(git.clean());
 
         Ok(())
     }
