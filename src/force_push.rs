@@ -168,7 +168,7 @@ impl WorkerRunner {
     fn handle_check(&self, req: ForcePushRequest) {
         let github_session = self.github_session.clone();
         let clone_mgr = self.clone_mgr.clone();
-        let _ = self.config.clone(); // FIXME
+        let _ = self.config.clone(); // TODO
 
         // launch another thread to do the version calculation
         self.thread_pool.execute(move || {
@@ -182,12 +182,12 @@ impl WorkerRunner {
                                         &req.after_hash);
 
             let comment = comment_force_push(diffs,
-                                              github,
-                                              &req.repo.owner.login(),
-                                              &req.repo.name,
-                                              &req.pull_request,
-                                              &req.before_hash,
-                                              &req.after_hash);
+                                             github,
+                                             &req.repo.owner.login(),
+                                             &req.repo.name,
+                                             &req.pull_request,
+                                             &req.before_hash,
+                                             &req.after_hash);
             if let Err(e) = comment {
                 error!("Error diffing force push: {}", e);
             }
