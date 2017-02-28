@@ -33,3 +33,4 @@ pub mod server;
 pub mod slack;
 pub mod users;
 pub mod util;
+pub mod worker;

@@ -1,7 +1,5 @@
 use std::borrow::Borrow;
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread::{self, JoinHandle};
+use std::sync::Arc;
 
 use regex::Regex;
 use threadpool::ThreadPool;
@@ -13,6 +11,7 @@ use github::api::Session;
 use git_clone_manager::GitCloneManager;
 use messenger;
 use slack::SlackAttachmentBuilder;
+use worker;
 
 pub fn merge_pull_request(session: &Session, clone_mgr: &GitCloneManager, owner: &str, repo: &str,
                           pull_request: &github::PullRequest, target_branch: &str)
@@ -121,96 +120,39 @@ impl<'a> Merger<'a> {
 }
 
 #[derive(Debug)]
-pub enum PRMergeMessage {
-    Stop,
-    Merge(PRMergeRequest),
-}
-
-#[derive(Debug)]
 pub struct PRMergeRequest {
     pub repo: github::Repo,
     pub pull_request: github::PullRequest,
     pub target_branch: String,
 }
 
-pub struct Worker {
-    sender: Mutex<Sender<PRMergeMessage>>,
-    handle: Option<JoinHandle<()>>,
-}
-
-impl PRMergeMessage {
-    pub fn merge(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str)
-                 -> PRMergeMessage {
-        PRMergeMessage::Merge(PRMergeRequest {
-            repo: repo.clone(),
-            pull_request: pull_request.clone(),
-            target_branch: target_branch.to_string(),
-        })
-    }
-}
-
-impl Drop for Worker {
-    fn drop(&mut self) {
-        let sender = self.new_sender();
-        match sender.send(PRMergeMessage::Stop) {
-            Ok(_) => {
-                match self.handle.take().unwrap().join() {
-                    Ok(_) => (),
-                    Err(e) => error!("Error shutting down worker: {:?}", e),
-                }
-            }
-            Err(e) => error!("Error sending stop message: {}", e),
-        }
-    }
-}
-
-impl Worker {
-    pub fn new(max_concurrency: usize, config: Arc<Config>, github_session: Arc<Session>, clone_mgr: Arc<GitCloneManager>)
-               -> Worker {
-
-        let (tx, rx) = channel();
-
-        Worker {
-            sender: Mutex::new(tx),
-            handle: Some(thread::spawn(move || {
-                let runner = WorkerRunner {
-                    rx: rx,
-                    config: config,
-                    github_session: github_session,
-                    clone_mgr: clone_mgr.clone(),
-                    thread_pool: ThreadPool::new(max_concurrency),
-                };
-                runner.run();
-            })),
-        }
-    }
-
-    pub fn new_sender(&self) -> Sender<PRMergeMessage> {
-        let sender = self.sender.lock().unwrap();
-        sender.clone()
-    }
-}
-
-struct WorkerRunner {
-    rx: Receiver<PRMergeMessage>,
+struct Runner {
     config: Arc<Config>,
     github_session: Arc<Session>,
     clone_mgr: Arc<GitCloneManager>,
     thread_pool: ThreadPool,
 }
 
-impl WorkerRunner {
-    fn run(&self) {
-        loop {
-            match self.rx.recv() {
-                Ok(PRMergeMessage::Stop) => break,
-                Ok(PRMergeMessage::Merge(req)) => self.handle_merge(req),
-                Err(e) => error!("Error receiving message: {}", e),
-            };
-        }
+pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str) -> PRMergeRequest {
+    PRMergeRequest {
+        repo: repo.clone(),
+        pull_request: pull_request.clone(),
+        target_branch: target_branch.to_string(),
     }
+}
 
-    fn handle_merge(&self, req: PRMergeRequest) {
+pub fn new_worker(max_concurrency: usize, config: Arc<Config>, github_session: Arc<Session>, clone_mgr: Arc<GitCloneManager>)
+               -> worker::Worker<PRMergeRequest> {
+    worker::Worker::new(Runner {
+        config: config,
+        github_session: github_session,
+        clone_mgr: clone_mgr.clone(),
+        thread_pool: ThreadPool::new(max_concurrency),
+    })
+}
+
+impl worker::Runner<PRMergeRequest> for Runner {
+    fn handle(&self, req: PRMergeRequest) {
         let github_session = self.github_session.clone();
         let clone_mgr = self.clone_mgr.clone();
         let config = self.config.clone();

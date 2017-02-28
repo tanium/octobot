@@ -21,10 +21,11 @@ use octobot::jira;
 use octobot::messenger::SlackMessenger;
 use octobot::slack::SlackAttachmentBuilder;
 use octobot::server::github_handler::GithubEventHandler;
-use octobot::pr_merge::PRMergeMessage;
-use octobot::repo_version::RepoVersionMessage;
-use octobot::force_push::ForcePushMessage;
+use octobot::pr_merge::PRMergeRequest;
+use octobot::repo_version::RepoVersionRequest;
+use octobot::force_push::ForcePushRequest;
 use octobot::repos;
+use octobot::worker::{WorkMessage, WorkSender};
 
 use mocks::mock_github::MockGithub;
 use mocks::mock_jira::MockJira;
@@ -42,9 +43,9 @@ struct GithubHandlerTest {
     github: Arc<MockGithub>,
     jira: Option<Arc<MockJira>>,
     config: Arc<Config>,
-    pr_merge_rx: Option<Receiver<PRMergeMessage>>,
-    repo_version_rx: Option<Receiver<RepoVersionMessage>>,
-    force_push_rx: Option<Receiver<ForcePushMessage>>,
+    pr_merge_rx: Option<Receiver<WorkMessage<PRMergeRequest>>>,
+    repo_version_rx: Option<Receiver<WorkMessage<RepoVersionRequest>>>,
+    force_push_rx: Option<Receiver<WorkMessage<ForcePushRequest>>>,
 }
 
 impl GithubHandlerTest {
@@ -62,7 +63,7 @@ impl GithubHandlerTest {
             for branch in branches {
                 let msg = rx.recv_timeout(timeout).expect(&format!("expected to recv msg for branch: {}", branch));
                 match msg {
-                    PRMergeMessage::Merge(req) => {
+                    WorkMessage::WorkItem(req) => {
                         assert_eq!(branch, req.target_branch);
                     },
                     _ => {
@@ -116,9 +117,9 @@ fn new_test() -> GithubHandlerTest {
             github_session: github.clone(),
             git_clone_manager: git_clone_manager.clone(),
             jira_session: None,
-            pr_merge: pr_merge_tx.clone(),
-            repo_version: repo_version_tx.clone(),
-            force_push: force_push_tx.clone(),
+            pr_merge: WorkSender::new(pr_merge_tx.clone()),
+            repo_version: WorkSender::new(repo_version_tx.clone()),
+            force_push: WorkSender::new(force_push_tx.clone()),
         },
     }
 }
@@ -902,7 +903,7 @@ fn test_push_force_notify() {
         expect_thread = thread::spawn(move || {
             let msg = rx.recv_timeout(timeout).expect(&format!("expected to recv msg"));
             match msg {
-                ForcePushMessage::Check(req) => {
+                WorkMessage::WorkItem(req) => {
                     assert_eq!("abcdef0000", req.before_hash);
                     assert_eq!("1111abcdef", req.after_hash);
                 },
@@ -1238,7 +1239,7 @@ fn test_jira_push_triggers_version_script() {
         expect_thread = thread::spawn(move || {
             let msg = rx.recv_timeout(timeout).expect(&format!("expected to recv msg"));
             match msg {
-                RepoVersionMessage::Version(req) => {
+                WorkMessage::WorkItem(req) => {
                     assert_eq!("master", req.branch);
                     assert_eq!("1111abcdef", req.commit_hash);
                 },
