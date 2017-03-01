@@ -1,6 +1,5 @@
 use std::ops::Deref;
 use std::sync::Arc;
-use std::sync::mpsc::Sender;
 
 use iron::prelude::*;
 use iron::status::{self, Status};
@@ -15,20 +14,21 @@ use github::CommentLike;
 use git_clone_manager::GitCloneManager;
 use jira;
 use messenger::{self, Messenger};
-use repo_version::{self, RepoVersionMessage};
-use pr_merge::{self, PRMergeMessage};
-use force_push::{self, ForcePushMessage};
+use repo_version::{self, RepoVersionRequest};
+use pr_merge::{self, PRMergeRequest};
+use force_push::{self, ForcePushRequest};
 use slack::SlackAttachmentBuilder;
 use util;
+use worker::{Worker, WorkSender};
 
 pub struct GithubHandler {
     pub config: Arc<Config>,
     pub github_session: Arc<github::api::Session>,
     pub jira_session: Option<Arc<jira::api::Session>>,
     git_clone_manager: Arc<GitCloneManager>,
-    pr_merge_worker: pr_merge::Worker,
-    repo_version_worker: repo_version::Worker,
-    force_push_worker: force_push::Worker,
+    pr_merge_worker: Worker<PRMergeRequest>,
+    repo_version_worker: Worker<RepoVersionRequest>,
+    force_push_worker: Worker<ForcePushRequest>,
 }
 
 pub struct GithubEventHandler {
@@ -39,9 +39,9 @@ pub struct GithubEventHandler {
     pub action: String,
     pub github_session: Arc<github::api::Session>,
     pub jira_session: Option<Arc<jira::api::Session>>,
-    pub pr_merge: Sender<PRMergeMessage>,
-    pub repo_version: Sender<RepoVersionMessage>,
-    pub force_push: Sender<ForcePushMessage>,
+    pub pr_merge: WorkSender<PRMergeRequest>,
+    pub repo_version: WorkSender<RepoVersionRequest>,
+    pub force_push: WorkSender<ForcePushRequest>,
     pub git_clone_manager: Arc<GitCloneManager>,
 }
 
@@ -62,19 +62,19 @@ impl GithubHandler {
             github_session: github_session.clone(),
             jira_session: jira_session.clone(),
             git_clone_manager: git_clone_manager.clone(),
-            pr_merge_worker: pr_merge::Worker::new(MAX_CONCURRENT_MERGES,
-                                                   config.clone(),
-                                                   github_session.clone(),
-                                                   git_clone_manager.clone()),
-            repo_version_worker: repo_version::Worker::new(MAX_CONCURRENT_VERSIONS,
+            pr_merge_worker: pr_merge::new_worker(MAX_CONCURRENT_MERGES,
+                                                  config.clone(),
+                                                  github_session.clone(),
+                                                  git_clone_manager.clone()),
+            repo_version_worker: repo_version::new_worker(MAX_CONCURRENT_VERSIONS,
                                                            config.clone(),
                                                            github_session.clone(),
                                                            jira_session.clone(),
                                                            git_clone_manager.clone()),
-            force_push_worker: force_push::Worker::new(MAX_CONCURRENT_FORCE_PUSH,
-                                                       config.clone(),
-                                                       github_session.clone(),
-                                                       git_clone_manager.clone()),
+            force_push_worker: force_push::new_worker(MAX_CONCURRENT_FORCE_PUSH,
+                                                      config.clone(),
+                                                      github_session.clone(),
+                                                      git_clone_manager.clone()),
         }
     }
 }
@@ -475,7 +475,7 @@ impl GithubEventHandler {
                        self.config.repos.notify_force_push(&self.data.repository) &&
                        !pull_request.title.starts_with("WIP:") {
 
-                        let msg = ForcePushMessage::check(&self.data.repository, pull_request, self.data.before(), self.data.after());
+                        let msg = force_push::req(&self.data.repository, pull_request, self.data.before(), self.data.after());
                         if let Err(e) = self.force_push.send(msg) {
                             error!("Error sending force push message: {}", e);
                         }
@@ -493,7 +493,7 @@ impl GithubEventHandler {
                                 // try to send resolve message w/ a version in it if possible
                                 let has_version = match self.config.repos.version_script(&self.data.repository) {
                                     Some(_) => {
-                                        let msg = RepoVersionMessage::version(&self.data.repository, &branch_name, self.data.after(), commits);
+                                        let msg = repo_version::req(&self.data.repository, &branch_name, self.data.after(), commits);
                                         if let Err(e) = self.repo_version.send(msg) {
                                             error!("Error sending version request message: {}", e);
                                             false
@@ -554,8 +554,8 @@ impl GithubEventHandler {
         };
         let target_branch = "release/".to_string() + &backport;
 
-        if let Err(e) = self.pr_merge
-            .send(PRMergeMessage::merge(&self.data.repository, pull_request, &target_branch)) {
+        let req = pr_merge::req(&self.data.repository, pull_request, &target_branch);
+        if let Err(e) = self.pr_merge.send(req) {
             error!("Error sending merge request message: {}", e)
         }
     }

@@ -1,7 +1,5 @@
 use std::borrow::Borrow;
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread::{self, JoinHandle};
+use std::sync::Arc;
 
 use threadpool::ThreadPool;
 
@@ -10,6 +8,7 @@ use git::Git;
 use github;
 use github::Commit;
 use git_clone_manager::GitCloneManager;
+use worker;
 
 pub fn comment_force_push(diffs: Result<(String, String), String>,
                           reapply_statuses: Vec<String>,
@@ -117,12 +116,6 @@ pub fn diff_force_push(github: &github::api::Session,
 }
 
 #[derive(Debug)]
-pub enum ForcePushMessage {
-    Stop,
-    Check(ForcePushRequest),
-}
-
-#[derive(Debug)]
 pub struct ForcePushRequest {
     pub repo: github::Repo,
     pub pull_request: github::PullRequest,
@@ -130,86 +123,38 @@ pub struct ForcePushRequest {
     pub after_hash: String,
 }
 
-pub struct Worker {
-    sender: Mutex<Sender<ForcePushMessage>>,
-    handle: Option<JoinHandle<()>>,
-}
-
-impl ForcePushMessage {
-    pub fn check(repo: &github::Repo, pull_request: &github::PullRequest, before_hash: &str, after_hash: &str) -> ForcePushMessage {
-        ForcePushMessage::Check(ForcePushRequest {
-            repo: repo.clone(),
-            pull_request: pull_request.clone(),
-            before_hash: before_hash.to_string(),
-            after_hash: after_hash.to_string(),
-        })
-    }
-}
-
-impl Drop for Worker {
-    fn drop(&mut self) {
-        let sender = self.new_sender();
-        match sender.send(ForcePushMessage::Stop) {
-            Ok(_) => {
-                match self.handle.take().unwrap().join() {
-                    Ok(_) => (),
-                    Err(e) => error!("Error shutting down worker: {:?}", e),
-                }
-            }
-            Err(e) => error!("Error sending stop message: {}", e),
-        }
-    }
-}
-
-impl Worker {
-    pub fn new(max_concurrency: usize,
-               config: Arc<Config>,
-               github_session: Arc<github::api::Session>,
-               clone_mgr: Arc<GitCloneManager>)
-               -> Worker {
-        let (tx, rx) = channel();
-
-        Worker {
-            sender: Mutex::new(tx),
-            handle: Some(thread::spawn(move || {
-                let runner = WorkerRunner {
-                    rx: rx,
-                    config: config,
-                    github_session: github_session,
-                    clone_mgr: clone_mgr.clone(),
-                    thread_pool: ThreadPool::new(max_concurrency),
-                };
-                runner.run();
-            })),
-        }
-    }
-
-    pub fn new_sender(&self) -> Sender<ForcePushMessage> {
-        let sender = self.sender.lock().unwrap();
-        sender.clone()
-    }
-}
-
-struct WorkerRunner {
-    rx: Receiver<ForcePushMessage>,
+struct Runner {
     config: Arc<Config>,
     github_session: Arc<github::api::Session>,
     clone_mgr: Arc<GitCloneManager>,
     thread_pool: ThreadPool,
 }
 
-impl WorkerRunner {
-    fn run(&self) {
-        loop {
-            match self.rx.recv() {
-                Ok(ForcePushMessage::Stop) => break,
-                Ok(ForcePushMessage::Check(req)) => self.handle_check(req),
-                Err(e) => error!("Error receiving message: {}", e),
-            };
-        }
-    }
 
-    fn handle_check(&self, req: ForcePushRequest) {
+pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, before_hash: &str, after_hash: &str) -> ForcePushRequest {
+    ForcePushRequest {
+        repo: repo.clone(),
+        pull_request: pull_request.clone(),
+        before_hash: before_hash.to_string(),
+        after_hash: after_hash.to_string(),
+    }
+}
+
+pub fn new_worker(max_concurrency: usize,
+                  config: Arc<Config>,
+                  github_session: Arc<github::api::Session>,
+                  clone_mgr: Arc<GitCloneManager>)
+                    -> worker::Worker<ForcePushRequest> {
+    worker::Worker::new(Runner {
+        config: config,
+        github_session: github_session,
+        clone_mgr: clone_mgr,
+        thread_pool: ThreadPool::new(max_concurrency),
+    })
+}
+
+impl worker::Runner<ForcePushRequest> for Runner {
+    fn handle(&self, req: ForcePushRequest) {
         let github_session = self.github_session.clone();
         let clone_mgr = self.clone_mgr.clone();
         let config = self.config.clone();

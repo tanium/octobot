@@ -1,9 +1,7 @@
 use std::borrow::Borrow;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread::{self, JoinHandle};
+use std::sync::Arc;
 
 use threadpool::ThreadPool;
 
@@ -12,6 +10,7 @@ use git::Git;
 use github;
 use git_clone_manager::GitCloneManager;
 use jira;
+use worker;
 
 pub fn comment_repo_version(version_script: &Vec<String>,
                             jira_config: &JiraConfig,
@@ -90,12 +89,6 @@ fn run_script(version_script: &Vec<String>, clone_dir: &Path) -> Result<String, 
 }
 
 #[derive(Debug)]
-pub enum RepoVersionMessage {
-    Stop,
-    Version(RepoVersionRequest),
-}
-
-#[derive(Debug)]
 pub struct RepoVersionRequest {
     pub repo: github::Repo,
     pub branch: String,
@@ -103,71 +96,7 @@ pub struct RepoVersionRequest {
     pub commits: Vec<github::PushCommit>,
 }
 
-pub struct Worker {
-    sender: Mutex<Sender<RepoVersionMessage>>,
-    handle: Option<JoinHandle<()>>,
-}
-
-impl RepoVersionMessage {
-    pub fn version(repo: &github::Repo, branch: &str, commit_hash: &str, commits: &Vec<github::PushCommit>) -> RepoVersionMessage {
-        RepoVersionMessage::Version(RepoVersionRequest {
-            repo: repo.clone(),
-            branch: branch.to_string(),
-            commit_hash: commit_hash.to_string(),
-            commits: commits.clone(),
-        })
-    }
-}
-
-impl Drop for Worker {
-    fn drop(&mut self) {
-        let sender = self.new_sender();
-        match sender.send(RepoVersionMessage::Stop) {
-            Ok(_) => {
-                match self.handle.take().unwrap().join() {
-                    Ok(_) => (),
-                    Err(e) => error!("Error shutting down worker: {:?}", e),
-                }
-            }
-            Err(e) => error!("Error sending stop message: {}", e),
-        }
-    }
-}
-
-impl Worker {
-    pub fn new(max_concurrency: usize,
-               config: Arc<Config>,
-               github_session: Arc<github::api::Session>,
-               jira_session: Option<Arc<jira::api::Session>>,
-               clone_mgr: Arc<GitCloneManager>)
-               -> Worker {
-
-        let (tx, rx) = channel();
-
-        Worker {
-            sender: Mutex::new(tx),
-            handle: Some(thread::spawn(move || {
-                let runner = WorkerRunner {
-                    rx: rx,
-                    config: config,
-                    github_session: github_session,
-                    jira_session: jira_session,
-                    clone_mgr: clone_mgr.clone(),
-                    thread_pool: ThreadPool::new(max_concurrency),
-                };
-                runner.run();
-            })),
-        }
-    }
-
-    pub fn new_sender(&self) -> Sender<RepoVersionMessage> {
-        let sender = self.sender.lock().unwrap();
-        sender.clone()
-    }
-}
-
-struct WorkerRunner {
-    rx: Receiver<RepoVersionMessage>,
+struct Runner {
     config: Arc<Config>,
     github_session: Arc<github::api::Session>,
     jira_session: Option<Arc<jira::api::Session>>,
@@ -175,18 +104,32 @@ struct WorkerRunner {
     thread_pool: ThreadPool,
 }
 
-impl WorkerRunner {
-    fn run(&self) {
-        loop {
-            match self.rx.recv() {
-                Ok(RepoVersionMessage::Stop) => break,
-                Ok(RepoVersionMessage::Version(req)) => self.handle_version(req),
-                Err(e) => error!("Error receiving message: {}", e),
-            };
-        }
+pub fn req(repo: &github::Repo, branch: &str, commit_hash: &str, commits: &Vec<github::PushCommit>) -> RepoVersionRequest {
+    RepoVersionRequest {
+        repo: repo.clone(),
+        branch: branch.to_string(),
+        commit_hash: commit_hash.to_string(),
+        commits: commits.clone(),
     }
+}
 
-    fn handle_version(&self, req: RepoVersionRequest) {
+pub fn new_worker(max_concurrency: usize,
+                  config: Arc<Config>,
+                  github_session: Arc<github::api::Session>,
+                  jira_session: Option<Arc<jira::api::Session>>,
+                  clone_mgr: Arc<GitCloneManager>)
+                   -> worker::Worker<RepoVersionRequest> {
+    worker::Worker::new(Runner {
+        config: config,
+        github_session: github_session,
+        jira_session: jira_session,
+        clone_mgr: clone_mgr,
+        thread_pool: ThreadPool::new(max_concurrency),
+    })
+}
+
+impl worker::Runner<RepoVersionRequest> for Runner {
+    fn handle(&self, req: RepoVersionRequest) {
         let github_session = self.github_session.clone();
         let jira_session = self.jira_session.clone();
         let clone_mgr = self.clone_mgr.clone();
