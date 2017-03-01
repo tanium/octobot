@@ -51,6 +51,7 @@ fn parse_diff(diff: &str) -> Option<PatchSet> {
 
 
 fn are_patch_sets_equal(patch0: &PatchSet, patch1: &PatchSet) -> bool {
+    // check equal number of patched files
     if patch0.len() != patch1.len() {
         return false;
     }
@@ -65,6 +66,7 @@ fn are_patch_sets_equal(patch0: &PatchSet, patch1: &PatchSet) -> bool {
 }
 
 fn are_patched_files_equal(file0: &PatchedFile, file1: &PatchedFile) -> bool {
+    // check equal number of hunks in this patched file
     if file0.len() != file1.len() {
         return false;
     }
@@ -79,6 +81,7 @@ fn are_patched_files_equal(file0: &PatchedFile, file1: &PatchedFile) -> bool {
 }
 
 fn are_patch_hunks_equal(hunk0: &Hunk, hunk1: &Hunk) -> bool {
+    // check equal number of lines in this hunk
     if hunk0.len() != hunk1.len() {
         return false;
     }
