@@ -11,6 +11,7 @@ extern crate serde;
 extern crate serde_json;
 extern crate threadpool;
 extern crate toml;
+extern crate unidiff;
 extern crate url;
 
 #[macro_use]
@@ -19,6 +20,7 @@ extern crate log;
 extern crate serde_derive;
 
 pub mod config;
+pub mod diffs;
 pub mod dir_pool;
 pub mod force_push;
 pub mod git;

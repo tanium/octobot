@@ -6,12 +6,13 @@ use std::thread::{self, JoinHandle};
 use threadpool::ThreadPool;
 
 use config::Config;
+use diffs::DiffOfDiffs;
 use git::Git;
 use github;
 use github::Commit;
 use git_clone_manager::GitCloneManager;
 
-pub fn comment_force_push(diffs: Result<(String, String), String>,
+pub fn comment_force_push(diffs: Result<DiffOfDiffs, String>,
                           reapply_statuses: Vec<String>,
                           github: &github::api::Session,
                           owner: &str,
@@ -25,7 +26,7 @@ pub fn comment_force_push(diffs: Result<(String, String), String>,
     let identical_diff;
     match diffs {
         Ok(ref diffs) => {
-            if diffs.0 == diffs.1 {
+            if diffs.are_equal() {
                 comment += "Identical diff post-rebase";
                 identical_diff = true;
             } else {
@@ -90,7 +91,7 @@ pub fn diff_force_push(github: &github::api::Session,
                        repo: &str,
                        pull_request: &github::PullRequest,
                        before_hash: &str,
-                       after_hash: &str) -> Result<(String, String), String> {
+                       after_hash: &str) -> Result<DiffOfDiffs, String> {
     let held_clone_dir = try!(clone_mgr.clone(owner, repo));
     let clone_dir = held_clone_dir.dir();
 
@@ -113,7 +114,7 @@ pub fn diff_force_push(github: &github::api::Session,
     let before_diff = try!(git.diff(&before_base_commit, before_hash));
     let after_diff = try!(git.diff(&after_base_commit, after_hash));
 
-    Ok((before_diff, after_diff))
+    Ok(DiffOfDiffs::new(&before_diff, &after_diff))
 }
 
 #[derive(Debug)]
