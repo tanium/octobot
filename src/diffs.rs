@@ -1,3 +1,4 @@
+use std::cmp::max;
 use unidiff::{PatchSet, PatchedFile, Hunk, Line};
 
 #[derive(Debug)]
@@ -36,6 +37,16 @@ impl DiffOfDiffs {
 
         are_patch_sets_equal(patch0, patch1)
     }
+
+    pub fn different_patch_files(&self) -> Vec<PatchedFile> {
+        if let Some(ref patch0) = self.patch0 {
+            if let Some(ref patch1) = self.patch1 {
+                return different_patch_files(patch0, patch1)
+            }
+        }
+
+        vec![]
+    }
 }
 
 fn parse_diff(diff: &str) -> Option<PatchSet> {
@@ -49,6 +60,25 @@ fn parse_diff(diff: &str) -> Option<PatchSet> {
     }
 }
 
+fn different_patch_files(patch0: &PatchSet, patch1: &PatchSet) -> Vec<PatchedFile> {
+    let count = max(patch0.len(), patch1.len());
+
+    let mut different = vec![];
+    for index in 0..count {
+        if index > patch0.len() {
+            // a file in patch1 not in patch0
+            different.push(patch1[index].clone())
+        } else if index > patch1.len() {
+            // a file in patch0 not in patch1
+            different.push(patch0[index].clone())
+        } else if !are_patched_files_equal(&patch0[index], &patch1[index]) {
+            // a file in both patch sets but different
+            different.push(patch0[index].clone())
+        }
+    }
+
+    different
+}
 
 fn are_patch_sets_equal(patch0: &PatchSet, patch1: &PatchSet) -> bool {
     // check equal number of patched files
@@ -109,7 +139,10 @@ mod tests {
     #[test]
     fn test_non_diff_contents() {
         assert_eq!(true, DiffOfDiffs::new("some-non-diff", "some-non-diff").are_equal());
-        assert_eq!(false, DiffOfDiffs::new("some-non-diff", "some-other-non-diff").are_equal());
+
+        let diffs = DiffOfDiffs::new("some-non-diff", "some-other-non-diff");
+        assert_eq!(false, diffs.are_equal());
+        assert_eq!(Vec::<PatchedFile>::new(), diffs.different_patch_files());
     }
 
     #[test]
@@ -148,7 +181,9 @@ index 4442a2c..007a2cf 100644
  pub mod force_push;
  pub mod git;"#;
 
-        assert_eq!(true, DiffOfDiffs::new(&diff0, &diff0).are_equal());
+        let diffs = DiffOfDiffs::new(&diff0, &diff0);
+        assert_eq!(true, diffs.are_equal());
+        assert_eq!(Vec::<PatchedFile>::new(), diffs.different_patch_files());
 
         // same diff, but diff line numbers
         let diff1 = r#"
@@ -258,6 +293,13 @@ index 4442a2c..007a2cf 100644
  pub mod force_push;
  pub mod git;"#;
 
-        assert_eq!(false, DiffOfDiffs::new(&diff0, &diff1).are_equal());
+        let diffs = DiffOfDiffs::new(&diff0, &diff1);
+        assert_eq!(false, diffs.are_equal());
+
+        let diff_files = diffs.different_patch_files();
+        assert_eq!(1, diff_files.len());
+        assert_eq!("a/src/lib.rs", diff_files[0].source_file);
+        assert_eq!("b/src/lib.rs", diff_files[0].target_file);
+        assert_eq!("src/lib.rs", diff_files[0].path());
     }
 }

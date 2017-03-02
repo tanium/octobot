@@ -29,10 +29,15 @@ pub fn comment_force_push(diffs: Result<DiffOfDiffs, String>,
                 comment += "Identical diff post-rebase";
                 identical_diff = true;
             } else {
-                // TODO: How to expose this diff -- maybe create a secret gist?
-                // But that may raise permissions concerns for users who can read octobot's gists,
-                // but perhaps not the original repo...
                 comment += "Diff changed post-rebase";
+                let different_files = diffs.different_patch_files();
+                if different_files.len() > 0 {
+                    comment += "\n\nChanged files:\n";
+                    for file in different_files {
+                        comment += &format!("* {}\n", file.path());
+                    }
+                }
+
                 identical_diff = false;
             }
         },
