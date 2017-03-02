@@ -41,7 +41,7 @@ impl DiffOfDiffs {
     pub fn different_patch_files(&self) -> Vec<PatchedFile> {
         if let Some(ref patch0) = self.patch0 {
             if let Some(ref patch1) = self.patch1 {
-                return different_patch_files(patch0, patch1)
+                return different_patch_files(patch0, patch1);
             }
         }
 
