@@ -65,10 +65,10 @@ fn different_patch_files(patch0: &PatchSet, patch1: &PatchSet) -> Vec<PatchedFil
 
     let mut different = vec![];
     for index in 0..count {
-        if index > patch0.len() {
+        if index >= patch0.len() {
             // a file in patch1 not in patch0
             different.push(patch1[index].clone())
-        } else if index > patch1.len() {
+        } else if index >= patch1.len() {
             // a file in patch0 not in patch1
             different.push(patch0[index].clone())
         } else if !are_patched_files_equal(&patch0[index], &patch1[index]) {
@@ -291,15 +291,36 @@ index 4442a2c..007a2cf 100644
 +pub mod diffs;
  pub mod dir_pool;
  pub mod force_push;
+ pub mod git;"
+diff --git a/src/fake.rs b/src/fake.rs
+index 4442a2c..007a2cf 100644
+--- a/src/fake.rs
++++ b/src/fake.rs
+@@ -1,6 +1,7 @@ extern crate serde;
+ extern crate serde_json;
+ extern crate threadpool;
+ extern crate toml;
++extern crate unidiff;
+ extern crate url;
+
+ #[macro_use]
+@@ -119,6 +120,7 @@ extern crate log;
+ extern crate serde_derive;
+
+ pub mod ** OTHER_THING_HERE **;
++pub mod diffs;
+ pub mod dir_pool;
+ pub mod force_push;
  pub mod git;"#;
 
         let diffs = DiffOfDiffs::new(&diff0, &diff1);
         assert_eq!(false, diffs.are_equal());
 
         let diff_files = diffs.different_patch_files();
-        assert_eq!(1, diff_files.len());
+        assert_eq!(2, diff_files.len());
         assert_eq!("a/src/lib.rs", diff_files[0].source_file);
         assert_eq!("b/src/lib.rs", diff_files[0].target_file);
         assert_eq!("src/lib.rs", diff_files[0].path());
+        assert_eq!("src/fake.rs", diff_files[1].path());
     }
 }
