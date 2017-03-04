@@ -20,20 +20,20 @@ impl GitTest {
 
         let repo_dir = dir.path().join("repo");
         let remote_dir = dir.path().join("remote");
-        std::fs::create_dir(&repo_dir).expect("create repo dir");
         std::fs::create_dir(&remote_dir).expect("create remote dir");
 
         let git = Git::new("the-host", "the-token", &repo_dir);
         let remote_git = Git::new("the-host", "the-token", &remote_dir);
 
-        remote_git.run(&["--bare", "init"]).unwrap();
-        git.run(&["clone", "../remote", "."]).unwrap();
+        remote_git.run(&["--bare", "init"]).expect("init base repo");
 
         let test = GitTest {
             _dir: dir,
             git: git,
             repo_dir: repo_dir,
         };
+
+        test.reclone();
 
         // add an initial commit to start with.
         test.add_repo_file("README.md", "# GitTest\n\n", "Initial README commit!");
@@ -44,6 +44,17 @@ impl GitTest {
 
     fn run_git(&self, args: &[&str]) -> String {
         self.git.run(args).expect(&format!("Failed running git: `{:?}`", args))
+    }
+
+    fn reclone(&self) {
+        if self.repo_dir.exists() {
+            std::fs::remove_dir_all(&self.repo_dir).expect("remove clone dir");
+        }
+        if !self.repo_dir.exists() {
+            std::fs::create_dir(&self.repo_dir).expect("create clone dir");
+        }
+
+        self.git.run(&["clone", "../remote", "."]).expect("clone from bare repo");
     }
 
     fn add_repo_file(&self, path: &str, contents: &str, msg: &str) {
@@ -67,23 +78,23 @@ impl GitTest {
 fn test_current_branch() {
     let test = GitTest::new();
 
-    assert_eq!("master", test.git.current_branch().unwrap());
-    test.git.run(&["checkout", "-b", "other-branch"]).unwrap();
-    assert_eq!("other-branch", test.git.current_branch().unwrap());
+    assert_eq!(Ok("master".into()), test.git.current_branch());
+    test.run_git(&["checkout", "-b", "other-branch"]);
+    assert_eq!(Ok("other-branch".into()), test.git.current_branch());
 }
 
 #[test]
 fn test_has_branch() {
     let test = GitTest::new();
 
-    assert!(test.git.has_branch("master").unwrap(), "should have master branch");
+    assert_eq!(Ok(true), test.git.has_branch("master"), "should have master branch");
 
     test.run_git(&["branch", "falcon"]);
     test.run_git(&["branch", "eagle"]);
 
-    assert!(test.git.has_branch("falcon").unwrap(), "should have falcon branch");
-    assert!(test.git.has_branch("eagle").unwrap(), "should have eagle branch");
-    assert!(!test.git.has_branch("eagles").unwrap(), "should NOT have eagles branch");
+    assert_eq!(Ok(true), test.git.has_branch("falcon"), "should have falcon branch");
+    assert_eq!(Ok(true), test.git.has_branch("eagle"), "should have eagle branch");
+    assert_eq!(Ok(false), test.git.has_branch("eagles"), "should NOT have eagles branch");
 }
 
 #[test]
@@ -95,18 +106,86 @@ fn test_does_branch_contain() {
     test.run_git(&["branch", "falcon"]);
     test.run_git(&["branch", "eagle"]);
 
-    assert!(test.git.does_branch_contain(&commit, "master").unwrap(), "master should contain commit");
-    assert!(test.git.does_branch_contain(&commit, "eagle").unwrap(), "eagle should contain commit");
-    assert!(test.git.does_branch_contain(&commit, "falcon").unwrap(), "falcon should contain commit");
+    assert_eq!(Ok(true), test.git.does_branch_contain(&commit, "master"), "master should contain commit");
+    assert_eq!(Ok(true), test.git.does_branch_contain(&commit, "eagle"), "eagle should contain commit");
+    assert_eq!(Ok(true), test.git.does_branch_contain(&commit, "falcon"), "falcon should contain commit");
 
     test.run_git(&["checkout", "-b", "stallion"]);
     test.add_repo_file("horses.txt", "Stallion\nSteed\nMustang\n", "Horses and stuff");
 
     let commit2 = test.run_git(&["rev-parse", "HEAD"]);
-    assert!(test.git.does_branch_contain(&commit, "stallion").unwrap(), "stallion should contain commit");
-    assert!(test.git.does_branch_contain(&commit2, "stallion").unwrap(), "stallion should contain commit2");
+    assert_eq!(Ok(true), test.git.does_branch_contain(&commit, "stallion"), "stallion should contain commit");
+    assert_eq!(Ok(true), test.git.does_branch_contain(&commit2, "stallion"), "stallion should contain commit2");
 
-    assert!(!test.git.does_branch_contain(&commit2, "master").unwrap(), "master should not contain commit2");
-    assert!(!test.git.does_branch_contain(&commit2, "eagle").unwrap(), "eagle should not contain commit2");
-    assert!(!test.git.does_branch_contain(&commit2, "falcon").unwrap(), "falcon should not contain commit2");
+    assert_eq!(Ok(false), test.git.does_branch_contain(&commit2, "master"), "master should not contain commit2");
+    assert_eq!(Ok(false), test.git.does_branch_contain(&commit2, "eagle"), "eagle should not contain commit2");
+    assert_eq!(Ok(false), test.git.does_branch_contain(&commit2, "falcon"), "falcon should not contain commit2");
+}
+
+#[test]
+fn test_find_base_commit() {
+    let test = GitTest::new();
+
+    let base_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    test.run_git(&["checkout", "-b", "falcon"]);
+    test.add_repo_file("prarie-falcon.txt", "Prarie", "falcons 1");
+    test.add_repo_file("new-zealand-falcon.txt", "New Zealand", "falcons 2");
+    test.add_repo_file("peregrine-falcon.txt", "Peregrine", "falcons 3");
+    test.run_git(&["push", "origin", "falcon"]);
+    let falcon_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    test.run_git(&["checkout", "-b", "horses", "master"]);
+    test.add_repo_file("horses.txt", "Stallion\nSteed\nMustang\n", "Horses and stuff");
+    test.run_git(&["push", "origin", "horses"]);
+    let horses_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    test.reclone();
+
+    // now change master!
+    test.run_git(&["checkout",  "master"]);
+    test.add_repo_file("foo1.txt", "", "some other commit 1");
+    test.add_repo_file("foo2.txt", "", "some other commit 2");
+    let new_base_commit = test.run_git(&["rev-parse", "HEAD"]);
+    test.run_git(&["push"]);
+
+    // multiple commits back
+    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit(&falcon_commit, "master"));
+    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit("origin/falcon", "master"));
+
+    // single commit back
+    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit(&horses_commit, "master"));
+    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit("origin/horses", "master"));
+
+    // now rebase falcon!
+    test.run_git(&["checkout", "falcon"]);
+    test.run_git(&["rebase", "master"]);
+    test.run_git(&["push", "-f"]);
+    let new_falcon_commit = test.run_git(&["rev-parse", "HEAD"]);
+    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit(&falcon_commit, "master"));
+    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
+    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit("falcon", "master"));
+
+    // now force-push and make sure reflog isn't part of the calculation messing with it!
+    test.run_git(&["push", "-f"]);
+    test.reclone();
+
+    // get a local 'falcon' reference
+    test.run_git(&["checkout", "falcon"]);
+    test.run_git(&["checkout", "master"]);
+    let new_falcon_commit = test.run_git(&["rev-parse", "HEAD"]);
+    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
+    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit("falcon", "master"));
+
+    // try rewriting the master branch. should stay the same...
+    test.run_git(&["commit", "--amend", "-m", "some other commit 2 -- muaha. re-written!"]);
+    test.run_git(&["push", "-f"]);
+    let some_commit_1 = test.run_git(&["rev-parse", "HEAD^1"]);
+    // --fork-point here knows that the base actually new_base_commit.
+    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
+
+    // recloning again, reflog is gone, --fork-point would now fail.
+    // regular merge-base is now be the one commit before the rewritten one.
+    test.reclone();
+    assert_eq!(Ok(some_commit_1.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
 }
