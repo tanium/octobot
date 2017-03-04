@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use octobot::git::Git;
 use tempdir::TempDir;
 
-
 struct GitTest {
     _dir: TempDir,
     git: Git,
@@ -43,8 +42,8 @@ impl GitTest {
         test
     }
 
-    fn run_git(&self, args: &[&str]) {
-        self.git.run(args).expect(&format!("Failed running git: `{:?}`", args));
+    fn run_git(&self, args: &[&str]) -> String {
+        self.git.run(args).expect(&format!("Failed running git: `{:?}`", args))
     }
 
     fn add_repo_file(&self, path: &str, contents: &str, msg: &str) {
@@ -85,4 +84,29 @@ fn test_has_branch() {
     assert!(test.git.has_branch("falcon").unwrap(), "should have falcon branch");
     assert!(test.git.has_branch("eagle").unwrap(), "should have eagle branch");
     assert!(!test.git.has_branch("eagles").unwrap(), "should NOT have eagles branch");
+}
+
+#[test]
+fn test_does_branch_contain() {
+    let test = GitTest::new();
+
+    let commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    test.run_git(&["branch", "falcon"]);
+    test.run_git(&["branch", "eagle"]);
+
+    assert!(test.git.does_branch_contain(&commit, "master").unwrap(), "master should contain commit");
+    assert!(test.git.does_branch_contain(&commit, "eagle").unwrap(), "eagle should contain commit");
+    assert!(test.git.does_branch_contain(&commit, "falcon").unwrap(), "falcon should contain commit");
+
+    test.run_git(&["checkout", "-b", "stallion"]);
+    test.add_repo_file("horses.txt", "Stallion\nSteed\nMustang\n", "Horses and stuff");
+
+    let commit2 = test.run_git(&["rev-parse", "HEAD"]);
+    assert!(test.git.does_branch_contain(&commit, "stallion").unwrap(), "stallion should contain commit");
+    assert!(test.git.does_branch_contain(&commit2, "stallion").unwrap(), "stallion should contain commit2");
+
+    assert!(!test.git.does_branch_contain(&commit2, "master").unwrap(), "master should not contain commit2");
+    assert!(!test.git.does_branch_contain(&commit2, "eagle").unwrap(), "eagle should not contain commit2");
+    assert!(!test.git.does_branch_contain(&commit2, "falcon").unwrap(), "falcon should not contain commit2");
 }
