@@ -38,8 +38,7 @@ impl Git {
 
     pub fn has_branch(&self, branch: &str) -> Result<bool, String> {
         let output = try!(self.run(&["branch"]));
-        // skip first two characters for the bullet point
-        Ok(output.lines().any(|b| b.len() > 2 && branch == &b[2..]))
+        Ok(Git::branches_output_contains(&output, branch))
     }
 
     pub fn current_branch(&self) -> Result<String, String> {
@@ -48,8 +47,13 @@ impl Git {
 
     pub fn does_branch_contain(&self, git_ref: &str, branch: &str) -> Result<bool, String> {
         let output = try!(self.run(&["branch", "--contains", git_ref]));
-        // return branches, stripping out the bullet point
-        Ok(output.lines().any(|b| b.len() > 2 && branch == &b[2..]))
+        Ok(Git::branches_output_contains(&output, branch))
+    }
+
+    fn branches_output_contains(output: &str, branch: &str) -> bool {
+        // Output is trimmed, so first entry (if not current branch) won't have an asterisk.
+        // Otherwise, skip two characters to account for alignment w/ asterisk.
+        output.lines().any(|b| b == branch || b.len() > 2 && branch == &b[2..])
     }
 
     // Find the commit at which |leaf_ref| forked from |base_branch|.
@@ -162,5 +166,21 @@ impl Git {
 
             Ok(output.trim().to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_branches_output_contains() {
+        assert!(Git::branches_output_contains("test", "test"));
+        assert!(Git::branches_output_contains("* test", "test"));
+        assert!(!Git::branches_output_contains("* tests", "test"));
+
+        assert!(Git::branches_output_contains("test\ntwo", "two"));
+        assert!(Git::branches_output_contains("test\n* two", "two"));
+        assert!(!Git::branches_output_contains("test\n* twos", "two"));
     }
 }
