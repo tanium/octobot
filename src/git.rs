@@ -60,7 +60,10 @@ impl Git {
     // This can find which commits belong to a PR.
     // Returns the ref found in the base branch that this git_ref came from.
     pub fn find_base_branch_commit(&self, leaf_ref: &str, base_branch: &str) -> Result<String, String> {
-        self.run(&["merge-base", base_branch, leaf_ref])
+        match self.run(&["merge-base", "--fork-point", base_branch, leaf_ref]) {
+            Ok(base) => Ok(base),
+            Err(_) => self.run(&["merge-base", base_branch, leaf_ref]),
+        }
     }
 
     pub fn clean(&self) -> Result<(), String> {
