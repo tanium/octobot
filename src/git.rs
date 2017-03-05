@@ -94,25 +94,13 @@ impl Git {
 
     // returns (title, body)
     pub fn get_commit_desc(&self, commit_hash: &str) -> Result<(String, String), String> {
-        let lines: Vec<String> = try!(self.run(&["log", "-1", "--pretty=%B", commit_hash]))
-            .split("\n")
-            .map(|l| l.trim().to_string())
-            .collect();
+        let message = try!(self.run(&["log", "-1", "--pretty=%B", commit_hash]));
 
-        if lines.len() == 0 {
-            return Err(format!("Empty commit message found!"));
-        }
+        let mut lines = message.lines();
+        let title: String = lines.next().unwrap_or("").into();
+        let body: Vec<&str> = lines.skip_while(|ref l| l.trim().len() == 0).collect();
 
-        let title = lines[0].clone();
-
-        let mut body = String::new();
-        // skip the blank line
-        if lines.len() > 2 {
-            body = lines[2..].join("\n");
-            body += "\n";
-        }
-
-        Ok((title, body))
+        Ok((title, body.join("\n")))
     }
 
     fn do_run(&self, args: &[&str], stdin: Option<&str>) -> Result<String, String> {
