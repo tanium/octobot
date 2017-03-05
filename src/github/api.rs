@@ -1,6 +1,6 @@
 use std::io::Read;
 use hyper;
-use hyper::header::{Accept, Authorization, Bearer, ContentType, qitem, UserAgent};
+use hyper::header::{Accept, Authorization, Bearer, ContentType, UserAgent};
 use hyper::method::Method;
 use hyper::mime::{Mime, TopLevel, SubLevel};
 use serde_json;
@@ -236,7 +236,10 @@ impl GithubClient {
         let client = hyper::client::Client::new();
         let mut req = client.request(method, url.as_str())
             .header(UserAgent("octobot".to_string()))
-            .header(Accept(vec![qitem(Mime(TopLevel::Application, SubLevel::Json, vec![]))]))
+            .header(Accept(vec![
+                "application/vnd.github.black-cat-preview+json".parse().unwrap(),
+                "application/vnd.github.v3+json".parse().unwrap(),
+            ]))
             .header(ContentType(Mime(TopLevel::Application, SubLevel::Json, vec![])))
             .header(Authorization(Bearer { token: self.token.clone() }));
 
