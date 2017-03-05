@@ -189,3 +189,75 @@ fn test_find_base_commit() {
     test.reclone();
     assert_eq!(Ok(some_commit_1.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
 }
+
+#[test]
+fn test_checkout_branch_new_local_branch() {
+    let test = GitTest::new();
+
+    let base_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    test.add_repo_file("prarie-falcon.txt", "Prarie", "falcons 1");
+    let new_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    test.run_git(&["push"]);
+    test.run_git(&["reset", "--hard", &base_commit]);
+
+    assert_eq!(Ok(()), test.git.checkout_branch("some-new-branch", "origin/master"));
+    let now_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    assert_eq!(now_commit, new_commit);
+    assert_eq!(Ok("some-new-branch".into()), test.git.current_branch());
+}
+
+#[test]
+fn test_checkout_branch_with_ref() {
+    let test = GitTest::new();
+
+    let base_commit = test.run_git(&["rev-parse", "HEAD"]);
+    test.add_repo_file("prarie-falcon.txt", "Prarie", "falcons 1");
+
+    assert_eq!(Ok(()), test.git.checkout_branch("some-new-branch", &base_commit));
+    let now_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    assert_eq!(now_commit, base_commit);
+    assert_eq!(Ok("some-new-branch".into()), test.git.current_branch());
+}
+
+#[test]
+fn test_checkout_branch_already_checked_out() {
+    let test = GitTest::new();
+
+    let base_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    test.add_repo_file("prarie-falcon.txt", "Prarie", "falcons 1");
+    let new_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    test.run_git(&["push"]);
+    test.run_git(&["reset", "--hard", &base_commit]);
+
+    assert_eq!(Ok(()), test.git.checkout_branch("master", "origin/master"));
+    let now_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    assert_eq!(now_commit, new_commit);
+    assert_eq!(Ok("master".into()), test.git.current_branch());
+}
+
+#[test]
+fn test_checkout_branch_already_exists() {
+    let test = GitTest::new();
+
+    let base_commit = test.run_git(&["rev-parse", "HEAD"]);
+    test.run_git(&["branch", "the-branch"]);
+
+    test.add_repo_file("prarie-falcon.txt", "Prarie", "falcons 1");
+    let new_commit = test.run_git(&["rev-parse", "HEAD"]);
+    test.run_git(&["push"]);
+
+    test.run_git(&["reset", "--hard", &base_commit]);
+
+    assert_eq!(Ok(()), test.git.checkout_branch("the-branch", "origin/master"));
+    let now_commit = test.run_git(&["rev-parse", "HEAD"]);
+
+    assert_eq!(now_commit, new_commit);
+    assert_eq!(Ok("the-branch".into()), test.git.current_branch());
+}
