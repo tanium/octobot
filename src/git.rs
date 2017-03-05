@@ -69,22 +69,10 @@ impl Git {
         Ok(())
     }
 
-    // checking a branch named |new_branch_name| and ensure it is up to date with |source_branch|
-    // |source_branch| can be a commit hash or an origin/branch-name.
-    pub fn checkout_branch(&self, new_branch_name: &str, source_branch: &str) ->  Result<(), String> {
-        let current_branch = try!(self.current_branch());
-        if current_branch == new_branch_name {
-            try!(self.run(&["reset", "--hard", &source_branch]));
-        } else {
-            // delete if it exists
-            let has_branch = try!(self.has_branch(new_branch_name));
-            if has_branch {
-                try!(self.run(&["branch", "-D", new_branch_name]));
-            }
-            // recreate branch
-            try!(self.run(&["checkout", "-b", new_branch_name, &source_branch]));
-        }
-
+    // checking a branch named |new_branch_name| and ensure it is up to date with |source_ref|
+    // |source_ref| can be a commit hash or an origin/branch-name.
+    pub fn checkout_branch(&self, new_branch_name: &str, source_ref: &str) ->  Result<(), String> {
+        try!(self.run(&["checkout", "-B", new_branch_name, source_ref]));
         Ok(())
     }
 
