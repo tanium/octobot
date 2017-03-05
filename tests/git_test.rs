@@ -166,7 +166,7 @@ fn test_find_base_commit() {
     assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
     assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit("falcon", "master"));
 
-    // now force-push and make sure reflog isn't part of the calculation messing with it!
+    // now force-push and reclone to clear reflog
     test.run_git(&["push", "-f"]);
     test.reclone();
 
