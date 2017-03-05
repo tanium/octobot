@@ -261,3 +261,17 @@ fn test_checkout_branch_already_exists() {
     assert_eq!(now_commit, new_commit);
     assert_eq!(Ok("the-branch".into()), test.git.current_branch());
 }
+
+#[test]
+fn test_get_commit_desc() {
+    let test = GitTest::new();
+
+    test.run_git(&["commit", "--amend", "-m", "I have just a subject"]);
+    assert_eq!(Ok(("I have just a subject".into(), String::new())), test.git.get_commit_desc("HEAD"));
+
+    test.run_git(&["commit", "--amend", "-m", "I have a subject\n\nAnd I have a body"]);
+    assert_eq!(Ok(("I have a subject".into(), "And I have a body".into())), test.git.get_commit_desc("HEAD"));
+
+    test.run_git(&["commit", "--amend", "-m", "I have a subject\nAnd I forgot to skip a line"]);
+    assert_eq!(Ok(("I have a subject".into(), "And I forgot to skip a line".into())), test.git.get_commit_desc("HEAD"));
+}
