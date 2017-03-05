@@ -235,6 +235,16 @@ impl GithubEventHandler {
                 verb = Some(format!("assigned to {}", assignees_str));
             } else if self.action == "unassigned" {
                 verb = Some("unassigned".to_string());
+            } else if self.action == "review_requested" {
+                if let Some(ref reviewers) = pull_request.requested_reviewers {
+                    let assignees_str = self.config
+                        .users
+                        .slack_user_names(reviewers, &self.data.repository)
+                        .join(", ");
+                    verb = Some(format!("submitted for review to {}", assignees_str));
+                } else {
+                    verb = None;
+                }
             } else {
                 verb = None;
             }
