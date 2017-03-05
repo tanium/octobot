@@ -113,7 +113,7 @@ impl Git {
 
         let mut child = match cmd {
             Ok(c) => c,
-            Err(e) => return Err(format!("Error starting git: {}", e)),
+            Err(e) => return Err(format!("Error starting git (args: {:?}): {}", args, e)),
         };
 
         if let Some(ref stdin) = stdin {
@@ -126,7 +126,7 @@ impl Git {
 
         let result = match child.wait_with_output() {
             Ok(r) => r,
-            Err(e) => return Err(format!("Error running git: {}", e)),
+            Err(e) => return Err(format!("Error running git (args: {:?}): {}", args, e)),
         };
 
         let mut output = String::new();
@@ -138,8 +138,9 @@ impl Git {
             if result.stderr.len() > 0 {
                 output += String::from_utf8_lossy(&result.stderr).as_ref();
             }
-            Err(format!("Error running git (exit code {}):\n{}",
+            Err(format!("Error running git (exit code {}, args: {:?}):\n{}",
                         result.status.code().unwrap_or(-1),
+                        args,
                         output))
         } else {
 
