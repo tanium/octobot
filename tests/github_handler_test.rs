@@ -159,7 +159,8 @@ fn some_pr() -> Option<PullRequest> {
         user: User::new("the-pr-owner"),
         merged: None,
         merge_commit_sha: None,
-        assignees: vec![User::new("assign1"), User::new("joe-reviewer")],
+        assignees: vec![User::new("assign1")],
+        requested_reviewers: Some(vec![User::new("joe-reviewer")]),
         head: BranchRef {
             ref_name: "pr-branch".into(),
             sha: "ffff0000".into(),
@@ -562,6 +563,9 @@ fn test_pull_request_assigned() {
     test.handler.event = "pull_request".into();
     test.handler.action = "assigned".into();
     test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.assignees.push(User::new("assign2"));
+    }
     test.handler.data.sender = User::new("the-pr-closer");
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
@@ -569,12 +573,13 @@ fn test_pull_request_assigned() {
                           .title("Pull Request #32: \"The PR\"")
                           .title_link("http://the-pr")
                           .build()];
-    let msg = "Pull Request assigned to assign1, joe.reviewer";
+    let msg = "Pull Request assigned to assign1, assign2";
 
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
+        SlackCall::new("@assign2", msg, attach.clone()),
         SlackCall::new("@bob.author", msg, attach.clone()),
         SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
@@ -820,6 +825,7 @@ fn test_push_with_pr() {
     let mut pr2 = pr1.clone();
     pr2.number = 99;
     pr2.assignees = vec![User::new("assign2")];
+    pr2.requested_reviewers = None;
 
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 99, Ok(some_commits()));

@@ -180,7 +180,7 @@ impl BranchRef {
 
 pub trait PullRequestLike {
     fn user(&self) -> &User;
-    fn assignees(&self) -> &Vec<User>;
+    fn assignees(&self) -> Vec<User>;
     fn title(&self) -> &str;
     fn html_url(&self) -> &str;
     fn number(&self) -> u32;
@@ -199,6 +199,7 @@ pub struct PullRequest {
     pub assignees: Vec<User>,
     pub head: BranchRef,
     pub base: BranchRef,
+    pub requested_reviewers: Option<Vec<User>>,
 }
 
 impl PullRequest {
@@ -213,6 +214,7 @@ impl PullRequest {
             merged: None,
             merge_commit_sha: None,
             assignees: vec![],
+            requested_reviewers: None,
             head: BranchRef::new(""),
             base: BranchRef::new(""),
         }
@@ -228,8 +230,12 @@ impl<'a> PullRequestLike for &'a PullRequest {
         &self.user
     }
 
-    fn assignees(&self) -> &Vec<User> {
-        &self.assignees
+    fn assignees(&self) -> Vec<User> {
+        let mut assignees = self.assignees.clone();
+        if let Some(ref reviewers) = self.requested_reviewers {
+            assignees.extend(reviewers.iter().map(|r| r.clone()));
+        }
+        assignees
     }
 
     fn title(&self) -> &str {
@@ -259,8 +265,8 @@ impl<'a> PullRequestLike for &'a Issue {
         &self.user
     }
 
-    fn assignees(&self) -> &Vec<User> {
-        &self.assignees
+    fn assignees(&self) -> Vec<User> {
+        self.assignees.clone()
     }
 
     fn title(&self) -> &str {
@@ -613,5 +619,24 @@ mod tests {
 
         commit.sha = "12345678".into();
         assert_eq!("1234567", Commit::short_hash(&commit));
+    }
+
+    #[test]
+    fn test_pr_assignees() {
+        let mut pr = PullRequest::new();
+
+        let users = vec![User::new("user1"), User::new("user2")];
+        pr.assignees = users.clone();
+        pr.requested_reviewers = None;
+
+        assert_eq!(users, (&pr).assignees());
+
+        let reviewers = vec![User::new("userC"), User::new("userD")];
+        pr.requested_reviewers = Some(reviewers.clone());
+
+        let all_users = vec![User::new("user1"), User::new("user2"),
+                             User::new("userC"), User::new("userD")];
+
+        assert_eq!(all_users, (&pr).assignees());
     }
 }

@@ -98,7 +98,7 @@ impl Handler for GithubHandler {
             }
         };
 
-        let data: github::HookBody = match serde_json::from_str(&body) {
+        let mut data: github::HookBody = match serde_json::from_str(&body) {
             Ok(h) => h,
             Err(e) => {
                 error!("Error parsing json: {}\n---\n{}\n---\n", e, &body);
@@ -111,6 +111,22 @@ impl Handler for GithubHandler {
             Some(ref a) => a.clone(),
             None => String::new(),
         };
+
+        // refetch PR if present to get requested reviewers: they don't come on each webhook :'(
+        let mut changed_pr = None;
+        if let Some(ref pull_request) = data.pull_request {
+            if pull_request.requested_reviewers.is_none() {
+                match self.github_session.get_pull_request(&data.repository.owner.login(),
+                                                           &data.repository.name,
+                                                           pull_request.number) {
+                    Ok(pr) => changed_pr = Some(pr),
+                    Err(e) => error!("Error refetching pull request to get reviewers: {}", e),
+                };
+            }
+        }
+        if let Some(changed_pr) = changed_pr {
+            data.pull_request = Some(changed_pr);
+        }
 
         let handler = GithubEventHandler {
             event: event.clone(),
