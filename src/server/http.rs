@@ -7,8 +7,9 @@ use logger::Logger;
 use config::Config;
 use github;
 use jira;
-use server::github_verify;
-use server::github_handler;
+use server::github_handler::GithubHandler;
+use server::github_verify::GithubWebhookVerifier;
+use server::html_handler::HtmlHandler;
 
 pub fn start(config: Config) -> Result<(), String> {
     let github_session = match github::api::GithubSession::new(&config.github.host,
@@ -32,10 +33,13 @@ pub fn start(config: Config) -> Result<(), String> {
         jira_session = None;
     }
 
-    let handler = github_handler::GithubHandler::new(config.clone(), github_session, jira_session);
+    let mut github_hook = Chain::new(GithubHandler::new(config.clone(), github_session, jira_session));
+    github_hook.link_before( GithubWebhookVerifier { secret: config.github.webhook_secret.clone() });
 
     let mut router = Router::new();
-    router.post("/hooks/github", handler, "github_webhook");
+    router.get("/", HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")), "index");
+    router.get("/favicon.ico", HtmlHandler::new("", ""), "favicon.ico");
+    router.post("/hooks/github", github_hook, "hooks_github");
 
     let default_listen = String::from("0.0.0.0:3000");
     let addr_and_port = match config.main.listen_addr {
@@ -43,13 +47,12 @@ pub fn start(config: Config) -> Result<(), String> {
         None => &default_listen,
     };
 
+
     let mut chain = Chain::new(router);
     let (logger_before, logger_after) = Logger::new(None);
 
     // before first middleware
     chain.link_before(logger_before);
-
-    chain.link_before( github_verify::GithubWebhookVerifier { secret: config.github.webhook_secret.clone() });
 
     // after last middleware
     chain.link_after(logger_after);
