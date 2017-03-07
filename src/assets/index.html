@@ -11,11 +11,7 @@
   </head>
   <body class="container" ng-controller="OctobotController">
     <h1>Octobot</h1>
-    <div ng-if="isLoggedIn()" ng-controller="AdminController">
-      <a href ng-click="logout()" style="float: right">Logout</a>
 
-      You are logged in!
-    </div>
     <div ng-if="!isLoggedIn()" ng-controller="LoginController">
       <form style="width: 300px" ng-submit="login()">
         <h2 class="form-signin-heading">Login</h2>
@@ -29,6 +25,27 @@
         </div>
         <button class="btn btn-lg btn-primary" type="submit">Sign in</button>
       </form>
+    </div>
+
+    <div ng-if="isLoggedIn()" ng-controller="AdminController">
+      <a href ng-click="logout()" style="float: right">Logout</a>
+
+      <h3>Users</h3>
+      <div ng-repeat="(host, users) in users">
+        <h4>{{host}}</h4>
+        <div ng-repeat="(username, info) in users">
+          <li>{{username}} -- {{info.slack}}</li>
+        </div>
+      </div>
+
+      <h3>Repos</h3>
+      <div ng-repeat="(host, repos) in repos">
+        <h4>{{host}}</h4>
+        <div ng-repeat="(repo, info) in repos">
+          <li>{{repo}} -- {{info}}</li>
+        </div>
+      </div>
+
     </div>
   </body>
 </html>
