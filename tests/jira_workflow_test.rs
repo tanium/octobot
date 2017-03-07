@@ -82,15 +82,20 @@ fn new_transition_req(id: &str) -> TransitionRequest {
 fn test_submit_for_review() {
     let test = new_test();
     let pr = new_pr();
-    let commit = new_commit("Fix [SER-1] I fixed it. And also relates to [CLI-9999]", "aabbccddee");
+    let fix_commit = new_commit("Fix [SER-1] I fixed it. And also relates to [CLI-9999]", "aabbccddee");
+    let fixes_commit = new_commit("Update the thing - Fixes [SER-2]", "ffbbccddee");
+    let fixed_commit = new_commit("Fixed SER-3 - Updated the other thing", "ggffddssaa");
 
-    test.jira.mock_comment_issue("SER-1", "Review submitted for branch master: http://the-pr", Ok(()));
+    let jira_ids = vec!["SER-1", "SER-2", "SER-3"];
+    for id in &jira_ids {
+        test.jira.mock_comment_issue(id, "Review submitted for branch master: http://the-pr", Ok(()));
 
-    test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
-    test.jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
+        test.jira.mock_get_transitions(id, Ok(vec![new_transition("001", "progress1")]));
+        test.jira.mock_transition_issue(id, &new_transition_req("001"), Ok(()));
 
-    test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
-    test.jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
+        test.jira.mock_get_transitions(id, Ok(vec![new_transition("002", "reviewing1")]));
+        test.jira.mock_transition_issue(id, &new_transition_req("002"), Ok(()));
+    }
 
     test.jira.mock_comment_issue("CLI-9999", "Referenced by review submitted for branch master: http://the-pr", Ok(()));
 
@@ -98,7 +103,7 @@ fn test_submit_for_review() {
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &vec![commit], &test.jira, &test.config);
+    jira::workflow::submit_for_review(&pr, &vec![fix_commit, fixes_commit, fixed_commit], &test.jira, &test.config);
 }
 
 #[test]

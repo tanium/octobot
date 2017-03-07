@@ -21,7 +21,7 @@ fn get_jira_keys(strings: Vec<String>) -> Vec<String> {
 
 fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
     // Fix [ABC-123][OTHER-567], [YEAH-999]
-    let re = Regex::new(r"(?i)(?:Fix):?\s*(?-i)((\[?([A-Z]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
+    let re = Regex::new(r"(?i)(?:Fix(?:es|ed)?):?\s*(?-i)((\[?([A-Z]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
 
     // first extract jiras with fix markers
     let mut all_refs = vec![];
@@ -176,13 +176,12 @@ mod tests {
         assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()]));
         assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()]));
 
-        commit.commit.message = "Fix [KEY-1][KEY-2], [KEY-3] Some thing that also fixed [KEY-4]".into();
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3"], get_fixed_jira_keys(&vec![commit.clone()]));
-        assert_eq!(vec!["KEY-4"], get_referenced_jira_keys(&vec![commit.clone()]));
+        commit.commit.message = "Fix [KEY-1][KEY-2], [KEY-3] Some thing that also fixed [KEY-4] which somehow fixes KEY-5".into();
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5"], get_fixed_jira_keys(&vec![commit.clone()]));
 
-        commit.commit.message += "\n\nFix: [KEY-4], and also mentions [KEY-4], [KEY-5] but not [lowercase-99]";
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4"], get_fixed_jira_keys(&vec![commit.clone()]));
-        assert_eq!(vec!["KEY-5"], get_referenced_jira_keys(&vec![commit.clone()]));
+        commit.commit.message += "\n\nFix: [KEY-6], and also mentions [KEY-6], [KEY-7] but not [lowercase-99]";
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5", "KEY-6"], get_fixed_jira_keys(&vec![commit.clone()]));
+        assert_eq!(vec!["KEY-7"], get_referenced_jira_keys(&vec![commit.clone()]));
     }
 
     #[test]
