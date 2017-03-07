@@ -174,4 +174,3 @@ fn test_resolve_issue_with_resolution() {
 
     jira::workflow::resolve_issue("release/99", Some("5.6.7"), &vec![commit], &test.jira, &test.config);
 }
-
