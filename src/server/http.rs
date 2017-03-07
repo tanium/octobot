@@ -10,6 +10,7 @@ use jira;
 use server::github_handler::GithubHandler;
 use server::github_verify::GithubWebhookVerifier;
 use server::html_handler::HtmlHandler;
+use server::login::LoginHandler;
 
 pub fn start(config: Config) -> Result<(), String> {
     let github_session = match github::api::GithubSession::new(&config.github.host,
@@ -33,12 +34,16 @@ pub fn start(config: Config) -> Result<(), String> {
         jira_session = None;
     }
 
-    let mut github_hook = Chain::new(GithubHandler::new(config.clone(), github_session, jira_session));
-    github_hook.link_before( GithubWebhookVerifier { secret: config.github.webhook_secret.clone() });
 
     let mut router = Router::new();
     router.get("/", HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")), "index");
+    router.get("/index.js", HtmlHandler::new("index.js", include_str!("../../src/assets/index.js")), "index_js");
     router.get("/favicon.ico", HtmlHandler::new("", ""), "favicon.ico");
+
+    router.post("/login", LoginHandler::new(), "login");
+
+    let mut github_hook = Chain::new(GithubHandler::new(config.clone(), github_session, jira_session));
+    github_hook.link_before( GithubWebhookVerifier { secret: config.github.webhook_secret.clone() });
     router.post("/hooks/github", github_hook, "hooks_github");
 
     let default_listen = String::from("0.0.0.0:3000");
