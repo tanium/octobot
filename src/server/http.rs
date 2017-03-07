@@ -10,7 +10,8 @@ use jira;
 use server::github_handler::GithubHandler;
 use server::github_verify::GithubWebhookVerifier;
 use server::html_handler::HtmlHandler;
-use server::login::LoginHandler;
+use server::login::{LoginHandler, LogoutHandler};
+use server::admin;
 
 pub fn start(config: Config) -> Result<(), String> {
     let github_session = match github::api::GithubSession::new(&config.github.host,
@@ -40,7 +41,11 @@ pub fn start(config: Config) -> Result<(), String> {
     router.get("/index.js", HtmlHandler::new("index.js", include_str!("../../src/assets/index.js")), "index_js");
     router.get("/favicon.ico", HtmlHandler::new("", ""), "favicon.ico");
 
-    router.post("/login", LoginHandler::new(), "login");
+    router.post("/auth/login", LoginHandler::new(), "login");
+    router.post("/auth/logout", LogoutHandler::new(), "logout");
+
+    router.get("/api/users", admin::GetUsers::new(config.clone()), "get_users");
+    router.get("/api/repos", admin::GetRepos::new(config.clone()), "get_repos");
 
     let mut github_hook = Chain::new(GithubHandler::new(config.clone(), github_session, jira_session));
     github_hook.link_before( GithubWebhookVerifier { secret: config.github.webhook_secret.clone() });

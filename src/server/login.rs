@@ -6,15 +6,21 @@ use iron::middleware::Handler;
 use iron::modifiers::Header;
 use serde_json;
 
-pub struct LoginHandler {
-}
+pub struct LoginHandler;
+pub struct LogoutHandler;
 
 impl LoginHandler {
     pub fn new() -> LoginHandler {
-        LoginHandler {
-        }
+        LoginHandler {}
     }
 }
+
+impl LogoutHandler {
+    pub fn new() -> LogoutHandler {
+        LogoutHandler {}
+    }
+}
+
 
 #[derive(Deserialize)]
 struct LoginRequest {
@@ -41,8 +47,12 @@ impl Handler for LoginHandler {
             }
         };
 
-        println!("LOGGING IN {} -- {}", login_req.username, login_req.password);
+        Ok(Response::with((status::Ok, Header(ContentType::json()), "{}")))
+    }
+}
 
+impl Handler for LogoutHandler {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
         Ok(Response::with((status::Ok, Header(ContentType::json()), "{}")))
     }
 }

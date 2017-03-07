@@ -22,7 +22,7 @@ pub type RepoMap = HashMap<String, RepoInfo>;
 // maps github host to repos map
 pub type RepoHostMap = HashMap<String, RepoMap>;
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Clone, Debug)]
 pub struct RepoConfig {
     repos: RepoHostMap,
 }
