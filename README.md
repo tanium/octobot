@@ -29,14 +29,16 @@ There are three important config files. Hopefully these examples will be suffici
 
 config.toml
 
-    [config]
+    [main]
     slack_webhook_url = "<slack webhook URL>"
-    github_secret = "<secret for github hook>"
     users_config_file = "/home/octobot/users.json"
     repos_config_file = "/home/octobot/repos.json"
     clone_root_dir = "/home/octobot/repos"
-    github_host = "git.company.com"
-    github_token = "<token-for-octobot-user>"
+
+    [github]
+    webhook_secret = "<secret for github hook>"
+    host = "git.company.com"
+    api_token = "<token-for-octobot-user>"
 
     [jira]
     # required to enable jira support
