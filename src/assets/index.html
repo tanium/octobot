@@ -10,7 +10,9 @@
     <script src="/index.js"></script>
   </head>
   <body class="container" ng-controller="OctobotController">
-    <h1>Octobot</h1>
+    <div class="page-header">
+      <h1>Octobot</h1>
+    </div>
 
     <div ng-if="!isLoggedIn()" ng-controller="LoginController">
       <form style="width: 300px" ng-submit="login()">
@@ -28,24 +30,98 @@
     </div>
 
     <div ng-if="isLoggedIn()" ng-controller="AdminController">
-      <a href ng-click="logout()" style="float: right">Logout</a>
-
-      <h3>Users</h3>
-      <div ng-repeat="(host, users) in users">
-        <h4>{{host}}</h4>
-        <div ng-repeat="(username, info) in users">
-          <li>{{username}} -- {{info.slack}}</li>
-        </div>
+      <div style="float: right">
+        <!-- TODO: throw in some routing -->
+        <a href ng-click="state = 'users'">Users</a> |
+        <a href ng-click="state = 'repos'">Repos</a> |
+        <a href ng-click="logout()">Logout</a>
       </div>
 
-      <h3>Repos</h3>
-      <div ng-repeat="(host, repos) in repos">
-        <h4>{{host}}</h4>
-        <div ng-repeat="(repo, info) in repos">
-          <li>{{repo}} -- {{info}}</li>
-        </div>
+      <div ng-show="state == 'users'">
+        <h3>Users</h3>
+        <form class="form-inline">
+          <div ng-repeat="(host, users) in users">
+            <h4>Host: {{host}}</h4>
+
+            <table class="table">
+              <tr>
+                <th>GitHub Username</th>
+                <th>Slack Username</th>
+                <th>&nbsp;</th>
+              </tr>
+
+              <tr ng-repeat="(username, info) in users">
+                <td>
+                  <input type="text" class="form-control" ng-model="info._username" placeholder="GitHub username" required>
+                </td>
+                <td>
+                  <input type="text" class="form-control" ng-model="info.slack" placeholder="Slack username" required>
+                </td>
+                <td>
+                  <a href ng-click="removeUser(host, username)"><span class="glyphicon glyphicon-trash" /></a>
+                </td>
+              </tr>
+            </table>
+            <div style="margin: 10px">
+              <button class="btn btn-sm btn-default" ng-click="addUser(host)">Add user</button>
+            </div>
+          </div>
+          <div style="margin: 10px">
+            <button class="btn btn-sm btn-primary" ng-click="saveUsers()">Save Users</button>
+          </div>
+        </form>
       </div>
 
+      <div ng-show="state == 'repos'">
+        <h3>Repos</h3>
+        <form class="form-inline">
+          <div ng-repeat="(host, repos) in repos">
+            <h4>Host: {{host}}</h4>
+
+            <table class="table">
+              <tr>
+                <th>Repo</th>
+                <th>Slack Channel</th>
+                <th>Config</th>
+                <th>&nbsp;</th>
+              </tr>
+              <tr ng-repeat="(repo, info) in repos">
+                <td>
+                  <input type="text" class="form-control" ng-model="info._repo" placeholder="Repo" required>
+                </td>
+                <td>
+                  <input type="text" class="form-control" ng-model="info.channel" placeholder="Slack channel" required>
+                </td>
+                <td>
+                  <div>
+                    <input type="checkbox" class="form-control" ng-model="info.jira_enabled"> JIRA enabled
+                  </div>
+                  <div>
+                    <input type="checkbox" class="form-control" ng-model="info.force_push_notify"> Force-push notification
+                  </div>
+                  <div class="row">
+                    <div class="col-md-5">Force-push status reapply</div>
+                    <div class="col-md-7"><input type="text" class="form-control" ng-model="info.force_push_reapply_statuses" style="width:100%"></div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-5">Version script</div>
+                    <div class="col-md-7"><input type="text" class="form-control" ng-model="info.version_script" style="width:100%"></div>
+                  </div>
+                </td>
+                <td>
+                  <a href ng-click="removeRepo(host, repo)"><span class="glyphicon glyphicon-trash" /></a>
+                </td>
+              </tr>
+            </table>
+            <div style="margin: 10px">
+              <button class="btn btn-sm btn-default" ng-click="addRepo(host)">Add repo</button>
+            </div>
+          </div>
+          <div style="margin: 10px">
+            <button class="btn btn-sm btn-primary" ng-click="saveRepos()">Save Repos</button>
+          </div>
+        </form>
+      </div>
     </div>
   </body>
 </html>
