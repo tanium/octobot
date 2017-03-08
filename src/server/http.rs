@@ -36,6 +36,7 @@ pub fn start(config: Config) -> Result<(), String> {
 
     let mut router = Router::new();
     router.post("/", handler, "webhook");
+    router.post("/hooks/github", handler, "github_webhook");
 
     let default_listen = String::from("0.0.0.0:3000");
     let addr_and_port = match config.listen_addr {
