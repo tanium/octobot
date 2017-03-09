@@ -35,7 +35,6 @@ pub fn start(config: Config) -> Result<(), String> {
     let handler = github_handler::GithubHandler::new(config.clone(), github_session, jira_session);
 
     let mut router = Router::new();
-    router.post("/", handler, "webhook");
     router.post("/hooks/github", handler, "github_webhook");
 
     let default_listen = String::from("0.0.0.0:3000");
