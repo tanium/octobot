@@ -444,73 +444,86 @@ impl GithubEventHandler {
 
             let branch_name = self.data.ref_name().replace("refs/heads/", "");
 
-            let prs = match self.github_session
-                .get_pull_requests(&self.data.repository.owner.login(),
-                                   &self.data.repository.name,
-                                   Some("open"),
-                                   Some(self.data.after())) {
-                Ok(p) => p,
-                Err(e) => {
-                    error!("Error looking up PR for '{}' ({}): {}",
-                           branch_name,
-                           self.data.after(),
-                           e);
-                    return (status::Ok, "push [no PR]".into());
-                }
-            };
-            if prs.len() == 0 {
-                info!("No PRs found for '{}' ({})", branch_name, self.data.after());
-            } else {
-                let attachments: Vec<_>;
-                if let Some(ref commits) = self.data.commits {
-                    attachments = commits.iter()
-                        .map(|commit| {
-                            let msg = commit.message.lines().next().unwrap_or("");
-                            let hash: &str = &commit.id[0..7];
-                            let attach = format!("{}: {}", util::make_link(&commit.url, hash), msg);
-                            SlackAttachmentBuilder::new(&attach).build()
-                        })
-                        .collect();
+            let is_main_branch = branch_name == "master" || branch_name == "develop" || branch_name.starts_with("release");
+
+            // only lookup PRs for non-main branches
+            if !is_main_branch {
+                let prs = match self.github_session
+                    .get_pull_requests(&self.data.repository.owner.login(),
+                                       &self.data.repository.name,
+                                       Some("open"),
+                                       None) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        error!("Error looking up PR for '{}' ({}): {}",
+                               branch_name,
+                               self.data.after(),
+                               e);
+                        return (status::Ok, "push [no PR]".into());
+                    }
+                };
+
+                // there appears to be a race condition in github where the get PR's call may not
+                // yet return the new hash, so check both.
+                let prs: Vec<github::PullRequest> =
+                    prs.into_iter()
+                       .filter(|pr| pr.head.sha == self.data.before() || pr.head.sha == self.data.after())
+                       .collect();
+
+                if prs.len() == 0 {
+                    info!("No PRs found for '{}' ({})", branch_name, self.data.after());
                 } else {
-                    attachments = vec![];
-                }
+                    let attachments: Vec<_>;
+                    if let Some(ref commits) = self.data.commits {
+                        attachments = commits.iter()
+                            .map(|commit| {
+                                let msg = commit.message.lines().next().unwrap_or("");
+                                let hash: &str = &commit.id[0..7];
+                                let attach = format!("{}: {}", util::make_link(&commit.url, hash), msg);
+                                SlackAttachmentBuilder::new(&attach).build()
+                            })
+                            .collect();
+                    } else {
+                        attachments = vec![];
+                    }
 
-                let message = format!("{} pushed {} commit(s) to branch {}",
-                                      self.slack_user_name(&self.data.sender),
-                                      attachments.len(),
-                                      branch_name);
+                    let message = format!("{} pushed {} commit(s) to branch {}",
+                                          self.slack_user_name(&self.data.sender),
+                                          attachments.len(),
+                                          branch_name);
 
-                for pull_request in &prs {
-                    let mut attachments = attachments.clone();
-                    attachments.insert(0,
-                                       SlackAttachmentBuilder::new("")
-                                           .title(format!("Pull Request #{}: \"{}\"",
-                                                          pull_request.number,
-                                                          pull_request.title.as_str()))
-                                           .title_link(pull_request.html_url.as_str())
-                                           .build());
+                    for pull_request in &prs {
+                        let mut attachments = attachments.clone();
+                        attachments.insert(0,
+                                           SlackAttachmentBuilder::new("")
+                                               .title(format!("Pull Request #{}: \"{}\"",
+                                                              pull_request.number,
+                                                              pull_request.title.as_str()))
+                                               .title_link(pull_request.html_url.as_str())
+                                               .build());
 
-                    self.messenger.send_to_all(&message,
-                                               &attachments,
-                                               &pull_request.user,
-                                               &self.data.sender,
-                                               &self.data.repository,
-                                               &self.all_participants(&pull_request));
+                        self.messenger.send_to_all(&message,
+                                                   &attachments,
+                                                   &pull_request.user,
+                                                   &self.data.sender,
+                                                   &self.data.repository,
+                                                   &self.all_participants(&pull_request));
 
-                    if self.data.forced() &&
-                       self.config.repos.notify_force_push(&self.data.repository) &&
-                       !pull_request.title.starts_with("WIP:") {
+                        if self.data.forced() &&
+                           self.config.repos.notify_force_push(&self.data.repository) &&
+                           !pull_request.title.starts_with("WIP:") {
 
-                        let msg = force_push::req(&self.data.repository, pull_request, self.data.before(), self.data.after());
-                        if let Err(e) = self.force_push.send(msg) {
-                            error!("Error sending force push message: {}", e);
+                            let msg = force_push::req(&self.data.repository, pull_request, self.data.before(), self.data.after());
+                            if let Err(e) = self.force_push.send(msg) {
+                                error!("Error sending force push message: {}", e);
+                            }
                         }
                     }
                 }
             }
 
             // Mark JIRAs as merged
-            if branch_name == "master" || branch_name == "develop" || branch_name.starts_with("release") {
+            if is_main_branch {
                 if self.config.repos.jira_enabled(&self.data.repository) {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
