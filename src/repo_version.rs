@@ -162,11 +162,17 @@ impl worker::Runner<RepoVersionRequest> for Runner {
 
         // launch another thread to do the version calculation
         self.thread_pool.execute(move || {
-            if let Some(version_script) = config.repos.version_script(&req.repo) {
+            let version_script;
+            {
+                let repos_lock = config.repos();
+                version_script = repos_lock.version_script(&req.repo);
+            }
+
+            if let Some(version_script) = version_script {
                 if let Some(ref jira_session) = jira_session {
                     if let Some(ref jira_config) = config.jira {
                         let jira = jira_session.borrow();
-                        if let Err(e) = comment_repo_version(version_script,
+                        if let Err(e) = comment_repo_version(&version_script,
                                                              jira_config,
                                                              jira,
                                                              github_session.borrow(),

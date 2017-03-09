@@ -22,7 +22,7 @@ pub type RepoMap = HashMap<String, RepoInfo>;
 // maps github host to repos map
 pub type RepoHostMap = HashMap<String, RepoMap>;
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RepoConfig {
     repos: RepoHostMap,
 }
@@ -132,18 +132,17 @@ impl RepoConfig {
         }
     }
 
-    pub fn version_script(&self, repo: &github::Repo) -> Option<&String> {
+    pub fn version_script(&self, repo: &github::Repo) -> Option<String> {
         match self.lookup_info(repo) {
             None => None,
             Some(ref info) => {
                 match info.version_script {
-                    Some(ref value) if value.len() > 0 => Some(value),
+                    Some(ref value) if value.len() > 0 => Some(value.clone()),
                     _ => None
                 }
             }
         }
     }
-
 
     fn lookup_info(&self, repo: &github::Repo) -> Option<&RepoInfo> {
         match Url::parse(&repo.html_url) {

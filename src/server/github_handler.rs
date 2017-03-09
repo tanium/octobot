@@ -174,7 +174,7 @@ impl GithubEventHandler {
     }
 
     fn slack_user_name(&self, user: &github::User) -> String {
-        self.config.users.slack_user_name(user.login(), &self.data.repository)
+        self.config.users().slack_user_name(user.login(), &self.data.repository)
     }
 
     fn pull_request_commits(&self, pull_request: &github::PullRequestLike) -> Vec<github::Commit> {
@@ -229,7 +229,7 @@ impl GithubEventHandler {
                 verb = Some("reopened".to_string());
             } else if self.action == "assigned" {
                 let assignees_str = self.config
-                    .users
+                    .users()
                     .slack_user_names(&pull_request.assignees, &self.data.repository)
                     .join(", ");
                 verb = Some(format!("assigned to {}", assignees_str));
@@ -238,7 +238,7 @@ impl GithubEventHandler {
             } else if self.action == "review_requested" {
                 if let Some(ref reviewers) = pull_request.requested_reviewers {
                     let assignees_str = self.config
-                        .users
+                        .users()
                         .slack_user_names(reviewers, &self.data.repository)
                         .join(", ");
                     verb = Some(format!("submitted for review to {}", assignees_str));
@@ -268,7 +268,7 @@ impl GithubEventHandler {
                                            &self.all_participants_with_commits(&pull_request, &commits));
 
                 // Mark JIRAs in review for PR open
-                if self.action == "opened" && self.config.repos.jira_enabled(&self.data.repository) {
+                if self.action == "opened" && self.config.repos().jira_enabled(&self.data.repository) {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
                             jira::workflow::submit_for_review(&pull_request, &commits, jira_session.deref(), jira_config);
@@ -510,13 +510,9 @@ impl GithubEventHandler {
                                                    &self.all_participants(&pull_request));
 
                         if self.data.forced() &&
-                           self.config.repos.notify_force_push(&self.data.repository) &&
+                           self.config.repos().notify_force_push(&self.data.repository) &&
                            !pull_request.title.starts_with("WIP:") {
 
-                            let msg = force_push::req(&self.data.repository, pull_request, self.data.before(), self.data.after());
-                            if let Err(e) = self.force_push.send(msg) {
-                                error!("Error sending force push message: {}", e);
-                            }
                         }
                     }
                 }
@@ -524,13 +520,13 @@ impl GithubEventHandler {
 
             // Mark JIRAs as merged
             if is_main_branch {
-                if self.config.repos.jira_enabled(&self.data.repository) {
+                if self.config.repos().jira_enabled(&self.data.repository) {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
                             if let Some(ref commits) = self.data.commits {
 
                                 // try to send resolve message w/ a version in it if possible
-                                let has_version = match self.config.repos.version_script(&self.data.repository) {
+                                let has_version = match self.config.repos().version_script(&self.data.repository) {
                                     Some(_) => {
                                         let msg = repo_version::req(&self.data.repository, &branch_name, self.data.after(), commits);
                                         if let Err(e) = self.repo_version.send(msg) {

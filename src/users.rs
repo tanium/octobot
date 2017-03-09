@@ -17,7 +17,7 @@ pub type UserMap = HashMap<String, UserInfo>;
 // maps github host to user map
 pub type UserHostMap = HashMap<String, UserMap>;
 
-#[derive(Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct UserConfig {
     users: UserHostMap,
 }

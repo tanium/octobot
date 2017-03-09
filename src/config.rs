@@ -1,18 +1,21 @@
 use std::fs;
 use std::io::Read;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use toml;
 
 use users;
 use repos;
 
-#[derive(Clone)]
 pub struct Config {
     pub main: MainConfig,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
 
-    pub users: users::UserConfig,
-    pub repos: repos::RepoConfig,
+    pub users: RwLock<users::UserConfig>,
+    pub repos: RwLock<repos::RepoConfig>,
+
+    pub users_config_file: String,
+    pub repos_config_file: String,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -63,14 +66,48 @@ impl Config {
         Config::new_with_model(ConfigModel::new(), users, repos)
     }
 
-    pub fn new_with_model(config: ConfigModel, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
+    fn new_with_model(config: ConfigModel, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
         Config {
             main: config.main,
             github: config.github,
             jira: config.jira,
-            users: users,
-            repos: repos,
+            users: RwLock::new(users),
+            repos: RwLock::new(repos),
+            users_config_file: config.main.users_config_file,
+            repos_config_file: config.main.repos_config_file,
         }
+    }
+
+    pub fn reload_users_repos(&self) -> Result<(), String> {
+        let users = match users::load_config(&self.users_config_file) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Error reading user config file: {}", e)),
+        };
+
+        let repos = match repos::load_config(&self.repos_config_file) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Error reading repo config file: {}", e)),
+        };
+
+        *self.users.write().unwrap() = users;
+        *self.repos.write().unwrap() = repos;
+        Ok(())
+    }
+
+    pub fn users(&self) -> RwLockReadGuard<users::UserConfig> {
+        self.users.read().unwrap()
+    }
+
+    pub fn users_write(&self) -> RwLockWriteGuard<users::UserConfig> {
+        self.users.write().unwrap()
+    }
+
+    pub fn repos(&self) -> RwLockReadGuard<repos::RepoConfig> {
+        self.repos.read().unwrap()
+    }
+
+    pub fn repos_write(&self) -> RwLockWriteGuard<repos::RepoConfig> {
+        self.repos.write().unwrap()
     }
 }
 
@@ -151,17 +188,10 @@ fn parse_string(config_contents: &str) -> Result<ConfigModel, String> {
 fn parse_string_and_load(config_contents: &str) -> Result<Config, String> {
     let config = try!(parse_string(config_contents));
 
-    let users = match users::load_config(&config.main.users_config_file) {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Error reading user config file: {}", e)),
-    };
+    let the_config = Config::new_with_model(config, users::UserConfig::new(), repos::RepoConfig::new());
+    try!(the_config.reload_users_repos());
 
-    let repos = match repos::load_config(&config.main.repos_config_file) {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Error reading repo config file: {}", e)),
-    };
-
-    Ok(Config::new_with_model(config, users, repos))
+    Ok(the_config)
 }
 
 

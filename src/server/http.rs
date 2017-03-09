@@ -39,13 +39,14 @@ pub fn start(config: Config) -> Result<(), String> {
     let mut router = Router::new();
     router.get("/", HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")), "index");
     router.get("/index.js", HtmlHandler::new("index.js", include_str!("../../src/assets/index.js")), "index_js");
-    router.get("/favicon.ico", HtmlHandler::new("", ""), "favicon.ico");
 
     router.post("/auth/login", LoginHandler::new(), "login");
     router.post("/auth/logout", LogoutHandler::new(), "logout");
 
     router.get("/api/users", admin::GetUsers::new(config.clone()), "get_users");
+    router.post("/api/users", admin::UpdateUsers::new(config.clone()), "update_users");
     router.get("/api/repos", admin::GetRepos::new(config.clone()), "get_repos");
+    router.post("/api/repos", admin::UpdateRepos::new(config.clone()), "update_repos");
 
     let mut github_hook = Chain::new(GithubHandler::new(config.clone(), github_session, jira_session));
     github_hook.link_before( GithubWebhookVerifier { secret: config.github.webhook_secret.clone() });

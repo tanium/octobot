@@ -79,6 +79,12 @@ app.controller('AdminController', function($scope, $http) {
         if (info.jira_enabled == null)  {
           info.jira_enabled = true;
         }
+        if (info.force_push_reapply_statuses != null) {
+          info.force_push_reapply_statuses = info.force_push_reapply_statuses.join(",");
+        }
+        if (info.version_script != null) {
+          info.version_script = info.version_script.join(",");
+        }
       }
     }
   }).catch(function(e) {
@@ -109,7 +115,6 @@ app.controller('AdminController', function($scope, $http) {
         newUsers[host][info._username] = info;
       }
     }
-    $scope.users = newUsers;
     http_post('/api/users', newUsers);
   };
 
@@ -128,13 +133,18 @@ app.controller('AdminController', function($scope, $http) {
       for (var key in $scope.repos[host]) {
         var info = $scope.repos[host][key];
         newRepos[host][info._repo] = info;
+        if (info.force_push_reapply_statuses) {
+          info.force_push_reapply_statuses = info.force_push_reapply_statuses.split(/\s*[,;]\s*/);
+        }
+        if (info.version_script) {
+          info.version_script = info.version_script.split(/\s*[,;]\s*/);
+        }
       }
     }
-    $scope.repos = newRepos;
     http_post('/api/repos', newRepos);
   };
 
   $scope.removeRepo = function(host, repo) {
-    delete $scope.repos[host][repos];
+    delete $scope.repos[host][repo];
   }
 });

@@ -59,7 +59,7 @@ impl Messenger for SlackMessenger {
     }
 
     fn send_to_channel(&self, msg: &str, attachments: &Vec<SlackAttachment>, repo: &github::Repo) {
-        if let Some(channel) = self.config.repos.lookup_channel(repo) {
+        if let Some(channel) = self.config.repos().lookup_channel(repo) {
             let channel_msg = format!("{} ({})",
                                       msg,
                                       util::make_link(&repo.html_url, &repo.full_name));
@@ -83,7 +83,7 @@ impl SlackMessenger {
     fn send_to_slackbots(&self, users: Vec<github::User>, repo: &github::Repo, msg: &str,
                          attachments: &Vec<SlackAttachment>) {
         for user in users {
-            let slack_ref = self.config.users.slack_user_ref(user.login(), repo);
+            let slack_ref = self.config.users().slack_user_ref(user.login(), repo);
             self.send_to_slack(slack_ref.as_str(), msg, attachments);
         }
     }

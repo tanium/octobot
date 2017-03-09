@@ -164,7 +164,7 @@ impl worker::Runner<ForcePushRequest> for Runner {
         let github_session = self.github_session.clone();
         let clone_mgr = self.clone_mgr.clone();
         let config = self.config.clone();
-        let statuses = config.repos.force_push_reapply_statuses(&req.repo);
+        let statuses = config.repos().force_push_reapply_statuses(&req.repo);
 
         // launch another thread to do the version calculation
         self.thread_pool.execute(move || {
