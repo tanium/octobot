@@ -1,31 +1,65 @@
+use std::sync::Arc;
+
 use bodyparser;
 use iron::prelude::*;
 use iron::status;
 use iron::headers::ContentType;
-use iron::middleware::Handler;
+use iron::middleware::{BeforeMiddleware, Handler};
 use iron::modifiers::Header;
 use serde_json;
 
-pub struct LoginHandler;
-pub struct LogoutHandler;
+use server::github_verify::StringError;
+use server::sessions::Sessions;
+
+pub struct LoginHandler {
+    sessions: Arc<Sessions>,
+}
+
+pub struct LogoutHandler {
+    sessions: Arc<Sessions>,
+}
+
+pub struct LoginSessionFilter {
+    sessions: Arc<Sessions>,
+}
 
 impl LoginHandler {
-    pub fn new() -> LoginHandler {
-        LoginHandler {}
+    pub fn new(sessions: Arc<Sessions>) -> LoginHandler {
+        LoginHandler {
+            sessions: sessions
+        }
     }
 }
 
 impl LogoutHandler {
-    pub fn new() -> LogoutHandler {
-        LogoutHandler {}
+    pub fn new(sessions: Arc<Sessions>) -> LogoutHandler {
+        LogoutHandler {
+            sessions: sessions,
+        }
     }
 }
 
-
+impl LoginSessionFilter {
+    pub fn new(sessions: Arc<Sessions>) -> LoginSessionFilter {
+        LoginSessionFilter {
+            sessions: sessions,
+        }
+    }
+}
 #[derive(Deserialize)]
 struct LoginRequest {
     username: String,
     password: String,
+}
+
+fn get_session(req: &Request) -> IronResult<String> {
+    match req.headers.get_raw("session") {
+        Some(ref h) if h.len() == 1 => Ok(String::from_utf8_lossy(&h[0]).into_owned()),
+        None | Some(..) => {
+            return Err(IronError::new(StringError::new("No session header found"),
+                                      status::Forbidden))
+        }
+    }
 }
 
 impl Handler for LoginHandler {
@@ -47,13 +81,30 @@ impl Handler for LoginHandler {
             }
         };
 
-        Ok(Response::with((status::Ok, Header(ContentType::json()), "{}")))
+        // TODO: validate
+
+        let sess = self.sessions.new_session();
+        let json = format!("{{\"session\": \"{}\"}}", sess);
+
+        Ok(Response::with((status::Ok, Header(ContentType::json()), json)))
     }
 }
 
 impl Handler for LogoutHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        let sess = try!(get_session(req));
+        self.sessions.remove_session(&sess);
         Ok(Response::with((status::Ok, Header(ContentType::json()), "{}")))
     }
 }
 
+impl BeforeMiddleware for LoginSessionFilter {
+    fn before(&self, req: &mut Request) -> IronResult<()> {
+        let sess = try!(get_session(req));
+        if self.sessions.is_valid_session(&sess) {
+            Ok(())
+        } else {
+            Err(IronError::new(StringError::new("Invalid session"), status::Forbidden))
+        }
+    }
+}

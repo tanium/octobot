@@ -10,8 +10,9 @@ use jira;
 use server::github_handler::GithubHandler;
 use server::github_verify::GithubWebhookVerifier;
 use server::html_handler::HtmlHandler;
-use server::login::{LoginHandler, LogoutHandler};
+use server::login::{LoginHandler, LogoutHandler, LoginSessionFilter};
 use server::admin;
+use server::sessions::Sessions;
 
 pub fn start(config: Config) -> Result<(), String> {
     let github_session = match github::api::GithubSession::new(&config.github.host,
@@ -35,18 +36,27 @@ pub fn start(config: Config) -> Result<(), String> {
         jira_session = None;
     }
 
+    let ui_sessions = Arc::new(Sessions::new());
 
     let mut router = Router::new();
     router.get("/", HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")), "index");
     router.get("/index.js", HtmlHandler::new("index.js", include_str!("../../src/assets/index.js")), "index_js");
 
-    router.post("/auth/login", LoginHandler::new(), "login");
-    router.post("/auth/logout", LogoutHandler::new(), "logout");
+    router.post("/auth/login", LoginHandler::new(ui_sessions.clone()), "login");
+    router.post("/auth/logout", LogoutHandler::new(ui_sessions.clone()), "logout");
 
-    router.get("/api/users", admin::GetUsers::new(config.clone()), "get_users");
-    router.post("/api/users", admin::UpdateUsers::new(config.clone()), "update_users");
-    router.get("/api/repos", admin::GetRepos::new(config.clone()), "get_repos");
-    router.post("/api/repos", admin::UpdateRepos::new(config.clone()), "update_repos");
+    let mut api_chain;
+    {
+        let mut api_router = Router::new();
+        api_router.get("/api/users", admin::GetUsers::new(config.clone()), "get_users");
+        api_router.post("/api/users", admin::UpdateUsers::new(config.clone()), "update_users");
+        api_router.get("/api/repos", admin::GetRepos::new(config.clone()), "get_repos");
+        api_router.post("/api/repos", admin::UpdateRepos::new(config.clone()), "update_repos");
+
+        api_chain = Chain::new(api_router);
+        api_chain.link_before(LoginSessionFilter::new(ui_sessions.clone()));
+    }
+    router.any("/api/*", api_chain, "api");
 
     let mut github_hook = Chain::new(GithubHandler::new(config.clone(), github_session, jira_session));
     github_hook.link_before( GithubWebhookVerifier { secret: config.github.webhook_secret.clone() });

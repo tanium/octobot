@@ -21,7 +21,7 @@ app.controller('LoginController', function($scope, $http) {
       password: $scope.password,
     }).then(function(resp) {
       console.log("Logged in!");
-      sessionStorage['session'] = '1234';
+      sessionStorage['session'] = resp.data.session;
 
     }).catch(function(e) {
       console.log("Error logging in!" + JSON.stringify(e));
