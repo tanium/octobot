@@ -826,7 +826,7 @@ fn test_push_no_pr() {
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
 
-    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), None, Ok(vec![]));
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((status::Ok, "push".into()), resp);
@@ -837,8 +837,8 @@ fn test_push_with_pr() {
     let mut test = new_test();
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/some-branch".into());
-    test.handler.data.before = Some("abcdef0000".into());
-    test.handler.data.after = Some("1111abcdef".into());
+    test.handler.data.before = Some("the-before-commit".into());
+    test.handler.data.after = Some("the-after-commit".into());
 
     test.handler.data.commits = Some(vec![
         PushCommit {
@@ -855,8 +855,14 @@ fn test_push_with_pr() {
         },
     ]);
 
-    let pr1 = some_pr().unwrap();
+    // Note: github shouldn't really let you have two PR's for a single branch.
+    // This multiple PR support is theoretical only, but also allows us to test the
+    // race condition between the hook event and the PRs api.
+    let mut pr1 = some_pr().unwrap();
+    pr1.head.sha = "the-before-commit".into();
+
     let mut pr2 = pr1.clone();
+    pr2.head.sha = "the-after-commit".into();
     pr2.number = 99;
     pr2.assignees = vec![User::new("assign2")];
     pr2.requested_reviewers = None;
@@ -864,7 +870,7 @@ fn test_push_with_pr() {
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 99, Ok(some_commits()));
 
-    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![pr1, pr2]));
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), None, Ok(vec![pr1, pr2]));
 
     let msg = "joe.sender pushed 2 commit(s) to branch some-branch";
     let attach_common = vec![
@@ -916,8 +922,9 @@ fn test_push_force_notify() {
     test.handler.data.forced = Some(true);
     test.handler.data.compare = Some("http://compare-url".into());
 
-    let pr = some_pr().unwrap();
-    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![pr]));
+    let mut pr = some_pr().unwrap();
+    pr.head.sha = "abcdef0000".into();
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), None, Ok(vec![pr]));
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
@@ -939,7 +946,7 @@ fn test_push_force_notify() {
     let expect_thread;
     {
         let timeout = Duration::from_millis(300);
-        let rx = test.force_push_rx.take().unwrap();
+        let rx = test.force_push_rx.take().expect("force-push message");
         expect_thread = thread::spawn(move || {
             let msg = rx.recv_timeout(timeout).expect(&format!("expected to recv msg"));
             match msg {
@@ -957,10 +964,10 @@ fn test_push_force_notify() {
         });
     }
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().expect("handled event");
     assert_eq!((status::Ok, "push".into()), resp);
 
-    expect_thread.join().unwrap();
+    expect_thread.join().expect("expect-thread finished");
 }
 
 #[test]
@@ -974,8 +981,9 @@ fn test_push_force_notify_wip() {
     test.handler.data.forced = Some(true);
 
     let mut pr = some_pr().unwrap();
+    pr.head.sha = "abcdef0000".into();
     pr.title = "WIP: Awesome new feature".into();
-    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![pr]));
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), None, Ok(vec![pr]));
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
@@ -1024,8 +1032,9 @@ fn test_push_force_notify_ignored() {
     test.handler.data.repository =
         Repo::parse(&format!("http://{}/some-other-user/some-other-repo", test.github.github_host())).unwrap();
 
-    let pr = some_pr().unwrap();
-    test.github.mock_get_pull_requests("some-other-user", "some-other-repo", Some("open"), Some("1111abcdef"), Ok(vec![pr]));
+    let mut pr = some_pr().unwrap();
+    pr.head.sha = "1111abcdef".into();
+    test.github.mock_get_pull_requests("some-other-user", "some-other-repo", Some("open"), None, Ok(vec![pr]));
     test.github.mock_get_pull_request_commits("some-other-user", "some-other-repo", 32, Ok(some_commits()));
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
@@ -1150,8 +1159,6 @@ fn test_jira_push_master() {
     test.handler.data.after = Some("1111abcdef".into());
     test.handler.data.commits = Some(some_jira_push_commits());
 
-    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
-
     if let Some(ref jira) = test.jira {
         jira.mock_comment_issue("SER-1", "Merged into branch master: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
 
@@ -1172,8 +1179,6 @@ fn test_jira_push_develop() {
     test.handler.data.after = Some("1111abcdef".into());
     test.handler.data.commits = Some(some_jira_push_commits());
 
-    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
-
     if let Some(ref jira) = test.jira {
         jira.mock_comment_issue("SER-1", "Merged into branch develop: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
 
@@ -1193,8 +1198,6 @@ fn test_jira_push_release() {
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
     test.handler.data.commits = Some(some_jira_push_commits());
-
-    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
 
     if let Some(ref jira) = test.jira {
         jira.mock_comment_issue("SER-1", "Merged into branch release/55: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
@@ -1217,7 +1220,7 @@ fn test_jira_push_other_branch() {
 
     test.handler.data.commits = Some(some_jira_push_commits());
 
-    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
+    test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), None, Ok(vec![]));
 
     // no jira mocks: will fail if called
 
@@ -1234,8 +1237,6 @@ fn test_jira_disabled() {
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
     test.handler.data.commits = Some(some_jira_push_commits());
-
-    test.github.mock_get_pull_requests("some-other-user", "some-other-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
 
     // change the repo to an unconfigured one
     test.handler.data.repository =
@@ -1267,8 +1268,6 @@ fn test_jira_push_triggers_version_script() {
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
     test.handler.data.commits = Some(some_jira_push_commits());
-
-    test.github.mock_get_pull_requests("some-user", "versioning-repo", Some("open".into()), Some("1111abcdef"), Ok(vec![]));
 
     // Setup background thread to validate version msg
     // Note: no expectations are set on mock_jira since we have stubbed out the background worker thread
