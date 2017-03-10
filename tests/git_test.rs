@@ -55,6 +55,7 @@ impl GitTest {
         }
 
         self.git.run(&["clone", "../remote", "."]).expect("clone from bare repo");
+        self.git.run(&["config", "commit.gpgsign", "false"]).expect("turn off gpg signing");
     }
 
     fn add_repo_file(&self, path: &str, contents: &str, msg: &str) {
