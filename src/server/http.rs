@@ -40,18 +40,21 @@ pub fn start(config: Config) -> Result<(), String> {
 
     let mut router = Router::new();
     router.get("/", HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")), "index");
+    router.get("/login.html", HtmlHandler::new("login.html", include_str!("../../src/assets/login.html")), "login");
+    router.get("/users.html", HtmlHandler::new("users.html", include_str!("../../src/assets/users.html")), "users");
+    router.get("/repos.html", HtmlHandler::new("repos.html", include_str!("../../src/assets/repos.html")), "repos");
     router.get("/index.js", HtmlHandler::new("index.js", include_str!("../../src/assets/index.js")), "index_js");
 
-    router.post("/auth/login", LoginHandler::new(ui_sessions.clone(), config.clone()), "login");
-    router.post("/auth/logout", LogoutHandler::new(ui_sessions.clone()), "logout");
+    router.post("/auth/login", LoginHandler::new(ui_sessions.clone(), config.clone()), "api_login");
+    router.post("/auth/logout", LogoutHandler::new(ui_sessions.clone()), "api_logout");
 
     let mut api_chain;
     {
         let mut api_router = Router::new();
-        api_router.get("/api/users", admin::GetUsers::new(config.clone()), "get_users");
-        api_router.post("/api/users", admin::UpdateUsers::new(config.clone()), "update_users");
-        api_router.get("/api/repos", admin::GetRepos::new(config.clone()), "get_repos");
-        api_router.post("/api/repos", admin::UpdateRepos::new(config.clone()), "update_repos");
+        api_router.get("/api/users", admin::GetUsers::new(config.clone()), "api_get_users");
+        api_router.post("/api/users", admin::UpdateUsers::new(config.clone()), "api_update_users");
+        api_router.get("/api/repos", admin::GetRepos::new(config.clone()), "api_get_repos");
+        api_router.post("/api/repos", admin::UpdateRepos::new(config.clone()), "api_update_repos");
 
         api_chain = Chain::new(api_router);
         api_chain.link_before(LoginSessionFilter::new(ui_sessions.clone()));

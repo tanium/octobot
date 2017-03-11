@@ -1,0 +1,48 @@
+<h3>Repos</h3>
+<form class="form-inline">
+  <div ng-repeat="(host, repos) in repos">
+    <h4>Host: {{host}}</h4>
+
+    <table class="table">
+      <tr>
+        <th>Repo</th>
+        <th>Slack Channel</th>
+        <th>Config</th>
+        <th>&nbsp;</th>
+      </tr>
+      <tr ng-repeat="(repo, info) in repos">
+        <td>
+          <input type="text" class="form-control" ng-model="info._repo" placeholder="Repo" required>
+        </td>
+        <td>
+          <input type="text" class="form-control" ng-model="info.channel" placeholder="Slack channel" required>
+        </td>
+        <td>
+          <div>
+            <input type="checkbox" class="form-control" ng-model="info.jira_enabled"> JIRA enabled
+          </div>
+          <div>
+            <input type="checkbox" class="form-control" ng-model="info.force_push_notify"> Force-push notification
+          </div>
+          <div class="row">
+            <div class="col-md-5">Force-push status reapply</div>
+            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.force_push_reapply_statuses" style="width:100%"></div>
+          </div>
+          <div class="row">
+            <div class="col-md-5">Version script</div>
+            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.version_script" style="width:100%"></div>
+          </div>
+        </td>
+        <td>
+          <a href ng-click="removeRepo(host, repo)"><span class="glyphicon glyphicon-trash" /></a>
+        </td>
+      </tr>
+    </table>
+    <div style="margin: 10px">
+      <button class="btn btn-sm btn-default" ng-click="addRepo(host)">Add repo</button>
+    </div>
+  </div>
+  <div style="margin: 10px">
+    <button class="btn btn-sm btn-primary" ng-click="saveRepos()">Save Repos</button>
+  </div>
+</form>

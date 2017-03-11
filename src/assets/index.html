@@ -3,125 +3,18 @@
   <head>
     <title>Octobot</title>
     <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-router/0.4.2/angular-ui-router.min.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
 
     <script src="/index.js"></script>
   </head>
-  <body class="container" ng-controller="OctobotController">
+  <body class="container">
     <div class="page-header">
       <h1>Octobot</h1>
     </div>
 
-    <div ng-if="!isLoggedIn()" ng-controller="LoginController">
-      <form style="width: 300px" ng-submit="login()">
-        <h2 class="form-signin-heading">Login</h2>
-        <div class="form-group">
-          <label for="username">Username</label>
-          <input type="text" class="form-control" ng-model="username" placeholder="Username" required autofocus>
-        </div>
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" class="form-control" ng-model="password" placeholder="Password" required>
-        </div>
-        <button class="btn btn-lg btn-primary" type="submit">Sign in</button>
-      </form>
-    </div>
-
-    <div ng-if="isLoggedIn()" ng-controller="AdminController">
-      <div style="float: right">
-        <!-- TODO: throw in some routing -->
-        <a href ng-click="state = 'users'">Users</a> |
-        <a href ng-click="state = 'repos'">Repos</a> |
-        <a href ng-click="logout()">Logout</a>
-      </div>
-
-      <div ng-show="state == 'users'">
-        <h3>Users</h3>
-        <form class="form-inline">
-          <div ng-repeat="(host, users) in users">
-            <h4>Host: {{host}}</h4>
-
-            <table class="table">
-              <tr>
-                <th>GitHub Username</th>
-                <th>Slack Username</th>
-                <th>&nbsp;</th>
-              </tr>
-
-              <tr ng-repeat="(username, info) in users">
-                <td>
-                  <input type="text" class="form-control" ng-model="info._username" placeholder="GitHub username" required>
-                </td>
-                <td>
-                  <input type="text" class="form-control" ng-model="info.slack" placeholder="Slack username" required>
-                </td>
-                <td>
-                  <a href ng-click="removeUser(host, username)"><span class="glyphicon glyphicon-trash" /></a>
-                </td>
-              </tr>
-            </table>
-            <div style="margin: 10px">
-              <button class="btn btn-sm btn-default" ng-click="addUser(host)">Add user</button>
-            </div>
-          </div>
-          <div style="margin: 10px">
-            <button class="btn btn-sm btn-primary" ng-click="saveUsers()">Save Users</button>
-          </div>
-        </form>
-      </div>
-
-      <div ng-show="state == 'repos'">
-        <h3>Repos</h3>
-        <form class="form-inline">
-          <div ng-repeat="(host, repos) in repos">
-            <h4>Host: {{host}}</h4>
-
-            <table class="table">
-              <tr>
-                <th>Repo</th>
-                <th>Slack Channel</th>
-                <th>Config</th>
-                <th>&nbsp;</th>
-              </tr>
-              <tr ng-repeat="(repo, info) in repos">
-                <td>
-                  <input type="text" class="form-control" ng-model="info._repo" placeholder="Repo" required>
-                </td>
-                <td>
-                  <input type="text" class="form-control" ng-model="info.channel" placeholder="Slack channel" required>
-                </td>
-                <td>
-                  <div>
-                    <input type="checkbox" class="form-control" ng-model="info.jira_enabled"> JIRA enabled
-                  </div>
-                  <div>
-                    <input type="checkbox" class="form-control" ng-model="info.force_push_notify"> Force-push notification
-                  </div>
-                  <div class="row">
-                    <div class="col-md-5">Force-push status reapply</div>
-                    <div class="col-md-7"><input type="text" class="form-control" ng-model="info.force_push_reapply_statuses" style="width:100%"></div>
-                  </div>
-                  <div class="row">
-                    <div class="col-md-5">Version script</div>
-                    <div class="col-md-7"><input type="text" class="form-control" ng-model="info.version_script" style="width:100%"></div>
-                  </div>
-                </td>
-                <td>
-                  <a href ng-click="removeRepo(host, repo)"><span class="glyphicon glyphicon-trash" /></a>
-                </td>
-              </tr>
-            </table>
-            <div style="margin: 10px">
-              <button class="btn btn-sm btn-default" ng-click="addRepo(host)">Add repo</button>
-            </div>
-          </div>
-          <div style="margin: 10px">
-            <button class="btn btn-sm btn-primary" ng-click="saveRepos()">Save Repos</button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <div ui-view />
   </body>
 </html>

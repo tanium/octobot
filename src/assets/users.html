@@ -1,0 +1,32 @@
+<h3>Users</h3>
+<form class="form-inline">
+  <div ng-repeat="(host, users) in users">
+    <h4>Host: {{host}}</h4>
+
+    <table class="table">
+      <tr>
+        <th>GitHub Username</th>
+        <th>Slack Username</th>
+        <th>&nbsp;</th>
+      </tr>
+
+      <tr ng-repeat="(username, info) in users">
+        <td>
+          <input type="text" class="form-control" ng-model="info._username" placeholder="GitHub username" required>
+        </td>
+        <td>
+          <input type="text" class="form-control" ng-model="info.slack" placeholder="Slack username" required>
+        </td>
+        <td>
+          <a href ng-click="removeUser(host, username)"><span class="glyphicon glyphicon-trash" /></a>
+        </td>
+      </tr>
+    </table>
+    <div style="margin: 10px">
+      <button class="btn btn-sm btn-default" ng-click="addUser(host)">Add user</button>
+    </div>
+  </div>
+  <div style="margin: 10px">
+    <button class="btn btn-sm btn-primary" ng-click="saveUsers()">Save Users</button>
+  </div>
+</form>

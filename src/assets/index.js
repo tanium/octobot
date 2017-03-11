@@ -1,16 +1,42 @@
 'use strict';
 
-var app = angular.module('octobot', []);
+var app = angular.module('octobot', [ 'ui.router' ]);
 
-app.controller('OctobotController', function($scope) {
-
-  $scope.isLoggedIn = function() {
-      return !!sessionStorage['session'];
-  };
-
+app.config(function($stateProvider) {
+    $stateProvider.state("login", {
+        url: '/login',
+        controller: 'LoginController',
+        templateUrl : "/login.html"
+    })
+    .state("users", {
+        url: '/users',
+        controller: 'AdminController',
+        templateUrl : "/users.html"
+    })
+    .state("repos", {
+        url: '/repos',
+        controller: 'AdminController',
+        templateUrl : "/repos.html"
+    });
 });
 
-app.controller('LoginController', function($scope, $http) {
+function isLoggedIn() {
+    return !!sessionStorage['session'];
+}
+
+app.run(function($state, $rootScope) {
+    $rootScope.$on("$stateChangeStart", function(event, toState, toParams, fromState, fromParams) {
+        if (!isLoggedIn() && toState.name !== "login")  {
+            $state.go("login");
+        }
+    });
+
+  if (!isLoggedIn()) {
+    $state.go("login");
+  }
+});
+
+app.controller('LoginController', function($scope, $http, $state) {
 
   $scope.username = '';
   $scope.password = '';
@@ -22,6 +48,7 @@ app.controller('LoginController', function($scope, $http) {
     }).then(function(resp) {
       console.log("Logged in!");
       sessionStorage['session'] = resp.data.session;
+      $state.go("users");
 
     }).catch(function(e) {
       console.log("Error logging in!" + JSON.stringify(e));
@@ -31,14 +58,27 @@ app.controller('LoginController', function($scope, $http) {
 });
 
 
-app.controller('AdminController', function($scope, $http) {
+app.controller('AdminController', function($scope, $http, $state) {
+
+  function catch_403(e) {
+    if (e && e.status == 403) {
+      console.log("logging out!");
+      delete sessionStorage['session'];
+      $state.go("login");
+      return true;
+    }
+    return false;
+  }
 
   function http_get(url) {
     return $http.get(url, {
       headers: {
         session: sessionStorage['session'],
       },
-    })
+    }).catch(function(e) {
+      catch_403(e);
+      throw e;
+    });
   }
 
   function http_post(url, data) {
@@ -46,7 +86,10 @@ app.controller('AdminController', function($scope, $http) {
       headers: {
         session: sessionStorage['session'],
       },
-    })
+    }).catch(function(e) {
+      catch_403(e);
+      throw e;
+    });
   }
 
   $scope.state = 'users';
@@ -63,6 +106,9 @@ app.controller('AdminController', function($scope, $http) {
       }
     }
   }).catch(function(e) {
+    if (!isLoggedIn()) {
+      return;
+    }
     alert("Error getting users: " + e);
   });
 
@@ -89,6 +135,10 @@ app.controller('AdminController', function($scope, $http) {
       }
     }
   }).catch(function(e) {
+    if (!isLoggedIn()) {
+      return;
+    }
+
     alert("Error getting repos: " + e);
   });
 
