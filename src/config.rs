@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use toml;
 
@@ -16,7 +16,7 @@ pub struct Config {
     pub repos: RwLock<repos::RepoConfig>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ConfigModel {
     pub main: MainConfig,
     pub admin: Option<AdminConfig>,
@@ -24,7 +24,7 @@ pub struct ConfigModel {
     pub jira: Option<JiraConfig>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MainConfig {
     pub slack_webhook_url: String,
     pub listen_addr: Option<String>,
@@ -33,20 +33,21 @@ pub struct MainConfig {
     pub clone_root_dir: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AdminConfig {
+    pub name: String,
     pub salt: String,
     pub pass_hash: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GithubConfig {
     pub webhook_secret: String,
     pub host: String,
     pub api_token: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct JiraConfig {
     pub host: String,
     pub username: String,
@@ -80,6 +81,46 @@ impl Config {
             users: RwLock::new(users),
             repos: RwLock::new(repos),
         }
+    }
+
+    pub fn save(&self, config_file: &str) -> Result<(), String> {
+        let model = ConfigModel {
+            main: self.main.clone(),
+            admin: self.admin.clone(),
+            github: self.github.clone(),
+            jira: self.jira.clone(),
+        };
+
+        let serialized = match toml::to_string(&model) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Error serializing config: {}", e)),
+        };
+
+        let tmp_file = config_file.to_string() + ".tmp";
+        let bak_file = config_file.to_string() + ".bak";
+
+        let mut file = match fs::File::create(&tmp_file) {
+            Ok(f) => f,
+            Err(e) => return Err(format!("Error opening file: {}", e)),
+        };
+
+        if let Err(e) = file.write_all(serialized.as_bytes()) {
+            return Err(format!("Error writing file: {}", e));
+        }
+
+        if let Err(e) = fs::rename(&config_file, &bak_file) {
+            return Err(format!("Error backing up config file: {}", e));
+        }
+
+        if let Err(e) = fs::rename(&tmp_file, &config_file) {
+            return Err(format!("Error renaming temp file: {}", e));
+        }
+
+        if let Err(e) = fs::remove_file(&bak_file) {
+            info!("Error removing backup file: {}", e);
+        }
+
+        Ok(())
     }
 
     pub fn reload_users_repos(&self) -> Result<(), String> {
@@ -170,8 +211,8 @@ impl JiraConfig {
     }
 }
 
-pub fn parse(config_file: String) -> Result<Config, String> {
-    let mut config_file_open = match fs::File::open(config_file.clone()) {
+pub fn parse(config_file: &str) -> Result<Config, String> {
+    let mut config_file_open = match fs::File::open(config_file) {
         Ok(f) => f,
         Err(e) => return Err(format!("Could not open config file '{}': {}", config_file, e)),
     };

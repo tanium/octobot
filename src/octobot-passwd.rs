@@ -1,5 +1,7 @@
 extern crate octobot;
+extern crate ring;
 extern crate rpassword;
+extern crate rustc_serialize;
 
 use ring::rand::SystemRandom;
 use rustc_serialize::hex::ToHex;
@@ -8,12 +10,14 @@ use octobot::config;
 use octobot::server::login;
 
 fn main() {
-    if std::env::args().count() < 2 {
-        panic!("Usage: octobot-admin <config file>");
+    if std::env::args().count() < 3 {
+        panic!("Usage: octobot-admin <config file> <admin username>");
     }
 
     let config_file = std::env::args().nth(1).unwrap();
-    let mut config = config::parse(config_file).expect("Error parsing config");
+    let admin_name = std::env::args().nth(2).unwrap();
+
+    let mut config = config::parse(&config_file).expect("Error parsing config");
 
     let pass1 = rpassword::prompt_password_stdout("Enter new password: ").expect("password");
     let pass2 = rpassword::prompt_password_stdout("Retype new password: ").expect("password");
@@ -24,16 +28,18 @@ fn main() {
     }
 
    let mut salt_bytes: [u8; 32] = [0; 32];
-   SystemRandom::new().fill(&mut bytes).expect("get random");
-   let salt = salt_bytes.to_hex();
+   SystemRandom::new().fill(&mut salt_bytes).expect("get random");
+   let salt: String = salt_bytes.to_hex().to_string();
 
    let pass_hash = login::hash_password(&pass1, &salt);
 
    config.admin = Some(config::AdminConfig {
+       name: admin_name,
        salt: salt,
        pass_hash: pass_hash,
    });
 
-   // TODO: save it
+   config.save(&config_file).expect("save config file");
 
+   println!("Successfully changed password!");
 }
