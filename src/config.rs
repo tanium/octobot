@@ -7,25 +7,22 @@ use repos;
 
 #[derive(Clone)]
 pub struct Config {
-    pub slack_webhook_url: String,
-    pub github_secret: String,
-    pub listen_addr: Option<String>,
-    pub clone_root_dir: String,
-    pub github_host: String,
-    pub github_token: String,
+    pub main: MainConfig,
+    pub github: GithubConfig,
+    pub jira: Option<JiraConfig>,
+
     pub users: users::UserConfig,
     pub repos: repos::RepoConfig,
-    pub jira: Option<JiraConfig>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct ConfigModel {
     pub main: MainConfig,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct MainConfig {
     pub slack_webhook_url: String,
     pub listen_addr: Option<String>,
@@ -34,7 +31,7 @@ pub struct MainConfig {
     pub clone_root_dir: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct GithubConfig {
     pub webhook_secret: String,
     pub host: String,
@@ -68,15 +65,11 @@ impl Config {
 
     pub fn new_with_model(config: ConfigModel, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
         Config {
-            slack_webhook_url: config.main.slack_webhook_url,
-            github_secret: config.github.webhook_secret,
-            listen_addr: config.main.listen_addr,
-            github_host: config.github.host,
-            github_token: config.github.api_token,
-            clone_root_dir: config.main.clone_root_dir,
+            main: config.main,
+            github: config.github,
+            jira: config.jira,
             users: users,
             repos: repos,
-            jira: config.jira,
         }
     }
 }

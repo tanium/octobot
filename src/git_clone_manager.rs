@@ -15,7 +15,7 @@ pub struct GitCloneManager {
 
 impl GitCloneManager {
     pub fn new(github_session: Arc<github::api::Session>, config: Arc<Config>) -> GitCloneManager {
-        let clone_root_dir = config.clone_root_dir.to_string();
+        let clone_root_dir = config.main.clone_root_dir.to_string();
 
         GitCloneManager {
             dir_pool: Arc::new(DirPool::new(&clone_root_dir)),

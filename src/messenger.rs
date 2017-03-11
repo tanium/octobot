@@ -27,7 +27,7 @@ pub struct SlackMessenger {
 
 pub fn from_config(config: Arc<Config>) -> Box<Messenger> {
     Box::new(SlackMessenger {
-        slack: Rc::new(Slack { webhook_url: config.slack_webhook_url.clone() }),
+        slack: Rc::new(Slack { webhook_url: config.main.slack_webhook_url.clone() }),
         config: config.clone(),
     })
 }
