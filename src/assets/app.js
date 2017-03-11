@@ -24,8 +24,8 @@ function isLoggedIn() {
   return !!sessionStorage['session'];
 }
 
-
 app.service('sessionHttp', function($http, $state) {
+  var self = this;
   this.get = function(url) {
     return $http.get(url, {
       headers: {
@@ -48,11 +48,17 @@ app.service('sessionHttp', function($http, $state) {
     });
   };
 
-  function catch_403(e) {
-    if (e && e.status == 403) {
+  this.logout = function() {
+    self.post('/auth/logout', {}).finally(function() {
       console.log("logging out!");
       delete sessionStorage['session'];
       $state.go("login");
+    });
+  }
+
+  function catch_403(e) {
+    if (e && e.status == 403) {
+      self.logout();
       return true;
     }
     return false;
@@ -63,10 +69,8 @@ app.run(function($state, $rootScope, sessionHttp) {
   $rootScope.isLoggedIn = isLoggedIn;
 
   $rootScope.logout = function() {
-    sessionHttp.post('/auth/logout', {}).finally(function() {
-      delete sessionStorage['session'];
-    });
-  }
+    sessionHttp.logout();
+  };
 
   $rootScope.$on("$stateChangeStart", function(event, toState, toParams, fromState, fromParams) {
     if (!isLoggedIn() && toState.name !== "login")  {
