@@ -21,6 +21,7 @@ pub struct Config {
 #[derive(Deserialize, Clone, Debug)]
 pub struct ConfigModel {
     pub main: MainConfig,
+    pub admin: Option<AdminConfig>,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
 }
@@ -34,7 +35,13 @@ pub struct MainConfig {
     pub clone_root_dir: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Debug)]
+pub struct AdminConfig {
+    pub salt: String,
+    pub pass_hash: String,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct GithubConfig {
     pub webhook_secret: String,
     pub host: String,

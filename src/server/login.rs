@@ -7,9 +7,19 @@ use iron::headers::ContentType;
 use iron::middleware::{BeforeMiddleware, Handler};
 use iron::modifiers::Header;
 use serde_json;
+use ring::digest;
+use rustc_serialize::hex::ToHex;
 
 use server::github_verify::StringError;
 use server::sessions::Sessions;
+
+pub fn hash_password(pass: &str, salt: &str) -> String {
+    let mut ctx = digest::Context::new(&digest::SHA256);
+    ctx.update(salt.as_bytes());
+    ctx.update(pass.as_bytes());
+
+    ctx.finish().as_ref().to_hex()
+}
 
 pub struct LoginHandler {
     sessions: Arc<Sessions>,
@@ -46,6 +56,7 @@ impl LoginSessionFilter {
         }
     }
 }
+
 #[derive(Deserialize)]
 struct LoginRequest {
     username: String,
