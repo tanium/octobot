@@ -10,36 +10,87 @@ app.config(function($stateProvider) {
     })
     .state("users", {
         url: '/users',
-        controller: 'AdminController',
+        controller: 'UsersController',
         templateUrl : "/users.html"
     })
     .state("repos", {
         url: '/repos',
-        controller: 'AdminController',
+        controller: 'ReposController',
         templateUrl : "/repos.html"
     });
 });
 
 function isLoggedIn() {
-    return !!sessionStorage['session'];
+  return !!sessionStorage['session'];
 }
 
-app.run(function($state, $rootScope) {
-    $rootScope.$on("$stateChangeStart", function(event, toState, toParams, fromState, fromParams) {
-        if (!isLoggedIn() && toState.name !== "login")  {
-            $state.go("login");
-        }
-    });
 
-  if (!isLoggedIn()) {
+app.service('sessionHttp', function($http, $state) {
+  this.get = function(url) {
+    return $http.get(url, {
+      headers: {
+        session: sessionStorage['session'],
+      },
+    }).catch(function(e) {
+      catch_403(e);
+      throw e;
+    });
+  }
+
+  this.post = function(url, data) {
+    return $http.post(url, data, {
+      headers: {
+        session: sessionStorage['session'],
+      },
+    }).catch(function(e) {
+      catch_403(e);
+      throw e;
+    });
+  };
+
+  function catch_403(e) {
+    if (e && e.status == 403) {
+      console.log("logging out!");
+      delete sessionStorage['session'];
+      $state.go("login");
+      return true;
+    }
+    return false;
+  }
+});
+
+app.run(function($state, $rootScope, sessionHttp) {
+  $rootScope.isLoggedIn = isLoggedIn;
+
+  $rootScope.logout = function() {
+    sessionHttp.post('/auth/logout', {}).finally(function() {
+      delete sessionStorage['session'];
+    });
+  }
+
+  $rootScope.$on("$stateChangeStart", function(event, toState, toParams, fromState, fromParams) {
+    if (!isLoggedIn() && toState.name !== "login")  {
+      $state.go("login");
+    }
+  });
+
+  $rootScope.$on('$stateChangeError', function(event) {
+    $state.go('login');
+  });
+
+  if (!isLoggedIn() || !$state.current.name) {
     $state.go("login");
   }
 });
 
-app.controller('LoginController', function($scope, $http, $state) {
+app.controller('LoginController', function($scope, $state, $http) {
 
   $scope.username = '';
   $scope.password = '';
+
+  if (isLoggedIn()) {
+    $state.go("users");
+  }
 
   $scope.login = function() {
     $http.post('/auth/login', {
@@ -58,45 +109,10 @@ app.controller('LoginController', function($scope, $http, $state) {
 });
 
 
-app.controller('AdminController', function($scope, $http, $state) {
-
-  function catch_403(e) {
-    if (e && e.status == 403) {
-      console.log("logging out!");
-      delete sessionStorage['session'];
-      $state.go("login");
-      return true;
-    }
-    return false;
-  }
-
-  function http_get(url) {
-    return $http.get(url, {
-      headers: {
-        session: sessionStorage['session'],
-      },
-    }).catch(function(e) {
-      catch_403(e);
-      throw e;
-    });
-  }
-
-  function http_post(url, data) {
-    return $http.post(url, data, {
-      headers: {
-        session: sessionStorage['session'],
-      },
-    }).catch(function(e) {
-      catch_403(e);
-      throw e;
-    });
-  }
-
-  $scope.state = 'users';
+app.controller('UsersController', function($scope, sessionHttp)  {
   $scope.users = [];
-  $scope.repos = [];
 
-  http_get('/api/users').then(function(resp) {
+  sessionHttp.get('/api/users').then(function(resp) {
     $scope.users = resp.data.users;
 
     // map it to be more angular friendly
@@ -112,7 +128,33 @@ app.controller('AdminController', function($scope, $http, $state) {
     alert("Error getting users: " + e);
   });
 
-  http_get('/api/repos').then(function(resp) {
+  $scope.addUser = function(host) {
+    $scope.users[host]["new-user-" + Math.random()] = {};
+  }
+
+  $scope.removeUser = function(host, username) {
+    delete $scope.users[host][username];
+  }
+
+  $scope.saveUsers = function() {
+    // remap to make sure edited usersnames correspodn to keys
+    var newUsers = {};
+    for (var host in $scope.users) {
+      newUsers[host] = {};
+      for (var key in $scope.users[host]) {
+        var info = $scope.users[host][key];
+        newUsers[host][info._username] = info;
+      }
+    }
+    sessionHttp.post('/api/users', newUsers);
+  };
+});
+
+app.controller('ReposController', function($scope, sessionHttp)  {
+
+  $scope.repos = [];
+
+  sessionHttp.get('/api/repos').then(function(resp) {
     $scope.repos = resp.data.repos;
 
     for (var host in $scope.repos) {
@@ -142,33 +184,6 @@ app.controller('AdminController', function($scope, $http, $state) {
     alert("Error getting repos: " + e);
   });
 
-  $scope.logout = function() {
-    http_post('/auth/logout', {}).finally(function() {
-      delete sessionStorage['session'];
-    });
-  }
-
-  $scope.addUser = function(host) {
-    $scope.users[host]["new-user-" + Math.random()] = {};
-  }
-
-  $scope.removeUser = function(host, username) {
-    delete $scope.users[host][username];
-  }
-
-  $scope.saveUsers = function() {
-    // remap to make sure edited usersnames correspodn to keys
-    var newUsers = {};
-    for (var host in $scope.users) {
-      newUsers[host] = {};
-      for (var key in $scope.users[host]) {
-        var info = $scope.users[host][key];
-        newUsers[host][info._username] = info;
-      }
-    }
-    http_post('/api/users', newUsers);
-  };
-
   $scope.addRepo = function(host) {
     $scope.repos[host]["new-repo-" + Math.random()] = {
       force_push_notify: true,
@@ -192,7 +207,7 @@ app.controller('AdminController', function($scope, $http, $state) {
         }
       }
     }
-    http_post('/api/repos', newRepos);
+    sessionHttp.post('/api/repos', newRepos);
   };
 
   $scope.removeRepo = function(host, repo) {

@@ -43,7 +43,7 @@ pub fn start(config: Config) -> Result<(), String> {
     router.get("/login.html", HtmlHandler::new("login.html", include_str!("../../src/assets/login.html")), "login");
     router.get("/users.html", HtmlHandler::new("users.html", include_str!("../../src/assets/users.html")), "users");
     router.get("/repos.html", HtmlHandler::new("repos.html", include_str!("../../src/assets/repos.html")), "repos");
-    router.get("/index.js", HtmlHandler::new("index.js", include_str!("../../src/assets/index.js")), "index_js");
+    router.get("/app.js", HtmlHandler::new("app.js", include_str!("../../src/assets/app.js")), "app_js");
 
     router.post("/auth/login", LoginHandler::new(ui_sessions.clone(), config.clone()), "api_login");
     router.post("/auth/logout", LogoutHandler::new(ui_sessions.clone()), "api_logout");
