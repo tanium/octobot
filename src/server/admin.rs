@@ -109,7 +109,7 @@ impl Handler for UpdateUsers {
             }
         };
 
-        let config_file = self.config.users_config_file.clone();
+        let config_file = self.config.main.users_config_file.clone();
         let config_file_tmp = config_file.clone() + ".tmp";
 
         let mut file = match fs::File::create(&config_file_tmp) {
@@ -166,7 +166,7 @@ impl Handler for UpdateRepos {
         };
 
 
-        let config_file = self.config.repos_config_file.clone();
+        let config_file = self.config.main.repos_config_file.clone();
         let config_file_tmp = config_file.clone() + ".tmp";
 
         let mut file = match fs::File::create(&config_file_tmp) {

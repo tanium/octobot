@@ -8,14 +8,12 @@ use repos;
 
 pub struct Config {
     pub main: MainConfig,
+    pub admin: Option<AdminConfig>,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
 
     pub users: RwLock<users::UserConfig>,
     pub repos: RwLock<repos::RepoConfig>,
-
-    pub users_config_file: String,
-    pub repos_config_file: String,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -35,13 +33,13 @@ pub struct MainConfig {
     pub clone_root_dir: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct AdminConfig {
     pub salt: String,
     pub pass_hash: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct GithubConfig {
     pub webhook_secret: String,
     pub host: String,
@@ -76,22 +74,21 @@ impl Config {
     fn new_with_model(config: ConfigModel, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
         Config {
             main: config.main,
+            admin: config.admin,
             github: config.github,
             jira: config.jira,
             users: RwLock::new(users),
             repos: RwLock::new(repos),
-            users_config_file: config.main.users_config_file,
-            repos_config_file: config.main.repos_config_file,
         }
     }
 
     pub fn reload_users_repos(&self) -> Result<(), String> {
-        let users = match users::load_config(&self.users_config_file) {
+        let users = match users::load_config(&self.main.users_config_file) {
             Ok(c) => c,
             Err(e) => return Err(format!("Error reading user config file: {}", e)),
         };
 
-        let repos = match repos::load_config(&self.repos_config_file) {
+        let repos = match repos::load_config(&self.main.repos_config_file) {
             Ok(c) => c,
             Err(e) => return Err(format!("Error reading repo config file: {}", e)),
         };
@@ -128,6 +125,7 @@ impl ConfigModel {
                 repos_config_file: String::new(),
                 clone_root_dir: String::new(),
             },
+            admin: None,
             github: GithubConfig {
                 webhook_secret: String::new(),
                 host: String::new(),
