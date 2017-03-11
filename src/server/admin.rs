@@ -84,20 +84,11 @@ impl Handler for GetRepos {
 
 impl Handler for UpdateUsers {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        // TODO: centralize this... :(
-        let body = match req.get::<bodyparser::Raw>() {
+        let users = match req.get::<bodyparser::Struct<UserHostMap>>() {
             Ok(Some(j)) => j,
             Err(_) | Ok(None) => {
                 error!("Error reading json");
                 return Ok(Response::with((status::BadRequest, format!("Error reading json"))));
-            }
-        };
-        let users: UserHostMap = match serde_json::from_str(&body) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error parsing update users request: {}", e);
-                return Ok(Response::with((status::BadRequest,
-                                          format!("Error parsing JSON: {}", e))));
             }
         };
 
@@ -140,20 +131,11 @@ impl Handler for UpdateUsers {
 
 impl Handler for UpdateRepos {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        // TODO: centralize this... :(
-        let body = match req.get::<bodyparser::Raw>() {
+        let repos = match req.get::<bodyparser::Struct<RepoHostMap>>() {
             Ok(Some(j)) => j,
             Err(_) | Ok(None) => {
                 error!("Error reading json");
                 return Ok(Response::with((status::BadRequest, format!("Error reading json"))));
-            }
-        };
-        let repos: RepoHostMap = match serde_json::from_str(&body) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error parsing update repos request: {}", e);
-                return Ok(Response::with((status::BadRequest,
-                                          format!("Error parsing JSON: {}", e))));
             }
         };
 
@@ -164,7 +146,6 @@ impl Handler for UpdateRepos {
                 return Ok(Response::with((status::BadRequest, format!("Error serializing JSON: {}", e))));
             }
         };
-
 
         let config_file = self.config.main.repos_config_file.clone();
         let config_file_tmp = config_file.clone() + ".tmp";

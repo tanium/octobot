@@ -6,7 +6,6 @@ use iron::status;
 use iron::headers::ContentType;
 use iron::middleware::{BeforeMiddleware, Handler};
 use iron::modifiers::Header;
-use serde_json;
 use ring::digest;
 use rustc_serialize::hex::ToHex;
 
@@ -60,7 +59,7 @@ impl LoginSessionFilter {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct LoginRequest {
     username: String,
     password: String,
@@ -78,23 +77,13 @@ fn get_session(req: &Request) -> IronResult<String> {
 
 impl Handler for LoginHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let body = match req.get::<bodyparser::Raw>() {
-            Ok(Some(j)) => j,
+        let login_req = match req.get::<bodyparser::Struct<LoginRequest>>() {
+            Ok(Some(r)) => r,
             Err(_) | Ok(None) => {
                 error!("Error reading json");
                 return Ok(Response::with((status::BadRequest, format!("Error reading json"))));
             }
         };
-
-        let login_req: LoginRequest = match serde_json::from_str(&body) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error parsing login request: {}", e);
-                return Ok(Response::with((status::BadRequest,
-                                          format!("Error parsing JSON: {}", e))));
-            }
-        };
-
 
         let success = match self.config.admin {
             None => false,
