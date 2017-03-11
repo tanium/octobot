@@ -12,7 +12,7 @@ app.controller('OctobotController', function($scope) {
 
 app.controller('LoginController', function($scope, $http) {
 
-  $scope.username = 'admin';
+  $scope.username = '';
   $scope.password = '';
 
   $scope.login = function() {
@@ -25,6 +25,7 @@ app.controller('LoginController', function($scope, $http) {
 
     }).catch(function(e) {
       console.log("Error logging in!" + JSON.stringify(e));
+      alert("Access denied");
     });
   };
 });

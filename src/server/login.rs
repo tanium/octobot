@@ -10,6 +10,7 @@ use serde_json;
 use ring::digest;
 use rustc_serialize::hex::ToHex;
 
+use config::Config;
 use server::github_verify::StringError;
 use server::sessions::Sessions;
 
@@ -23,6 +24,7 @@ pub fn hash_password(pass: &str, salt: &str) -> String {
 
 pub struct LoginHandler {
     sessions: Arc<Sessions>,
+    config: Arc<Config>,
 }
 
 pub struct LogoutHandler {
@@ -34,9 +36,10 @@ pub struct LoginSessionFilter {
 }
 
 impl LoginHandler {
-    pub fn new(sessions: Arc<Sessions>) -> LoginHandler {
+    pub fn new(sessions: Arc<Sessions>, config: Arc<Config>) -> LoginHandler {
         LoginHandler {
-            sessions: sessions
+            sessions: sessions,
+            config: config,
         }
     }
 }
@@ -92,12 +95,24 @@ impl Handler for LoginHandler {
             }
         };
 
-        // TODO: validate
 
-        let sess = self.sessions.new_session();
-        let json = format!("{{\"session\": \"{}\"}}", sess);
+        let success = match self.config.admin {
+            None => false,
+            Some(ref admin) => {
+                let hash = hash_password(&login_req.password, &admin.salt);
+                admin.name == login_req.username && hash == admin.pass_hash
+            }
+        };
 
-        Ok(Response::with((status::Ok, Header(ContentType::json()), json)))
+        if success {
+            let sess = self.sessions.new_session();
+            let json = format!("{{\"session\": \"{}\"}}", sess);
+            Ok(Response::with((status::Ok, Header(ContentType::json()), json)))
+
+        } else {
+            Ok(Response::with(status::Unauthorized))
+        }
+
     }
 }
 

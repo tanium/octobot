@@ -42,7 +42,7 @@ pub fn start(config: Config) -> Result<(), String> {
     router.get("/", HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")), "index");
     router.get("/index.js", HtmlHandler::new("index.js", include_str!("../../src/assets/index.js")), "index_js");
 
-    router.post("/auth/login", LoginHandler::new(ui_sessions.clone()), "login");
+    router.post("/auth/login", LoginHandler::new(ui_sessions.clone(), config.clone()), "login");
     router.post("/auth/logout", LogoutHandler::new(ui_sessions.clone()), "logout");
 
     let mut api_chain;

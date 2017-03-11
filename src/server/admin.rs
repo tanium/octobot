@@ -56,7 +56,7 @@ impl UpdateRepos {
 }
 
 impl Handler for GetUsers {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+    fn handle(&self, _: &mut Request) -> IronResult<Response> {
         let users = match serde_json::to_string(&*self.config.users()) {
             Ok(u) => u,
             Err(e) => {
@@ -70,7 +70,7 @@ impl Handler for GetUsers {
 }
 
 impl Handler for GetRepos {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+    fn handle(&self, _: &mut Request) -> IronResult<Response> {
         let repos = match serde_json::to_string(&*self.config.repos()) {
             Ok(u) => u,
             Err(e) => {
