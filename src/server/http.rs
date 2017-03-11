@@ -11,8 +11,8 @@ use server::github_verify;
 use server::github_handler;
 
 pub fn start(config: Config) -> Result<(), String> {
-    let github_session = match github::api::GithubSession::new(&config.github_host,
-                                                               &config.github_token) {
+    let github_session = match github::api::GithubSession::new(&config.github.host,
+                                                               &config.github.api_token) {
         Ok(s) => s,
         Err(e) => panic!("Error initiating github session: {}", e),
     };
@@ -38,7 +38,7 @@ pub fn start(config: Config) -> Result<(), String> {
     router.post("/hooks/github", handler, "github_webhook");
 
     let default_listen = String::from("0.0.0.0:3000");
-    let addr_and_port = match config.listen_addr {
+    let addr_and_port = match config.main.listen_addr {
         Some(ref addr_and_port) => addr_and_port,
         None => &default_listen,
     };
@@ -49,7 +49,7 @@ pub fn start(config: Config) -> Result<(), String> {
     // before first middleware
     chain.link_before(logger_before);
 
-    chain.link_before( github_verify::GithubWebhookVerifier { secret: config.github_secret.clone() });
+    chain.link_before( github_verify::GithubWebhookVerifier { secret: config.github.webhook_secret.clone() });
 
     // after last middleware
     chain.link_after(logger_after);
