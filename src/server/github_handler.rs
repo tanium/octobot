@@ -512,7 +512,10 @@ impl GithubEventHandler {
                         if self.data.forced() &&
                            self.config.repos().notify_force_push(&self.data.repository) &&
                            !pull_request.title.starts_with("WIP:") {
-
+                            let msg = force_push::req(&self.data.repository, pull_request, self.data.before(), self.data.after());
+                            if let Err(e) = self.force_push.send(msg) {
+                                error!("Error sending force push message: {}", e);
+                            }
                         }
                     }
                 }
