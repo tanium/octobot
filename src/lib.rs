@@ -2,7 +2,6 @@ extern crate bodyparser;
 extern crate logger;
 extern crate hyper;
 extern crate iron;
-extern crate persistent;
 extern crate regex;
 extern crate ring;
 extern crate router;
