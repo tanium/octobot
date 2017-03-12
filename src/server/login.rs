@@ -94,9 +94,11 @@ impl Handler for LoginHandler {
         };
 
         if success {
-            let sess = self.sessions.new_session();
-            let json = format!("{{\"session\": \"{}\"}}", sess);
-            Ok(Response::with((status::Ok, Header(ContentType::json()), json)))
+            let sess_id = self.sessions.new_session();
+            let json = json!({
+                "session": sess_id,
+            });
+            Ok(Response::with((status::Ok, Header(ContentType::json()), json.to_string())))
 
         } else {
             Ok(Response::with(status::Unauthorized))
