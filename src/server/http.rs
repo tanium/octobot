@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::io::Read;
 
 use iron::prelude::*;
-use router::Router;
+use iron::middleware::{BeforeMiddleware, Handler};
 use logger::Logger;
 
 use config::Config;
@@ -39,39 +39,39 @@ pub fn start(config: Config) -> Result<(), String> {
 
     let ui_sessions = Arc::new(Sessions::new());
 
-    let mut router = Router::new();
-    router.get("/", HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")), "index");
-    router.get("/login.html", HtmlHandler::new("login.html", include_str!("../../src/assets/login.html")), "login");
-    router.get("/users.html", HtmlHandler::new("users.html", include_str!("../../src/assets/users.html")), "users");
-    router.get("/repos.html", HtmlHandler::new("repos.html", include_str!("../../src/assets/repos.html")), "repos");
-    router.get("/app.js", HtmlHandler::new("app.js", include_str!("../../src/assets/app.js")), "app_js");
-
-    router.post("/auth/login", LoginHandler::new(ui_sessions.clone(), config.clone()), "api_login");
-    router.post("/auth/logout", LogoutHandler::new(ui_sessions.clone()), "api_logout");
-
-    let mut api_chain;
-    {
-        let mut api_router = Router::new();
-        api_router.get("/api/users", admin::GetUsers::new(config.clone()), "api_get_users");
-        api_router.post("/api/users", admin::UpdateUsers::new(config.clone()), "api_update_users");
-        api_router.get("/api/repos", admin::GetRepos::new(config.clone()), "api_get_repos");
-        api_router.post("/api/repos", admin::UpdateRepos::new(config.clone()), "api_update_repos");
-
-        api_chain = Chain::new(api_router);
-        api_chain.link_before(LoginSessionFilter::new(ui_sessions.clone()));
-    }
-    router.any("/api/*", api_chain, "api");
-
-    let mut github_hook = Chain::new(GithubHandler::new(config.clone(), github_session, jira_session));
-    github_hook.link_before( GithubWebhookVerifier { secret: config.github.webhook_secret.clone() });
-    router.post("/hooks/github", github_hook, "hooks_github");
+    let router = router!(
+        // web ui resources. kinda a funny way of doing this maybe, but avoids worries about
+        // path traversal and location of a doc root on deployment, and our resource count is small.
+        index: get "/"           => HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")),
+        login: get "/login.html" => HtmlHandler::new("login.html", include_str!("../../src/assets/login.html")),
+        users: get "/users.html" => HtmlHandler::new("users.html", include_str!("../../src/assets/users.html")),
+        repos: get "/repos.html" => HtmlHandler::new("repos.html", include_str!("../../src/assets/repos.html")),
+        app_js: get "/app.js"    => HtmlHandler::new("app.js", include_str!("../../src/assets/app.js")),
+        // auth
+        auth_login:  post "/auth/login"  => LoginHandler::new(ui_sessions.clone(), config.clone()),
+        auth_logout: post "/auth/logout" => LogoutHandler::new(ui_sessions.clone()),
+        // api
+        api: any "/api/*" => filtered_handler(
+            LoginSessionFilter::new(ui_sessions.clone()),
+            router!(
+                api_get_users:    get  "/api/users" => admin::GetUsers::new(config.clone()),
+                api_update_users: post "/api/users" => admin::UpdateUsers::new(config.clone()),
+                api_get_repos:    get  "/api/repos" => admin::GetRepos::new(config.clone()),
+                api_update_repos: post "/api/repos" => admin::UpdateRepos::new(config.clone()),
+            )
+        ),
+        // hooks
+        hooks_github: post "/hooks/github" => filtered_handler(
+            GithubWebhookVerifier { secret: config.github.webhook_secret.clone() },
+            GithubHandler::new(config.clone(), github_session, jira_session)
+        ),
+    );
 
     let default_listen = String::from("0.0.0.0:3000");
     let addr_and_port = match config.main.listen_addr {
         Some(ref addr_and_port) => addr_and_port,
         None => &default_listen,
     };
-
 
     let mut chain = Chain::new(router);
     let (logger_before, logger_after) = Logger::new(None);
@@ -105,4 +105,10 @@ pub fn start(config: Config) -> Result<(), String> {
         }
         Err(e) => Err(format!("{}", e)),
     }
+}
+
+fn filtered_handler<F: BeforeMiddleware, H: Handler>(filter: F, handler: H) -> Chain {
+    let mut chain = Chain::new(handler);
+    chain.link_before(filter);
+    chain
 }

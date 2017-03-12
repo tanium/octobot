@@ -4,6 +4,7 @@ extern crate hyper;
 extern crate iron;
 extern crate regex;
 extern crate ring;
+#[macro_use]
 extern crate router;
 extern crate rustc_serialize;
 extern crate serde;
