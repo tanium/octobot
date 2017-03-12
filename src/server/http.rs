@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::io::Read;
 
 use iron::prelude::*;
 use router::Router;
@@ -80,6 +81,22 @@ pub fn start(config: Config) -> Result<(), String> {
 
     // after last middleware
     chain.link_after(logger_after);
+
+    // Read off rest of the request body in case it wasn't used
+    // to fix issue where it appears to affect the next request
+    // (may be an http pipelining bug in iron?)
+    chain.link_after(|req: &mut Request, resp: Response| {
+        let mut buffer = [0; 8192];
+        loop {
+            match req.body.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => {
+                    info!("Unused data! {} bytes", read);
+                }
+            }
+        }
+        Ok(resp)
+    });
 
     match Iron::new(chain).http(addr_and_port.as_str()) {
         Ok(_) => {
