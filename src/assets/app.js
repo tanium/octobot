@@ -49,7 +49,7 @@ app.service('sessionHttp', function($http, $state) {
   };
 
   this.logout = function() {
-    self.post('/auth/logout', {}).finally(function() {
+    self.post('/auth/logout', null).finally(function() {
       console.log("logging out!");
       delete sessionStorage['session'];
       $state.go("login");
