@@ -11,9 +11,15 @@
     <script src="/app.js"></script>
   </head>
   <body class="container">
+    <div class="alert alert-danger" role="alert" ng-show="!!errorMessage" style="margin-top: 20px">
+      <button type="button" class="close" aria-label="Close" ng-click="errorMessage = null"><span aria-hidden="true">&times;</span></button>
+      {{errorMessage}}
+    </div>
+
     <div class="page-header">
       <h1>Octobot</h1>
     </div>
+
     <div ng-if="isLoggedIn()">
       <div style="float: right">
         <a ui-sref="users">Users</a> |

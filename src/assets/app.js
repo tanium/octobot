@@ -24,6 +24,28 @@ function isLoggedIn() {
   return !!sessionStorage['session'];
 }
 
+app.run(function($state, $rootScope, sessionHttp) {
+  $rootScope.isLoggedIn = isLoggedIn;
+
+  $rootScope.logout = function() {
+    sessionHttp.logout();
+  };
+
+  $rootScope.$on("$stateChangeStart", function(event, toState, toParams, fromState, fromParams) {
+    if (!isLoggedIn() && toState.name !== "login")  {
+      $state.go("login");
+    }
+  });
+
+  $rootScope.$on('$stateChangeError', function(event) {
+    $state.go('login');
+  });
+
+  if (!isLoggedIn() || !$state.current.name) {
+    $state.go("login");
+  }
+});
+
 app.service('sessionHttp', function($http, $state) {
   var self = this;
   this.get = function(url) {
@@ -65,29 +87,18 @@ app.service('sessionHttp', function($http, $state) {
   }
 });
 
-app.run(function($state, $rootScope, sessionHttp) {
-  $rootScope.isLoggedIn = isLoggedIn;
+app.service("notificationService", function($rootScope, $timeout) {
+  var self = this;
 
-  $rootScope.logout = function() {
-    sessionHttp.logout();
+  this.showError = function(msg) {
+    $rootScope.errorMessage = msg;
+    $timeout(function() {
+      $rootScope.errorMessage = null;
+    }, 5000);
   };
-
-  $rootScope.$on("$stateChangeStart", function(event, toState, toParams, fromState, fromParams) {
-    if (!isLoggedIn() && toState.name !== "login")  {
-      $state.go("login");
-    }
-  });
-
-  $rootScope.$on('$stateChangeError', function(event) {
-    $state.go('login');
-  });
-
-  if (!isLoggedIn() || !$state.current.name) {
-    $state.go("login");
-  }
 });
 
-app.controller('LoginController', function($scope, $state, $http) {
+app.controller('LoginController', function($scope, $state, $http, notificationService) {
 
   $scope.username = '';
   $scope.password = '';
@@ -107,13 +118,23 @@ app.controller('LoginController', function($scope, $state, $http) {
 
     }).catch(function(e) {
       console.log("Error logging in!" + JSON.stringify(e));
-      alert("Access denied");
+      notificationService.showError("Login failed");
     });
   };
 });
 
 
-app.controller('UsersController', function($scope, sessionHttp)  {
+function parseError(e) {
+  if (e && e.message) {
+    return e.message;
+  } else if (e && e.status) {
+    return "HTTP " + e.status;
+  } else {
+    return e;
+  }
+}
+
+app.controller('UsersController', function($scope, sessionHttp, notificationService)  {
   $scope.users = [];
 
   sessionHttp.get('/api/users').then(function(resp) {
@@ -129,7 +150,7 @@ app.controller('UsersController', function($scope, sessionHttp)  {
     if (!isLoggedIn()) {
       return;
     }
-    alert("Error getting users: " + e);
+    notificationService.showError("Error getting users: " + parseError(e));
   });
 
   $scope.addUser = function(host) {
@@ -154,7 +175,7 @@ app.controller('UsersController', function($scope, sessionHttp)  {
   };
 });
 
-app.controller('ReposController', function($scope, sessionHttp)  {
+app.controller('ReposController', function($rootScope, $scope, sessionHttp, notificationService)  {
 
   $scope.repos = [];
 
@@ -185,7 +206,7 @@ app.controller('ReposController', function($scope, sessionHttp)  {
       return;
     }
 
-    alert("Error getting repos: " + e);
+    notificationService.showError("Error getting repos: " + parseError(e));
   });
 
   $scope.addRepo = function(host) {
