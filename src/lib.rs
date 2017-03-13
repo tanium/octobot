@@ -2,12 +2,13 @@ extern crate bodyparser;
 extern crate logger;
 extern crate hyper;
 extern crate iron;
-extern crate persistent;
 extern crate regex;
 extern crate ring;
+#[macro_use]
 extern crate router;
 extern crate rustc_serialize;
 extern crate serde;
+#[macro_use]
 extern crate serde_json;
 extern crate threadpool;
 extern crate toml;

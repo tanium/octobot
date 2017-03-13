@@ -1,28 +1,30 @@
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use toml;
 
 use users;
 use repos;
 
-#[derive(Clone)]
 pub struct Config {
     pub main: MainConfig,
+    pub admin: Option<AdminConfig>,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
 
-    pub users: users::UserConfig,
-    pub repos: repos::RepoConfig,
+    pub users: RwLock<users::UserConfig>,
+    pub repos: RwLock<repos::RepoConfig>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ConfigModel {
     pub main: MainConfig,
+    pub admin: Option<AdminConfig>,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MainConfig {
     pub slack_webhook_url: String,
     pub listen_addr: Option<String>,
@@ -31,14 +33,21 @@ pub struct MainConfig {
     pub clone_root_dir: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AdminConfig {
+    pub name: String,
+    pub salt: String,
+    pub pass_hash: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GithubConfig {
     pub webhook_secret: String,
     pub host: String,
     pub api_token: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct JiraConfig {
     pub host: String,
     pub username: String,
@@ -63,14 +72,87 @@ impl Config {
         Config::new_with_model(ConfigModel::new(), users, repos)
     }
 
-    pub fn new_with_model(config: ConfigModel, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
+    fn new_with_model(config: ConfigModel, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
         Config {
             main: config.main,
+            admin: config.admin,
             github: config.github,
             jira: config.jira,
-            users: users,
-            repos: repos,
+            users: RwLock::new(users),
+            repos: RwLock::new(repos),
         }
+    }
+
+    pub fn save(&self, config_file: &str) -> Result<(), String> {
+        let model = ConfigModel {
+            main: self.main.clone(),
+            admin: self.admin.clone(),
+            github: self.github.clone(),
+            jira: self.jira.clone(),
+        };
+
+        let serialized = match toml::to_string(&model) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Error serializing config: {}", e)),
+        };
+
+        let tmp_file = config_file.to_string() + ".tmp";
+        let bak_file = config_file.to_string() + ".bak";
+
+        let mut file = match fs::File::create(&tmp_file) {
+            Ok(f) => f,
+            Err(e) => return Err(format!("Error opening file: {}", e)),
+        };
+
+        if let Err(e) = file.write_all(serialized.as_bytes()) {
+            return Err(format!("Error writing file: {}", e));
+        }
+
+        if let Err(e) = fs::rename(&config_file, &bak_file) {
+            return Err(format!("Error backing up config file: {}", e));
+        }
+
+        if let Err(e) = fs::rename(&tmp_file, &config_file) {
+            return Err(format!("Error renaming temp file: {}", e));
+        }
+
+        if let Err(e) = fs::remove_file(&bak_file) {
+            info!("Error removing backup file: {}", e);
+        }
+
+        Ok(())
+    }
+
+    pub fn reload_users_repos(&self) -> Result<(), String> {
+        let users = match users::load_config(&self.main.users_config_file) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Error reading user config file: {}", e)),
+        };
+
+        let repos = match repos::load_config(&self.main.repos_config_file) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Error reading repo config file: {}", e)),
+        };
+
+        *self.users.write().unwrap() = users;
+        *self.repos.write().unwrap() = repos;
+        Ok(())
+    }
+
+    pub fn users(&self) -> RwLockReadGuard<users::UserConfig> {
+        self.users.read().unwrap()
+    }
+
+    pub fn users_write(&self) -> RwLockWriteGuard<users::UserConfig> {
+        self.users.write().unwrap()
+    }
+
+    pub fn repos(&self) -> RwLockReadGuard<repos::RepoConfig> {
+        self.repos.read().unwrap()
+    }
+
+    pub fn repos_write(&self) -> RwLockWriteGuard<repos::RepoConfig> {
+        self.repos.write().unwrap()
     }
 }
 
@@ -84,6 +166,7 @@ impl ConfigModel {
                 repos_config_file: String::new(),
                 clone_root_dir: String::new(),
             },
+            admin: None,
             github: GithubConfig {
                 webhook_secret: String::new(),
                 host: String::new(),
@@ -128,8 +211,8 @@ impl JiraConfig {
     }
 }
 
-pub fn parse(config_file: String) -> Result<Config, String> {
-    let mut config_file_open = match fs::File::open(config_file.clone()) {
+pub fn parse(config_file: &str) -> Result<Config, String> {
+    let mut config_file_open = match fs::File::open(config_file) {
         Ok(f) => f,
         Err(e) => return Err(format!("Could not open config file '{}': {}", config_file, e)),
     };
@@ -151,17 +234,10 @@ fn parse_string(config_contents: &str) -> Result<ConfigModel, String> {
 fn parse_string_and_load(config_contents: &str) -> Result<Config, String> {
     let config = try!(parse_string(config_contents));
 
-    let users = match users::load_config(&config.main.users_config_file) {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Error reading user config file: {}", e)),
-    };
+    let the_config = Config::new_with_model(config, users::UserConfig::new(), repos::RepoConfig::new());
+    try!(the_config.reload_users_repos());
 
-    let repos = match repos::load_config(&config.main.repos_config_file) {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Error reading repo config file: {}", e)),
-    };
-
-    Ok(Config::new_with_model(config, users, repos))
+    Ok(the_config)
 }
 
 

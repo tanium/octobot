@@ -8,7 +8,13 @@ use rustc_serialize::hex::FromHex;
 use bodyparser;
 
 #[derive(Debug)]
-struct StringError(String);
+pub struct StringError(String);
+
+impl StringError {
+    pub fn new(val: &str) -> StringError {
+        StringError(val.into())
+    }
+}
 
 impl fmt::Display for StringError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

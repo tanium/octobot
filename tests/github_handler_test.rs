@@ -79,6 +79,10 @@ impl GithubHandlerTest {
 }
 
 fn new_test() -> GithubHandlerTest {
+    new_test_with(None)
+}
+
+fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     let github = Arc::new(MockGithub::new());
     let slack = Rc::new(MockSlack::new(vec![]));
     let (pr_merge_tx, pr_merge_rx) = channel();
@@ -95,7 +99,10 @@ fn new_test() -> GithubHandlerTest {
         .unwrap();
     data.sender = User::new("joe-sender");
 
-    let config = Arc::new(Config::new(UserConfig::new(), repos));
+    let mut config = Config::new(UserConfig::new(), repos);
+    config.jira = jira;
+    let config = Arc::new(config);
+
     let git_clone_manager = Arc::new(GitCloneManager::new(github.clone(), config.clone()));
 
     GithubHandlerTest {
@@ -125,26 +132,20 @@ fn new_test() -> GithubHandlerTest {
 }
 
 fn new_test_with_jira() -> GithubHandlerTest {
-    let mut test = new_test();
+    let jira = Some(JiraConfig {
+        host: "the-jira-host".into(),
+        username: "the-jira-user".into(),
+        password: "the-jira-pass".into(),
+        progress_states: Some(vec!["the-progress".into()]),
+        review_states: Some(vec!["the-review".into()]),
+        resolved_states: Some(vec!["the-resolved".into()]),
+        fixed_resolutions: Some(vec![":boom:".into()]),
+    });
+    let mut test = new_test_with(jira);
 
-    {
-        let mut config: Config = (*test.config).clone();
-        config.jira = Some(JiraConfig {
-            host: "the-jira-host".into(),
-            username: "the-jira-user".into(),
-            password: "the-jira-pass".into(),
-            progress_states: Some(vec!["the-progress".into()]),
-            review_states: Some(vec!["the-review".into()]),
-            resolved_states: Some(vec!["the-resolved".into()]),
-            fixed_resolutions: Some(vec![":boom:".into()]),
-        });
-        test.config = Arc::new(config);
-        test.handler.config = test.config.clone();
-
-        let jira = Arc::new(MockJira::new());
-        test.jira = Some(jira.clone());
-        test.handler.jira_session = Some(jira.clone());
-    }
+    let jira = Arc::new(MockJira::new());
+    test.jira = Some(jira.clone());
+    test.handler.jira_session = Some(jira.clone());
 
     test
 }
@@ -1252,12 +1253,8 @@ fn test_jira_disabled() {
 fn test_jira_push_triggers_version_script() {
     let mut test = new_test_with_jira();
 
-    let mut config: Config = (*test.config).clone();
-    config.repos.insert_info(test.github.github_host(), "some-user/versioning-repo",
-                             repos::RepoInfo::new("the-reviews-channel").with_version_script(Some("echo 1.2.3.4".into())));
-
-    test.config = Arc::new(config);
-    test.handler.config = test.config.clone();
+    test.config.repos_write().insert_info(test.github.github_host(), "some-user/versioning-repo",
+                                     repos::RepoInfo::new("the-reviews-channel").with_version_script(Some("echo 1.2.3.4".into())));
 
     // change the repo to an unconfigured one
     test.handler.data.repository =

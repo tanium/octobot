@@ -1,0 +1,37 @@
+<!doctype html>
+<html ng-app="octobot">
+  <head>
+    <title>Octobot</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-router/0.4.2/angular-ui-router.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
+    <script src="/app.js"></script>
+  </head>
+  <body class="container">
+    <div class="alert alert-danger" role="alert" ng-show="!!errorMessage" style="margin-top: 20px">
+      <button type="button" class="close" aria-label="Close" ng-click="errorMessage = null"><span aria-hidden="true">&times;</span></button>
+      {{errorMessage}}
+    </div>
+    <div class="alert alert-success" role="alert" ng-show="!!successMessage" style="margin-top: 20px">
+      <button type="button" class="close" aria-label="Close" ng-click="successMessage = null"><span aria-hidden="true">&times;</span></button>
+      {{successMessage}}
+    </div>
+
+    <div class="page-header">
+      <h1>Octobot</h1>
+    </div>
+
+    <div ng-if="isLoggedIn()">
+      <div style="float: right">
+        <a ui-sref="users">Users</a> |
+        <a ui-sref="repos">Repos</a> |
+        <a href ng-click="logout()">Logout</a>
+      </div>
+    </div>
+
+    <div ui-view />
+  </body>
+</html>
