@@ -1,7 +1,9 @@
 use std::borrow::Borrow;
 use std::path::Path;
-use std::process::{Command, Stdio};
 use std::sync::Arc;
+
+#[cfg(target_os="linux")]
+use std::process::{Command, Stdio};
 
 use threadpool::ThreadPool;
 
@@ -47,7 +49,7 @@ pub fn comment_repo_version(version_script: &str,
 // Only run version scripts on Linux since firejail is only for Linux and it doesn't
 // seem like a good idea to allow generic code execution without any containerization.
 #[cfg(not(target_os="linux"))]
-fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> {
+fn run_script(_: &str, _: &Path) -> Result<String, String> {
     return Err("Version scripts only supported when running Linux.".into());
 }
 
@@ -185,6 +187,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
     }
 }
 
+#[cfg(target_os="linux")]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,7 +197,6 @@ mod tests {
     extern crate tempdir;
     use self::tempdir::TempDir;
 
-    #[cfg(target_os="linux")]
     #[test]
     fn test_run_script() {
         let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
@@ -211,7 +213,6 @@ mod tests {
         assert_eq!(Ok("1.2.3.4".into()), run_script("bash version.sh", &sub_dir));
     }
 
-    #[cfg(target_os="linux")]
     #[test]
     fn test_run_script_isolation() {
         let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
