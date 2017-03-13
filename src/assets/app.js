@@ -3,20 +3,20 @@
 var app = angular.module('octobot', [ 'ui.router' ]);
 
 app.config(function($stateProvider) {
-    $stateProvider.state("login", {
+    $stateProvider.state('login', {
         url: '/login',
         controller: 'LoginController',
-        templateUrl : "/login.html"
+        templateUrl : '/login.html'
     })
-    .state("users", {
+    .state('users', {
         url: '/users',
         controller: 'UsersController',
-        templateUrl : "/users.html"
+        templateUrl : '/users.html'
     })
-    .state("repos", {
+    .state('repos', {
         url: '/repos',
         controller: 'ReposController',
-        templateUrl : "/repos.html"
+        templateUrl : '/repos.html'
     });
 });
 
@@ -31,9 +31,9 @@ app.run(function($state, $rootScope, sessionHttp) {
     sessionHttp.logout();
   };
 
-  $rootScope.$on("$stateChangeStart", function(event, toState, toParams, fromState, fromParams) {
-    if (!isLoggedIn() && toState.name !== "login")  {
-      $state.go("login");
+  $rootScope.$on('$stateChangeStart', function(event, toState, toParams, fromState, fromParams) {
+    if (!isLoggedIn() && toState.name !== 'login')  {
+      $state.go('login');
     }
   });
 
@@ -42,7 +42,7 @@ app.run(function($state, $rootScope, sessionHttp) {
   });
 
   if (!isLoggedIn() || !$state.current.name) {
-    $state.go("login");
+    $state.go('login');
   }
 });
 
@@ -72,9 +72,9 @@ app.service('sessionHttp', function($http, $state) {
 
   this.logout = function() {
     self.post('/auth/logout', null).finally(function() {
-      console.log("logging out!");
+      console.log('logging out!');
       delete sessionStorage['session'];
-      $state.go("login");
+      $state.go('login');
     });
   }
 
@@ -87,7 +87,7 @@ app.service('sessionHttp', function($http, $state) {
   }
 });
 
-app.service("notificationService", function($rootScope, $timeout) {
+app.service('notificationService', function($rootScope, $timeout) {
   this.showError = function(msg) {
     $rootScope.errorMessage = msg;
     $timeout(function() {
@@ -109,7 +109,7 @@ app.controller('LoginController', function($scope, $state, $http, notificationSe
   $scope.password = '';
 
   if (isLoggedIn()) {
-    $state.go("users");
+    $state.go('users');
   }
 
   $scope.login = function() {
@@ -117,13 +117,13 @@ app.controller('LoginController', function($scope, $state, $http, notificationSe
       username: $scope.username,
       password: $scope.password,
     }).then(function(resp) {
-      notificationService.showSuccess("Logged in successfully");
+      notificationService.showSuccess('Logged in successfully');
       sessionStorage['session'] = resp.data.session;
-      $state.go("users");
+      $state.go('users');
 
     }).catch(function(e) {
-      console.log("Error logging in!" + JSON.stringify(e));
-      notificationService.showError("Login failed");
+      console.log('Error logging in!' + JSON.stringify(e));
+      notificationService.showError('Login failed');
     });
   };
 });
@@ -133,7 +133,7 @@ function parseError(e) {
   if (e && e.message) {
     return e.message;
   } else if (e && e.status) {
-    return "HTTP " + e.status;
+    return 'HTTP ' + e.status;
   } else {
     return e;
   }
@@ -155,11 +155,11 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
     if (!isLoggedIn()) {
       return;
     }
-    notificationService.showError("Error getting users: " + parseError(e));
+    notificationService.showError('Error getting users: ' + parseError(e));
   });
 
   $scope.addUser = function(host) {
-    $scope.users[host]["new-user-" + Math.random()] = {};
+    $scope.users[host]['new-user-' + Math.random()] = {};
   }
 
   $scope.removeUser = function(host, username) {
@@ -177,12 +177,12 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
       }
     }
     sessionHttp.post('/api/users', newUsers).then(function() {
-      notificationService.showSuccess("Updated users succesfully");
+      notificationService.showSuccess('Updated users succesfully');
     }).catch(function(e) {
       if (!isLoggedIn()) {
         return;
       }
-      notificationService.showError("Error updating users: " + parseError(e));
+      notificationService.showError('Error updating users: ' + parseError(e));
     });
   };
 });
@@ -206,7 +206,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
           info.jira_enabled = true;
         }
         if (info.force_push_reapply_statuses != null) {
-          info.force_push_reapply_statuses = info.force_push_reapply_statuses.join(",");
+          info.force_push_reapply_statuses = info.force_push_reapply_statuses.join(',');
         }
       }
     }
@@ -215,11 +215,11 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
       return;
     }
 
-    notificationService.showError("Error getting repos: " + parseError(e));
+    notificationService.showError('Error getting repos: ' + parseError(e));
   });
 
   $scope.addRepo = function(host) {
-    $scope.repos[host]["new-repo-" + Math.random()] = {
+    $scope.repos[host]['new-repo-' + Math.random()] = {
       force_push_notify: true,
       jira_enabled: true,
     };
@@ -239,12 +239,12 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
       }
     }
     sessionHttp.post('/api/repos', newRepos).then(function() {
-      notificationService.showSuccess("Updated repos succesfully");
+      notificationService.showSuccess('Updated repos succesfully');
     }).catch(function(e) {
       if (!isLoggedIn()) {
         return;
       }
-      notificationService.showError("Error updating repos: " + parseError(e));
+      notificationService.showError('Error updating repos: ' + parseError(e));
     });
   };
 
