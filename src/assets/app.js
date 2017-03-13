@@ -169,7 +169,7 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
   }
 
   $scope.saveUsers = function() {
-    // remap to make sure edited usersnames correspodn to keys
+    // remap to make sure edited usernames correspond to keys
     var newUsers = {};
     for (var host in $scope.users) {
       newUsers[host] = {};
