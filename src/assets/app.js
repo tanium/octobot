@@ -142,21 +142,23 @@ function parseError(e) {
 app.controller('UsersController', function($scope, sessionHttp, notificationService)  {
   $scope.users = [];
 
-  sessionHttp.get('/api/users').then(function(resp) {
-    $scope.users = resp.data.users;
+  function refresh() {
+    return sessionHttp.get('/api/users').then(function(resp) {
+      $scope.users = resp.data.users;
 
-    // map it to be more angular friendly
-    for (var host in $scope.users) {
-      for (var username in $scope.users[host]) {
-        $scope.users[host][username]._username = username;
+      // map it to be more angular friendly
+      for (var host in $scope.users) {
+        for (var username in $scope.users[host]) {
+          $scope.users[host][username]._username = username;
+        }
       }
-    }
-  }).catch(function(e) {
-    if (!isLoggedIn()) {
-      return;
-    }
-    notificationService.showError('Error getting users: ' + parseError(e));
-  });
+    }).catch(function(e) {
+      if (!isLoggedIn()) {
+        return;
+      }
+      notificationService.showError('Error getting users: ' + parseError(e));
+    });
+  }
 
   $scope.addUser = function(host) {
     $scope.users[host]['new-user-' + Math.random()] = {};
@@ -177,6 +179,7 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
       }
     }
     sessionHttp.post('/api/users', newUsers).then(function() {
+      refresh();
       notificationService.showSuccess('Updated users succesfully');
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -185,38 +188,43 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
       notificationService.showError('Error updating users: ' + parseError(e));
     });
   };
+
+  // init
+  refresh();
 });
 
 app.controller('ReposController', function($rootScope, $scope, sessionHttp, notificationService)  {
 
   $scope.repos = [];
 
-  sessionHttp.get('/api/repos').then(function(resp) {
-    $scope.repos = resp.data.repos;
+  function refresh() {
+    return sessionHttp.get('/api/repos').then(function(resp) {
+      $scope.repos = resp.data.repos;
 
-    for (var host in $scope.repos) {
-      for (var repo in $scope.repos[host]) {
-        var info = $scope.repos[host][repo];
-        info._repo = repo;
+      for (var host in $scope.repos) {
+        for (var repo in $scope.repos[host]) {
+          var info = $scope.repos[host][repo];
+          info._repo = repo;
 
-        if (info.force_push_notify == null)  {
-          info.force_push_notify = true;
-        }
-        if (info.jira_enabled == null)  {
-          info.jira_enabled = true;
-        }
-        if (info.force_push_reapply_statuses != null) {
-          info.force_push_reapply_statuses = info.force_push_reapply_statuses.join(',');
+          if (info.force_push_notify == null)  {
+            info.force_push_notify = true;
+          }
+          if (info.jira_enabled == null)  {
+            info.jira_enabled = true;
+          }
+          if (info.force_push_reapply_statuses != null) {
+            info.force_push_reapply_statuses = info.force_push_reapply_statuses.join(',');
+          }
         }
       }
-    }
-  }).catch(function(e) {
-    if (!isLoggedIn()) {
-      return;
-    }
+    }).catch(function(e) {
+      if (!isLoggedIn()) {
+        return;
+      }
 
-    notificationService.showError('Error getting repos: ' + parseError(e));
-  });
+      notificationService.showError('Error getting repos: ' + parseError(e));
+    });
+  }
 
   $scope.addRepo = function(host) {
     $scope.repos[host]['new-repo-' + Math.random()] = {
@@ -239,6 +247,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
       }
     }
     sessionHttp.post('/api/repos', newRepos).then(function() {
+      refresh();
       notificationService.showSuccess('Updated repos succesfully');
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -251,4 +260,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
   $scope.removeRepo = function(host, repo) {
     delete $scope.repos[host][repo];
   }
+
+  // init
+  refresh();
 });
