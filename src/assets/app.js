@@ -196,9 +196,6 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
         if (info.force_push_reapply_statuses != null) {
           info.force_push_reapply_statuses = info.force_push_reapply_statuses.join(",");
         }
-        if (info.version_script != null) {
-          info.version_script = info.version_script.join(",");
-        }
       }
     }
   }).catch(function(e) {
@@ -225,10 +222,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
         var info = $scope.repos[host][key];
         newRepos[host][info._repo] = info;
         if (info.force_push_reapply_statuses) {
-          info.force_push_reapply_statuses = info.force_push_reapply_statuses.split(/\s*[,;]\s*/);
-        }
-        if (info.version_script) {
-          info.version_script = info.version_script.split(/\s*[,;]\s*/);
+          info.force_push_reapply_statuses = info.force_push_reapply_statuses.split(/\s*,\s*/);
         }
       }
     }
