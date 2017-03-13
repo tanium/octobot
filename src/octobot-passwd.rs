@@ -31,7 +31,7 @@ fn main() {
    SystemRandom::new().fill(&mut salt_bytes).expect("get random");
    let salt: String = salt_bytes.to_hex().to_string();
 
-   let pass_hash = login::hash_password(&pass1, &salt);
+   let pass_hash = login::store_password(&pass1, &salt);
 
    config.admin = Some(config::AdminConfig {
        name: admin_name,

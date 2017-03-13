@@ -6,19 +6,36 @@ use iron::status;
 use iron::headers::ContentType;
 use iron::middleware::{BeforeMiddleware, Handler};
 use iron::modifiers::Header;
-use ring::digest;
-use rustc_serialize::hex::ToHex;
+use ring::pbkdf2;
+use rustc_serialize::hex::{ToHex, FromHex};
 
 use config::Config;
 use server::github_verify::StringError;
 use server::sessions::Sessions;
 
-pub fn hash_password(pass: &str, salt: &str) -> String {
-    let mut ctx = digest::Context::new(&digest::SHA256);
-    ctx.update(salt.as_bytes());
-    ctx.update(pass.as_bytes());
+static PBKDF2_PRF: &'static pbkdf2::PRF = &pbkdf2::HMAC_SHA256;
+const CREDENTIAL_LEN: usize = 32; // digest::SHA256.output_len()
+const PBKDF2_ITERATIONS: usize = 20000;
 
-    ctx.finish().as_ref().to_hex()
+pub fn store_password(pass: &str, salt: &str) -> String {
+    let mut pass_hash = [0u8; CREDENTIAL_LEN];
+    pbkdf2::derive(PBKDF2_PRF, PBKDF2_ITERATIONS, salt.as_bytes(),
+                   pass.as_bytes(), &mut pass_hash);
+
+    pass_hash.to_hex()
+}
+
+pub fn verify_password(pass: &str, salt: &str, pass_hash: &str) -> bool {
+    let pass_hash = match pass_hash.from_hex() {
+        Ok(h) => h,
+        Err(e) => {
+            error!("Invalid password hash stored: {} -- {}", pass_hash, e);
+            return false
+        }
+    };
+    pbkdf2::verify(PBKDF2_PRF, PBKDF2_ITERATIONS, salt.as_bytes(),
+                   pass.as_bytes(),
+                   &pass_hash).is_ok()
 }
 
 pub struct LoginHandler {
@@ -88,8 +105,8 @@ impl Handler for LoginHandler {
         let success = match self.config.admin {
             None => false,
             Some(ref admin) => {
-                let hash = hash_password(&login_req.password, &admin.salt);
-                admin.name == login_req.username && hash == admin.pass_hash
+                let pw_correct = verify_password(&login_req.password, &admin.salt, &admin.pass_hash);
+                admin.name == login_req.username && pw_correct
             }
         };
 
@@ -123,5 +140,18 @@ impl BeforeMiddleware for LoginSessionFilter {
         } else {
             Err(IronError::new(StringError::new("Invalid session"), status::Forbidden))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_password() {
+        let pw_hash = store_password("the-pass", "some-salt");
+        assert_eq!(true, verify_password("the-pass", "some-salt", &pw_hash));
+        assert_eq!(false, verify_password("wrong-pass", "some-salt", &pw_hash));
+        assert_eq!(false, verify_password("the-pass", "wrong-salt", &pw_hash));
     }
 }
