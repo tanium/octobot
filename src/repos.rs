@@ -13,7 +13,7 @@ pub struct RepoInfo {
     // white-listed statuses to reapply on force-push w/ identical diff
     pub force_push_reapply_statuses: Option<Vec<String>>,
     pub jira_enabled: Option<bool>,
-    pub version_script: Option<Vec<String>>,
+    pub version_script: Option<String>,
 }
 
 // maps repo name to repo config
@@ -62,7 +62,7 @@ impl RepoInfo {
     }
 
 
-    pub fn with_version_script(self, value: Option<Vec<String>>) -> RepoInfo {
+    pub fn with_version_script(self, value: Option<String>) -> RepoInfo {
         let mut info = self;
         info.version_script = value;
         info
@@ -132,7 +132,7 @@ impl RepoConfig {
         }
     }
 
-    pub fn version_script(&self, repo: &github::Repo) -> Option<&Vec<String>> {
+    pub fn version_script(&self, repo: &github::Repo) -> Option<&String> {
         match self.lookup_info(repo) {
             None => None,
             Some(ref info) => {
