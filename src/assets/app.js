@@ -88,8 +88,6 @@ app.service('sessionHttp', function($http, $state) {
 });
 
 app.service("notificationService", function($rootScope, $timeout) {
-  var self = this;
-
   this.showError = function(msg) {
     $rootScope.errorMessage = msg;
     $timeout(function() {
