@@ -96,6 +96,13 @@ app.service("notificationService", function($rootScope, $timeout) {
       $rootScope.errorMessage = null;
     }, 5000);
   };
+
+  this.showSuccess = function(msg) {
+    $rootScope.successMessage = msg;
+    $timeout(function() {
+      $rootScope.successMessage = null;
+    }, 3000);
+  };
 });
 
 app.controller('LoginController', function($scope, $state, $http, notificationService) {
@@ -112,7 +119,7 @@ app.controller('LoginController', function($scope, $state, $http, notificationSe
       username: $scope.username,
       password: $scope.password,
     }).then(function(resp) {
-      console.log("Logged in!");
+      notificationService.showSuccess("Logged in successfully");
       sessionStorage['session'] = resp.data.session;
       $state.go("users");
 
@@ -171,7 +178,14 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
         newUsers[host][info._username] = info;
       }
     }
-    sessionHttp.post('/api/users', newUsers);
+    sessionHttp.post('/api/users', newUsers).then(function() {
+      notificationService.showSuccess("Updated users succesfully");
+    }).catch(function(e) {
+      if (!isLoggedIn()) {
+        return;
+      }
+      notificationService.showError("Error updating users: " + parseError(e));
+    });
   };
 });
 
@@ -226,7 +240,14 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
         }
       }
     }
-    sessionHttp.post('/api/repos', newRepos);
+    sessionHttp.post('/api/repos', newRepos).then(function() {
+      notificationService.showSuccess("Updated repos succesfully");
+    }).catch(function(e) {
+      if (!isLoggedIn()) {
+        return;
+      }
+      notificationService.showError("Error updating repos: " + parseError(e));
+    });
   };
 
   $scope.removeRepo = function(host, repo) {
