@@ -12,7 +12,7 @@ use git_clone_manager::GitCloneManager;
 use jira;
 use worker;
 
-pub fn comment_repo_version(version_script: &Vec<String>,
+pub fn comment_repo_version(version_script: &str,
                             jira_config: &JiraConfig,
                             jira: &jira::api::Session,
                             github: &github::api::Session,
@@ -44,16 +44,28 @@ pub fn comment_repo_version(version_script: &Vec<String>,
     Ok(())
 }
 
-fn run_script(version_script: &Vec<String>, clone_dir: &Path) -> Result<String, String> {
-    debug!("Running version script: {:?}", version_script);
-    let cmd = match version_script.iter().next() {
-        Some(c) => c,
-        None => return Err("Version script is empty!".into()),
-    };
-    let args: Vec<&String> = version_script.iter().skip(1).collect();
+// Only run version scripts on Linux since firejail is only for Linux and it doesn't
+// seem like a good idea to allow generic code execution without any containerization.
+#[cfg(not(target_os="linux"))]
+fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> {
+    return Err("Version scripts only supported when running Linux.".into());
+}
 
-    let cmd = Command::new(cmd)
-        .args(&args)
+#[cfg(target_os="linux")]
+fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> {
+    debug!("Running version script: {}", version_script);
+    let cmd = Command::new("firejail")
+        .arg("--overlay-tmpfs")
+        .arg("--quiet")
+        .arg("--private=.")
+        .arg("--private-etc=hostname")
+        .arg("--net=none")
+        .arg("--private-tmp")
+        .arg("--private-dev")
+        .arg("-c")
+        .arg("bash")
+        .arg("-c")
+        .arg(version_script)
         .current_dir(clone_dir)
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
@@ -62,25 +74,36 @@ fn run_script(version_script: &Vec<String>, clone_dir: &Path) -> Result<String, 
 
     let child = match cmd {
         Ok(c) => c,
-        Err(e) => return Err(format!("Error starting version script: {}", e)),
+        Err(e) => return Err(format!("Error starting version script (script: {}): {}", version_script, e)),
     };
 
     let result = match child.wait_with_output() {
         Ok(r) => r,
-        Err(e) => return Err(format!("Error running version script: {}", e)),
+        Err(e) => return Err(format!("Error running version script (script: {}): {}", version_script, e)),
     };
 
     let mut output = String::new();
     if result.stdout.len() > 0 {
         output += String::from_utf8_lossy(&result.stdout).as_ref();
+        // skip over firejail output (even with --quiet)
+        if output.starts_with("OverlayFS") {
+            let new_lines: Vec<String> =
+                output.lines().skip(1)
+                              .skip_while(|s| s.trim().len() == 0)
+                              .map(|s| s.into())
+                              .collect();
+            output = new_lines.join("\n");
+        }
+
     }
 
     if !result.status.success() {
         if result.stderr.len() > 0 {
             output += String::from_utf8_lossy(&result.stderr).as_ref();
         }
-        Err(format!("Error running version script (exit code {}):\n{}",
+        Err(format!("Error running version script (exit code {}; script: {}):\n{}",
                     result.status.code().unwrap_or(-1),
+                    version_script,
                     output))
     } else {
 
@@ -159,5 +182,68 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+
+    extern crate tempdir;
+    use self::tempdir::TempDir;
+
+    #[cfg(target_os="linux")]
+    #[test]
+    fn test_run_script() {
+        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+
+        let sub_dir = dir.path().join("subdir");
+        fs::create_dir(&sub_dir).expect("create subdir");
+
+        let script_file = sub_dir.join("version.sh");
+        {
+            let mut file = fs::File::create(&script_file).expect("create file");
+            file.write_all(b"echo 1.2.3.4").expect("write file");
+        }
+
+        assert_eq!(Ok("1.2.3.4".into()), run_script("bash version.sh", &sub_dir));
+    }
+
+    #[cfg(target_os="linux")]
+    #[test]
+    fn test_run_script_isolation() {
+        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+
+        let parent_file = dir.path().join("private.txt");
+        {
+            let mut file = fs::File::create(&parent_file).expect("create file");
+            file.write_all(b"I am a file").expect("write file");
+        }
+
+        let sub_dir = dir.path().join("subdir");
+        fs::create_dir(&sub_dir).expect("create subdir");
+
+        let script_file = sub_dir.join("version.sh");
+        {
+            let mut file = fs::File::create(&script_file).expect("create file");
+            file.write_all(br#"
+            # no `set -e` on purpose: try to do them all!
+            rm ../private.txt
+            rm version.sh
+            touch ../muahaha.txt
+            touch muahaha.txt
+
+            echo 1.2.3.4
+            "#).expect("write file");
+        }
+
+        assert_eq!(Ok("1.2.3.4".into()), run_script("bash version.sh", &sub_dir));
+
+        assert!(parent_file.exists(), "version scripts should not be able to delete files outside its directory");
+        assert!(script_file.exists(), "version scripts should not be able to delete files inside its directory");
+        assert!(!dir.path().join("muahaha.txt").exists(), "version scripts should not be able to create files outside its directory");
+        assert!(!sub_dir.join("muahaha.txt").exists(), "version scripts should not be able to create files inside its directory");
     }
 }

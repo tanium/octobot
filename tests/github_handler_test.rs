@@ -1254,7 +1254,7 @@ fn test_jira_push_triggers_version_script() {
 
     let mut config: Config = (*test.config).clone();
     config.repos.insert_info(test.github.github_host(), "some-user/versioning-repo",
-                             repos::RepoInfo::new("the-reviews-channel").with_version_script(Some(vec!["echo".into(), "1.2.3.4".into()])));
+                             repos::RepoInfo::new("the-reviews-channel").with_version_script(Some("echo 1.2.3.4".into())));
 
     test.config = Arc::new(config);
     test.handler.config = test.config.clone();
