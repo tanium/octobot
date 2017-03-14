@@ -10,15 +10,15 @@
         <th>&nbsp;</th>
       </tr>
 
-      <tr ng-repeat="(username, info) in users">
+      <tr ng-repeat="info in users">
         <td>
-          <input type="text" class="form-control" ng-model="info._username" placeholder="GitHub username" required>
+          <input type="text" class="form-control" ng-model="info.github" placeholder="GitHub username" required>
         </td>
         <td>
           <input type="text" class="form-control" ng-model="info.slack" placeholder="Slack username" required>
         </td>
         <td>
-          <a href ng-click="removeUser(host, username)"><span class="glyphicon glyphicon-trash" /></a>
+          <a href ng-click="removeUser(host, info.github)"><span class="glyphicon glyphicon-trash" /></a>
         </td>
       </tr>
     </table>

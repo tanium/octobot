@@ -1253,8 +1253,11 @@ fn test_jira_disabled() {
 fn test_jira_push_triggers_version_script() {
     let mut test = new_test_with_jira();
 
-    test.config.repos_write().insert_info(test.github.github_host(), "some-user/versioning-repo",
-                                     repos::RepoInfo::new("the-reviews-channel").with_version_script(Some("echo 1.2.3.4".into())));
+    test.config.repos_write().insert_info(
+        test.github.github_host(),
+        repos::RepoInfo::new("some-user/versioning-repo", "the-reviews-channel")
+            .with_version_script(Some("echo 1.2.3.4".into()))
+    );
 
     // change the repo to an unconfigured one
     test.handler.data.repository =

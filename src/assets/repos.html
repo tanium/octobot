@@ -10,9 +10,9 @@
         <th>Config</th>
         <th>&nbsp;</th>
       </tr>
-      <tr ng-repeat="(repo, info) in repos">
+      <tr ng-repeat="info in repos">
         <td>
-          <input type="text" class="form-control" ng-model="info._repo" placeholder="Repo" required>
+          <input type="text" class="form-control" ng-model="info.repo" placeholder="Repo" required>
         </td>
         <td>
           <input type="text" class="form-control" ng-model="info.channel" placeholder="Slack channel" required>
@@ -34,7 +34,7 @@
           </div>
         </td>
         <td>
-          <a href ng-click="removeRepo(host, repo)"><span class="glyphicon glyphicon-trash" /></a>
+          <a href ng-click="removeRepo(host, info.repo)"><span class="glyphicon glyphicon-trash" /></a>
         </td>
       </tr>
     </table>
