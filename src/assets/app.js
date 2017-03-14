@@ -140,11 +140,11 @@ function parseError(e) {
 }
 
 app.controller('UsersController', function($scope, sessionHttp, notificationService)  {
-  $scope.users = {};
+  $scope.usersMap = {};
 
   function refresh() {
     return sessionHttp.get('/api/users').then(function(resp) {
-      $scope.users = resp.data.users;
+      $scope.usersMap = resp.data.users;
 
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -155,20 +155,20 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
   }
 
   $scope.addUser = function(host) {
-    $scope.users[host].push({});
+    $scope.usersMap[host].push({});
   }
 
   $scope.removeUser = function(host, github_username) {
-    for (var i = 0; i < $scope.users[host].length; ++i) {
-      if ($scope.users[host][i].github == github_username) {
-        $scope.users[host].splice(i, 1);
+    for (var i = 0; i < $scope.usersMap[host].length; ++i) {
+      if ($scope.usersMap[host][i].github == github_username) {
+        $scope.usersMap[host].splice(i, 1);
         return;
       }
     }
   }
 
   $scope.saveUsers = function() {
-    sessionHttp.post('/api/users', $scope.users).then(function() {
+    sessionHttp.post('/api/users', $scope.usersMap).then(function() {
       refresh();
       notificationService.showSuccess('Updated users succesfully');
     }).catch(function(e) {
@@ -185,15 +185,15 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
 
 app.controller('ReposController', function($rootScope, $scope, sessionHttp, notificationService)  {
 
-  $scope.repos = {};
+  $scope.reposMap = {};
 
   function refresh() {
     return sessionHttp.get('/api/repos').then(function(resp) {
-      $scope.repos = resp.data.repos;
+      $scope.reposMap = resp.data.repos;
 
-      for (var host in $scope.repos) {
-        for (var repo in $scope.repos[host]) {
-          var info = $scope.repos[host][repo];
+      for (var host in $scope.reposMap) {
+        for (var repo in $scope.reposMap[host]) {
+          var info = $scope.reposMap[host][repo];
           info._repo = repo;
 
           if (info.force_push_notify == null)  {
@@ -217,7 +217,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
   }
 
   $scope.addRepo = function(host) {
-    $scope.repos[host].push({
+    $scope.reposMap[host].push({
       force_push_notify: true,
       jira_enabled: true,
     });
@@ -226,10 +226,10 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
   $scope.saveRepos = function() {
     // remap to make sure edited usersnames correspodn to keys
     var newRepos = {};
-    for (var host in $scope.repos) {
+    for (var host in $scope.reposMap) {
       newRepos[host] = [];
-      for (var i = 0; i < $scope.repos[host].length; ++i) {
-        var info = $scope.repos[host][i];
+      for (var i = 0; i < $scope.reposMap[host].length; ++i) {
+        var info = $scope.reposMap[host][i];
         if (info.force_push_reapply_statuses) {
           info.force_push_reapply_statuses = info.force_push_reapply_statuses.split(/\s*,\s*/);
         }
@@ -248,9 +248,9 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
   };
 
   $scope.removeRepo = function(host, repo) {
-    for (var i = 0; i < $scope.repos[host].length; ++i) {
-      if ($scope.repos[host][i].repo == repo) {
-        $scope.repos[host].splice(i, 1);
+    for (var i = 0; i < $scope.reposMap[host].length; ++i) {
+      if ($scope.reposMap[host][i].repo == repo) {
+        $scope.reposMap[host].splice(i, 1);
         return;
       }
     }
