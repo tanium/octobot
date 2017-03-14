@@ -1,5 +1,5 @@
 <h3>Repos</h3>
-<form class="form-inline">
+<form class="form-inline" ng-submit="saveRepos()">
   <div ng-repeat="(host, repos) in reposMap">
     <h4>Host: {{host}}</h4>
 
@@ -39,10 +39,10 @@
       </tr>
     </table>
     <div style="margin: 10px">
-      <button class="btn btn-sm btn-default" ng-click="addRepo(host)">Add repo</button>
+      <button type="button" class="btn btn-sm btn-default" ng-click="addRepo(host)">Add repo</button>
     </div>
   </div>
   <div style="margin: 10px">
-    <button class="btn btn-sm btn-primary" ng-click="saveRepos()">Save Repos</button>
+    <button type="submit" class="btn btn-sm btn-primary">Save Repos</button>
   </div>
 </form>

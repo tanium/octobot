@@ -1,5 +1,5 @@
 <h3>Users</h3>
-<form class="form-inline">
+<form class="form-inline" ng-submit="saveRepos()">
   <div ng-repeat="(host, users) in usersMap">
     <h4>Host: {{host}}</h4>
 
@@ -23,10 +23,10 @@
       </tr>
     </table>
     <div style="margin: 10px">
-      <button class="btn btn-sm btn-default" ng-click="addUser(host)">Add user</button>
+      <button type="button" class="btn btn-sm btn-default" ng-click="addUser(host)">Add user</button>
     </div>
   </div>
   <div style="margin: 10px">
-    <button class="btn btn-sm btn-primary" ng-click="saveUsers()">Save Users</button>
+    <button type="submit" class="btn btn-sm btn-primary" ng-click="saveUsers()">Save Users</button>
   </div>
 </form>
