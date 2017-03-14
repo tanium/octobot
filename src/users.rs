@@ -8,14 +8,12 @@ use github;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct UserInfo {
+    pub github: String,
     pub slack: String,
 }
 
-// maps git user name to user config
-pub type UserMap = HashMap<String, UserInfo>;
-
-// maps github host to user map
-pub type UserHostMap = HashMap<String, UserMap>;
+// maps github host to list of users
+pub type UserHostMap = HashMap<String, Vec<UserInfo>>;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct UserConfig {
@@ -41,9 +39,11 @@ impl UserConfig {
     pub fn insert(&mut self, host: &str, git_user: &str, slack_user: &str) {
         self.users
             .entry(host.to_string())
-            .or_insert(UserMap::new())
-            .insert(git_user.to_string(),
-                    UserInfo { slack: slack_user.to_string() });
+            .or_insert(vec![])
+            .push(UserInfo {
+                github: git_user.to_string(),
+                slack: slack_user.to_string(),
+            });
     }
 
     // our slack convention is to use '.' but github replaces dots with dashes.
@@ -77,7 +77,7 @@ impl UserConfig {
             Ok(u) => {
                 u.host_str()
                     .and_then(|h| self.users.get(h))
-                    .and_then(|m| m.get(login))
+                    .and_then(|users| users.iter().find(|u| u.github == login))
             }
             Err(_) => None,
         }

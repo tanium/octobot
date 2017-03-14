@@ -1,6 +1,6 @@
 <h3>Repos</h3>
-<form class="form-inline">
-  <div ng-repeat="(host, repos) in repos">
+<form class="form-inline" ng-submit="saveRepos()">
+  <div ng-repeat="(host, repos) in reposMap">
     <h4>Host: {{host}}</h4>
 
     <table class="table">
@@ -10,9 +10,9 @@
         <th>Config</th>
         <th>&nbsp;</th>
       </tr>
-      <tr ng-repeat="(repo, info) in repos">
+      <tr ng-repeat="info in repos">
         <td>
-          <input type="text" class="form-control" ng-model="info._repo" placeholder="Repo" required>
+          <input type="text" class="form-control" ng-model="info.repo" placeholder="Repo" required>
         </td>
         <td>
           <input type="text" class="form-control" ng-model="info.channel" placeholder="Slack channel" required>
@@ -26,7 +26,7 @@
           </div>
           <div class="row">
             <div class="col-md-5">Force-push status reapply</div>
-            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.force_push_reapply_statuses" style="width:100%"></div>
+            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.force_push_reapply_statuses" ng-list=", " style="width:100%"></div>
           </div>
           <div class="row">
             <div class="col-md-5">Version script</div>
@@ -34,15 +34,15 @@
           </div>
         </td>
         <td>
-          <a href ng-click="removeRepo(host, repo)"><span class="glyphicon glyphicon-trash" /></a>
+          <a href ng-click="removeRepo(host, info.repo)"><span class="glyphicon glyphicon-trash" /></a>
         </td>
       </tr>
     </table>
     <div style="margin: 10px">
-      <button class="btn btn-sm btn-default" ng-click="addRepo(host)">Add repo</button>
+      <button type="button" class="btn btn-sm btn-default" ng-click="addRepo(host)">Add repo</button>
     </div>
   </div>
   <div style="margin: 10px">
-    <button class="btn btn-sm btn-primary" ng-click="saveRepos()">Save Repos</button>
+    <button type="submit" class="btn btn-sm btn-primary">Save Repos</button>
   </div>
 </form>

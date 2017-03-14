@@ -8,6 +8,9 @@ use github;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RepoInfo {
+    // github org or full repo name. i.e. "some-org" or "some-org/octobot"
+    pub repo: String,
+    // slack channel to send all messages to
     pub channel: String,
     pub force_push_notify: Option<bool>,
     // white-listed statuses to reapply on force-push w/ identical diff
@@ -16,11 +19,8 @@ pub struct RepoInfo {
     pub version_script: Option<String>,
 }
 
-// maps repo name to repo config
-pub type RepoMap = HashMap<String, RepoInfo>;
-
-// maps github host to repos map
-pub type RepoHostMap = HashMap<String, RepoMap>;
+// maps github host to a list of repos
+pub type RepoHostMap = HashMap<String, Vec<RepoInfo>>;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RepoConfig {
@@ -39,8 +39,9 @@ pub fn load_config(file: &str) -> std::io::Result<RepoConfig> {
 }
 
 impl RepoInfo {
-    pub fn new(channel: &str) -> RepoInfo {
+    pub fn new(repo: &str, channel: &str) -> RepoInfo {
         RepoInfo {
+            repo: repo.into(),
             channel: channel.into(),
             force_push_notify: None,
             force_push_reapply_statuses: None,
@@ -61,7 +62,6 @@ impl RepoInfo {
         info
     }
 
-
     pub fn with_version_script(self, value: Option<String>) -> RepoInfo {
         let mut info = self;
         info.version_script = value;
@@ -74,15 +74,15 @@ impl RepoConfig {
         RepoConfig { repos: RepoHostMap::new() }
     }
 
-    pub fn insert(&mut self, host: &str, repo_name: &str, channel: &str) {
-        self.insert_info(host, repo_name, RepoInfo::new(channel));
+    pub fn insert(&mut self, host: &str, repo: &str, channel: &str) {
+        self.insert_info(host, RepoInfo::new(repo, channel));
     }
 
-    pub fn insert_info(&mut self, host: &str, repo_name: &str, info: RepoInfo) {
+    pub fn insert_info(&mut self, host: &str, info: RepoInfo) {
         self.repos
             .entry(host.to_string())
-            .or_insert(RepoMap::new())
-            .insert(repo_name.to_string(), info);
+            .or_insert(vec![])
+            .push(info);
     }
 
     pub fn lookup_channel(&self, repo: &github::Repo) -> Option<String> {
@@ -149,9 +149,12 @@ impl RepoConfig {
             Ok(u) => {
                 u.host_str()
                     .and_then(|h| self.repos.get(h))
-                    .and_then(|m| {
-                        m.get(&repo.full_name)
-                            .or(m.get(repo.owner.login()))
+                    .and_then(|repos| {
+                        // try to find most-specific first, then look for org-level match
+                        match repos.iter().find(|r| r.repo == repo.full_name) {
+                            Some(r) => Some(r),
+                            None => repos.iter().find(|r| r.repo == repo.owner.login())
+                        }
                     })
             }
             Err(_) => None,
@@ -167,6 +170,8 @@ mod tests {
     #[test]
     fn lookup_channel_by_repo_full_name() {
         let mut repos = RepoConfig::new();
+        // insert org-level one first in the list to make sure most specific matches first
+        repos.insert("git.company.com", "some-user", "SOME_OTHER_CHANNEL");
         repos.insert("git.company.com", "some-user/the-repo", "the-repo-reviews");
 
         let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
@@ -206,14 +211,11 @@ mod tests {
     fn test_notify_force_push() {
         let mut repos = RepoConfig::new();
         repos.insert_info("git.company.com",
-                          "some-user/noisy-repo-by-default",
-                          RepoInfo::new("reviews"));
+                          RepoInfo::new("some-user/noisy-repo-by-default", "reviews"));
         repos.insert_info("git.company.com",
-                          "some-user/noisy-repo-on-purpose",
-                          RepoInfo::new("reviews").with_force_push(Some(true)));
+                          RepoInfo::new("some-user/noisy-repo-on-purpose", "reviews").with_force_push(Some(true)));
         repos.insert_info("git.company.com",
-                          "some-user/quiet-repo",
-                          RepoInfo::new("reviews").with_force_push(Some(false)));
+                          RepoInfo::new("some-user/quiet-repo", "reviews").with_force_push(Some(false)));
         {
             let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo")
                 .unwrap();
@@ -244,14 +246,11 @@ mod tests {
     fn test_jira_enabled() {
         let mut repos = RepoConfig::new();
         repos.insert_info("git.company.com",
-                          "some-user/noisy-repo-by-default",
-                          RepoInfo::new("reviews"));
+                          RepoInfo::new("some-user/noisy-repo-by-default", "reviews"));
         repos.insert_info("git.company.com",
-                          "some-user/noisy-repo-on-purpose",
-                          RepoInfo::new("reviews").with_jira(Some(true)));
+                          RepoInfo::new("some-user/noisy-repo-on-purpose", "reviews").with_jira(Some(true)));
         repos.insert_info("git.company.com",
-                          "some-user/quiet-repo",
-                          RepoInfo::new("revies").with_jira(Some(false)));
+                          RepoInfo::new("some-user/quiet-repo", "reviews").with_jira(Some(false)));
 
         {
             let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo")
