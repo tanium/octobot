@@ -202,9 +202,6 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
           if (info.jira_enabled == null)  {
             info.jira_enabled = true;
           }
-          if (info.force_push_reapply_statuses != null) {
-            info.force_push_reapply_statuses = info.force_push_reapply_statuses.join(',');
-          }
         }
       }
     }).catch(function(e) {
@@ -224,19 +221,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
   }
 
   $scope.saveRepos = function() {
-    // remap to make sure edited usersnames correspodn to keys
-    var newRepos = {};
-    for (var host in $scope.reposMap) {
-      newRepos[host] = [];
-      for (var i = 0; i < $scope.reposMap[host].length; ++i) {
-        var info = $scope.reposMap[host][i];
-        if (info.force_push_reapply_statuses) {
-          info.force_push_reapply_statuses = info.force_push_reapply_statuses.split(/\s*,\s*/);
-        }
-        newRepos[host].push(info);
-      }
-    }
-    sessionHttp.post('/api/repos', newRepos).then(function() {
+    sessionHttp.post('/api/repos', $scope.reposMap).then(function() {
       refresh();
       notificationService.showSuccess('Updated repos succesfully');
     }).catch(function(e) {
