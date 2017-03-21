@@ -60,7 +60,7 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
         .arg("--overlay-tmpfs")
         .arg("--quiet")
         .arg("--private=.")
-        .arg("--private-etc=hostname")
+        .arg("--private-etc=hostname alternatives")
         .arg("--net=none")
         .arg("--private-tmp")
         .arg("--private-dev")
