@@ -107,10 +107,7 @@ impl<'a> Merger<'a> {
         if body.len() != 0 {
             body += "\n\n";
         }
-        body += format!("(cherry-picked from {}, PR #{})",
-                        &commit_hash[0..7],
-                        pr_number)
-            .as_str();
+        body += format!("(cherry-picked from {}, PR #{})", commit_hash, pr_number).as_str();
 
         // change commit message
         try!(git.run_with_stdin(&["commit", "--amend", "-F", "-"], &format!("{}\n\n{}", title, body)));
