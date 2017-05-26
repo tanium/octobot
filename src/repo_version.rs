@@ -86,7 +86,9 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
 
     let mut output = String::new();
     if result.stdout.len() > 0 {
-        output += String::from_utf8_lossy(&result.stdout).as_ref();
+        let stdout = String::from_utf8_lossy(&result.stdout).into_owned();
+        debug!("Version script stdout: \n---\n{}\n---", stdout);
+        output += &stdout;
         // skip over firejail output (even with --quiet)
         if output.starts_with("OverlayFS") {
             let new_lines: Vec<String> =
@@ -96,13 +98,16 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
                               .collect();
             output = new_lines.join("\n");
         }
+    }
 
+    let mut stderr = String::new();
+    if result.stderr.len() > 0 {
+        stderr = String::from_utf8_lossy(&result.stderr).into_owned();
+        debug!("Version script stderr: \n---\n{}\n---", stderr);
     }
 
     if !result.status.success() {
-        if result.stderr.len() > 0 {
-            output += String::from_utf8_lossy(&result.stderr).as_ref();
-        }
+        output += &stderr;
         Err(format!("Error running version script (exit code {}; script: {}):\n{}",
                     result.status.code().unwrap_or(-1),
                     version_script,
