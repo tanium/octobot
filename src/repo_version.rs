@@ -14,6 +14,9 @@ use git_clone_manager::GitCloneManager;
 use jira;
 use worker;
 
+#[cfg(target_os="linux")]
+use docker;
+
 pub fn comment_repo_version(version_script: &str,
                             jira_config: &JiraConfig,
                             jira: &jira::api::Session,
@@ -56,25 +59,32 @@ fn run_script(_: &str, _: &Path) -> Result<String, String> {
 #[cfg(target_os="linux")]
 fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> {
     debug!("Running version script: {}", version_script);
-    let cmd = Command::new("firejail")
-        .arg("--overlay-tmpfs")
-        .arg("--quiet")
-        .arg("--private=.")
-        .arg("--private-etc=hostname alternatives")
-        .arg("--net=none")
-        .arg("--private-tmp")
-        .arg("--private-dev")
-        .arg("-c")
-        .arg("bash")
-        .arg("-c")
-        .arg(version_script)
-        .current_dir(clone_dir)
-        .stdin(Stdio::null())
-        .stderr(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn();
+    let mut cmd = Command::new("firejail");
+    cmd.arg("--quiet")
+       .arg("--private=.")
+       .arg("--private-etc=hostname alternatives")
+       .arg("--net=none")
+       .arg("--private-tmp")
+       .arg("--private-dev")
+       .arg("-c")
+       .arg("bash")
+       .arg("-c")
+       .arg(version_script)
+       .current_dir(clone_dir)
+       .stdin(Stdio::null())
+       .stderr(Stdio::piped())
+       .stdout(Stdio::piped());
 
-    let child = match cmd {
+    if docker::in_docker() {
+        // Otherwise we get "Warning: an existing sandbox was detected"
+        // https://github.com/netblue30/firejail/issues/189
+        cmd.arg("--force");
+    } else {
+        // couldn't get overlayfs to work inside docker
+        cmd.arg("--overlay-tmpfs");
+    }
+
+    let child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => return Err(format!("Error starting version script (script: {}): {}", version_script, e)),
     };
@@ -254,8 +264,11 @@ mod tests {
         assert_eq!(Ok("1.2.3.4".into()), run_script("bash version.sh", &sub_dir));
 
         assert!(parent_file.exists(), "version scripts should not be able to delete files outside its directory");
-        assert!(script_file.exists(), "version scripts should not be able to delete files inside its directory");
         assert!(!dir.path().join("muahaha.txt").exists(), "version scripts should not be able to create files outside its directory");
-        assert!(!sub_dir.join("muahaha.txt").exists(), "version scripts should not be able to create files inside its directory");
+
+        if !docker::in_docker() {
+            assert!(script_file.exists(), "version scripts should not be able to delete files inside its directory");
+            assert!(!sub_dir.join("muahaha.txt").exists(), "version scripts should not be able to create files inside its directory");
+        }
     }
 }

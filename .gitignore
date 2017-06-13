@@ -3,3 +3,4 @@ target
 config.toml
 repos.json
 users.json
+.docker-tmp

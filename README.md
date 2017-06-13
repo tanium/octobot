@@ -18,10 +18,15 @@ commented on again with the PR title/body, and transitioned to Resolved: Fixed.
 Setup
 -----
 
-- Install rust: https://www.rustup.rs/
-- Install openssl: `apt-get install libssl-dev build-essential`
-- Deploy! `deploy-here.sh`
+- Install docker
+- Run `build.py`
 
+This will result in docker image called `octobot:latest` that you can deploy as follows:
+
+    docker run --privileged -d  -p 80:3000 -v /path/to/host/storage/:/data --name octobot --hostname octobot octobot`
+
+* Make sure that whatever path you map `/data` to is a persistent location since this is where configuration is stored.
+* Create a `config.toml` file in this location before deploying (see below).
 
 ### Configuration
 
@@ -31,8 +36,8 @@ config.toml
 
     [main]
     slack_webhook_url = "<slack webhook URL>"
-    users_config_file = "/home/octobot/users.json"
-    repos_config_file = "/home/octobot/repos.json"
+    users_config_file = "/data/users.json"
+    repos_config_file = "/data/repos.json"
     clone_root_dir = "/home/octobot/repos"
 
     [github]
@@ -93,9 +98,8 @@ As for the octobot user token, you need to:
 
 ### Supervisor
 
-supervisord is a great way to run octobot. The built-in deploy-here.sh
-assumes you are running with supervisord. All you have to do is add a
-configuration like this to /etc/supervisor/conf.d/octobot.conf:
+supervisord is a great way to run octobot if you don't want to use docker.
+All you have to do is add a configuration like this to /etc/supervisor/conf.d/octobot.conf:
 
     [program:octobot]
     command=/home/octobot/.cargo/bin/octobot /home/octobot/config.toml

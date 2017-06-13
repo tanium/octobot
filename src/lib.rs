@@ -37,3 +37,6 @@ pub mod slack;
 pub mod users;
 pub mod util;
 pub mod worker;
+
+#[cfg(target_os="linux")]
+mod docker;
