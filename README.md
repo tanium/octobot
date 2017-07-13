@@ -23,7 +23,7 @@ Setup
 
 This will result in docker image called `octobot:latest` that you can deploy as follows:
 
-    docker run --privileged -d  -p 80:3000 -v /path/to/host/storage/:/data --name octobot --hostname octobot octobot`
+    docker run --restart=always --privileged -d  -p 80:3000 -v /path/to/host/storage/:/data --name octobot --hostname octobot octobot`
 
 * Make sure that whatever path you map `/data` to is a persistent location since this is where configuration is stored.
 * Create a `config.toml` file in this location before deploying (see below).
