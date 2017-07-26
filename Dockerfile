@@ -2,7 +2,7 @@ FROM ubuntu:latest
 
 # install run deps
 RUN apt-get update \
-  && apt-get install -y ca-certificates git firejail \
+  && apt-get install -y ca-certificates git firejail gosu \
   && rm -fr /var/lib/apt/lists/
 
 RUN groupadd -r octobot
@@ -17,7 +17,6 @@ ADD ./.docker-tmp/bin $HOME/bin
 
 RUN chown -R octobot:octobot $HOME/bin
 
-USER octobot
 VOLUME /data
 WORKDIR $HOME/bin
 
@@ -26,9 +25,11 @@ EXPOSE 3000
 ENV USER=octobot
 ENV RUST_LOG=info
 
+ENV PATH=$PATH:$HOME/bin
 ENV GIT_AUTHOR_NAME octobot
 ENV GIT_AUTHOR_EMAIL octobot@tanium.com
 ENV GIT_COMMITTER_NAME $GIT_AUTHOR_NAME
 ENV GIT_COMMITTER_EMAIL $GIT_AUTHOR_EMAIL
 
-CMD  $HOME/bin/octobot /data/config.toml
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["octobot", "/data/config.toml"]
