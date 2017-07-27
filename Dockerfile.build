@@ -25,7 +25,8 @@ RUN cargo build; exit 0
 RUN cargo build --release; exit 0
 
 # now add source
-ADD . /usr/src/app
+ADD src /usr/src/app/src
+ADD tests /usr/src/app/tests
 
 ENV GIT_AUTHOR_NAME octobot
 ENV GIT_AUTHOR_EMAIL octobot@tanium.com
