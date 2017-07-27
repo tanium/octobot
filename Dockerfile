@@ -14,6 +14,7 @@ RUN mkdir -p $HOME/bin
 RUN mkdir -p $HOME/logs
 
 ADD ./.docker-tmp/bin $HOME/bin
+ADD docker-entrypoint.sh $HOME/bin/
 
 RUN chown -R octobot:octobot $HOME/bin
 
@@ -31,5 +32,5 @@ ENV GIT_AUTHOR_EMAIL octobot@tanium.com
 ENV GIT_COMMITTER_NAME $GIT_AUTHOR_NAME
 ENV GIT_COMMITTER_EMAIL $GIT_AUTHOR_EMAIL
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["octobot", "/data/config.toml"]
