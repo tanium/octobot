@@ -2,7 +2,7 @@ FROM ubuntu:latest
 
 # install build deps
 RUN apt-get update \
-  && apt-get install -y ca-certificates build-essential curl
+  && apt-get install -y ca-certificates build-essential curl libssl-dev
 
 # install run deps for testing
 RUN apt-get update \
