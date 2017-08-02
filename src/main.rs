@@ -2,8 +2,6 @@ extern crate env_logger;
 extern crate octobot;
 extern crate time;
 extern crate thread_id;
-
-#[macro_use]
 extern crate log;
 
 use octobot::config;
