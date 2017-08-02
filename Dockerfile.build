@@ -4,9 +4,15 @@ FROM ubuntu:latest
 RUN apt-get update \
   && apt-get install -y ca-certificates build-essential curl
 
-# install deps for testing
-RUN apt-get update && apt-get install -y libssl-dev git firejail \
-    && rm -fr /var/lib/apt/lists/
+# install run deps for testing
+RUN apt-get update \
+  && apt-get install -y \
+     ca-certificates \
+     git \
+     firejail \
+     gosu \
+     python \
+  && rm -fr /var/lib/apt/lists/
 
 ENV PATH $PATH:/root/.cargo/bin
 ENV RUST_VERSION 1.15.1
