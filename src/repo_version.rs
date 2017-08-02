@@ -235,6 +235,23 @@ mod tests {
     }
 
     #[test]
+    fn test_run_python_script() {
+        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+
+        let sub_dir = dir.path().join("subdir");
+        fs::create_dir(&sub_dir).expect("create subdir");
+
+        let script_file = sub_dir.join("version.py");
+        {
+            let mut file = fs::File::create(&script_file).expect("create file");
+            file.write_all(b"print '1.2.3.4'").expect("write file");
+        }
+
+        assert_eq!(Ok("1.2.3.4".into()), run_script("python version.py", &sub_dir));
+    }
+
+
+    #[test]
     fn test_run_script_isolation() {
         let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
 

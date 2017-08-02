@@ -2,7 +2,12 @@ FROM ubuntu:latest
 
 # install run deps
 RUN apt-get update \
-  && apt-get install -y ca-certificates git firejail gosu \
+  && apt-get install -y \
+     ca-certificates \
+     git \
+     firejail \
+     gosu \
+     python \
   && rm -fr /var/lib/apt/lists/
 
 RUN groupadd -r octobot
