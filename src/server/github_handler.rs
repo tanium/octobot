@@ -342,13 +342,17 @@ impl GithubEventHandler {
                                                .color(color)
                                                .build()];
 
+                    let mut participants = self.all_participants(&pull_request);
+                    for username in util::get_mentioned_usernames(review.body().trim()) {
+                        participants.push(github::User::new(username))
+                    }
+
                     self.messenger.send_to_all(&msg,
                                                &attachments,
                                                &pull_request.user,
                                                &self.data.sender,
                                                &self.data.repository,
-                                               &self.all_participants(&pull_request));
-
+                                               &participants);
                 }
             }
         }
@@ -361,6 +365,7 @@ impl GithubEventHandler {
         if comment.body().trim().len() == 0 {
             return;
         }
+
         if comment.user().login() == self.github_session.user().login() {
             info!("Ignoring message from octobot ({}): {}",
                   self.github_session.user().login(),
@@ -377,12 +382,17 @@ impl GithubEventHandler {
                                    .title_link(comment.html_url())
                                    .build()];
 
+        let mut participants = self.all_participants(pull_request);
+        for username in util::get_mentioned_usernames(comment.body()) {
+            participants.push(github::User::new(username))
+        }
+
         self.messenger.send_to_all(&msg,
                                    &attachments,
                                    pull_request.user(),
                                    &self.data.sender,
                                    &self.data.repository,
-                                   &self.all_participants(pull_request));
+                                   &participants);
 
     }
 

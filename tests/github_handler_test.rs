@@ -282,14 +282,14 @@ fn test_issue_comment() {
     test.handler.data.comment = Some(Comment {
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
-        body: Some("I think this file should change".into()),
+        body: Some("I think this file should change, cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 5, Ok(some_commits()));
 
-    let attach = vec![SlackAttachmentBuilder::new("I think this file should change")
+    let attach = vec![SlackAttachmentBuilder::new("I think this file should change, cc: @mentioned-participant")
                           .title("joe.reviewer said:")
                           .title_link("http://the-comment")
                           .build()];
@@ -300,6 +300,7 @@ fn test_issue_comment() {
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
         SlackCall::new("@bob.author", msg, attach.clone()),
+        SlackCall::new("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -315,14 +316,14 @@ fn test_pull_request_comment() {
     test.handler.data.comment = Some(Comment {
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
-        body: Some("I think this file should change".into()),
+        body: Some("I think this file should change, cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
-    let attach = vec![SlackAttachmentBuilder::new("I think this file should change")
+    let attach = vec![SlackAttachmentBuilder::new("I think this file should change, cc: @mentioned-participant")
                           .title("joe.reviewer said:")
                           .title_link("http://the-comment")
                           .build()];
@@ -333,6 +334,7 @@ fn test_pull_request_comment() {
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
         SlackCall::new("@bob.author", msg, attach.clone()),
+        SlackCall::new("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -347,14 +349,14 @@ fn test_pull_request_review_commented() {
     test.handler.data.pull_request = some_pr();
     test.handler.data.review = Some(Review {
         state: "commented".into(),
-        body: Some("I think this file should change".into()),
+        body: Some("I think this file should change, cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
-    let attach = vec![SlackAttachmentBuilder::new("I think this file should change")
+    let attach = vec![SlackAttachmentBuilder::new("I think this file should change, cc: @mentioned-participant")
                           .title("joe.reviewer said:")
                           .title_link("http://the-comment")
                           .build()];
@@ -365,6 +367,7 @@ fn test_pull_request_review_commented() {
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
         SlackCall::new("@bob.author", msg, attach.clone()),
+        SlackCall::new("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -401,7 +404,7 @@ fn test_pull_request_comments_ignore_octobot() {
     test.handler.data.comment = Some(Comment {
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
-        body: Some("I think this file should change".into()),
+        body: Some("I think this file should change, cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("octobot"),
     });
@@ -421,14 +424,14 @@ fn test_pull_request_review_approved() {
     test.handler.data.pull_request = some_pr();
     test.handler.data.review = Some(Review {
         state: "approved".into(),
-        body: Some("I like it!".into()),
+        body: Some("I like it! cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
-    let attach = vec![SlackAttachmentBuilder::new("I like it!")
+    let attach = vec![SlackAttachmentBuilder::new("I like it! cc: @mentioned-participant")
                           .title("Review: Approved")
                           .title_link("http://the-comment")
                           .color("good")
@@ -440,6 +443,7 @@ fn test_pull_request_review_approved() {
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
         SlackCall::new("@bob.author", msg, attach.clone()),
+        SlackCall::new("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -454,14 +458,14 @@ fn test_pull_request_review_changes_requested() {
     test.handler.data.pull_request = some_pr();
     test.handler.data.review = Some(Review {
         state: "changes_requested".into(),
-        body: Some("It needs some work!".into()),
+        body: Some("It needs some work! cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
-    let attach = vec![SlackAttachmentBuilder::new("It needs some work!")
+    let attach = vec![SlackAttachmentBuilder::new("It needs some work! cc: @mentioned-participant")
                           .title("Review: Changes Requested")
                           .title_link("http://the-comment")
                           .color("danger")
@@ -472,6 +476,7 @@ fn test_pull_request_review_changes_requested() {
         SlackCall::new("@the.pr.owner", msg, attach.clone()),
         SlackCall::new("@assign1", msg, attach.clone()),
         SlackCall::new("@bob.author", msg, attach.clone()),
+        SlackCall::new("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
