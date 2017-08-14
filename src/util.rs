@@ -10,7 +10,7 @@ fn find_github_username(name: &str) -> Option<&str> {
     if name.len() == 0 { return None }
 
     for (pos, character) in name.char_indices().rev() {
-		//remove trailing non-alphanumeric characters
+        //remove trailing non-alphanumeric characters
         if character.is_alphanumeric() {
             return Some(name.split_at(pos + 1).0)
         }
