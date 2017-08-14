@@ -7,35 +7,13 @@ pub fn make_link(url: &str, text: &str) -> String {
 }
 
 fn find_github_username(name: &str) -> Option<&str> {
-    let mut prev: char = ' ';
-
     if name.len() == 0 { return None }
 
-    for (pos, character) in name.char_indices() {
-        //All characters in usernames must be alphanumeric,
-        //with the exception of '-'
-        if !character.is_alphanumeric() && character != '-' {
-            return Some(name.split_at(pos).0)
+    for (pos, character) in name.char_indices().rev() {
+		//remove trailing non-alphanumeric characters
+        if character.is_alphanumeric() {
+            return Some(name.split_at(pos + 1).0)
         }
-
-        //User names cannot contain consecutive '-''s
-        if character == '-' && prev == '-' {
-            if name.len() > 2 {
-                return Some(name.split_at(pos - 1).0)
-            } else {
-                return None
-            }
-        }
-
-        //User names cannot end with '-'
-        if character == '-' && pos == (name.len() - 1) {
-            if name.len() > 1 {
-                return Some(name.split_at(pos).0)
-            } else {
-                return None
-            }
-        }
-        prev = character;
     }
     Some(name)
 }
@@ -73,14 +51,9 @@ mod tests {
         assert_eq!(Some("user"), find_github_username("user"));
         assert_eq!(Some("user"), find_github_username("user,"));
         assert_eq!(Some("user-tanium"), find_github_username("user-tanium"));
-        assert_eq!(Some("user-tanium"), find_github_username("user-tanium-"));
-        assert_eq!(Some("user"), find_github_username("user--tanium"));
         assert_eq!(Some("a"), find_github_username("a"));
-        assert_eq!(Some("a"), find_github_username("a-"));
-        assert_eq!(Some("a"), find_github_username("a--"));
+        assert_eq!(Some("a"), find_github_username("a,"));
         assert_eq!(None, find_github_username(""));
-        assert_eq!(None, find_github_username("-"));
-        assert_eq!(None, find_github_username("--"));
     }
 
     #[test]
