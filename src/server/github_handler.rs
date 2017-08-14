@@ -343,7 +343,7 @@ impl GithubEventHandler {
                                                .build()];
 
                     let mut participants = self.all_participants(&pull_request);
-                    for username in util::get_mentioned_usernames(review.body().trim()) {
+                    for username in util::get_mentioned_usernames(review.body()) {
                         participants.push(github::User::new(username))
                     }
 
