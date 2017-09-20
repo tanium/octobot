@@ -11,6 +11,7 @@ use config::{Config, JiraConfig};
 use git::Git;
 use github;
 use git_clone_manager::GitCloneManager;
+use messenger;
 use jira;
 use worker;
 
@@ -197,7 +198,11 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                                              &req.branch,
                                                              &req.commit_hash,
                                                              &req.commits) {
-                            error!("Error running version script: {}", e);
+                            let msg = format!("Error running version script: {}", e);
+                            error!("{}", msg);
+                            let messenger = messenger::from_config(config.clone());
+                            messenger.send_to_channel(&msg, &vec![], &req.repo);
+
                             // resolve the issue with no version
                             jira::workflow::resolve_issue(&req.branch, None, &req.commits, jira, jira_config);
                         }
