@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use iron::prelude::*;
 use iron::status::{self, Status};
@@ -29,6 +29,7 @@ pub struct GithubHandler {
     pr_merge_worker: Worker<PRMergeRequest>,
     repo_version_worker: Worker<RepoVersionRequest>,
     force_push_worker: Worker<ForcePushRequest>,
+    recent_events: Mutex<Vec<String>>,
 }
 
 pub struct GithubEventHandler {
@@ -75,12 +76,46 @@ impl GithubHandler {
                                                       config.clone(),
                                                       github_session.clone(),
                                                       git_clone_manager.clone()),
+            recent_events: Mutex::new(Vec::new()),
         }
     }
 }
 
+fn check_unique_event(event: String, events: &mut Vec<String>, trim_at: usize, trim_to: usize) -> bool {
+    let unique = !events.contains(&event);
+
+    if unique {
+        events.push(event);
+        if events.len() > trim_at {
+            // reverse so that that we keep recent events
+            events.reverse();
+            events.truncate(trim_to);
+            events.reverse();
+        }
+    }
+
+    unique
+}
+
 impl Handler for GithubHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        let event_id: String = match req.headers.get_raw("x-github-delivery") {
+            Some(ref h) if h.len() == 1 => String::from_utf8_lossy(&h[0]).into_owned(),
+            None | Some(..) => {
+                let msg = "Expected to find exactly one event id header";
+                error!("{}", msg);
+                return Ok(Response::with((status::BadRequest, msg)));
+            }
+        };
+        {
+            let mut recent_events = self.recent_events.lock().unwrap();
+            if !check_unique_event(event_id.clone(), &mut recent_events, 1000, 100) {
+                let msg = format!("Duplicate X-Github-Delivery header: {}", event_id);
+                error!("{}", msg);
+                return Ok(Response::with((status::BadRequest, msg)));
+            }
+        }
+
         let event: String = match req.headers.get_raw("x-github-event") {
             Some(ref h) if h.len() == 1 => String::from_utf8_lossy(&h[0]).into_owned(),
             None | Some(..) => {
@@ -606,5 +641,34 @@ impl GithubEventHandler {
         if let Err(e) = self.pr_merge.send(req) {
             error!("Error sending merge request message: {}", e)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_unique_event() {
+        let trim_at = 5;
+        let trim_to = 2;
+        let mut events = vec![];
+
+        assert!(check_unique_event("A".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["A"], events);
+
+        assert!(check_unique_event("B".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["A", "B"], events);
+        assert!(!check_unique_event("B".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["A", "B"], events);
+
+        assert!(check_unique_event("C".into(), &mut events, trim_at, trim_to));
+        assert!(check_unique_event("D".into(), &mut events, trim_at, trim_to));
+        assert!(check_unique_event("E".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["A", "B", "C", "D", "E"], events);
+
+        // next one should trigger a trim!
+        assert!(check_unique_event("F".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["E", "F"], events);
     }
 }
