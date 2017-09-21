@@ -13,6 +13,7 @@ use github;
 use git_clone_manager::GitCloneManager;
 use messenger;
 use jira;
+use slack::SlackAttachmentBuilder;
 use worker;
 
 #[cfg(target_os="linux")]
@@ -198,10 +199,15 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                                              &req.branch,
                                                              &req.commit_hash,
                                                              &req.commits) {
-                            let msg = format!("Error running version script: {}", e);
-                            error!("{}", msg);
+                            error!("Error running version script {}: {}", version_script, e);
                             let messenger = messenger::from_config(config.clone());
-                            messenger.send_to_channel(&msg, &vec![], &req.repo);
+
+                            let attach = SlackAttachmentBuilder::new(&e)
+                                .title(version_script.clone())
+                                .color("danger")
+                                .build();
+
+                            messenger.send_to_channel("Error running version script", &vec![attach], &req.repo);
 
                             // resolve the issue with no version
                             jira::workflow::resolve_issue(&req.branch, None, &req.commits, jira, jira_config);
