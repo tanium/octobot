@@ -92,28 +92,34 @@ impl<'a> Merger<'a> {
         try!(git.run(&["cherry-pick", "-X", "ignore-all-space", commit_hash]));
 
         let desc = try!(git.get_commit_desc(commit_hash));
-
-        // grab original title and strip out the PR number at the end
-        let pr_regex = Regex::new(r"(\s*\(#\d+\))+$").unwrap();
-        let orig_title = pr_regex.replace(&desc.0, "");
-        // strip out 'release' from the prefix to keep titles shorter
-        let release_branch_regex = Regex::new(r"^release/").unwrap();
-        let title = format!("{}->{}: {}",
-                            orig_base_branch,
-                            release_branch_regex.replace(target_branch, ""),
-                            orig_title);
-        let mut body = desc.1;
-
-        if body.len() != 0 {
-            body += "\n\n";
-        }
-        body += format!("(cherry-picked from {}, PR #{})", commit_hash, pr_number).as_str();
+        let desc = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch);
 
         // change commit message
-        try!(git.run_with_stdin(&["commit", "--amend", "-F", "-"], &format!("{}\n\n{}", title, body)));
+        try!(git.run_with_stdin(&["commit", "--amend", "-F", "-"], &format!("{}\n\n{}", &desc.0, &desc.1)));
 
-        Ok((title, body))
+        Ok(desc)
     }
+}
+
+fn make_merge_desc(orig_desc: (String, String), commit_hash: &str, pr_number: u32,
+                   target_branch: &str, orig_base_branch: &str) -> (String, String) {
+    // grab original title and strip out the PR number at the end
+    let pr_regex = Regex::new(r"(\s*\(#\d+\))+$").unwrap();
+    let orig_title = pr_regex.replace(&orig_desc.0, "");
+    // strip out 'release' from the prefix to keep titles shorter
+    let release_branch_regex = Regex::new(r"^release/").unwrap();
+    let title = format!("{}->{}: {}",
+                        orig_base_branch,
+                        release_branch_regex.replace(target_branch, ""),
+                        orig_title);
+    let mut body = orig_desc.1;
+
+    if body.len() != 0 {
+        body += "\n\n";
+    }
+    body += format!("(cherry-picked from {}, PR #{})", commit_hash, pr_number).as_str();
+
+    (title, body)
 }
 
 #[derive(Debug)]
@@ -179,5 +185,40 @@ impl worker::Runner<PRMergeRequest> for Runner {
                                         &req.repo);
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_make_merge_desc() {
+        let desc = make_merge_desc(
+            (String::from("Yay, I made a change (#99)"), String::from("here is more data about it")),
+            "abcdef", 99, "release/target_branch", "source_branch");
+
+        assert_eq!(desc.0, "source_branch->target_branch: Yay, I made a change");
+        assert_eq!(desc.1, "here is more data about it\n\n(cherry-picked from abcdef, PR #99)");
+    }
+
+    #[test]
+    fn test_make_merge_desc_no_body() {
+        let desc = make_merge_desc(
+            (String::from("Yay, I made a change (#99)"), String::from("")),
+            "abcdef", 99, "release/target_branch", "source_branch");
+
+        assert_eq!(desc.0, "source_branch->target_branch: Yay, I made a change");
+        assert_eq!(desc.1, "(cherry-picked from abcdef, PR #99)");
+    }
+
+    #[test]
+    fn test_make_merge_desc_no_release_branch() {
+        let desc = make_merge_desc(
+            (String::from("Yay, I made a change (#99)"), String::from("")),
+            "abcdef", 99, "other_branch", "source_branch");
+
+        assert_eq!(desc.0, "source_branch->other_branch: Yay, I made a change");
+        assert_eq!(desc.1, "(cherry-picked from abcdef, PR #99)");
     }
 }
