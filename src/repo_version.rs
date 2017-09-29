@@ -269,7 +269,6 @@ mod tests {
         assert_eq!(Ok("1.2.3.4".into()), run_script("python version.py", &sub_dir));
     }
 
-    #[ignore]
     #[test]
     fn test_run_script_isolation() {
         let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
