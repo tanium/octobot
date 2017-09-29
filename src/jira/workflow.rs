@@ -46,7 +46,7 @@ fn get_all_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
     get_jira_keys(commits.iter().map(|c| c.message().to_string()).collect())
 }
 
-pub fn get_jira_project(jira_key: &str) -> &str {
+fn get_jira_project(jira_key: &str) -> &str {
     let re = Regex::new(r"^([A-Za-z]+)(-[0-9]+)?$").unwrap();
 
     match re.captures(&jira_key) {
