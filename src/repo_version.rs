@@ -67,15 +67,7 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
        .arg("--private-etc=hostname alternatives")
        .arg("--net=none")
        .arg("--private-tmp")
-       .arg("--private-dev")
-       .arg("-c")
-       .arg("bash")
-       .arg("-c")
-       .arg(version_script)
-       .current_dir(clone_dir)
-       .stdin(Stdio::null())
-       .stderr(Stdio::piped())
-       .stdout(Stdio::piped());
+       .arg("--private-dev");
 
     if docker::in_docker() {
         // Otherwise we get "Warning: an existing sandbox was detected"
@@ -85,6 +77,16 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
         // couldn't get overlayfs to work inside docker
         cmd.arg("--overlay-tmpfs");
     }
+
+    cmd.arg("-c")
+       .arg("bash")
+       .arg("-c")
+       .arg(version_script)
+       .current_dir(clone_dir)
+       .stdin(Stdio::null())
+       .stderr(Stdio::piped())
+       .stdout(Stdio::piped());
+
 
     let child = match cmd.spawn() {
         Ok(c) => c,
@@ -260,7 +262,6 @@ mod tests {
 
         assert_eq!(Ok("1.2.3.4".into()), run_script("python version.py", &sub_dir));
     }
-
 
     #[test]
     fn test_run_script_isolation() {
