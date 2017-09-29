@@ -56,6 +56,7 @@ config.toml
     review_states = [ "Pending Review" ]
     resolved_states = [ "Resolved", "Done" ]
     fixed_resolutions = [ "Fixed", "Done" ]
+    fix_version_field = "fixVersions"
 
 
 users.json

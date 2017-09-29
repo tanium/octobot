@@ -35,11 +35,24 @@ fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
 fn get_referenced_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
     let fixed = get_fixed_jira_keys(commits);
 
-    let mut refd = get_jira_keys(commits.iter().map(|c| c.message().to_string()).collect());
+    let mut refd = get_all_jira_keys(commits);
 
     // only return ones not marked as fixed
     refd.retain(|s| fixed.iter().position(|s2| s == s2).is_none());
     refd
+}
+
+fn get_all_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
+    get_jira_keys(commits.iter().map(|c| c.message().to_string()).collect())
+}
+
+pub fn get_jira_project(jira_key: &str) -> &str {
+    let re = Regex::new(r"^([A-Za-z]+)(-[0-9]+)?$").unwrap();
+
+    match re.captures(&jira_key) {
+        Some(c) => c.get(1).map_or(jira_key, |m| m.as_str()),
+        None => jira_key,
+    }
 }
 
 pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::api::Session, config: &JiraConfig) {
@@ -125,6 +138,25 @@ pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushComm
             if let Err(e) = jira.comment_issue(&key, &ref_msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
+
+        }
+    }
+}
+
+pub fn add_version(maybe_version: Option<&str>, commits: &Vec<PushCommit>, jira: &jira::api::Session) {
+    if let Some(version) = maybe_version {
+        for key in get_all_jira_keys(commits) {
+            let proj = get_jira_project(&key);
+            if let Err(e) = jira.add_version(proj, version) {
+                error!("Error adding version {} to project {}: {}", version, proj, e);
+                return;
+            }
+
+            if let Err(e) = jira.assign_fix_version(&key, version) {
+                error!("Error assigning version {} to key {}: {}", version, key, e);
+                return;
+            }
+
         }
     }
 }
@@ -218,4 +250,10 @@ mod tests {
         assert_eq!(None, pick_transition(&vec!["something-else".into()], &vec![t1.clone(), t2.clone()]));
     }
 
+    #[test]
+    fn test_get_jira_projectt() {
+        assert_eq!("SERVER", get_jira_project("SERVER-123"));
+        assert_eq!("BUILD", get_jira_project("BUILD"));
+        assert_eq!("doesn't match", get_jira_project("doesn't match"));
+    }
 }

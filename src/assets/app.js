@@ -202,6 +202,9 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
           if (info.jira_enabled == null)  {
             info.jira_enabled = true;
           }
+          if (info.jira_versions_enabled == null)  {
+            info.jira_versions_enabled = true;
+          }
         }
       }
     }).catch(function(e) {
@@ -217,6 +220,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
     $scope.reposMap[host].push({
       force_push_notify: true,
       jira_enabled: true,
+      jira_versions_enabled: true,
     });
   }
 

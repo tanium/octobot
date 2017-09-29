@@ -24,6 +24,7 @@ fn new_test() -> JiraWorkflowTest {
         review_states: Some(vec!["reviewing1".into()]),
         resolved_states: Some(vec!["resolved1".into(), "resolved2".into()]),
         fixed_resolutions: Some(vec!["it-is-fixed".into()]),
+        fix_version_field: Some("the-versions".into()),
     };
 
     JiraWorkflowTest {
@@ -173,4 +174,18 @@ fn test_resolve_issue_with_resolution() {
     test.jira.mock_transition_issue("SER-1", &req, Ok(()));
 
     jira::workflow::resolve_issue("release/99", Some("5.6.7"), &vec![commit], &test.jira, &test.config);
+}
+
+#[test]
+fn test_add_version() {
+    let test = new_test();
+    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
+
+    test.jira.mock_add_version("CLI", "5.6.7", Ok(()));
+    test.jira.mock_add_version("SER", "5.6.7", Ok(()));
+
+    test.jira.mock_assign_fix_version("CLI-45", "5.6.7", Ok(()));
+    test.jira.mock_assign_fix_version("SER-1", "5.6.7", Ok(()));
+
+    jira::workflow::add_version(Some("5.6.7"), &vec![commit], &test.jira);
 }

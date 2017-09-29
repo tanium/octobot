@@ -7,6 +7,7 @@ use serde_json;
 use serde::ser::Serialize;
 use serde::de::Deserialize;
 
+use config::JiraConfig;
 use jira::models::*;
 
 pub trait Session : Send + Sync {
@@ -15,10 +16,14 @@ pub trait Session : Send + Sync {
     fn transition_issue(&self, key: &str, transition: &TransitionRequest) -> Result<(), String>;
 
     fn comment_issue(&self, key: &str, comment: &str) -> Result<(), String>;
+
+    fn add_version(&self, proj: &str, version: &str) -> Result<(), String>;
+    fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String>;
 }
 
 pub struct JiraSession {
     client: JiraClient,
+    fix_version_field: String,
 }
 
 #[derive(Deserialize)]
@@ -26,13 +31,19 @@ struct AuthResp {
     pub name: String,
 }
 
+// TODO: would be nice to specialize for () return type...
+#[derive(Deserialize)]
+struct VoidResp {
+    pub fix_json_parse: Option<String>,
+}
+
 impl JiraSession {
-    pub fn new(host: &str, user: &str, pass: &str) -> Result<JiraSession, String> {
+    pub fn new(config: &JiraConfig) -> Result<JiraSession, String> {
         let jira_base;
-        if host.starts_with("http") {
-            jira_base = host.into();
+        if config.host.starts_with("http") {
+            jira_base = config.host.clone();
         } else {
-            jira_base = format!("https://{}", host);
+            jira_base = format!("https://{}", config.host);
         }
 
         let api_base = format!("{}/rest/api/2", jira_base);
@@ -40,8 +51,8 @@ impl JiraSession {
         let client = JiraClient {
             api_base: api_base,
             jira_base: jira_base.clone(),
-            user: user.to_string(),
-            pass: pass.to_string(),
+            user: config.username.to_string(),
+            pass: config.password.to_string(),
         };
 
         match client.get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base)) {
@@ -51,6 +62,7 @@ impl JiraSession {
 
         Ok(JiraSession{
             client: client,
+            fix_version_field: config.fix_version(),
         })
     }
 }
@@ -66,12 +78,7 @@ impl Session for JiraSession {
     }
 
     fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<(), String> {
-        // TODO: would be nice to specialize for () return type...
-        #[derive(Deserialize)]
-        struct Resp {
-            pub fix_json_parse: Option<String>,
-        }
-        try!(self.client.post::<Resp, TransitionRequest>(&format!("/issue/{}/transitions", key), &req));
+        try!(self.client.post::<VoidResp, TransitionRequest>(&format!("/issue/{}/transitions", key), &req));
         Ok(())
     }
 
@@ -80,8 +87,40 @@ impl Session for JiraSession {
         struct CommentReq {
             body: String,
         }
+
         let req = CommentReq { body: comment.to_string() };
         try!(self.client.post::<Comment, CommentReq>(&format!("/issue/{}/comment", key), &req));
+        Ok(())
+    }
+
+    fn add_version(&self, proj: &str, version: &str) -> Result<(), String> {
+        #[derive(Serialize)]
+        struct AddVersionReq {
+            name: String,
+            project: String,
+        }
+
+        let req = AddVersionReq { name: version.into(), project: proj.into() };
+        // Versions the way we're using them are probably unique anyway, so don't spend the
+        // extra work to check if it exists first.
+        if let Err(e) = self.client.post::<VoidResp, AddVersionReq>("/version", &req) {
+            if e.find("A version with this name already exists in this project").is_none() {
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String> {
+        let field = self.fix_version_field.clone();
+        let req = json!({
+            "update": {
+                field: [{"add" : {"name" : version}}]
+            }
+        });
+
+        try!(self.client.put::<VoidResp, serde_json::Value>(&format!("/issue/{}", key), &req));
         Ok(())
     }
 }
@@ -101,6 +140,10 @@ impl JiraClient {
 
     pub fn post<T: Deserialize, E: Serialize>(&self, path: &str, body: &E) -> Result<T, String> {
         self.request::<T, E>(Method::Post, path, Some(body))
+    }
+
+    pub fn put<T: Deserialize, E: Serialize>(&self, path: &str, body: &E) -> Result<T, String> {
+        self.request::<T, E>(Method::Put, path, Some(body))
     }
 
     fn request<T: Deserialize, E: Serialize>(&self, method: Method, path: &str, body: Option<&E>)
