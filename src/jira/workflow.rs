@@ -138,7 +138,6 @@ pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushComm
             if let Err(e) = jira.comment_issue(&key, &ref_msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
-
         }
     }
 }
