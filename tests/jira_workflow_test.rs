@@ -83,7 +83,8 @@ fn new_transition_req(id: &str) -> TransitionRequest {
 fn test_submit_for_review() {
     let test = new_test();
     let pr = new_pr();
-    let commit = new_commit("Fix [SER-1] I fixed it. And also relates to [CLI-9999]", "aabbccddee");
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit = new_commit("Fix [SER-1] I fixed it. And also relates to [CLI-9999][OTHER-999]", "aabbccddee");
 
     test.jira.mock_comment_issue("SER-1", "Review submitted for branch master: http://the-pr", Ok(()));
 
@@ -99,17 +100,18 @@ fn test_submit_for_review() {
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &vec![commit], &test.jira, &test.config);
+    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config);
 }
 
 #[test]
 fn test_resolve_issue_no_resolution() {
     let test = new_test();
-    let commit1 = new_push_commit("Fix [SER-1] I fixed it. And also fix [CLI-9999]\n\n\n\n", "aabbccddee");
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit1 = new_push_commit("Fix [SER-1] I fixed it. And also fix [CLI-9999][OTHER-999]\n\n\n\n", "aabbccddee");
     let commit2 = new_push_commit("Really fix [CLI-9999]\n\n\n\n", "ffbbccddee");
 
     let comment1 = "Merged into branch master: [aabbccd|http://the-commit/aabbccddee]\n\
-                   {quote}Fix [SER-1] I fixed it. And also fix [CLI-9999]{quote}";
+                   {quote}Fix [SER-1] I fixed it. And also fix [CLI-9999][OTHER-999]{quote}";
     let comment2 = "Merged into branch master: [ffbbccd|http://the-commit/ffbbccddee]\n\
                     {quote}Really fix [CLI-9999]{quote}";
 
@@ -127,13 +129,14 @@ fn test_resolve_issue_no_resolution() {
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("004", "resolved2")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("004"), Ok(()));
 
-    jira::workflow::resolve_issue("master", None, &vec![commit1, commit2], &test.jira, &test.config);
+    jira::workflow::resolve_issue("master", None, &vec![commit1, commit2], &projects, &test.jira, &test.config);
 }
 
 #[test]
 fn test_resolve_issue_with_resolution() {
     let test = new_test();
-    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
 
     let comment1 = "Merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
                    {quote}Fix [SER-1] I fixed it.{quote}\n\
@@ -173,13 +176,14 @@ fn test_resolve_issue_with_resolution() {
     test.jira.mock_get_transitions("SER-1", Ok(vec![trans]));
     test.jira.mock_transition_issue("SER-1", &req, Ok(()));
 
-    jira::workflow::resolve_issue("release/99", Some("5.6.7"), &vec![commit], &test.jira, &test.config);
+    jira::workflow::resolve_issue("release/99", Some("5.6.7"), &vec![commit], &projects, &test.jira, &test.config);
 }
 
 #[test]
 fn test_add_version() {
     let test = new_test();
-    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45]", "aabbccddee");
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
 
     test.jira.mock_add_version("CLI", "5.6.7", Ok(()));
     test.jira.mock_add_version("SER", "5.6.7", Ok(()));
@@ -187,5 +191,5 @@ fn test_add_version() {
     test.jira.mock_assign_fix_version("CLI-45", "5.6.7", Ok(()));
     test.jira.mock_assign_fix_version("SER-1", "5.6.7", Ok(()));
 
-    jira::workflow::add_version(Some("5.6.7"), &vec![commit], &test.jira);
+    jira::workflow::add_version(Some("5.6.7"), &vec![commit], &projects, &test.jira);
 }

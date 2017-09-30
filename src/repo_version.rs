@@ -29,6 +29,7 @@ pub fn comment_repo_version(version_script: &str,
                             branch_name: &str,
                             commit_hash: &str,
                             commits: &Vec<github::PushCommit>,
+                            jira_projects: &Vec<String>,
                             jira_versions_enabled: bool) -> Result<(), String> {
     let held_clone_dir = try!(clone_mgr.clone(owner, repo));
     let clone_dir = held_clone_dir.dir();
@@ -47,10 +48,10 @@ pub fn comment_repo_version(version_script: &str,
     };
 
     // resolve with version
-    jira::workflow::resolve_issue(branch_name, maybe_version, commits, jira, jira_config);
+    jira::workflow::resolve_issue(branch_name, maybe_version, commits, jira_projects, jira, jira_config);
 
     if jira_versions_enabled {
-        jira::workflow::add_version(maybe_version, commits, jira);
+        jira::workflow::add_version(maybe_version, commits, jira_projects, jira);
     }
 
     Ok(())
@@ -187,10 +188,12 @@ impl worker::Runner<RepoVersionRequest> for Runner {
         // launch another thread to do the version calculation
         self.thread_pool.execute(move || {
             let version_script;
+            let jira_projects;
             let jira_versions_enabled;
             {
                 let repos_lock = config.repos();
                 version_script = repos_lock.version_script(&req.repo);
+                jira_projects = repos_lock.jira_projects(&req.repo);
                 jira_versions_enabled = repos_lock.jira_versions_enabled(&req.repo);
             }
 
@@ -208,6 +211,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                                              &req.branch,
                                                              &req.commit_hash,
                                                              &req.commits,
+                                                             &jira_projects,
                                                              jira_versions_enabled) {
                             error!("Error running version script {}: {}", version_script, e);
                             let messenger = messenger::from_config(config.clone());
@@ -220,7 +224,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             messenger.send_to_channel("Error running version script", &vec![attach], &req.repo);
 
                             // resolve the issue with no version
-                            jira::workflow::resolve_issue(&req.branch, None, &req.commits, jira, jira_config);
+                            jira::workflow::resolve_issue(&req.branch, None, &req.commits, &jira_projects, jira, jira_config);
                         }
                     }
                 }

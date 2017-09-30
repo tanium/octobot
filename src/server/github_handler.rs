@@ -303,10 +303,14 @@ impl GithubEventHandler {
                                            &self.all_participants_with_commits(&pull_request, &commits));
 
                 // Mark JIRAs in review for PR open
-                if self.action == "opened" && self.config.repos().jira_enabled(&self.data.repository) {
+                if self.action == "opened" {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
-                            jira::workflow::submit_for_review(&pull_request, &commits, jira_session.deref(), jira_config);
+                            jira::workflow::submit_for_review(&pull_request,
+                                                              &commits,
+                                                              &self.config.repos().jira_projects(&self.data.repository),
+                                                              jira_session.deref(),
+                                                              jira_config);
                         }
                     }
                 }
@@ -568,27 +572,29 @@ impl GithubEventHandler {
 
             // Mark JIRAs as merged
             if is_main_branch {
-                if self.config.repos().jira_enabled(&self.data.repository) {
-                    if let Some(ref jira_config) = self.config.jira {
-                        if let Some(ref jira_session) = self.jira_session {
-                            if let Some(ref commits) = self.data.commits {
+                if let Some(ref jira_config) = self.config.jira {
+                    if let Some(ref jira_session) = self.jira_session {
+                        if let Some(ref commits) = self.data.commits {
 
-                                // try to send resolve message w/ a version in it if possible
-                                let has_version = match self.config.repos().version_script(&self.data.repository) {
-                                    Some(_) => {
-                                        let msg = repo_version::req(&self.data.repository, &branch_name, self.data.after(), commits);
-                                        if let Err(e) = self.repo_version.send(msg) {
-                                            error!("Error sending version request message: {}", e);
-                                            false
-                                        } else {
-                                            true
-                                        }
-                                    },
-                                    None => false,
-                                };
-                                if !has_version {
-                                    jira::workflow::resolve_issue(&branch_name, None, commits, jira_session.deref(), jira_config);
-                                }
+                            // try to send resolve message w/ a version in it if possible
+                            let has_version = match self.config.repos().version_script(&self.data.repository) {
+                                Some(_) => {
+                                    let msg = repo_version::req(&self.data.repository, &branch_name, self.data.after(), commits);
+                                    if let Err(e) = self.repo_version.send(msg) {
+                                        error!("Error sending version request message: {}", e);
+                                        false
+                                    } else {
+                                        true
+                                    }
+                                },
+                                None => false,
+                            };
+                            if !has_version {
+                                jira::workflow::resolve_issue(&branch_name,
+                                                              None,
+                                                              commits,
+                                                              &self.config.repos().jira_projects(&self.data.repository),
+                                                              jira_session.deref(), jira_config);
                             }
                         }
                     }
