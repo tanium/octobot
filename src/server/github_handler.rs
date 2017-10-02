@@ -306,9 +306,11 @@ impl GithubEventHandler {
                 if self.action == "opened" {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
+                            let jira_projects = self.config.repos().jira_projects(&self.data.repository, &pull_request.base.ref_name);
+
                             jira::workflow::submit_for_review(&pull_request,
                                                               &commits,
-                                                              &self.config.repos().jira_projects(&self.data.repository),
+                                                              &jira_projects,
                                                               jira_session.deref(),
                                                               jira_config);
                         }
@@ -577,7 +579,7 @@ impl GithubEventHandler {
                         if let Some(ref commits) = self.data.commits {
 
                             // try to send resolve message w/ a version in it if possible
-                            let has_version = match self.config.repos().version_script(&self.data.repository) {
+                            let has_version = match self.config.repos().version_script(&self.data.repository, &branch_name) {
                                 Some(_) => {
                                     let msg = repo_version::req(&self.data.repository, &branch_name, self.data.after(), commits);
                                     if let Err(e) = self.repo_version.send(msg) {
@@ -593,7 +595,7 @@ impl GithubEventHandler {
                                 jira::workflow::resolve_issue(&branch_name,
                                                               None,
                                                               commits,
-                                                              &self.config.repos().jira_projects(&self.data.repository),
+                                                              &self.config.repos().jira_projects(&self.data.repository, &branch_name),
                                                               jira_session.deref(), jira_config);
                             }
                         }

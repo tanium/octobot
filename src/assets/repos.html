@@ -18,19 +18,26 @@
           <input type="text" class="form-control" ng-model="info.channel" placeholder="Slack channel" required>
         </td>
         <td>
-          <div class="row">
-            <div class="col-md-5">JIRA project(s)</div>
-            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.jira_projects" ng-list=", " style="width:100%"></div>
-          </div>
-          <div>
-            <label><input type="checkbox" class="form-control" ng-model="info.jira_versions_enabled"> JIRA versions enabled</label>
-          </div>
+          <h3>Git</h3>
           <div>
             <label><input type="checkbox" class="form-control" ng-model="info.force_push_notify"> Force-push notification</label>
           </div>
           <div class="row">
             <div class="col-md-5">Force-push status reapply</div>
             <div class="col-md-7"><input type="text" class="form-control" ng-model="info.force_push_reapply_statuses" ng-list=", " style="width:100%"></div>
+          </div>
+
+          <h3>JIRA</h3>
+          <div class="row">
+            <div class="col-md-5">Branches</div>
+            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.branches" ng-list=", " style="width:100%"></div>
+          </div>
+          <div class="row">
+            <div class="col-md-5">JIRA project(s)</div>
+            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.jira_projects" ng-list=", " style="width:100%"></div>
+          </div>
+          <div>
+            <label><input type="checkbox" class="form-control" ng-model="info.jira_versions_enabled"> JIRA versions enabled</label>
           </div>
           <div class="row">
             <div class="col-md-5">Version script</div>
