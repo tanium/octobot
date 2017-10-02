@@ -15,7 +15,9 @@ pub struct RepoInfo {
     pub force_push_notify: Option<bool>,
     // white-listed statuses to reapply on force-push w/ identical diff
     pub force_push_reapply_statuses: Option<Vec<String>>,
-    // A list of jira projects to be respected in processing.
+    // list of branches this jira/version config is for
+    pub branches: Option<Vec<String>>,
+     // A list of jira projects to be respected in processing.
     pub jira_projects: Option<Vec<String>>,
     pub jira_versions_enabled: Option<bool>,
     pub version_script: Option<String>,
@@ -44,6 +46,7 @@ impl RepoInfo {
     pub fn new(repo: &str, channel: &str) -> RepoInfo {
         RepoInfo {
             repo: repo.into(),
+            branches: None,
             channel: channel.into(),
             force_push_notify: None,
             force_push_reapply_statuses: None,
@@ -51,6 +54,12 @@ impl RepoInfo {
             jira_versions_enabled: None,
             version_script: None,
         }
+    }
+
+    pub fn with_branches(self, value: Vec<String>) -> RepoInfo {
+        let mut info = self;
+        info.branches = Some(value);
+        info
     }
 
     pub fn with_force_push(self, value: Option<bool>) -> RepoInfo {
@@ -89,7 +98,7 @@ impl RepoConfig {
     }
 
     pub fn lookup_channel(&self, repo: &github::Repo) -> Option<String> {
-        match self.lookup_info(repo) {
+        match self.lookup_info(repo, None) {
             Some(info) => Some(info.channel.clone()),
             None => None,
         }
@@ -98,7 +107,7 @@ impl RepoConfig {
     // never notify for unconfigured repos/orgs;
     // defaults to true for configured repos/orgs w/ no value set
     pub fn notify_force_push(&self, repo: &github::Repo) -> bool {
-        match self.lookup_info(repo) {
+        match self.lookup_info(repo, None) {
             None => false,
             Some(ref info) => {
                 match info.force_push_notify {
@@ -110,7 +119,7 @@ impl RepoConfig {
     }
 
     pub fn force_push_reapply_statuses(&self, repo: &github::Repo) -> Vec<String> {
-        match self.lookup_info(repo) {
+        match self.lookup_info(repo, None) {
             None => vec![],
             Some(ref info) => {
                 match info.force_push_reapply_statuses {
@@ -121,8 +130,8 @@ impl RepoConfig {
         }
     }
 
-    pub fn jira_projects(&self, repo: &github::Repo) -> Vec<String>{
-        match self.lookup_info(repo) {
+    pub fn jira_projects(&self, repo: &github::Repo, branch: &str) -> Vec<String>{
+        match self.lookup_info(repo, Some(branch)) {
             None => vec![],
             Some(ref info) => {
                 match info.jira_projects {
@@ -135,8 +144,8 @@ impl RepoConfig {
 
     // never enable on unconfigured repos/orgs;
     // defaults to true for configured repos/orgs w/ no value set
-    pub fn jira_versions_enabled(&self, repo: &github::Repo) -> bool {
-        match self.lookup_info(repo) {
+    pub fn jira_versions_enabled(&self, repo: &github::Repo, branch: &str) -> bool {
+        match self.lookup_info(repo, Some(branch)) {
             None => false,
             Some(ref info) => {
                 match info.jira_versions_enabled {
@@ -147,8 +156,8 @@ impl RepoConfig {
         }
     }
 
-    pub fn version_script(&self, repo: &github::Repo) -> Option<String> {
-        match self.lookup_info(repo) {
+    pub fn version_script(&self, repo: &github::Repo, branch: &str) -> Option<String> {
+        match self.lookup_info(repo, Some(branch)) {
             None => None,
             Some(ref info) => {
                 match info.version_script {
@@ -159,21 +168,38 @@ impl RepoConfig {
         }
     }
 
-    fn lookup_info(&self, repo: &github::Repo) -> Option<&RepoInfo> {
-        match Url::parse(&repo.html_url) {
-            Ok(u) => {
-                u.host_str()
-                    .and_then(|h| self.repos.get(h))
-                    .and_then(|repos| {
-                        // try to find most-specific first, then look for org-level match
-                        match repos.iter().find(|r| r.repo == repo.full_name) {
-                            Some(r) => Some(r),
-                            None => repos.iter().find(|r| r.repo == repo.owner.login())
+    fn lookup_info(&self, repo: &github::Repo, maybe_branch: Option<&str>) -> Option<&RepoInfo> {
+        if let Ok(url) = Url::parse(&repo.html_url) {
+            return url.host_str()
+                .and_then(|host| self.repos.get(host))
+                .and_then(|repos| {
+                    // try to match by branch
+                    if let Some(branch) = maybe_branch {
+                        for r in repos {
+                            if r.repo == repo.full_name &&
+                               r.branches.clone().map_or(false, |b| b.contains(&branch.to_string())) {
+                                return Some(r)
+                            }
                         }
-                    })
-            }
-            Err(_) => None,
+                    }
+                    // try to match by org/repo
+                    for r in repos {
+                        if r.repo == repo.full_name {
+                            return Some(r)
+                        }
+                    }
+                    // try to match by orc
+                    for r in repos {
+                        if r.repo == repo.owner.login() {
+                            return Some(r)
+                        }
+                    }
+
+                    None
+                });
         }
+
+        None
     }
 }
 
@@ -268,20 +294,40 @@ mod tests {
         {
             let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo")
                 .unwrap();
-            assert_eq!(Vec::<String>::new(), repos.jira_projects(&repo));
+            assert_eq!(Vec::<String>::new(), repos.jira_projects(&repo, "any"));
         }
 
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/no-config")
                 .unwrap();
-            assert_eq!(Vec::<String>::new(), repos.jira_projects(&repo));
+            assert_eq!(Vec::<String>::new(), repos.jira_projects(&repo, "any"));
         }
 
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/with-config")
                 .unwrap();
-            assert_eq!(vec!["a", "b"], repos.jira_projects(&repo));
+            assert_eq!(vec!["a", "b"], repos.jira_projects(&repo, "any"));
         }
 
+    }
+
+    #[test]
+    fn test_jira_by_branch() {
+        let mut repos = RepoConfig::new();
+        repos.insert("git.company.com", "some-user", "SOME_OTHER_CHANNEL");
+
+        repos.insert_info("git.company.com",
+                            RepoInfo::new("some-user/the-repo", "the-repo-reviews")
+                            .with_jira(vec!["SOME".into()]));
+
+        repos.insert_info("git.company.com",
+                          RepoInfo::new("some-user/the-repo", "the-repo-reviews")
+                            .with_branches(vec!["the-branch".to_string()])
+                            .with_jira(vec!["THE-BRANCH".into()]));
+
+        let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
+
+        assert_eq!(vec!["THE-BRANCH"], repos.jira_projects(&repo, "the-branch"));
+        assert_eq!(vec!["SOME"], repos.jira_projects(&repo, "any-other-branch"));
     }
 }

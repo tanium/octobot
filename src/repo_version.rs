@@ -192,9 +192,9 @@ impl worker::Runner<RepoVersionRequest> for Runner {
             let jira_versions_enabled;
             {
                 let repos_lock = config.repos();
-                version_script = repos_lock.version_script(&req.repo);
-                jira_projects = repos_lock.jira_projects(&req.repo);
-                jira_versions_enabled = repos_lock.jira_versions_enabled(&req.repo);
+                version_script = repos_lock.version_script(&req.repo, &req.branch);
+                jira_projects = repos_lock.jira_projects(&req.repo, &req.branch);
+                jira_versions_enabled = repos_lock.jira_versions_enabled(&req.repo, &req.branch);
             }
 
             if let Some(version_script) = version_script {
