@@ -188,7 +188,7 @@ impl RepoConfig {
                             return Some(r)
                         }
                     }
-                    // try to match by orc
+                    // try to match by org
                     for r in repos {
                         if r.repo == repo.owner.login() {
                             return Some(r)
