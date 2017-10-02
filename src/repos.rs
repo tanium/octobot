@@ -16,6 +16,7 @@ pub struct RepoInfo {
     // white-listed statuses to reapply on force-push w/ identical diff
     pub force_push_reapply_statuses: Option<Vec<String>>,
     pub jira_enabled: Option<bool>,
+    pub jira_versions_enabled: Option<bool>,
     pub version_script: Option<String>,
 }
 
@@ -46,6 +47,7 @@ impl RepoInfo {
             force_push_notify: None,
             force_push_reapply_statuses: None,
             jira_enabled: None,
+            jira_versions_enabled: None,
             version_script: None,
         }
     }
@@ -125,6 +127,20 @@ impl RepoConfig {
             None => false,
             Some(ref info) => {
                 match info.jira_enabled {
+                    Some(value) => value,
+                    None => true,
+                }
+            }
+        }
+    }
+
+    // never enable on unconfigured repos/orgs;
+    // defaults to true for configured repos/orgs w/ no value set
+    pub fn jira_versions_enabled(&self, repo: &github::Repo) -> bool {
+        match self.lookup_info(repo) {
+            None => false,
+            Some(ref info) => {
+                match info.jira_versions_enabled {
                     Some(value) => value,
                     None => true,
                 }

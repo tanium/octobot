@@ -26,7 +26,7 @@ pub fn start(config: Config) -> Result<(), String> {
 
     let jira_session;
     if let Some(ref jira_config) = config.jira {
-        jira_session = match jira::api::JiraSession::new(&jira_config.host, &jira_config.username, &jira_config.password) {
+        jira_session = match jira::api::JiraSession::new(&jira_config) {
             Ok(s) => {
                 let arc : Arc<jira::api::Session> = Arc::new(s);
                 Some(arc)

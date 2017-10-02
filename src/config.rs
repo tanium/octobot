@@ -61,6 +61,8 @@ pub struct JiraConfig {
     pub resolved_states: Option<Vec<String>>,
     // when marking as resolved, add this resolution (defaults to ["Fixed", "Done"])
     pub fixed_resolutions: Option<Vec<String>>,
+    // the field name for where the version goes. (defaults to "fixVersions").
+    pub fix_version_field: Option<String>,
 }
 
 impl Config {
@@ -207,6 +209,14 @@ impl JiraConfig {
             res.clone() // hmm. do these w/o a clone?
         } else {
             vec!["Fixed".into(), "Done".into()]
+        }
+    }
+
+    pub fn fix_version(&self) -> String {
+        if let Some(ref field) = self.fix_version_field {
+            field.clone()
+        } else {
+            "fixVersions".into()
         }
     }
 }

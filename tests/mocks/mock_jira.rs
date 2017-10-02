@@ -8,6 +8,8 @@ pub struct MockJira {
     get_transitions_calls: Mutex<Vec< MockCall<Vec<Transition>> >>,
     transition_issue_calls: Mutex<Vec< MockCall<()> >>,
     comment_issue_calls: Mutex<Vec< MockCall<()> >>,
+    add_version_calls: Mutex<Vec< MockCall<()> >>,
+    assign_fix_version_calls: Mutex<Vec< MockCall<()> >>,
 }
 
 #[derive(Debug)]
@@ -31,6 +33,8 @@ impl MockJira {
             get_transitions_calls: Mutex::new(vec![]),
             transition_issue_calls: Mutex::new(vec![]),
             comment_issue_calls: Mutex::new(vec![]),
+            add_version_calls: Mutex::new(vec![]),
+            assign_fix_version_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -44,6 +48,11 @@ impl Drop for MockJira {
                     "Unmet transition_issue calls: {:?}", *self.transition_issue_calls.lock().unwrap());
             assert!(self.comment_issue_calls.lock().unwrap().len() == 0,
                     "Unmet comment_issue calls: {:?}", *self.comment_issue_calls.lock().unwrap());
+            assert!(self.add_version_calls.lock().unwrap().len() == 0,
+                    "Unmet add_version calls: {:?}", *self.add_version_calls.lock().unwrap());
+            assert!(self.assign_fix_version_calls.lock().unwrap().len() == 0,
+                    "Unmet asign_fix_version calls: {:?}", *self.assign_fix_version_calls.lock().unwrap());
+
         }
     }
 }
@@ -77,6 +86,26 @@ impl Session for MockJira {
 
         call.ret
     }
+
+    fn add_version(&self, proj: &str, version: &str) -> Result<(), String> {
+        let mut calls = self.add_version_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to add_version");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], proj);
+        assert_eq!(call.args[1], version);
+
+        call.ret
+    }
+
+    fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String> {
+        let mut calls = self.assign_fix_version_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to assign_fix_version");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], key);
+        assert_eq!(call.args[1], version);
+
+        call.ret
+    }
 }
 
 impl MockJira {
@@ -90,5 +119,13 @@ impl MockJira {
 
     pub fn mock_comment_issue(&self, key: &str, comment: &str, ret: Result<(), String>) {
         self.comment_issue_calls.lock().unwrap().push(MockCall::new(ret, vec![key, comment]));
+    }
+
+    pub fn mock_add_version(&self, proj: &str, version: &str, ret: Result<(), String>) {
+        self.add_version_calls.lock().unwrap().push(MockCall::new(ret, vec![proj, version]));
+    }
+
+    pub fn mock_assign_fix_version(&self, key: &str, version: &str, ret: Result<(), String>) {
+        self.assign_fix_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
     }
 }
