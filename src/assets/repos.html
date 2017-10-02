@@ -18,8 +18,9 @@
           <input type="text" class="form-control" ng-model="info.channel" placeholder="Slack channel" required>
         </td>
         <td>
-          <div>
-            <label><input type="checkbox" class="form-control" ng-model="info.jira_enabled"> JIRA enabled</label>
+          <div class="row">
+            <div class="col-md-5">JIRA project(s)</div>
+            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.jira_projects" ng-list=", " style="width:100%"></div>
           </div>
           <div>
             <label><input type="checkbox" class="form-control" ng-model="info.jira_versions_enabled"> JIRA versions enabled</label>

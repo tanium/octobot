@@ -92,9 +92,10 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     let mut repos = RepoConfig::new();
     let mut data = HookBody::new();
 
-    repos.insert(github.github_host(),
-                 "some-user/some-repo",
-                 "the-reviews-channel");
+    let repo_info = repos::RepoInfo::new("some-user/some-repo", "the-reviews-channel")
+        .with_jira(vec!["SER".to_string(), "CLI".to_string()]);
+    repos.insert_info(github.github_host(), repo_info);
+
     data.repository = Repo::parse(&format!("http://{}/some-user/some-repo", github.github_host()))
         .unwrap();
     data.sender = User::new("joe-sender");
@@ -1104,7 +1105,7 @@ fn some_jira_commits() -> Vec<Commit> {
             html_url: "http://commit/ffeedd00110011".into(),
             author: Some(User::new("bob-author")),
             commit: CommitDetails {
-                message: "Fix [SER-1] Add the feature\n\nThe body".into(),
+                message: "Fix [SER-1] Add the feature\n\nThe body ([OTHER-123])".into(),
             }
         },
     ]
@@ -1116,7 +1117,7 @@ fn some_jira_push_commits() -> Vec<PushCommit> {
             id: "ffeedd00110011".into(),
             tree_id: "ffeedd00110011".into(),
             url: "http://commit/ffeedd00110011".into(),
-            message: "Fix [SER-1] Add the feature\n\nThe body".into(),
+            message: "Fix [SER-1] Add the feature\n\nThe body ([OTHER-123])".into(),
         },
     ]
 }

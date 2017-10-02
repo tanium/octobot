@@ -5,12 +5,19 @@ use github::{Commit, CommitLike, PullRequest, PushCommit};
 use jira;
 use jira::Transition;
 
-fn get_jira_keys(strings: Vec<String>) -> Vec<String> {
+fn get_jira_keys(strings: Vec<String>, projects: &Vec<String>) -> Vec<String> {
     let re = Regex::new(r"\b([A-Z]+-[0-9]+)\b").unwrap();
 
     let mut all_keys = vec![];
     for s in strings {
-        all_keys.extend(re.captures_iter(&s).map(|c| c[1].to_string()));
+        for c in re.captures_iter(&s) {
+            let key = c[1].to_string();
+            let proj = get_jira_project(&key).to_string();
+
+            if projects.contains(&proj) {
+                all_keys.push(key);
+            }
+        }
     }
 
     all_keys.sort();
@@ -19,7 +26,7 @@ fn get_jira_keys(strings: Vec<String>) -> Vec<String> {
     all_keys
 }
 
-fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
+fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
     // Fix [ABC-123][OTHER-567], [YEAH-999]
     let re = Regex::new(r"(?i)(?:Fix(?:es|ed)?):?\s*(?-i)((\[?([A-Z]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
 
@@ -29,21 +36,21 @@ fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
         all_refs.extend(re.captures_iter(c.message()).map(|c| c[1].to_string()));
     }
 
-    get_jira_keys(all_refs)
+    get_jira_keys(all_refs, projects)
 }
 
-fn get_referenced_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
-    let fixed = get_fixed_jira_keys(commits);
+fn get_referenced_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
+    let fixed = get_fixed_jira_keys(commits, projects);
 
-    let mut refd = get_all_jira_keys(commits);
+    let mut refd = get_all_jira_keys(commits, projects);
 
     // only return ones not marked as fixed
     refd.retain(|s| fixed.iter().position(|s2| s == s2).is_none());
     refd
 }
 
-fn get_all_jira_keys<T: CommitLike>(commits: &Vec<T>) -> Vec<String> {
-    get_jira_keys(commits.iter().map(|c| c.message().to_string()).collect())
+fn get_all_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
+    get_jira_keys(commits.iter().map(|c| c.message().to_string()).collect(), projects)
 }
 
 fn get_jira_project(jira_key: &str) -> &str {
@@ -55,8 +62,12 @@ fn get_jira_project(jira_key: &str) -> &str {
     }
 }
 
-pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::api::Session, config: &JiraConfig) {
-    for key in get_fixed_jira_keys(commits) {
+pub fn submit_for_review(pr: &PullRequest,
+                         commits: &Vec<Commit>,
+                         projects: &Vec<String>,
+                         jira: &jira::api::Session,
+                         config: &JiraConfig) {
+    for key in get_fixed_jira_keys(commits, projects) {
         // add comment
         if let Err(e) = jira.comment_issue(&key, &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url)) {
             error!("Error commenting on key [{}]: {}", key, e);
@@ -69,7 +80,7 @@ pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::a
         try_transition(&key, &config.review_states(), jira);
     }
 
-    for key in get_referenced_jira_keys(commits) {
+    for key in get_referenced_jira_keys(commits, projects) {
         // add comment
         if let Err(e) = jira.comment_issue(&key, &format!("Referenced by review submitted for branch {}: {}", pr.base.ref_name, pr.html_url)) {
             error!("Error commenting on key [{}]: {}", key, e);
@@ -81,7 +92,12 @@ pub fn submit_for_review(pr: &PullRequest, commits: &Vec<Commit>, jira: &jira::a
     }
 }
 
-pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushCommit>, jira: &jira::api::Session, config: &JiraConfig) {
+pub fn resolve_issue(branch: &str,
+                     version: Option<&str>,
+                     commits: &Vec<PushCommit>,
+                     projects: &Vec<String>,
+                     jira: &jira::api::Session,
+                     config: &JiraConfig) {
     for commit in commits {
         let desc = format!("[{}|{}]\n{{quote}}{}{{quote}}", Commit::short_hash(&commit), commit.html_url(), Commit::title(&commit));
 
@@ -93,7 +109,7 @@ pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushComm
         let fix_msg = format!("Merged into branch {}: {}{}", branch, desc, version_desc);
         let ref_msg = format!("Referenced by commit merged into branch {}: {}{}", branch, desc, version_desc);
 
-        for key in get_fixed_jira_keys(&vec![commit]) {
+        for key in get_fixed_jira_keys(&vec![commit], projects) {
             if let Err(e) = jira.comment_issue(&key, &fix_msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
@@ -134,7 +150,7 @@ pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushComm
         }
 
         // add comment only to referenced jiras
-        for key in get_referenced_jira_keys(&vec![commit]) {
+        for key in get_referenced_jira_keys(&vec![commit], projects) {
             if let Err(e) = jira.comment_issue(&key, &ref_msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
@@ -142,9 +158,9 @@ pub fn resolve_issue(branch: &str, version: Option<&str>, commits: &Vec<PushComm
     }
 }
 
-pub fn add_version(maybe_version: Option<&str>, commits: &Vec<PushCommit>, jira: &jira::api::Session) {
+pub fn add_version(maybe_version: Option<&str>, commits: &Vec<PushCommit>, projects: &Vec<String>, jira: &jira::api::Session) {
     if let Some(version) = maybe_version {
-        for key in get_all_jira_keys(commits) {
+        for key in get_all_jira_keys(commits, projects) {
             let proj = get_jira_project(&key);
             if let Err(e) = jira.add_version(proj, version) {
                 error!("Error adding version {} to project {}: {}", version, proj, e);
@@ -203,24 +219,34 @@ mod tests {
 
     #[test]
     pub fn test_get_jira_keys() {
+        let projects = vec!["KEY".to_string(), "lowercase".to_string()];
         let mut commit = Commit::new();
-        assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()]));
-        assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()]));
+        assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()], &projects));
+        assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()], &projects));
 
         commit.commit.message = "Fix [KEY-1][KEY-2], [KEY-3] Some thing that also fixed [KEY-4] which somehow fixes KEY-5".into();
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5"], get_fixed_jira_keys(&vec![commit.clone()]));
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5"], get_fixed_jira_keys(&vec![commit.clone()], &projects));
 
         commit.commit.message += "\n\nFix: [KEY-6], and also mentions [KEY-6], [KEY-7] but not [lowercase-99]";
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5", "KEY-6"], get_fixed_jira_keys(&vec![commit.clone()]));
-        assert_eq!(vec!["KEY-7"], get_referenced_jira_keys(&vec![commit.clone()]));
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5", "KEY-6"], get_fixed_jira_keys(&vec![commit.clone()], &projects));
+        assert_eq!(vec!["KEY-7"], get_referenced_jira_keys(&vec![commit.clone()], &projects));
     }
 
     #[test]
     pub fn test_get_jira_keys_alt_format() {
+        let projects = vec!["KEY".to_string(), "OTHER".to_string()];
         let mut commit = Commit::new();
         commit.commit.message = "KEY-1, KEY-2:Some thing that also fixed\n\nAlso [KEY-3], OTHER-5".into();
-        assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()]));
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "OTHER-5"], get_referenced_jira_keys(&vec![commit.clone()]));
+        assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()], &projects));
+        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "OTHER-5"], get_referenced_jira_keys(&vec![commit.clone()], &projects));
+    }
+
+    #[test]
+    pub fn test_get_jira_keys_not_allowed_project() {
+        let projects = vec!["KEY".to_string()];
+        let mut commit = Commit::new();
+        commit.commit.message = "KEY-1, OTHER-2:Fixed stuff".into();
+        assert_eq!(vec!["KEY-1"], get_referenced_jira_keys(&vec![commit.clone()], &projects));
     }
 
     #[test]

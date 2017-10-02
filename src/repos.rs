@@ -15,7 +15,8 @@ pub struct RepoInfo {
     pub force_push_notify: Option<bool>,
     // white-listed statuses to reapply on force-push w/ identical diff
     pub force_push_reapply_statuses: Option<Vec<String>>,
-    pub jira_enabled: Option<bool>,
+    // A list of jira projects to be respected in processing.
+    pub jira_projects: Option<Vec<String>>,
     pub jira_versions_enabled: Option<bool>,
     pub version_script: Option<String>,
 }
@@ -46,7 +47,7 @@ impl RepoInfo {
             channel: channel.into(),
             force_push_notify: None,
             force_push_reapply_statuses: None,
-            jira_enabled: None,
+            jira_projects: None,
             jira_versions_enabled: None,
             version_script: None,
         }
@@ -58,9 +59,9 @@ impl RepoInfo {
         info
     }
 
-    pub fn with_jira(self, value: Option<bool>) -> RepoInfo {
+    pub fn with_jira(self, value: Vec<String>) -> RepoInfo {
         let mut info = self;
-        info.jira_enabled = value;
+        info.jira_projects = Some(value);
         info
     }
 
@@ -120,15 +121,13 @@ impl RepoConfig {
         }
     }
 
-    // never enable on unconfigured repos/orgs;
-    // defaults to true for configured repos/orgs w/ no value set
-    pub fn jira_enabled(&self, repo: &github::Repo) -> bool {
+    pub fn jira_projects(&self, repo: &github::Repo) -> Vec<String>{
         match self.lookup_info(repo) {
-            None => false,
+            None => vec![],
             Some(ref info) => {
-                match info.jira_enabled {
-                    Some(value) => value,
-                    None => true,
+                match info.jira_projects {
+                    Some(ref value) => value.clone(),
+                    None => vec![],
                 }
             }
         }
@@ -262,35 +261,26 @@ mod tests {
     fn test_jira_enabled() {
         let mut repos = RepoConfig::new();
         repos.insert_info("git.company.com",
-                          RepoInfo::new("some-user/noisy-repo-by-default", "reviews"));
+                          RepoInfo::new("some-user/no-config", "reviews"));
         repos.insert_info("git.company.com",
-                          RepoInfo::new("some-user/noisy-repo-on-purpose", "reviews").with_jira(Some(true)));
-        repos.insert_info("git.company.com",
-                          RepoInfo::new("some-user/quiet-repo", "reviews").with_jira(Some(false)));
+                          RepoInfo::new("some-user/with-config", "reviews").with_jira(vec!["a".into(), "b".into()]));
 
         {
             let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo")
                 .unwrap();
-            assert_eq!(false, repos.jira_enabled(&repo));
+            assert_eq!(Vec::<String>::new(), repos.jira_projects(&repo));
         }
 
         {
-            let repo = github::Repo::parse("http://git.company.\
-                                            com/some-user/noisy-repo-by-default")
+            let repo = github::Repo::parse("http://git.company.com/some-user/no-config")
                 .unwrap();
-            assert_eq!(true, repos.jira_enabled(&repo));
+            assert_eq!(Vec::<String>::new(), repos.jira_projects(&repo));
         }
 
         {
-            let repo = github::Repo::parse("http://git.company.\
-                                            com/some-user/noisy-repo-on-purpose")
+            let repo = github::Repo::parse("http://git.company.com/some-user/with-config")
                 .unwrap();
-            assert_eq!(true, repos.jira_enabled(&repo));
-        }
-
-        {
-            let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
-            assert_eq!(false, repos.jira_enabled(&repo));
+            assert_eq!(vec!["a", "b"], repos.jira_projects(&repo));
         }
 
     }
