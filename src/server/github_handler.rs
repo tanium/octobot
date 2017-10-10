@@ -287,20 +287,22 @@ impl GithubEventHandler {
             if let Some(ref verb) = verb {
                 let commits = self.pull_request_commits(&pull_request);
 
-                let msg = format!("Pull Request {}", verb);
-                let attachments = vec![SlackAttachmentBuilder::new("")
-                                           .title(format!("Pull Request #{}: \"{}\"",
-                                                          pull_request.number,
-                                                          pull_request.title.as_str()))
-                                           .title_link(pull_request.html_url.as_str())
-                                           .build()];
+                if !pull_request.is_wip() {
+                    let msg = format!("Pull Request {}", verb);
+                    let attachments = vec![SlackAttachmentBuilder::new("")
+                                               .title(format!("Pull Request #{}: \"{}\"",
+                                                              pull_request.number,
+                                                              pull_request.title.as_str()))
+                                               .title_link(pull_request.html_url.as_str())
+                                               .build()];
 
-                self.messenger.send_to_all(&msg,
-                                           &attachments,
-                                           &pull_request.user,
-                                           &self.data.sender,
-                                           &self.data.repository,
-                                           &self.all_participants_with_commits(&pull_request, &commits));
+                    self.messenger.send_to_all(&msg,
+                                               &attachments,
+                                               &pull_request.user,
+                                               &self.data.sender,
+                                               &self.data.repository,
+                                               &self.all_participants_with_commits(&pull_request, &commits));
+                }
 
                 // Mark JIRAs in review for PR open
                 if self.action == "opened" {
@@ -544,6 +546,11 @@ impl GithubEventHandler {
                                           branch_name);
 
                     for pull_request in &prs {
+                        if pull_request.is_wip() {
+                            info!("Skipping WIP PR #{}", pull_request.number);
+                            continue;
+                        }
+
                         let mut attachments = attachments.clone();
                         attachments.insert(0,
                                            SlackAttachmentBuilder::new("")
@@ -561,8 +568,7 @@ impl GithubEventHandler {
                                                    &self.all_participants(&pull_request));
 
                         if self.data.forced() &&
-                           self.config.repos().notify_force_push(&self.data.repository) &&
-                           !pull_request.title.starts_with("WIP:") {
+                           self.config.repos().notify_force_push(&self.data.repository) {
                             let msg = force_push::req(&self.data.repository, pull_request, self.data.before(), self.data.after());
                             if let Err(e) = self.force_push.send(msg) {
                                 error!("Error sending force push message: {}", e);
