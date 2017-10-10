@@ -223,6 +223,10 @@ impl PullRequest {
     pub fn is_merged(&self) -> bool {
         self.merged.unwrap_or(false)
     }
+
+    pub fn is_wip(&self) -> bool {
+        self.title.to_lowercase().starts_with("wip:")
+    }
 }
 
 impl<'a> PullRequestLike for &'a PullRequest {
@@ -638,5 +642,23 @@ mod tests {
                              User::new("userC"), User::new("userD")];
 
         assert_eq!(all_users, (&pr).assignees());
+    }
+
+    #[test]
+    fn test_pr_is_wip() {
+        let mut pr = PullRequest::new();
+        assert!(!pr.is_wip());
+
+        pr.title = "WIP: doing some stuff".into();
+        assert!(pr.is_wip());
+
+        pr.title = "wip: doing some stuff".into();
+        assert!(pr.is_wip());
+
+        pr.title = "WIPWIPWIP: doing some stuff".into();
+        assert!(!pr.is_wip());
+
+        pr.title = "Wip: why would you even think about doing it this way?".into();
+        assert!(pr.is_wip());
     }
 }

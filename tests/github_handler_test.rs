@@ -994,20 +994,7 @@ fn test_push_force_notify_wip() {
     test.github.mock_get_pull_requests("some-user", "some-repo", Some("open".into()), None, Ok(vec![pr]));
     test.github.mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
 
-    let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
-    let attach = vec![
-        SlackAttachmentBuilder::new("")
-            .title("Pull Request #32: \"WIP: Awesome new feature\"")
-            .title_link("http://the-pr")
-            .build(),
-    ];
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
-    ]);
+    // Note: not slack expectations here. It should not notify slack for WIP PRs.
 
     // Setup background thread to validate force-push msg
     let expect_thread;
