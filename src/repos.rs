@@ -150,7 +150,7 @@ impl RepoConfig {
             Some(ref info) => {
                 match info.jira_versions_enabled {
                     Some(value) => value,
-                    None => true,
+                    None => false,
                 }
             }
         }
