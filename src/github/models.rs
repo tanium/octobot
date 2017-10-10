@@ -225,7 +225,7 @@ impl PullRequest {
     }
 
     pub fn is_wip(&self) -> bool {
-        self.title.starts_with("WIP:") || self.title.starts_with("wip:")
+        self.title.to_lowercase().starts_with("wip:")
     }
 }
 
@@ -657,5 +657,8 @@ mod tests {
 
         pr.title = "WIPWIPWIP: doing some stuff".into();
         assert!(!pr.is_wip());
+
+        pr.title = "Wip: why would you even think about doing it this way?".into();
+        assert!(pr.is_wip());
     }
 }
