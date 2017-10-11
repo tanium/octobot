@@ -89,7 +89,7 @@ impl<'a> Merger<'a> {
         try!(git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch)));
 
         // cherry-pick!
-        try!(git.run(&["cherry-pick", "-X", "ignore-all-space", commit_hash]));
+        try!(git.run(&["-c", "merge.renameLimit=999999", "cherry-pick", "-X", "ignore-all-space", commit_hash]));
 
         let desc = try!(git.get_commit_desc(commit_hash));
         let desc = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch);
