@@ -502,9 +502,6 @@ fn test_pull_request_opened() {
 
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -555,10 +552,6 @@ fn test_pull_request_reopened() {
 
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -613,10 +606,6 @@ fn test_pull_request_unassigned() {
 
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -1126,9 +1115,6 @@ fn test_jira_pull_request_opened() {
 
     test.expect_slack_calls(vec![
         SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
     ]);
 
     if let Some(ref jira) = test.jira {
