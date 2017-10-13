@@ -252,24 +252,30 @@ impl GithubEventHandler {
     fn handle_pr(&self) -> EventResponse {
         if let Some(ref pull_request) = self.data.pull_request {
             let verb: Option<String>;
+            let notify_channel_only;
             if self.action == "opened" {
                 verb = Some(format!("opened by {}", self.slack_user_name(&pull_request.user)));
+                notify_channel_only = true;
             } else if self.action == "closed" {
                 if pull_request.merged == Some(true) {
                     verb = Some("merged".to_string());
                 } else {
                     verb = Some("closed".to_string());
                 }
+                notify_channel_only = false;
             } else if self.action == "reopened" {
                 verb = Some("reopened".to_string());
+                notify_channel_only = true;
             } else if self.action == "assigned" {
                 let assignees_str = self.config
                     .users()
                     .slack_user_names(&pull_request.assignees, &self.data.repository)
                     .join(", ");
                 verb = Some(format!("assigned to {}", assignees_str));
+                notify_channel_only = false;
             } else if self.action == "unassigned" {
                 verb = Some("unassigned".to_string());
+                notify_channel_only = true;
             } else if self.action == "review_requested" {
                 if let Some(ref reviewers) = pull_request.requested_reviewers {
                     let assignees_str = self.config
@@ -280,8 +286,10 @@ impl GithubEventHandler {
                 } else {
                     verb = None;
                 }
+                notify_channel_only = false;
             } else {
                 verb = None;
+                notify_channel_only = true;
             }
 
             if let Some(ref verb) = verb {
@@ -296,12 +304,19 @@ impl GithubEventHandler {
                                                .title_link(pull_request.html_url.as_str())
                                                .build()];
 
-                    self.messenger.send_to_all(&msg,
-                                               &attachments,
-                                               &pull_request.user,
-                                               &self.data.sender,
-                                               &self.data.repository,
-                                               &self.all_participants_with_commits(&pull_request, &commits));
+                    if notify_channel_only {
+                        self.messenger.send_to_channel(&msg,
+                                                       &attachments,
+                                                       &self.data.repository);
+                    } else {
+                        self.messenger.send_to_all(&msg,
+                                                   &attachments,
+                                                   &pull_request.user,
+                                                   &self.data.sender,
+                                                   &self.data.repository,
+                                                   &self.all_participants_with_commits(&pull_request, &commits));
+
+                    }
                 }
 
                 // Mark JIRAs in review for PR open
