@@ -3,7 +3,7 @@ extern crate bodyparser;
 extern crate logger;
 extern crate futures;
 extern crate hyper;
-extern crate hyper_tls;
+extern crate hyper_rustls;
 extern crate iron;
 #[macro_use]
 extern crate maplit;

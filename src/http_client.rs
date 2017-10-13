@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use futures::future::Future;
 use futures::Stream;
 use hyper;
-use hyper_tls::HttpsConnector;
+use hyper_rustls::HttpsConnector;
 use hyper::header::{UserAgent};
 use hyper::{Method, Request};
 use serde_json;
@@ -72,11 +72,8 @@ impl HTTPClient {
             Err(e) => return Err(format!("Error constructing Core: {}", e)),
         };
 
-        let https = match HttpsConnector::new(4, &core.handle()) {
-            Ok(h) => h,
-            Err(e) => return Err(format!("Error constructing HttpsConnector: {}", e)),
-        };
-
+        // TODO: I wonder if these objects are expensive to create and we should be sharing them across requests?
+        let https = HttpsConnector::new(4, &core.handle());
         let client = hyper::Client::configure().connector(https).build(&core.handle());
         let mut req = Request::new(method, url);
         req.headers_mut().set(UserAgent::new("octobot"));
