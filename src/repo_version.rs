@@ -51,7 +51,7 @@ pub fn comment_repo_version(version_script: &str,
     jira::workflow::resolve_issue(branch_name, maybe_version, commits, jira_projects, jira, jira_config);
 
     if jira_versions_enabled {
-        jira::workflow::add_version(maybe_version, commits, jira_projects, jira);
+        jira::workflow::add_pending_version(maybe_version, commits, jira_projects, jira);
     }
 
     Ok(())

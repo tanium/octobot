@@ -158,20 +158,30 @@ pub fn resolve_issue(branch: &str,
     }
 }
 
+pub fn add_pending_version(maybe_version: Option<&str>, commits: &Vec<PushCommit>, projects: &Vec<String>, jira: &jira::api::Session) {
+    if let Some(version) = maybe_version {
+        for key in get_all_jira_keys(commits, projects) {
+            if let Err(e) = jira.add_pending_version(&key, version) {
+                error!("Error adding pending version {} to key{}: {}", version, key, e);
+                continue;
+            }
+        }
+    }
+}
+
 pub fn add_version(maybe_version: Option<&str>, commits: &Vec<PushCommit>, projects: &Vec<String>, jira: &jira::api::Session) {
     if let Some(version) = maybe_version {
         for key in get_all_jira_keys(commits, projects) {
             let proj = get_jira_project(&key);
             if let Err(e) = jira.add_version(proj, version) {
                 error!("Error adding version {} to project {}: {}", version, proj, e);
-                return;
+                continue;
             }
 
             if let Err(e) = jira.assign_fix_version(&key, version) {
                 error!("Error assigning version {} to key {}: {}", version, key, e);
-                return;
+                continue;
             }
-
         }
     }
 }

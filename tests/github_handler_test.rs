@@ -141,7 +141,8 @@ fn new_test_with_jira() -> GithubHandlerTest {
         review_states: Some(vec!["the-review".into()]),
         resolved_states: Some(vec!["the-resolved".into()]),
         fixed_resolutions: Some(vec![":boom:".into()]),
-        fix_version_field: Some("the-versions".into()),
+        fix_versions_field: Some("the-versions".into()),
+        pending_versions_field: Some("the-pending-versions".into()),
     });
     let mut test = new_test_with(jira);
 

@@ -53,6 +53,12 @@ pub struct IDOrName {
     pub name: Option<String>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct Field {
+    pub id: String,
+    pub name: String,
+}
+
 impl Transition {
     pub fn new_request(&self) -> TransitionRequest {
         TransitionRequest {
