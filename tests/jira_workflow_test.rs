@@ -24,7 +24,8 @@ fn new_test() -> JiraWorkflowTest {
         review_states: Some(vec!["reviewing1".into()]),
         resolved_states: Some(vec!["resolved1".into(), "resolved2".into()]),
         fixed_resolutions: Some(vec!["it-is-fixed".into()]),
-        fix_version_field: Some("the-versions".into()),
+        fix_versions_field: Some("the-versions".into()),
+        pending_versions_field: Some("the-pending-versions".into()),
     };
 
     JiraWorkflowTest {
@@ -192,4 +193,16 @@ fn test_add_version() {
     test.jira.mock_assign_fix_version("SER-1", "5.6.7", Ok(()));
 
     jira::workflow::add_version(Some("5.6.7"), &vec![commit], &projects, &test.jira);
+}
+
+#[test]
+fn test_add_pending_version() {
+    let test = new_test();
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
+
+    test.jira.mock_add_pending_version("CLI-45", "5.6.7", Ok(()));
+    test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
+
+    jira::workflow::add_pending_version(Some("5.6.7"), &vec![commit], &projects, &test.jira);
 }

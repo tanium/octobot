@@ -19,11 +19,13 @@ pub trait Session : Send + Sync {
 
     fn add_version(&self, proj: &str, version: &str) -> Result<(), String>;
     fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String>;
+    fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String>;
 }
 
 pub struct JiraSession {
-    client: JiraClient,
-    fix_version_field: String,
+    pub client: JiraClient,
+    fix_versions_field: String,
+    pending_versions_field: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -35,6 +37,13 @@ struct AuthResp {
 #[derive(Deserialize)]
 struct VoidResp {
     pub fix_json_parse: Option<String>,
+}
+
+
+fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String, String> {
+    fields.iter().find(|f| field == f.id || field == f.name)
+        .map(|f| f.id.clone())
+        .ok_or(format!("Error: Invalid JIRA field: {}", field))
 }
 
 impl JiraSession {
@@ -60,9 +69,21 @@ impl JiraSession {
             Err(e) => return Err(format!("Error authenticating to JIRA: {}", e)),
         };
 
+        let fields = try!(client.get::<Vec<Field>>("/field"));
+
+        let pending_versions_field = match config.pending_versions_field {
+            Some(ref f) => Some(try!(lookup_field(f, &fields))),
+            None => None,
+        };
+        let fix_versions_field = try!(lookup_field(&config.fix_versions(), &fields));
+
+        debug!("Pending Version field: {:?}", pending_versions_field);
+        debug!("Fix Versions field: {:?}", fix_versions_field);
+
         Ok(JiraSession{
             client: client,
-            fix_version_field: config.fix_version(),
+            fix_versions_field: fix_versions_field,
+            pending_versions_field: pending_versions_field,
         })
     }
 }
@@ -113,7 +134,7 @@ impl Session for JiraSession {
     }
 
     fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String> {
-        let field = self.fix_version_field.clone();
+        let field = self.fix_versions_field.clone();
         let req = json!({
             "update": {
                 field: [{"add" : {"name" : version}}]
@@ -121,6 +142,27 @@ impl Session for JiraSession {
         });
 
         try!(self.client.put::<VoidResp, serde_json::Value>(&format!("/issue/{}", key), &req));
+        Ok(())
+    }
+
+    fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String> {
+        if let Some(ref field) = self.pending_versions_field.clone() {
+            let issue = try!(self.client.get::<serde_json::Value>(&format!("/issue/{}", key)));
+
+            let mut value : String = issue["fields"][field].as_str().unwrap_or("").to_string();
+            if value != "" {
+                value += ", ";
+            }
+            value += version;
+
+            let req = json!({
+                "update": {
+                    field.to_string(): [{ "set": value }]
+                }
+            });
+
+            try!(self.client.put::<VoidResp, serde_json::Value>(&format!("/issue/{}", key), &req));
+        }
         Ok(())
     }
 }

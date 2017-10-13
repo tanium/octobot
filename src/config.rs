@@ -62,7 +62,9 @@ pub struct JiraConfig {
     // when marking as resolved, add this resolution (defaults to ["Fixed", "Done"])
     pub fixed_resolutions: Option<Vec<String>>,
     // the field name for where the version goes. (defaults to "fixVersions").
-    pub fix_version_field: Option<String>,
+    pub fix_versions_field: Option<String>,
+    // the field name for where the pending build versions go. expected to be a plain text field
+    pub pending_versions_field: Option<String>,
 }
 
 impl Config {
@@ -212,8 +214,8 @@ impl JiraConfig {
         }
     }
 
-    pub fn fix_version(&self) -> String {
-        if let Some(ref field) = self.fix_version_field {
+    pub fn fix_versions(&self) -> String {
+        if let Some(ref field) = self.fix_versions_field {
             field.clone()
         } else {
             "fixVersions".into()

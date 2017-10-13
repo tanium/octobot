@@ -10,6 +10,7 @@ pub struct MockJira {
     comment_issue_calls: Mutex<Vec< MockCall<()> >>,
     add_version_calls: Mutex<Vec< MockCall<()> >>,
     assign_fix_version_calls: Mutex<Vec< MockCall<()> >>,
+    add_pending_version_calls: Mutex<Vec< MockCall<()> >>,
 }
 
 #[derive(Debug)]
@@ -35,6 +36,7 @@ impl MockJira {
             comment_issue_calls: Mutex::new(vec![]),
             add_version_calls: Mutex::new(vec![]),
             assign_fix_version_calls: Mutex::new(vec![]),
+            add_pending_version_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -52,7 +54,8 @@ impl Drop for MockJira {
                     "Unmet add_version calls: {:?}", *self.add_version_calls.lock().unwrap());
             assert!(self.assign_fix_version_calls.lock().unwrap().len() == 0,
                     "Unmet asign_fix_version calls: {:?}", *self.assign_fix_version_calls.lock().unwrap());
-
+            assert!(self.add_pending_version_calls.lock().unwrap().len() == 0,
+                    "Unmet add_pending_version calls: {:?}", *self.add_pending_version_calls.lock().unwrap());
         }
     }
 }
@@ -106,6 +109,16 @@ impl Session for MockJira {
 
         call.ret
     }
+
+    fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String> {
+        let mut calls = self.add_pending_version_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to add_pending_version");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], key);
+        assert_eq!(call.args[1], version);
+
+        call.ret
+    }
 }
 
 impl MockJira {
@@ -127,5 +140,9 @@ impl MockJira {
 
     pub fn mock_assign_fix_version(&self, key: &str, version: &str, ret: Result<(), String>) {
         self.assign_fix_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
+    }
+
+    pub fn mock_add_pending_version(&self, key: &str, version: &str, ret: Result<(), String>) {
+        self.add_pending_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
     }
 }
