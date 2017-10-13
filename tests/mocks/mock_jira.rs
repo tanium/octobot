@@ -11,6 +11,8 @@ pub struct MockJira {
     add_version_calls: Mutex<Vec< MockCall<()> >>,
     assign_fix_version_calls: Mutex<Vec< MockCall<()> >>,
     add_pending_version_calls: Mutex<Vec< MockCall<()> >>,
+    find_pending_versions_calls: Mutex<Vec< MockCall<Vec<String>> >>,
+    get_versions_calls: Mutex<Vec< MockCall<Vec<Version>> >>,
 }
 
 #[derive(Debug)]
@@ -37,6 +39,8 @@ impl MockJira {
             add_version_calls: Mutex::new(vec![]),
             assign_fix_version_calls: Mutex::new(vec![]),
             add_pending_version_calls: Mutex::new(vec![]),
+            find_pending_versions_calls: Mutex::new(vec![]),
+            get_versions_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -56,6 +60,10 @@ impl Drop for MockJira {
                     "Unmet asign_fix_version calls: {:?}", *self.assign_fix_version_calls.lock().unwrap());
             assert!(self.add_pending_version_calls.lock().unwrap().len() == 0,
                     "Unmet add_pending_version calls: {:?}", *self.add_pending_version_calls.lock().unwrap());
+            assert!(self.find_pending_versions_calls.lock().unwrap().len() == 0,
+                    "Unmet find_pending_versions calls: {:?}", *self.find_pending_versions_calls.lock().unwrap());
+            assert!(self.get_versions_calls.lock().unwrap().len() == 0,
+                    "Unmet get_versions calls: {:?}", *self.get_versions_calls.lock().unwrap());
         }
     }
 }
@@ -119,6 +127,25 @@ impl Session for MockJira {
 
         call.ret
     }
+
+    fn find_pending_versions(&self, proj: &str) -> Result<Vec<String>, String> {
+        let mut calls = self.find_pending_versions_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to find_pending_versions");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], proj);
+
+        call.ret
+    }
+
+    fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String> {
+        let mut calls = self.get_versions_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_versions");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], proj);
+
+        call.ret
+    }
+
 }
 
 impl MockJira {
@@ -144,5 +171,13 @@ impl MockJira {
 
     pub fn mock_add_pending_version(&self, key: &str, version: &str, ret: Result<(), String>) {
         self.add_pending_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
+    }
+
+    pub fn mock_find_pending_versions(&self, proj: &str, ret: Result<Vec<String>, String>) {
+        self.find_pending_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![proj]));
+    }
+
+    pub fn mock_get_versions(&self, proj: &str, ret: Result<Vec<Version>, String>) {
+        self.get_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![proj]));
     }
 }

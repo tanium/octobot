@@ -111,6 +111,8 @@ impl HTTPClient {
                 })
                 .map(move |buffer| {
                     if !status.is_success() {
+                        info!("Failed request to {}: HTTP {}\n---\n{}\n---", path, status,
+                              String::from_utf8_lossy(&buffer));
                         return Ok(InternalResp { status: status, obj: None });
                     }
 
