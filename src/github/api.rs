@@ -1,12 +1,4 @@
-use std::io::Read;
-use hyper;
-use hyper::header::{Accept, Authorization, Bearer, ContentType, UserAgent};
-use hyper::method::Method;
-use hyper::mime::{Mime, TopLevel, SubLevel};
-use serde_json;
-use serde::ser::Serialize;
-use serde::de::Deserialize;
-
+use http_client::HTTPClient;
 use github::models::*;
 
 pub trait Session : Send + Sync {
@@ -40,7 +32,9 @@ pub trait Session : Send + Sync {
 }
 
 pub struct GithubSession {
-    client: GithubClient,
+    client: HTTPClient,
+    host: String,
+    token: String,
     user: User,
 }
 
@@ -58,11 +52,12 @@ impl GithubSession {
             format!("https://{}/api/v3", host)
         };
 
-        let client = GithubClient {
-            host: host.to_string(),
-            token: token.to_string(),
-            api_base: api_base,
-        };
+        let client = HTTPClient::new(&api_base)
+            .with_headers(hashmap!{
+                "Accept" => "application/vnd.github.black-cat-preview+json, application/vnd.github.v3+json".to_string(),
+                "Content-Type" => "application/json".to_string(),
+                "Authorization" => format!("Token {}", token),
+            });
 
         // make sure we can auth as this user befor handing out session.
         let user: User = match client.get("/user") {
@@ -70,10 +65,13 @@ impl GithubSession {
             Err(e) => return Err(format!("Error authenticating with token: {}", e)),
         };
 
+
         Ok(GithubSession {
             client: client,
             user: user,
-        })
+            host: host.to_string(),
+            token: token.to_string(),
+       })
     }
 }
 
@@ -83,11 +81,11 @@ impl Session for GithubSession {
     }
 
     fn github_host(&self) -> &str {
-        &self.client.host
+        &self.host
     }
 
     fn github_token(&self) -> &str {
-        &self.client.token
+        &self.token
     }
 
     fn get_pull_request(&self, owner: &str, repo: &str, number: u32)
@@ -203,74 +201,4 @@ impl Session for GithubSession {
     }
 }
 
-pub struct GithubClient {
-    host: String,
-    api_base: String,
-    token: String,
-}
 
-impl GithubClient {
-    pub fn get<T: Deserialize>(&self, path: &str) -> Result<T, String> {
-        self.request::<T, String>(Method::Get, path, None)
-    }
-
-    pub fn post<T: Deserialize, E: Serialize>(&self, path: &str, body: &E) -> Result<T, String> {
-        self.request::<T, E>(Method::Post, path, Some(body))
-    }
-
-    pub fn delete<T: Deserialize>(&self, path: &str) -> Result<T, String> {
-        self.request::<T, String>(Method::Delete, path, None)
-    }
-
-    fn request<T: Deserialize, E: Serialize>(&self, method: Method, path: &str, body: Option<&E>)
-                                             -> Result<T, String> {
-        let url;
-        if path.starts_with("/") {
-            url = self.api_base.clone() + path;
-        } else {
-            url = self.api_base.clone() + "/" + path;
-        }
-
-        let body_json: String;
-
-        let client = hyper::client::Client::new();
-        let mut req = client.request(method, url.as_str())
-            .header(UserAgent("octobot".to_string()))
-            .header(Accept(vec![
-                "application/vnd.github.black-cat-preview+json".parse().unwrap(),
-                "application/vnd.github.v3+json".parse().unwrap(),
-            ]))
-            .header(ContentType(Mime(TopLevel::Application, SubLevel::Json, vec![])))
-            .header(Authorization(Bearer { token: self.token.clone() }));
-
-        if let Some(body) = body {
-            body_json = match serde_json::to_string(&body) {
-                Ok(j) => j,
-                Err(e) => return Err(format!("Error json-encoding body: {}", e)),
-            };
-            req = req.body(&body_json)
-        }
-
-        let res = req.send();
-
-        match res {
-            Ok(mut res) => {
-                let mut res_str = String::new();
-                res.read_to_string(&mut res_str).unwrap_or(0);
-                if res_str.len() == 0 {
-                    res_str = "{}".into();
-                }
-                if res.status.is_success() {
-                    let obj: T = match serde_json::from_str(&res_str) {
-                        Ok(obj) => obj,
-                        Err(e) => return Err(format!("Coudl not parse response: {}", e)),
-                    };
-                    Ok(obj)
-                } else {
-                    Err(format!("HTTP {} -- {}", res.status, res_str))
-                }
-            }
-            Err(e) => Err(format!("Error sending to request github: {}", e)),
-        }
-    }
-}

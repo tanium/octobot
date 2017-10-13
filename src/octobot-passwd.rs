@@ -3,6 +3,7 @@ extern crate ring;
 extern crate rpassword;
 extern crate rustc_serialize;
 
+use ring::rand::SecureRandom;
 use ring::rand::SystemRandom;
 use rustc_serialize::hex::ToHex;
 

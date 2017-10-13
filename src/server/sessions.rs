@@ -2,6 +2,7 @@ use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 use ring::rand::SystemRandom;
+use ring::rand::SecureRandom;
 use rustc_serialize::hex::ToHex;
 
 static SESSION_EXPIRY_SECS: u64 = 15 * 60;

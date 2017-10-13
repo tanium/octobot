@@ -6,20 +6,20 @@ use iron::status;
 use iron::headers::ContentType;
 use iron::middleware::{BeforeMiddleware, Handler};
 use iron::modifiers::Header;
-use ring::pbkdf2;
+use ring::{digest, pbkdf2};
 use rustc_serialize::hex::{ToHex, FromHex};
 
 use config::Config;
 use server::github_verify::StringError;
 use server::sessions::Sessions;
 
-static PBKDF2_PRF: &'static pbkdf2::PRF = &pbkdf2::HMAC_SHA256;
-const CREDENTIAL_LEN: usize = 32; // digest::SHA256.output_len()
-const PBKDF2_ITERATIONS: usize = 20000;
+static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
+const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
+const PBKDF2_ITERATIONS: u32 = 20_000;
 
 pub fn store_password(pass: &str, salt: &str) -> String {
     let mut pass_hash = [0u8; CREDENTIAL_LEN];
-    pbkdf2::derive(PBKDF2_PRF, PBKDF2_ITERATIONS, salt.as_bytes(),
+    pbkdf2::derive(DIGEST_ALG, PBKDF2_ITERATIONS, salt.as_bytes(),
                    pass.as_bytes(), &mut pass_hash);
 
     pass_hash.to_hex()
@@ -33,7 +33,7 @@ pub fn verify_password(pass: &str, salt: &str, pass_hash: &str) -> bool {
             return false
         }
     };
-    pbkdf2::verify(PBKDF2_PRF, PBKDF2_ITERATIONS, salt.as_bytes(),
+    pbkdf2::verify(DIGEST_ALG, PBKDF2_ITERATIONS, salt.as_bytes(),
                    pass.as_bytes(),
                    &pass_hash).is_ok()
 }

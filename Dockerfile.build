@@ -15,7 +15,7 @@ RUN apt-get update \
   && rm -fr /var/lib/apt/lists/
 
 ENV PATH $PATH:/root/.cargo/bin
-ENV RUST_VERSION 1.19.0
+ENV RUST_VERSION 1.21.0
 
 # install rust
 RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$RUST_VERSION" \
