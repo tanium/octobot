@@ -1,7 +1,7 @@
-use std::cmp::Ordering;
+use std::cmp::{self, Ordering};
 use std::fmt;
 
-#[derive(Clone, Eq, Debug)]
+#[derive(Clone, Debug)]
 pub struct Version {
     parts: Vec<u32>,
 }
@@ -45,19 +45,17 @@ impl fmt::Display for Version {
 
 impl PartialEq for Version {
     fn eq(&self, other: &Version) -> bool {
-        self.parts == other.parts
+        self.cmp(&other) == Ordering::Equal
     }
 }
 
+impl Eq for Version {}
+
 impl PartialOrd for Version {
     fn partial_cmp(&self, other: &Version) -> Option<Ordering> {
-        // Note: versions should almost always have exactly 4 parts.
-        // The constructor enforces at least 4 parts.
-        //
-        for i in 0..self.parts.len() {
-            if i >= other.parts.len() {
-                return None;
-            }
+        // Note: this is always going to be at least 4.
+        let min_len = cmp::min(self.parts.len(), other.parts.len());
+        for i in 0..min_len {
             if self.parts[i] < other.parts[i] {
                 return Some(Ordering::Less)
             } else if self.parts[i] > other.parts[i] {
@@ -69,22 +67,31 @@ impl PartialOrd for Version {
             return Some(Ordering::Equal)
         }
 
-        return None
+        // if all else is equal, but one of the Versions has more elements,
+        // see if any are non-zero making it greater
+        let longer_parts;
+        let nonzero_answer;
+        if self.parts.len() > other.parts.len() {
+            longer_parts = &self.parts;
+            nonzero_answer = Ordering::Greater;
+        } else {
+            longer_parts = &other.parts;
+            nonzero_answer = Ordering::Less;
+        }
+        for i in min_len..longer_parts.len() {
+            if longer_parts[i] != 0 {
+                return Some(nonzero_answer);
+            }
+        }
+
+        return Some(Ordering::Equal);
     }
 }
 
 impl Ord for Version {
     fn cmp(&self, other: &Version) -> Ordering {
-        match self.partial_cmp(other) {
-            Some(o) => o,
-            None => {
-                if self.parts.len() > other.parts.len() {
-                    Ordering::Greater
-                } else {
-                    Ordering::Less
-                }
-            }
-        }
+        // we never return None
+        self.partial_cmp(other).unwrap()
     }
 }
 
@@ -123,6 +130,15 @@ mod tests {
         assert!(Version::parse("1.0.0.0").unwrap() < Version::parse("1.0.0.1").unwrap());
         // negative test
         assert!(!(Version::parse("2.0.0.0").unwrap() < Version::parse("1.0.0.1").unwrap()));
+    }
+
+    // Impropable in practice, but seems good for completeness
+    #[test]
+    fn test_version_less_mismatched_parts() {
+        assert!(Version::parse("1.0.0.0.0").unwrap() == Version::parse("1.0.0.0").unwrap());
+        assert!(Version::parse("1.0.0.0.5").unwrap() > Version::parse("1.0.0.0").unwrap());
+        assert!(Version::parse("1.0.0.0.0").unwrap() < Version::parse("1.0.0.0.5").unwrap());
+        assert!(Version::parse("1.0.0.0.0.5").unwrap() > Version::parse("1.0.0.0").unwrap());
     }
 
     #[test]
