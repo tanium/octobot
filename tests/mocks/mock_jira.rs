@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::thread;
 
@@ -11,7 +12,7 @@ pub struct MockJira {
     add_version_calls: Mutex<Vec< MockCall<()> >>,
     assign_fix_version_calls: Mutex<Vec< MockCall<()> >>,
     add_pending_version_calls: Mutex<Vec< MockCall<()> >>,
-    find_pending_versions_calls: Mutex<Vec< MockCall<Vec<String>> >>,
+    find_pending_versions_calls: Mutex<Vec< MockCall<HashMap<String, Vec<String>>> >>,
     get_versions_calls: Mutex<Vec< MockCall<Vec<Version>> >>,
 }
 
@@ -128,7 +129,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn find_pending_versions(&self, proj: &str) -> Result<Vec<String>, String> {
+    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<String>>, String> {
         let mut calls = self.find_pending_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to find_pending_versions");
         let call = calls.remove(0);
@@ -173,7 +174,7 @@ impl MockJira {
         self.add_pending_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
     }
 
-    pub fn mock_find_pending_versions(&self, proj: &str, ret: Result<Vec<String>, String>) {
+    pub fn mock_find_pending_versions(&self, proj: &str, ret: Result<HashMap<String, Vec<String>>, String>) {
         self.find_pending_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![proj]));
     }
 

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use base64;
 use http_client::HTTPClient;
 use regex::Regex;
@@ -19,7 +20,7 @@ pub trait Session : Send + Sync {
 
     fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String>;
 
-    fn find_pending_versions(&self, proj: &str) -> Result<Vec<String>, String>;
+    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<String>>, String>;
     fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String>;
 }
 
@@ -170,7 +171,7 @@ impl Session for JiraSession {
         Ok(())
     }
 
-    fn find_pending_versions(&self, project: &str) -> Result<Vec<String>, String> {
+    fn find_pending_versions(&self, project: &str) -> Result<HashMap<String, Vec<String>>, String> {
         let re = Regex::new(r"\s*,\s*").unwrap();
 
         if let Some(ref field) = self.pending_versions_field.clone() {
@@ -178,21 +179,26 @@ impl Session for JiraSession {
                 let jql = format!("(project = {}) and \"{}\" is not EMPTY", project, field);
                 let search = try!(self.client.get::<serde_json::Value>(
                         &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, DEFAULT_ENCODE_SET))));
-                let issues : Option<&Vec<serde_json::Value>> = search["issues"].as_array();
+                let issues: Option<&Vec<serde_json::Value>> = search["issues"].as_array();
+
+                let mut versions: HashMap< String, Vec<String> > = HashMap::new();
+
                 // parse out all the version fields
-                let fields : Vec<String> =
-                    issues.map(|issues| issues.iter().map(|i|
-                        i["fields"][field_id].as_str().unwrap_or("").to_string()).collect()
-                    ).unwrap_or(vec![]);
-                // split fields by command and flatten into a single vector
-                let versions: Vec<String> = fields.iter().map(|f| re.split(f).map(|s| s.to_string()).collect::<Vec<String>>())
-                    .flat_map(|v| v.into_iter()).collect();
+                issues.unwrap_or(&vec![]).iter().for_each(|issue| {
+                    let key  = issue["key"].as_str().unwrap_or("").to_string();
+                    if key.len() == 0 {
+                        return;
+                    }
+                    let field = issue["fields"][field_id].as_str().unwrap_or("");
+                    let list = re.split(field).filter(|s| s.len() > 0).map(|s| s.to_string()).collect::<Vec<String>>();
+                    versions.insert(key, list);
+                });
 
                 return Ok(versions);
             }
         }
 
-        Ok(vec![])
+        Ok(HashMap::new())
     }
 
     fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String> {

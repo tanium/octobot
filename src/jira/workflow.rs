@@ -188,9 +188,11 @@ pub fn make_real_version(version: &str, project: &str, jira: &jira::api::Session
         None => return Err(format!("Invalid target version: {}", version)),
     };
     let real_versions = try!(jira.get_versions(project));
-    let pending_versions = try!(jira.find_pending_versions(project));
+    let all_pending_versions = try!(jira.find_pending_versions(project));
 
-    let found = find_relevant_versions(&target_version, &pending_versions, &real_versions);
+    for (key, pending_versions) in all_pending_versions {
+        let found = find_relevant_versions(&target_version, &pending_versions, &real_versions);
+    }
 
     // create the target version for this project
     if let Err(e) = jira.add_version(project, version) {
