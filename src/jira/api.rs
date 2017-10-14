@@ -172,29 +172,13 @@ impl Session for JiraSession {
     }
 
     fn find_pending_versions(&self, project: &str) -> Result<HashMap<String, Vec<String>>, String> {
-        let re = Regex::new(r"\s*,\s*").unwrap();
 
         if let Some(ref field) = self.pending_versions_field.clone() {
             if let Some(ref field_id) = self.pending_versions_field_id {
                 let jql = format!("(project = {}) and \"{}\" is not EMPTY", project, field);
                 let search = try!(self.client.get::<serde_json::Value>(
                         &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, DEFAULT_ENCODE_SET))));
-                let issues: Option<&Vec<serde_json::Value>> = search["issues"].as_array();
-
-                let mut versions: HashMap< String, Vec<String> > = HashMap::new();
-
-                // parse out all the version fields
-                issues.unwrap_or(&vec![]).iter().for_each(|issue| {
-                    let key  = issue["key"].as_str().unwrap_or("").to_string();
-                    if key.len() == 0 {
-                        return;
-                    }
-                    let field = issue["fields"][field_id].as_str().unwrap_or("");
-                    let list = re.split(field).filter(|s| s.len() > 0).map(|s| s.to_string()).collect::<Vec<String>>();
-                    versions.insert(key, list);
-                });
-
-                return Ok(versions);
+                return Ok(parse_pending_versions(&search, &field_id));
             }
         }
 
@@ -205,3 +189,67 @@ impl Session for JiraSession {
         self.client.get::<Vec<Version>>(&format!("/project/{}/versions", proj))
     }
 }
+
+fn parse_pending_versions(search: &serde_json::Value, field_id: &str) -> HashMap<String, Vec<String>> {
+    let re = Regex::new(r"\s*,\s*").unwrap();
+    let mut versions: HashMap< String, Vec<String> > = HashMap::new();
+
+    let issues: Option<&Vec<serde_json::Value>> = search["issues"].as_array();
+
+    // parse out all the version fields
+    issues.map(|i| i.iter().for_each(|issue| {
+        let key  = issue["key"].as_str().unwrap_or("").to_string();
+        if key.is_empty() {
+            return;
+        }
+        let field = issue["fields"][field_id].as_str().unwrap_or("");
+        let list = re.split(field)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<String>>();
+
+        if !list.is_empty() {
+            versions.insert(key, list);
+        }
+    }));
+
+    versions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_pending_versions() {
+        let search = json!({
+            "issues": [
+                {
+                    "key": "KEY-1",
+                    "fields": {}
+                },
+                {
+                    "key": "KEY-2",
+                    "fields": {
+                        "the-field": "  1.2, 3.4,5,7.7.7  "
+                    }
+                },
+                {
+                    "key": "KEY-3",
+                    "fields": {
+                        "the-field": "1.2,  "
+                    }
+                }
+            ]
+        });
+        let expected = hashmap! {
+            "KEY-2".to_string() => vec!["1.2".to_string(), "3.4".to_string(), "5".to_string(), "7.7.7".to_string() ],
+            "KEY-3".to_string() => vec!["1.2".to_string()],
+        };
+
+        let versions = parse_pending_versions(&search, "the-field");
+        assert_eq!(expected, versions);
+    }
+}
+
+
