@@ -1,7 +1,12 @@
+extern crate base64;
 extern crate bodyparser;
 extern crate logger;
+extern crate futures;
 extern crate hyper;
+extern crate hyper_rustls;
 extern crate iron;
+#[macro_use]
+extern crate maplit;
 extern crate regex;
 extern crate ring;
 #[macro_use]
@@ -11,6 +16,7 @@ extern crate serde;
 #[macro_use]
 extern crate serde_json;
 extern crate threadpool;
+extern crate tokio_core;
 extern crate toml;
 extern crate unidiff;
 extern crate url;
@@ -27,6 +33,7 @@ pub mod force_push;
 pub mod git;
 pub mod git_clone_manager;
 pub mod github;
+pub mod http_client;
 pub mod jira;
 pub mod messenger;
 pub mod pr_merge;

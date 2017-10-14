@@ -1,8 +1,4 @@
-use std::io::Read;
-use hyper;
-use hyper::header::ContentType;
-use hyper::mime::{Mime, TopLevel, SubLevel};
-use serde_json;
+use http_client;
 
 // the main object for sending messages to slack
 pub struct Slack {
@@ -85,23 +81,13 @@ impl SlackSender for Slack {
 
         info!("Sending message to #{}", channel);
 
-        let client = hyper::client::Client::new();
-        let res = client.post(self.webhook_url.as_str())
-            .header(ContentType(Mime(TopLevel::Application, SubLevel::Json, vec![])))
-            .body(serde_json::to_string(&slack_msg).unwrap_or(String::new()).as_str())
-            .send();
 
-        match res {
-            Ok(mut res) => {
-                if res.status == hyper::Ok {
-                    Ok(())
-                } else {
-                    let mut res_str = String::new();
-                    res.read_to_string(&mut res_str).unwrap_or(0);
-                    Err(format!("Error sending to slack: HTTP {} -- {}", res.status, res_str))
-                }
-            }
-            Err(e) => Err(format!("Error sending to slack: {}", e)),
-        }
+        let client = http_client::HTTPClient::new(&self.webhook_url)
+            .with_headers(hashmap!{
+                "Content-Type" => "application/json".to_string(),
+            });
+
+        client.post::< http_client::VoidResponse, SlackMessage >("", &slack_msg)?;
+        Ok(())
     }
 }

@@ -1,11 +1,6 @@
-use std::io::Read;
-use hyper;
-use hyper::header::{Accept, Authorization, Basic, ContentType, qitem, UserAgent};
-use hyper::method::Method;
-use hyper::mime::{Mime, TopLevel, SubLevel};
+use base64;
+use http_client::HTTPClient;
 use serde_json;
-use serde::ser::Serialize;
-use serde::de::Deserialize;
 
 use config::JiraConfig;
 use jira::models::*;
@@ -23,7 +18,7 @@ pub trait Session : Send + Sync {
 }
 
 pub struct JiraSession {
-    pub client: JiraClient,
+    pub client: HTTPClient,
     fix_versions_field: String,
     pending_versions_field: Option<String>,
 }
@@ -57,12 +52,13 @@ impl JiraSession {
 
         let api_base = format!("{}/rest/api/2", jira_base);
 
-        let client = JiraClient {
-            api_base: api_base,
-            jira_base: jira_base.clone(),
-            user: config.username.to_string(),
-            pass: config.password.to_string(),
-        };
+        let auth = base64::encode(format!("{}:{}", config.username, config.password).as_bytes());
+        let client = HTTPClient::new(&api_base)
+            .with_headers(hashmap!{
+                "Accept" => "application/json".to_string(),
+                "Content-Type" => "application/json".to_string(),
+                "Authorization" => format!("Basic {}", auth),
+            });
 
         match client.get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base)) {
             Ok(a) => info!("Logged into JIRA as {}", a.name),
@@ -164,81 +160,5 @@ impl Session for JiraSession {
             try!(self.client.put::<VoidResp, serde_json::Value>(&format!("/issue/{}", key), &req));
         }
         Ok(())
-    }
-}
-
-pub struct JiraClient {
-    api_base: String,
-    jira_base: String,
-    user: String,
-    pass: String,
-}
-
-// TODO: lots of duplication with GithubClient...
-impl JiraClient {
-    pub fn get<T: Deserialize>(&self, path: &str) -> Result<T, String> {
-        self.request::<T, String>(Method::Get, path, None)
-    }
-
-    pub fn post<T: Deserialize, E: Serialize>(&self, path: &str, body: &E) -> Result<T, String> {
-        self.request::<T, E>(Method::Post, path, Some(body))
-    }
-
-    pub fn put<T: Deserialize, E: Serialize>(&self, path: &str, body: &E) -> Result<T, String> {
-        self.request::<T, E>(Method::Put, path, Some(body))
-    }
-
-    fn request<T: Deserialize, E: Serialize>(&self, method: Method, path: &str, body: Option<&E>)
-                                             -> Result<T, String> {
-        let url;
-        if path.starts_with(&self.jira_base) {
-            url = path.into();
-        } else if path.starts_with("/") {
-            url = self.api_base.clone() + path;
-        } else {
-            url = self.api_base.clone() + "/" + path;
-        }
-
-        let body_json: String;
-
-        let client = hyper::client::Client::new();
-        let mut req = client.request(method, url.as_str())
-            .header(UserAgent("octobot".to_string()))
-            .header(Accept(vec![qitem(Mime(TopLevel::Application, SubLevel::Json, vec![]))]))
-            .header(ContentType(Mime(TopLevel::Application, SubLevel::Json, vec![])))
-            .header(Authorization(Basic {
-                username: self.user.clone(),
-                password: Some(self.pass.clone()),
-            }));
-
-        if let Some(body) = body {
-            body_json = match serde_json::to_string(&body) {
-                Ok(j) => j,
-                Err(e) => return Err(format!("Error json-encoding body: {}", e)),
-            };
-            req = req.body(&body_json)
-        }
-
-        let res = req.send();
-
-        match res {
-            Ok(mut res) => {
-                let mut res_str = String::new();
-                res.read_to_string(&mut res_str).unwrap_or(0);
-                if res.status.is_success() {
-                    if res_str.len() == 0 {
-                        res_str = "{}".into();
-                    }
-                    let obj: T = match serde_json::from_str(&res_str) {
-                        Ok(obj) => obj,
-                        Err(e) => return Err(format!("Coudl not parse response: {}", e)),
-                    };
-                    Ok(obj)
-                } else {
-                    Err(format!("HTTP {} -- {}", res.status, res_str))
-                }
-            }
-            Err(e) => Err(format!("Error sending request to JIRA: {}", e)),
-        }
     }
 }
