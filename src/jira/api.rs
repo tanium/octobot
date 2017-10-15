@@ -158,15 +158,15 @@ impl Session for JiraSession {
         if let Some(ref field) = self.pending_versions_field_id.clone() {
             let issue = try!(self.client.get::<serde_json::Value>(&format!("/issue/{}", key)));
 
-            let mut value : String = issue["fields"][field].as_str().unwrap_or("").to_string();
-            if value != "" {
-                value += ", ";
-            }
-            value += version;
+            let mut pending_versions = parse_pending_version_field(&issue["fields"][field]);
+            pending_versions.push(version.to_string());
+
+            pending_versions.sort();
+            pending_versions.dedup_by(|a, b| a == b);
 
             let req = json!({
                 "update": {
-                    field.to_string(): [{ "set": value }]
+                    field.to_string(): [{ "set": pending_versions.join(", ") }]
                 }
             });
 
@@ -216,13 +216,12 @@ impl Session for JiraSession {
 
 fn parse_pending_version_field(field: &serde_json::Value) -> Vec<String> {
     let re = Regex::new(r"\s*,\s*").unwrap();
-    re.split(field.as_str().unwrap_or(""))
+    re.split(field.as_str().unwrap_or("").trim())
         .filter_map(|s| {
-            let s = s.trim().to_string();
             if s.is_empty() {
                 None
             } else {
-                Some(s)
+                Some(s.to_string())
             }
         })
         .collect::<Vec<String>>()
