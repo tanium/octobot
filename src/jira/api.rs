@@ -192,28 +192,25 @@ impl Session for JiraSession {
 
 fn parse_pending_versions(search: &serde_json::Value, field_id: &str) -> HashMap<String, Vec<String>> {
     let re = Regex::new(r"\s*,\s*").unwrap();
-    let mut versions: HashMap< String, Vec<String> > = HashMap::new();
 
     let issues: Option<&Vec<serde_json::Value>> = search["issues"].as_array();
 
     // parse out all the version fields
-    issues.map(|i| i.iter().for_each(|issue| {
+    issues.unwrap_or(&vec![]).into_iter().filter_map(|issue| {
         let key  = issue["key"].as_str().unwrap_or("").to_string();
-        if key.is_empty() {
-            return;
-        }
         let field = issue["fields"][field_id].as_str().unwrap_or("");
         let list = re.split(field)
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect::<Vec<String>>();
 
-        if !list.is_empty() {
-            versions.insert(key, list);
+        if key.is_empty() || list.is_empty() {
+            None
+        } else {
+            Some((key, list))
         }
-    }));
-
-    versions
+    })
+    .collect::<HashMap<String, Vec<String>>>()
 }
 
 #[cfg(test)]
@@ -251,5 +248,3 @@ mod tests {
         assert_eq!(expected, versions);
     }
 }
-
-

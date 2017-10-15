@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use regex::Regex;
 use version;
 
@@ -190,9 +191,10 @@ pub fn make_real_version(version: &str, project: &str, jira: &jira::api::Session
     let real_versions = try!(jira.get_versions(project));
     let all_pending_versions = try!(jira.find_pending_versions(project));
 
-    for (key, pending_versions) in all_pending_versions {
-        let found = find_relevant_versions(&target_version, &pending_versions, &real_versions);
-    }
+    let all_relevant_versions = all_pending_versions.iter()
+        .map(|(key, list)| (key.clone(), find_relevant_versions(&target_version, &list, &real_versions)))
+        .collect::<HashMap<String, Vec<String>>>();
+
 
     // create the target version for this project
     if let Err(e) = jira.add_version(project, version) {
