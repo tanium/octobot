@@ -192,8 +192,19 @@ pub fn make_real_version(version: &str, project: &str, jira: &jira::api::Session
     let all_pending_versions = try!(jira.find_pending_versions(project));
 
     let all_relevant_versions = all_pending_versions.iter()
-        .map(|(key, list)| (key.clone(), find_relevant_versions(&target_version, &list, &real_versions)))
+        .filter_map(|(key, list)| {
+            let relevant = find_relevant_versions(&target_version, &list, &real_versions);
+            if relevant.is_empty() {
+                None
+            } else {
+                Some((key.clone(), relevant))
+            }
+        })
         .collect::<HashMap<String, Vec<String>>>();
+
+    if all_relevant_versions.is_empty() {
+        return Err(format!("No relevant pending versions for version {} (all pending versions: {:?})", version, all_pending_versions));
+    }
 
 
     // create the target version for this project
@@ -201,8 +212,18 @@ pub fn make_real_version(version: &str, project: &str, jira: &jira::api::Session
         return Err(format!("Error adding version {} to project {}: {}", version, project, e));
     }
 
+    // group together relevant versions into this version!
+    for (key, relevant_versions) in all_relevant_versions {
+        if let Err(e) = jira.assign_fix_version(&key, version) {
+            error!("Error assigning version {} to key {}: {}", version, key, e);
+            continue;
+        }
 
-
+        if let Err(e) = jira.remove_pending_versions(&key, &relevant_versions) {
+            error!("Error clearing pending version {} from key {}: {}", version, key, e);
+            continue
+        }
+    }
 
     Ok(())
 }

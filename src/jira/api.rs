@@ -16,12 +16,12 @@ pub trait Session : Send + Sync {
     fn comment_issue(&self, key: &str, comment: &str) -> Result<(), String>;
 
     fn add_version(&self, proj: &str, version: &str) -> Result<(), String>;
+    fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String>;
     fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String>;
 
     fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String>;
-
+    fn remove_pending_versions(&self, key: &str, versions: &Vec<String>) -> Result<(), String>;
     fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<String>>, String>;
-    fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String>;
 }
 
 pub struct JiraSession {
@@ -138,6 +138,10 @@ impl Session for JiraSession {
         Ok(())
     }
 
+    fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String> {
+        self.client.get::<Vec<Version>>(&format!("/project/{}/versions", proj))
+    }
+
     fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String> {
         let field = self.fix_versions_field.clone();
         let req = json!({
@@ -171,8 +175,30 @@ impl Session for JiraSession {
         Ok(())
     }
 
-    fn find_pending_versions(&self, project: &str) -> Result<HashMap<String, Vec<String>>, String> {
 
+    fn remove_pending_versions(&self, key: &str, versions: &Vec<String>) -> Result<(), String> {
+        if let Some(ref field_id) = self.pending_versions_field_id.clone() {
+            let issue = try!(self.client.get::<serde_json::Value>(&format!("/issue/{}", key)));
+
+            let pending_versions = parse_pending_version_field(&issue["fields"][field_id]);
+            let new_pending_versions = pending_versions.iter()
+                .filter(|v| !versions.contains(v))
+                .map(|v| v.to_string())
+                .collect::<Vec<String>>()
+                .join(", ");
+
+            let req = json!({
+                "update": {
+                    field_id.to_string(): [{ "set": new_pending_versions }]
+                }
+            });
+
+            try!(self.client.put::<VoidResp, serde_json::Value>(&format!("/issue/{}", key), &req));
+        }
+        Ok(())
+    }
+
+    fn find_pending_versions(&self, project: &str) -> Result<HashMap<String, Vec<String>>, String> {
         if let Some(ref field) = self.pending_versions_field.clone() {
             if let Some(ref field_id) = self.pending_versions_field_id {
                 let jql = format!("(project = {}) and \"{}\" is not EMPTY", project, field);
@@ -185,25 +211,31 @@ impl Session for JiraSession {
         Ok(HashMap::new())
     }
 
-    fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String> {
-        self.client.get::<Vec<Version>>(&format!("/project/{}/versions", proj))
-    }
+}
+
+
+fn parse_pending_version_field(field: &serde_json::Value) -> Vec<String> {
+    let re = Regex::new(r"\s*,\s*").unwrap();
+    re.split(field.as_str().unwrap_or(""))
+        .filter_map(|s| {
+            let s = s.trim().to_string();
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
+        })
+        .collect::<Vec<String>>()
 }
 
 fn parse_pending_versions(search: &serde_json::Value, field_id: &str) -> HashMap<String, Vec<String>> {
-    let re = Regex::new(r"\s*,\s*").unwrap();
 
     let issues: Option<&Vec<serde_json::Value>> = search["issues"].as_array();
 
     // parse out all the version fields
     issues.unwrap_or(&vec![]).into_iter().filter_map(|issue| {
         let key  = issue["key"].as_str().unwrap_or("").to_string();
-        let field = issue["fields"][field_id].as_str().unwrap_or("");
-        let list = re.split(field)
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<String>>();
-
+        let list = parse_pending_version_field(&issue["fields"][field_id]);
         if key.is_empty() || list.is_empty() {
             None
         } else {
