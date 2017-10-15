@@ -143,7 +143,7 @@ impl Session for MockJira {
     }
 
     fn remove_pending_versions(&self, key: &str, versions: &Vec<String>) -> Result<(), String> {
-        let mut calls = self.add_pending_version_calls.lock().unwrap();
+        let mut calls = self.remove_pending_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to remove_pending_versions");
         let call = calls.remove(0);
         assert_eq!(call.args[0], key);

@@ -1,4 +1,6 @@
 extern crate octobot;
+#[macro_use]
+extern crate maplit;
 
 mod mocks;
 
@@ -181,21 +183,6 @@ fn test_resolve_issue_with_resolution() {
 }
 
 #[test]
-fn test_add_version() {
-    let test = new_test();
-    let projects = vec!["SER".to_string(), "CLI".to_string()];
-    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
-
-    test.jira.mock_add_version("CLI", "5.6.7", Ok(()));
-    test.jira.mock_add_version("SER", "5.6.7", Ok(()));
-
-    test.jira.mock_assign_fix_version("CLI-45", "5.6.7", Ok(()));
-    test.jira.mock_assign_fix_version("SER-1", "5.6.7", Ok(()));
-
-    jira::workflow::add_version(Some("5.6.7"), &vec![commit], &projects, &test.jira);
-}
-
-#[test]
 fn test_add_pending_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
@@ -205,4 +192,28 @@ fn test_add_pending_version() {
     test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
 
     jira::workflow::add_pending_version(Some("5.6.7"), &vec![commit], &projects, &test.jira);
+}
+
+#[test]
+fn test_merge_pending_versions() {
+    let test = new_test();
+
+    let new_version = "1.2.0.500";
+    test.jira.mock_get_versions("SER", Ok(vec![Version::new("1.2.0.100"), Version::new("1.3.0.100")]));
+    test.jira.mock_find_pending_versions("SER", Ok(hashmap!{
+        "SER-1".to_string() => vec![ "1.2.0.50".to_string(), "1.2.0.200".to_string() ],
+        "SER-2".to_string() => vec![],
+        "SER-3".to_string() => vec![ "9.9.9.9".to_string() ],
+        "SER-4".to_string() => vec![ "1.2.0.700".to_string(), "1.2.0.300".to_string() ],
+    }));
+
+    test.jira.mock_add_version("SER", new_version, Ok(()));
+
+    test.jira.mock_remove_pending_versions("SER-1", &vec!["1.2.0.200".to_string()], Ok(()));
+    test.jira.mock_remove_pending_versions("SER-4", &vec!["1.2.0.300".to_string()], Ok(()));
+
+    test.jira.mock_assign_fix_version("SER-1", new_version, Ok(()));
+    test.jira.mock_assign_fix_version("SER-4", new_version, Ok(()));
+
+    jira::workflow::merge_pending_versions(new_version, "SER", &test.jira).expect("succes");
 }
