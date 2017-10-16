@@ -122,14 +122,7 @@ impl Session for JiraSession {
         }
 
         let req = AddVersionReq { name: version.into(), project: proj.into() };
-        // Versions the way we're using them are probably unique anyway, so don't spend the
-        // extra work to check if it exists first.
-        if let Err(e) = self.client.post::<VoidResp, AddVersionReq>("/version", &req) {
-            if e.find("A version with this name already exists in this project").is_none() {
-                return Err(e);
-            }
-        }
-
+        try!(self.client.post::<VoidResp, AddVersionReq>("/version", &req));
         Ok(())
     }
 

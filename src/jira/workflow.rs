@@ -210,9 +210,13 @@ pub fn merge_pending_versions(version: &str, project: &str, jira: &jira::api::Se
     }
 
     // create the target version for this project
-    info!("Creating new JIRA version {} for project {}", version, project);
-    if let Err(e) = jira.add_version(project, version) {
-        return Err(format!("Error adding version {} to project {}: {}", version, project, e));
+    if real_versions.iter().any(|v| v.name == version) {
+        info!("JIRA version {} already exists for project {}", version, project);
+    } else {
+        info!("Creating new JIRA version {} for project {}", version, project);
+        if let Err(e) = jira.add_version(project, version) {
+            return Err(format!("Error adding version {} to project {}: {}", version, project, e));
+        }
     }
 
     {
@@ -244,9 +248,9 @@ fn find_relevant_versions(target_version: &version::Version,
                           pending_versions: &Vec<version::Version>,
                           real_versions: &Vec<jira::Version>) -> Vec<version::Version> {
 
-    let latest_real_version = parse_jira_versions(real_versions)
+    let latest_prior_real_version = parse_jira_versions(real_versions)
         .iter()
-        .filter(|v| v.major() == target_version.major() && v.minor() == target_version.minor())
+        .filter(|v| v.major() == target_version.major() && v.minor() == target_version.minor() && v < &target_version)
         .max().map(|v| v.clone())
         .unwrap_or(version::Version::parse("0.0.0.0").unwrap());
 
@@ -254,7 +258,7 @@ fn find_relevant_versions(target_version: &version::Version,
         if version.major() == target_version.major() &&
             version.minor() == target_version.minor() &&
             version <= &target_version &&
-            version > &latest_real_version {
+            version > &latest_prior_real_version {
 
             Some(version.clone())
         } else {
@@ -454,6 +458,31 @@ mod tests {
         let expected: Vec<version::Version> = vec![
             version::Version::parse("1.2.0.100").unwrap(),
             version::Version::parse("1.2.0.200").unwrap(),
+        ];
+        assert_eq!(expected, find_relevant_versions(&target_version, &pending_versions, &real_versions));
+    }
+
+    #[test]
+    fn test_find_relevant_versions_missed_versions() {
+        let target_version = version::Version::parse("3.4.0.2000").unwrap();
+        let real_versions = vec![
+            // our exact target version
+            jira::Version::new("3.4.0.2000"),
+            // a newer one
+            jira::Version::new("3.4.0.3000"),
+            // an older one -- should pick this one
+            jira::Version::new("3.4.0.1000"),
+        ];
+        let pending_versions = vec![
+            // the one that got missed
+            version::Version::parse("3.4.0.1500").unwrap(),
+            // too early
+            version::Version::parse("3.4.0.1000").unwrap(),
+            // too late
+            version::Version::parse("3.4.0.2001").unwrap(),
+        ];
+        let expected: Vec<version::Version> = vec![
+            version::Version::parse("3.4.0.1500").unwrap(),
         ];
         assert_eq!(expected, find_relevant_versions(&target_version, &pending_versions, &real_versions));
     }
