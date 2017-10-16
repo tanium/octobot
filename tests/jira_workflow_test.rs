@@ -262,3 +262,30 @@ fn test_merge_pending_versions_dry_run() {
 
     assert_eq!(Ok(res), jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::DryRun));
 }
+
+
+#[test]
+fn test_merge_pending_versions_missed_versions() {
+    let test = new_test();
+
+    let missed_version = "1.2.0.500";
+    test.jira.mock_get_versions("SER", Ok(vec![Version::new("1.2.0.100"), Version::new("1.2.0.500"), Version::new("1.2.0.600")]));
+    test.jira.mock_find_pending_versions("SER", Ok(hashmap!{
+        "SER-1".to_string() => vec![
+            version::Version::parse("1.2.0.50").unwrap(),
+            version::Version::parse("1.2.0.150").unwrap(),
+            version::Version::parse("1.2.0.600").unwrap(),
+        ],
+    }));
+
+    // Note: don't mock `add_version` since the version already exists
+
+    test.jira.mock_remove_pending_versions("SER-1", &vec![version::Version::parse("1.2.0.150").unwrap()], Ok(()));
+    test.jira.mock_assign_fix_version("SER-1", missed_version, Ok(()));
+
+    let res = hashmap! {
+        "SER-1".to_string() => vec![version::Version::parse("1.2.0.150").unwrap()],
+    };
+
+    assert_eq!(Ok(res), jira::workflow::merge_pending_versions(missed_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal));
+}
