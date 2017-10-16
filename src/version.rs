@@ -1,6 +1,8 @@
 use std::cmp::{self, Ordering};
 use std::fmt;
 
+use serde::ser::{Serialize, Serializer};
+
 #[derive(Clone, Debug)]
 pub struct Version {
     parts: Vec<u32>,
@@ -13,7 +15,7 @@ impl Version {
             return None;
         }
         let mut parts: Vec<u32> = parts.into_iter().map(|p| p.unwrap()).collect();
-        while parts.len() < 4 {
+        while parts.len() < 3 {
             parts.push(0)
         }
 
@@ -27,12 +29,12 @@ impl Version {
     }
 
     pub fn major(&self) -> u32 {
-        assert!(self.parts.len() >= 4);
+        assert!(self.parts.len() >= 3);
         self.parts[0]
     }
 
     pub fn minor(&self) -> u32 {
-        assert!(self.parts.len() >= 4);
+        assert!(self.parts.len() >= 3);
         self.parts[1]
     }
 }
@@ -53,7 +55,7 @@ impl Eq for Version {}
 
 impl PartialOrd for Version {
     fn partial_cmp(&self, other: &Version) -> Option<Ordering> {
-        // Note: this is always going to be at least 4.
+        // Note: this is always going to be at least 3.
         let min_len = cmp::min(self.parts.len(), other.parts.len());
         for i in 0..min_len {
             if self.parts[i] < other.parts[i] {
@@ -95,15 +97,24 @@ impl Ord for Version {
     }
 }
 
+impl Serialize for Version {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where S: Serializer {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_version_parse() {
-        assert_eq!("1.2.3.5", Version::parse("1.2.3.5").unwrap().to_string());
-        assert_eq!("1.2.3.0", Version::parse("1.2.3").unwrap().to_string());
-        assert_eq!("1.2.0.0", Version::parse("1.2").unwrap().to_string());
+        assert_eq!("1.2.3.4.5", Version::parse("1.2.3.4.5").unwrap().to_string());
+        assert_eq!("1.2.3.4", Version::parse("1.2.3.4").unwrap().to_string());
+        assert_eq!("1.2.3", Version::parse("1.2.3").unwrap().to_string());
+        assert_eq!("1.2.0", Version::parse("1.2").unwrap().to_string());
+        assert_eq!("1.0.0", Version::parse("1").unwrap().to_string());
     }
 
     #[test]

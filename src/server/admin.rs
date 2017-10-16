@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::sync::Arc;
@@ -11,9 +13,10 @@ use iron::modifiers::Header;
 use serde_json;
 
 use config::Config;
+use jira;
 use users::UserHostMap;
 use repos::RepoHostMap;
-
+use version;
 
 pub struct GetUsers {
     config: Arc<Config>
@@ -176,3 +179,81 @@ impl Handler for UpdateRepos {
     }
 }
 
+pub struct MergeVersions {
+    config: Arc<Config>,
+    jira_session: Option<Arc<jira::api::Session>>,
+}
+
+impl MergeVersions {
+    pub fn new(config: Arc<Config>, jira_session: Option<Arc<jira::api::Session>>) -> MergeVersions {
+        MergeVersions {
+            config: config,
+            jira_session: jira_session,
+        }
+    }
+}
+
+#[derive(Deserialize, Clone)]
+struct MergeVersionsReq {
+    project: String,
+    version: String,
+    dry_run: bool,
+}
+
+#[derive(Serialize, Clone)]
+struct MergeVersionsResp {
+    jira_base: String,
+    versions: HashMap<String, Vec<version::Version>>,
+}
+
+impl Handler for MergeVersions {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        let merge_req = match req.get::<bodyparser::Struct<MergeVersionsReq>>() {
+            Ok(Some(j)) => j,
+            Err(_) | Ok(None) => {
+                error!("Error reading json");
+                return Ok(Response::with((status::BadRequest, format!("Error reading json"))));
+            }
+        };
+        let jira_config = match self.config.jira {
+            Some(ref j) => j,
+            None => {
+                return Ok(Response::with((status::BadRequest, format!("No JIRA config"))));
+            }
+        };
+        let jira_sess = match self.jira_session {
+            Some(ref j) => j,
+            None => {
+                return Ok(Response::with((status::BadRequest, format!("No JIRA config"))));
+            }
+        };
+
+        let dry_run_mode = if merge_req.dry_run {
+            jira::workflow::DryRunMode::DryRun
+        } else {
+            jira::workflow::DryRunMode::ForReal
+        };
+
+        let all_relevant_versions = match jira::workflow::merge_pending_versions(&merge_req.version, &merge_req.project, jira_sess.borrow(), dry_run_mode) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Error merging pending versions: {}", e);
+                return Ok(Response::with((status::InternalServerError, format!("Error merging pending versions"))));
+            }
+        };
+
+        let resp = MergeVersionsResp {
+            jira_base: jira_config.base_url(),
+            versions: all_relevant_versions,
+        };
+
+        let resp_json = match serde_json::to_string(&resp) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error serializing versions: {}", e);
+                return Ok(Response::with((status::InternalServerError, format!("Error serializing pending versions"))));
+            }
+        };
+        Ok(Response::with((status::Ok, Header(ContentType::json()), resp_json)))
+    }
+}

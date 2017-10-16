@@ -7,6 +7,7 @@ use url::percent_encoding::{utf8_percent_encode, DEFAULT_ENCODE_SET};
 
 use config::JiraConfig;
 use jira::models::*;
+use version;
 
 pub trait Session : Send + Sync {
     fn get_transitions(&self, key: &str) -> Result<Vec<Transition>, String>;
@@ -20,8 +21,8 @@ pub trait Session : Send + Sync {
     fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String>;
 
     fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String>;
-    fn remove_pending_versions(&self, key: &str, versions: &Vec<String>) -> Result<(), String>;
-    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<String>>, String>;
+    fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<(), String>;
+    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>, String>;
 }
 
 pub struct JiraSession {
@@ -51,13 +52,7 @@ fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String, String> {
 
 impl JiraSession {
     pub fn new(config: &JiraConfig) -> Result<JiraSession, String> {
-        let jira_base;
-        if config.host.starts_with("http") {
-            jira_base = config.host.clone();
-        } else {
-            jira_base = format!("https://{}", config.host);
-        }
-
+        let jira_base = config.base_url();
         let api_base = format!("{}/rest/api/2", jira_base);
 
         let auth = base64::encode(format!("{}:{}", config.username, config.password).as_bytes());
@@ -158,15 +153,22 @@ impl Session for JiraSession {
         if let Some(ref field) = self.pending_versions_field_id.clone() {
             let issue = try!(self.client.get::<serde_json::Value>(&format!("/issue/{}", key)));
 
+            let version_parsed = match version::Version::parse(version) {
+                Some(v) => v,
+                None => return Err(format!("Unable to parse version: {}", version)),
+            };
+
             let mut pending_versions = parse_pending_version_field(&issue["fields"][field]);
-            pending_versions.push(version.to_string());
+            pending_versions.push(version_parsed);
 
             pending_versions.sort();
             pending_versions.dedup_by(|a, b| a == b);
 
+            let new_value = pending_versions.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ");
+
             let req = json!({
                 "update": {
-                    field.to_string(): [{ "set": pending_versions.join(", ") }]
+                    field.to_string(): [{ "set": new_value }]
                 }
             });
 
@@ -176,7 +178,7 @@ impl Session for JiraSession {
     }
 
 
-    fn remove_pending_versions(&self, key: &str, versions: &Vec<String>) -> Result<(), String> {
+    fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<(), String> {
         if let Some(ref field_id) = self.pending_versions_field_id.clone() {
             let issue = try!(self.client.get::<serde_json::Value>(&format!("/issue/{}", key)));
 
@@ -184,7 +186,7 @@ impl Session for JiraSession {
             let new_pending_versions = pending_versions.iter()
                 .filter(|v| !versions.contains(v))
                 .map(|v| v.to_string())
-                .collect::<Vec<String>>()
+                .collect::<Vec<_>>()
                 .join(", ");
 
             let req = json!({
@@ -198,7 +200,7 @@ impl Session for JiraSession {
         Ok(())
     }
 
-    fn find_pending_versions(&self, project: &str) -> Result<HashMap<String, Vec<String>>, String> {
+    fn find_pending_versions(&self, project: &str) -> Result<HashMap<String, Vec<version::Version>>, String> {
         if let Some(ref field) = self.pending_versions_field.clone() {
             if let Some(ref field_id) = self.pending_versions_field_id {
                 let jql = format!("(project = {}) and \"{}\" is not EMPTY", project, field);
@@ -210,29 +212,17 @@ impl Session for JiraSession {
 
         Ok(HashMap::new())
     }
-
 }
 
-
-fn parse_pending_version_field(field: &serde_json::Value) -> Vec<String> {
+fn parse_pending_version_field(field: &serde_json::Value) -> Vec<version::Version> {
     let re = Regex::new(r"\s*,\s*").unwrap();
     re.split(field.as_str().unwrap_or("").trim())
-        .filter_map(|s| {
-            if s.is_empty() {
-                None
-            } else {
-                Some(s.to_string())
-            }
-        })
-        .collect::<Vec<String>>()
+        .filter_map(|s| version::Version::parse(s))
+        .collect::<Vec<_>>()
 }
 
-fn parse_pending_versions(search: &serde_json::Value, field_id: &str) -> HashMap<String, Vec<String>> {
-
-    let issues: Option<&Vec<serde_json::Value>> = search["issues"].as_array();
-
-    // parse out all the version fields
-    issues.unwrap_or(&vec![]).into_iter().filter_map(|issue| {
+fn parse_pending_versions(search: &serde_json::Value, field_id: &str) -> HashMap<String, Vec<version::Version>> {
+    search["issues"].as_array().unwrap_or(&vec![]).into_iter().filter_map(|issue| {
         let key  = issue["key"].as_str().unwrap_or("").to_string();
         let list = parse_pending_version_field(&issue["fields"][field_id]);
         if key.is_empty() || list.is_empty() {
@@ -241,7 +231,7 @@ fn parse_pending_versions(search: &serde_json::Value, field_id: &str) -> HashMap
             Some((key, list))
         }
     })
-    .collect::<HashMap<String, Vec<String>>>()
+    .collect::<HashMap<_, _>>()
 }
 
 #[cfg(test)]
@@ -271,8 +261,15 @@ mod tests {
             ]
         });
         let expected = hashmap! {
-            "KEY-2".to_string() => vec!["1.2".to_string(), "3.4".to_string(), "5".to_string(), "7.7.7".to_string() ],
-            "KEY-3".to_string() => vec!["1.2".to_string()],
+            "KEY-2".to_string() => vec![
+                version::Version::parse("1.2").unwrap(),
+                version::Version::parse("3.4").unwrap(),
+                version::Version::parse("5").unwrap(),
+                version::Version::parse("7.7.7").unwrap()
+            ],
+            "KEY-3".to_string() => vec![
+                version::Version::parse("1.2").unwrap(),
+            ],
         };
 
         let versions = parse_pending_versions(&search, "the-field");

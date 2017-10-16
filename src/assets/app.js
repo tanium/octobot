@@ -17,7 +17,12 @@ app.config(function($stateProvider) {
         url: '/repos',
         controller: 'ReposController',
         templateUrl : '/repos.html'
-    });
+    })
+    .state('versions', {
+        url: '/versions',
+        controller: 'VersionsController',
+        templateUrl : '/versions.html'
+    })
 });
 
 function isLoggedIn() {
@@ -243,4 +248,93 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
 
   // init
   refresh();
+});
+
+app.controller('VersionsController', function($rootScope, $scope, sessionHttp, notificationService)  {
+
+  var jiraBase = null;
+
+  $scope.reset = function() {
+    $scope.resp = {};
+    $scope.dryRun = true;
+    $scope.processing = false;
+    $scope.req = {
+      project: "",
+      version: "",
+    };
+
+    $scope.lastVersion = null;
+    $scope.lastResp = {};
+  }
+
+  function mergeVersions(dryRun) {
+    $scope.processing = true;
+    let req = {
+      project: $scope.req.project,
+      version: $scope.req.version,
+      dry_run: !!dryRun,
+    };
+    return sessionHttp.post('/api/merge-versions', req).then(function(resp) {
+      $scope.processing = false;
+      if (!jiraBase && resp.data.jira_base) {
+        jiraBase = resp.data.jira_base;
+      }
+      return resp;
+    }).finally(function(e) {
+      $scope.processing = false;
+    });
+  }
+
+  function mergeVersionsDryRun() {
+    mergeVersions(true).then(function(resp) {
+      $scope.resp = resp.data.versions;
+      $scope.dryRun = false;
+    }).catch(function(e) {
+      notificationService.showError('Error previewing new version: ' + parseError(e));
+    });
+  }
+
+  function mergeVersionsForReal() {
+    let version = $scope.req.version;
+
+    mergeVersions(false).then(function(resp) {
+      notificationService.showSuccess('Created new version succesfully');
+      $scope.reset();
+      $scope.lastResp = resp.data.versions;
+      $scope.lastVersion = version;
+
+    }).catch(function(e) {
+      notificationService.showError('Error creating new version: ' + parseError(e));
+    });
+  }
+
+  $scope.submit = function() {
+    if ($scope.dryRun) {
+      mergeVersionsDryRun();
+    } else{
+      mergeVersionsForReal();
+    }
+  }
+
+  $scope.submitText = function() {
+    if ($scope.dryRun) {
+      return "Preview";
+    } else {
+      return "Submit";
+    }
+  };
+
+  $scope.hasRespData = function() {
+    return Object.keys($scope.resp).length > 0;
+  }
+
+  $scope.jiraLink = function(key) {
+    if (!jiraBase) {
+      return "";
+    } else {
+      return jiraBase + "/browse/" + key;
+    }
+  }
+
+  $scope.reset();
 });
