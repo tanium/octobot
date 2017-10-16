@@ -293,9 +293,7 @@ pub struct Label {
 
 impl Label {
     pub fn new(name: &str) -> Label {
-        Label {
-            name: name.into(),
-        }
+        Label { name: name.into() }
     }
 }
 
@@ -451,9 +449,7 @@ impl Commit {
             sha: String::new(),
             html_url: String::new(),
             author: None,
-            commit: CommitDetails {
-                message: String::new(),
-            }
+            commit: CommitDetails { message: String::new() },
         }
     }
 
@@ -462,11 +458,7 @@ impl Commit {
     }
 
     pub fn short_hash_str(hash: &str) -> &str {
-        if hash.len() < 7 {
-            hash
-        } else {
-            &hash[0..7]
-        }
+        if hash.len() < 7 { hash } else { &hash[0..7] }
     }
 
     pub fn title(commit: &CommitLike) -> String {
@@ -477,7 +469,6 @@ impl Commit {
         let lines: Vec<&str> = commit.message().lines().skip(1).skip_while(|ref l| l.trim().len() == 0).collect();
         lines.join("\n")
     }
-
 }
 
 impl PushCommit {
@@ -487,7 +478,6 @@ impl PushCommit {
             tree_id: String::new(),
             url: String::new(),
             message: String::new(),
-
         }
     }
 }
@@ -638,8 +628,7 @@ mod tests {
         let reviewers = vec![User::new("userC"), User::new("userD")];
         pr.requested_reviewers = Some(reviewers.clone());
 
-        let all_users = vec![User::new("user1"), User::new("user2"),
-                             User::new("userC"), User::new("userD")];
+        let all_users = vec![User::new("user1"), User::new("user2"), User::new("userC"), User::new("userD")];
 
         assert_eq!(all_users, (&pr).assignees());
     }

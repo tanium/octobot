@@ -3,25 +3,25 @@ use std::sync::{Arc, Mutex};
 
 use futures::Future;
 use futures::Stream;
-use hyper::server::{Request, Response};
 use hyper::StatusCode;
+use hyper::server::{Request, Response};
 use regex::Regex;
 use serde_json;
 
 use config::Config;
+use force_push::{self, ForcePushRequest};
+use git_clone_manager::GitCloneManager;
 use github;
 use github::CommentLike;
-use git_clone_manager::GitCloneManager;
 use jira;
 use messenger::{self, Messenger};
-use repo_version::{self, RepoVersionRequest};
 use pr_merge::{self, PRMergeRequest};
-use force_push::{self, ForcePushRequest};
-use server::http::{FutureResponse, Handler};
+use repo_version::{self, RepoVersionRequest};
 use server::github_verify::GithubWebhookVerifier;
-use slack::{self, SlackRequest, SlackAttachmentBuilder};
+use server::http::{FutureResponse, Handler};
+use slack::{self, SlackAttachmentBuilder, SlackRequest};
 use util;
-use worker::{Worker, WorkSender};
+use worker::{WorkSender, Worker};
 
 pub struct GithubHandler {
     pub config: Arc<Config>,
@@ -54,28 +54,36 @@ const MAX_CONCURRENT_VERSIONS: usize = 20;
 const MAX_CONCURRENT_FORCE_PUSH: usize = 20;
 
 impl GithubHandler {
-    pub fn new(config: Arc<Config>,
-               github_session: Arc<github::api::Session>,
-               jira_session: Option<Arc<jira::api::Session>>) -> Box<GithubHandler> {
+    pub fn new(
+        config: Arc<Config>,
+        github_session: Arc<github::api::Session>,
+        jira_session: Option<Arc<jira::api::Session>>,
+    ) -> Box<GithubHandler> {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_session.clone(), config.clone()));
 
         let slack_worker = slack::new_worker(&config.main.slack_webhook_url);
-        let pr_merge_worker = pr_merge::new_worker(MAX_CONCURRENT_MERGES,
-                                                  config.clone(),
-                                                  github_session.clone(),
-                                                  git_clone_manager.clone(),
-                                                  slack_worker.new_sender());
-        let repo_version_worker = repo_version::new_worker(MAX_CONCURRENT_VERSIONS,
-                                                           config.clone(),
-                                                           github_session.clone(),
-                                                           jira_session.clone(),
-                                                           git_clone_manager.clone(),
-                                                           slack_worker.new_sender());
-        let force_push_worker = force_push::new_worker(MAX_CONCURRENT_FORCE_PUSH,
-                                                      config.clone(),
-                                                      github_session.clone(),
-                                                      git_clone_manager.clone());
+        let pr_merge_worker = pr_merge::new_worker(
+            MAX_CONCURRENT_MERGES,
+            config.clone(),
+            github_session.clone(),
+            git_clone_manager.clone(),
+            slack_worker.new_sender(),
+        );
+        let repo_version_worker = repo_version::new_worker(
+            MAX_CONCURRENT_VERSIONS,
+            config.clone(),
+            github_session.clone(),
+            jira_session.clone(),
+            git_clone_manager.clone(),
+            slack_worker.new_sender(),
+        );
+        let force_push_worker = force_push::new_worker(
+            MAX_CONCURRENT_FORCE_PUSH,
+            config.clone(),
+            github_session.clone(),
+            git_clone_manager.clone(),
+        );
 
         Box::new(GithubHandler {
             config: config.clone(),
@@ -114,8 +122,7 @@ impl Handler for GithubHandler {
             Some(ref h) if h.len() == 1 => String::from_utf8_lossy(&h[0]).into_owned(),
             None | Some(..) => {
                 error!("Expected to find exactly one event header");
-                return self.respond_with(StatusCode::BadRequest,
-                                         "Expected to find exactly one event header");
+                return self.respond_with(StatusCode::BadRequest, "Expected to find exactly one event header");
             }
         };
 
@@ -139,9 +146,9 @@ impl Handler for GithubHandler {
                 Ok(h) => h,
                 Err(e) => {
                     error!("Error parsing json: {}\n---\n{}\n---\n", e, String::from_utf8_lossy(&body));
-                    return Response::new()
-                        .with_status(StatusCode::BadRequest)
-                        .with_body(format!("Error parsing JSON: {}", e));
+                    return Response::new().with_status(StatusCode::BadRequest).with_body(
+                        format!("Error parsing JSON: {}", e),
+                    );
                 }
             };
 
@@ -154,15 +161,16 @@ impl Handler for GithubHandler {
             // like reviewers which do not exist for issues.
             if let Some(ref issue) = data.issue {
                 if data.pull_request.is_none() && issue.html_url.contains("/pull/") {
-                    data.pull_request = match
-                        github_session.get_pull_request(&data.repository.owner.login(),
-                                                        &data.repository.name,
-                                                        issue.number) {
+                    data.pull_request = match github_session.get_pull_request(
+                        &data.repository.owner.login(),
+                        &data.repository.name,
+                        issue.number,
+                    ) {
                         Ok(pr) => Some(pr),
                         Err(e) => {
                             error!("Error refetching issue #{} as pull request: {}", issue.number, e);
                             None
-                        },
+                        }
                     };
                 }
             }
@@ -171,9 +179,11 @@ impl Handler for GithubHandler {
             let mut changed_pr = None;
             if let Some(ref pull_request) = data.pull_request {
                 if pull_request.requested_reviewers.is_none() {
-                    match github_session.get_pull_request(&data.repository.owner.login(),
-                                                          &data.repository.name,
-                                                          pull_request.number) {
+                    match github_session.get_pull_request(
+                        &data.repository.owner.login(),
+                        &data.repository.name,
+                        pull_request.number,
+                    ) {
                         Ok(pr) => changed_pr = Some(pr),
                         Err(e) => error!("Error refetching pull request to get reviewers: {}", e),
                     };
@@ -199,9 +209,11 @@ impl Handler for GithubHandler {
 
             match handler.handle_event() {
                 Some((status, resp)) => Response::new().with_status(status).with_body(resp),
-                None => Response::new()
-                    .with_status(StatusCode::Ok)
-                    .with_body(format!("Unhandled event: {}", event)),
+                None => {
+                    Response::new().with_status(StatusCode::Ok).with_body(
+                        format!("Unhandled event: {}", event),
+                    )
+                }
             }
         }))
     }
@@ -236,9 +248,11 @@ impl GithubEventHandler {
     }
 
     fn pull_request_commits(&self, pull_request: &github::PullRequestLike) -> Vec<github::Commit> {
-        match self.github_session.get_pull_request_commits(&self.data.repository.owner.login(),
-                                                           &self.data.repository.name,
-                                                           pull_request.number()) {
+        match self.github_session.get_pull_request_commits(
+            &self.data.repository.owner.login(),
+            &self.data.repository.name,
+            pull_request.number(),
+        ) {
             Ok(commits) => commits,
             Err(e) => {
                 error!("Error looking up PR commits: {}", e);
@@ -251,7 +265,11 @@ impl GithubEventHandler {
         self.all_participants_with_commits(pull_request, &self.pull_request_commits(pull_request))
     }
 
-    fn all_participants_with_commits(&self, pull_request: &github::PullRequestLike, pr_commits: &Vec<github::Commit>) -> Vec<github::User> {
+    fn all_participants_with_commits(
+        &self,
+        pull_request: &github::PullRequestLike,
+        pr_commits: &Vec<github::Commit>,
+    ) -> Vec<github::User> {
         // start with the assignees
         let mut participants = pull_request.assignees().clone();
         // add the author of the PR
@@ -301,10 +319,8 @@ impl GithubEventHandler {
                 notify_channel_only = true;
             } else if self.action == "review_requested" {
                 if let Some(ref reviewers) = pull_request.requested_reviewers {
-                    let assignees_str = self.config
-                        .users()
-                        .slack_user_names(reviewers, &self.data.repository)
-                        .join(", ");
+                    let assignees_str =
+                        self.config.users().slack_user_names(reviewers, &self.data.repository).join(", ");
                     verb = Some(format!("submitted for review to {}", assignees_str));
                 } else {
                     verb = None;
@@ -320,7 +336,8 @@ impl GithubEventHandler {
 
                 if !pull_request.is_wip() {
                     let msg = format!("Pull Request {}", verb);
-                    let attachments = vec![SlackAttachmentBuilder::new("")
+                    let attachments =
+                        vec![SlackAttachmentBuilder::new("")
                                                .title(format!("Pull Request #{}: \"{}\"",
                                                               pull_request.number,
                                                               pull_request.title.as_str()))
@@ -328,16 +345,16 @@ impl GithubEventHandler {
                                                .build()];
 
                     if notify_channel_only {
-                        self.messenger.send_to_channel(&msg,
-                                                       &attachments,
-                                                       &self.data.repository);
+                        self.messenger.send_to_channel(&msg, &attachments, &self.data.repository);
                     } else {
-                        self.messenger.send_to_all(&msg,
-                                                   &attachments,
-                                                   &pull_request.user,
-                                                   &self.data.sender,
-                                                   &self.data.repository,
-                                                   &self.all_participants_with_commits(&pull_request, &commits));
+                        self.messenger.send_to_all(
+                            &msg,
+                            &attachments,
+                            &pull_request.user,
+                            &self.data.sender,
+                            &self.data.repository,
+                            &self.all_participants_with_commits(&pull_request, &commits),
+                        );
 
                     }
                 }
@@ -346,13 +363,16 @@ impl GithubEventHandler {
                 if self.action == "opened" {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
-                            let jira_projects = self.config.repos().jira_projects(&self.data.repository, &pull_request.base.ref_name);
+                            let jira_projects =
+                                self.config.repos().jira_projects(&self.data.repository, &pull_request.base.ref_name);
 
-                            jira::workflow::submit_for_review(&pull_request,
-                                                              &commits,
-                                                              &jira_projects,
-                                                              jira_session.deref(),
-                                                              jira_config);
+                            jira::workflow::submit_for_review(
+                                &pull_request,
+                                &commits,
+                                &jira_projects,
+                                jira_session.deref(),
+                                jira_config,
+                            );
                         }
                     }
                 }
@@ -411,29 +431,34 @@ impl GithubEventHandler {
                         return (StatusCode::Ok, "pr_review [ignored]".into());
                     }
 
-                    let msg = format!("{} {} PR \"{}\"",
-                                      self.slack_user_name(&review.user),
-                                      action_msg,
-                                      util::make_link(pull_request.html_url.as_str(),
-                                                      pull_request.title.as_str()));
+                    let msg = format!(
+                        "{} {} PR \"{}\"",
+                        self.slack_user_name(&review.user),
+                        action_msg,
+                        util::make_link(pull_request.html_url.as_str(), pull_request.title.as_str())
+                    );
 
-                    let attachments = vec![SlackAttachmentBuilder::new(review.body())
-                                               .title(format!("Review: {}", state_msg))
-                                               .title_link(review.html_url.as_str())
-                                               .color(color)
-                                               .build()];
+                    let attachments = vec![
+                        SlackAttachmentBuilder::new(review.body())
+                            .title(format!("Review: {}", state_msg))
+                            .title_link(review.html_url.as_str())
+                            .color(color)
+                            .build(),
+                    ];
 
                     let mut participants = self.all_participants(&pull_request);
                     for username in util::get_mentioned_usernames(review.body()) {
                         participants.push(github::User::new(username))
                     }
 
-                    self.messenger.send_to_all(&msg,
-                                               &attachments,
-                                               &pull_request.user,
-                                               &self.data.sender,
-                                               &self.data.repository,
-                                               &participants);
+                    self.messenger.send_to_all(
+                        &msg,
+                        &attachments,
+                        &pull_request.user,
+                        &self.data.sender,
+                        &self.data.repository,
+                        &participants,
+                    );
                 }
             }
         }
@@ -441,39 +466,38 @@ impl GithubEventHandler {
         (StatusCode::Ok, "pr_review".into())
     }
 
-    fn do_pull_request_comment(&self, pull_request: &github::PullRequestLike,
-                               comment: &github::CommentLike) {
+    fn do_pull_request_comment(&self, pull_request: &github::PullRequestLike, comment: &github::CommentLike) {
         if comment.body().trim().len() == 0 {
             return;
         }
 
         if comment.user().login() == self.github_session.user().login() {
-            info!("Ignoring message from octobot ({}): {}",
-                  self.github_session.user().login(),
-                  comment.body());
+            info!("Ignoring message from octobot ({}): {}", self.github_session.user().login(), comment.body());
             return;
         }
 
-        let msg = format!("Comment on \"{}\"",
-                          util::make_link(pull_request.html_url(), pull_request.title()));
+        let msg = format!("Comment on \"{}\"", util::make_link(pull_request.html_url(), pull_request.title()));
 
-        let attachments = vec![SlackAttachmentBuilder::new(comment.body().trim())
-                                   .title(format!("{} said:",
-                                                  self.slack_user_name(comment.user())))
-                                   .title_link(comment.html_url())
-                                   .build()];
+        let attachments = vec![
+            SlackAttachmentBuilder::new(comment.body().trim())
+                .title(format!("{} said:", self.slack_user_name(comment.user())))
+                .title_link(comment.html_url())
+                .build(),
+        ];
 
         let mut participants = self.all_participants(pull_request);
         for username in util::get_mentioned_usernames(comment.body()) {
             participants.push(github::User::new(username))
         }
 
-        self.messenger.send_to_all(&msg,
-                                   &attachments,
-                                   pull_request.user(),
-                                   &self.data.sender,
-                                   &self.data.repository,
-                                   &participants);
+        self.messenger.send_to_all(
+            &msg,
+            &attachments,
+            pull_request.user(),
+            &self.data.sender,
+            &self.data.repository,
+            &participants,
+        );
 
     }
 
@@ -482,8 +506,7 @@ impl GithubEventHandler {
             if self.action == "created" {
                 if let Some(ref commit_id) = comment.commit_id {
                     let commit: &str = &commit_id[0..7];
-                    let commit_url =
-                        format!("{}/commit/{}", self.data.repository.html_url, commit_id);
+                    let commit_url = format!("{}/commit/{}", self.data.repository.html_url, commit_id);
                     let commit_path: String;
                     if let Some(ref path) = comment.path {
                         commit_path = path.to_string();
@@ -491,22 +514,24 @@ impl GithubEventHandler {
                         commit_path = commit.to_string();
                     }
 
-                    let msg = format!("Comment on \"{}\" ({})",
-                                      commit_path,
-                                      util::make_link(commit_url.as_str(), commit));
+                    let msg =
+                        format!("Comment on \"{}\" ({})", commit_path, util::make_link(commit_url.as_str(), commit));
 
-                    let attachments = vec![SlackAttachmentBuilder::new(comment.body())
-                                               .title(format!("{} said:",
-                                                              self.slack_user_name(&comment.user)))
-                                               .title_link(comment.html_url.as_str())
-                                               .build()];
+                    let attachments = vec![
+                        SlackAttachmentBuilder::new(comment.body())
+                            .title(format!("{} said:", self.slack_user_name(&comment.user)))
+                            .title_link(comment.html_url.as_str())
+                            .build(),
+                    ];
 
-                    self.messenger.send_to_all(&msg,
-                                               &attachments,
-                                               &comment.user,
-                                               &self.data.sender,
-                                               &self.data.repository,
-                                               &vec![]);
+                    self.messenger.send_to_all(
+                        &msg,
+                        &attachments,
+                        &comment.user,
+                        &self.data.sender,
+                        &self.data.repository,
+                        &vec![],
+                    );
                 }
             }
         }
@@ -533,43 +558,41 @@ impl GithubEventHandler {
             // ignore
             return (StatusCode::Ok, "push [ignored]".into());
         }
-        if self.data.ref_name().len() > 0 && self.data.after().len() > 0 &&
-           self.data.before().len() > 0 {
+        if self.data.ref_name().len() > 0 && self.data.after().len() > 0 && self.data.before().len() > 0 {
 
             let branch_name = self.data.ref_name().replace("refs/heads/", "");
 
-            let is_main_branch = branch_name == "master" || branch_name == "develop" || branch_name.starts_with("release");
+            let is_main_branch = branch_name == "master" || branch_name == "develop" ||
+                branch_name.starts_with("release");
 
             // only lookup PRs for non-main branches
             if !is_main_branch {
-                let prs = match self.github_session
-                    .get_pull_requests(&self.data.repository.owner.login(),
-                                       &self.data.repository.name,
-                                       Some("open"),
-                                       None) {
+                let prs = match self.github_session.get_pull_requests(
+                    &self.data.repository.owner.login(),
+                    &self.data.repository.name,
+                    Some("open"),
+                    None,
+                ) {
                     Ok(p) => p,
                     Err(e) => {
-                        error!("Error looking up PR for '{}' ({}): {}",
-                               branch_name,
-                               self.data.after(),
-                               e);
+                        error!("Error looking up PR for '{}' ({}): {}", branch_name, self.data.after(), e);
                         return (StatusCode::Ok, "push [no PR]".into());
                     }
                 };
 
                 // there appears to be a race condition in github where the get PR's call may not
                 // yet return the new hash, so check both.
-                let prs: Vec<github::PullRequest> =
-                    prs.into_iter()
-                       .filter(|pr| pr.head.sha == self.data.before() || pr.head.sha == self.data.after())
-                       .collect();
+                let prs: Vec<github::PullRequest> = prs.into_iter()
+                    .filter(|pr| pr.head.sha == self.data.before() || pr.head.sha == self.data.after())
+                    .collect();
 
                 if prs.len() == 0 {
                     info!("No PRs found for '{}' ({})", branch_name, self.data.after());
                 } else {
                     let attachments: Vec<_>;
                     if let Some(ref commits) = self.data.commits {
-                        attachments = commits.iter()
+                        attachments = commits
+                            .iter()
                             .map(|commit| {
                                 let msg = commit.message.lines().next().unwrap_or("");
                                 let hash: &str = &commit.id[0..7];
@@ -581,10 +604,12 @@ impl GithubEventHandler {
                         attachments = vec![];
                     }
 
-                    let message = format!("{} pushed {} commit(s) to branch {}",
-                                          self.slack_user_name(&self.data.sender),
-                                          attachments.len(),
-                                          branch_name);
+                    let message = format!(
+                        "{} pushed {} commit(s) to branch {}",
+                        self.slack_user_name(&self.data.sender),
+                        attachments.len(),
+                        branch_name
+                    );
 
                     for pull_request in &prs {
                         if pull_request.is_wip() {
@@ -593,24 +618,35 @@ impl GithubEventHandler {
                         }
 
                         let mut attachments = attachments.clone();
-                        attachments.insert(0,
-                                           SlackAttachmentBuilder::new("")
-                                               .title(format!("Pull Request #{}: \"{}\"",
-                                                              pull_request.number,
-                                                              pull_request.title.as_str()))
-                                               .title_link(pull_request.html_url.as_str())
-                                               .build());
+                        attachments
+                            .insert(
+                                0,
+                                SlackAttachmentBuilder::new("")
+                                    .title(format!(
+                                        "Pull Request #{}: \"{}\"",
+                                        pull_request.number,
+                                        pull_request.title.as_str()
+                                    ))
+                                    .title_link(pull_request.html_url.as_str())
+                                    .build(),
+                            );
 
-                        self.messenger.send_to_all(&message,
-                                                   &attachments,
-                                                   &pull_request.user,
-                                                   &self.data.sender,
-                                                   &self.data.repository,
-                                                   &self.all_participants(&pull_request));
+                        self.messenger.send_to_all(
+                            &message,
+                            &attachments,
+                            &pull_request.user,
+                            &self.data.sender,
+                            &self.data.repository,
+                            &self.all_participants(&pull_request),
+                        );
 
-                        if self.data.forced() &&
-                           self.config.repos().notify_force_push(&self.data.repository) {
-                            let msg = force_push::req(&self.data.repository, pull_request, self.data.before(), self.data.after());
+                        if self.data.forced() && self.config.repos().notify_force_push(&self.data.repository) {
+                            let msg = force_push::req(
+                                &self.data.repository,
+                                pull_request,
+                                self.data.before(),
+                                self.data.after(),
+                            );
                             if let Err(e) = self.force_push.send(msg) {
                                 error!("Error sending force push message: {}", e);
                             }
@@ -626,24 +662,33 @@ impl GithubEventHandler {
                         if let Some(ref commits) = self.data.commits {
 
                             // try to send resolve message w/ a version in it if possible
-                            let has_version = match self.config.repos().version_script(&self.data.repository, &branch_name) {
-                                Some(_) => {
-                                    let msg = repo_version::req(&self.data.repository, &branch_name, self.data.after(), commits);
-                                    if let Err(e) = self.repo_version.send(msg) {
-                                        error!("Error sending version request message: {}", e);
-                                        false
-                                    } else {
-                                        true
+                            let has_version =
+                                match self.config.repos().version_script(&self.data.repository, &branch_name) {
+                                    Some(_) => {
+                                        let msg = repo_version::req(
+                                            &self.data.repository,
+                                            &branch_name,
+                                            self.data.after(),
+                                            commits,
+                                        );
+                                        if let Err(e) = self.repo_version.send(msg) {
+                                            error!("Error sending version request message: {}", e);
+                                            false
+                                        } else {
+                                            true
+                                        }
                                     }
-                                },
-                                None => false,
-                            };
+                                    None => false,
+                                };
                             if !has_version {
-                                jira::workflow::resolve_issue(&branch_name,
-                                                              None,
-                                                              commits,
-                                                              &self.config.repos().jira_projects(&self.data.repository, &branch_name),
-                                                              jira_session.deref(), jira_config);
+                                jira::workflow::resolve_issue(
+                                    &branch_name,
+                                    None,
+                                    commits,
+                                    &self.config.repos().jira_projects(&self.data.repository, &branch_name),
+                                    jira_session.deref(),
+                                    jira_config,
+                                );
                             }
                         }
                     }
@@ -659,18 +704,19 @@ impl GithubEventHandler {
             return;
         }
 
-        let labels = match self.github_session
-            .get_pull_request_labels(&self.data.repository.owner.login(),
-                                     &self.data.repository.name,
-                                     pull_request.number) {
+        let labels = match self.github_session.get_pull_request_labels(
+            &self.data.repository.owner.login(),
+            &self.data.repository.name,
+            pull_request.number,
+        ) {
             Ok(l) => l,
             Err(e) => {
-                self.messenger.send_to_owner("Error getting Pull Request labels",
-                                             &vec![SlackAttachmentBuilder::new(&e)
-                                                       .color("danger")
-                                                       .build()],
-                                             &pull_request.user,
-                                             &self.data.repository);
+                self.messenger.send_to_owner(
+                    "Error getting Pull Request labels",
+                    &vec![SlackAttachmentBuilder::new(&e).color("danger").build()],
+                    &pull_request.user,
+                    &self.data.repository,
+                );
                 return;
             }
         };

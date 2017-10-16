@@ -1,13 +1,14 @@
-use std::collections::HashMap;
-use futures::future::Future;
+
 use futures::Stream;
+use futures::future::Future;
 use hyper;
-use hyper_rustls::HttpsConnector;
-use hyper::header::{UserAgent};
 use hyper::{Method, Request};
-use serde_json;
-use serde::ser::Serialize;
+use hyper::header::UserAgent;
+use hyper_rustls::HttpsConnector;
 use serde::de::DeserializeOwned;
+use serde::ser::Serialize;
+use serde_json;
+use std::collections::HashMap;
 use tokio_core::reactor::Core;
 
 pub struct HTTPClient {
@@ -57,26 +58,30 @@ impl HTTPClient {
         self.request_void::<()>(Method::Delete, path, None)
     }
 
-    fn request_de<T: DeserializeOwned, U: Serialize>(&self, method: Method, path: &str, body: Option<&U>)
-            -> Result<T, String> {
+    fn request_de<T: DeserializeOwned, U: Serialize>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&U>,
+    ) -> Result<T, String> {
         let res = self.request(method, path, body)?;
 
         let obj: T = match serde_json::from_slice(&res.data) {
             Ok(obj) => obj,
-            Err(e) => return Err(format!("Could not parse response: {}\n---\n{}\n---", e, String::from_utf8_lossy(&res.data))),
+            Err(e) => {
+                return Err(format!("Could not parse response: {}\n---\n{}\n---", e, String::from_utf8_lossy(&res.data)))
+            }
         };
 
         Ok(obj)
     }
 
-    fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>)
-            -> Result<(), String> {
+    fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<(), String> {
         self.request(method, path, body)?;
         Ok(())
     }
 
-    fn request<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>)
-                                             -> Result<InternalResp, String> {
+    fn request<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<InternalResp, String> {
         let url;
         if path.is_empty() {
             url = self.api_base.clone();
@@ -106,7 +111,7 @@ impl HTTPClient {
         req.headers_mut().set(UserAgent::new("octobot"));
 
         for (k, v) in &self.headers {
-           req.headers_mut().set_raw(k.clone(), v.clone());
+            req.headers_mut().set_raw(k.clone(), v.clone());
         }
 
         if let Some(body) = body {
@@ -119,7 +124,8 @@ impl HTTPClient {
 
         let work = client.request(req).and_then(|res| {
             let status = res.status();
-            res.body().collect()
+            res.body()
+                .collect()
                 .and_then(move |chunk| {
                     let mut buffer: Vec<u8> = Vec::new();
                     for i in chunk {
@@ -135,8 +141,12 @@ impl HTTPClient {
                     debug!("Response: HTTP {}\n---\n{}\n---", status, String::from_utf8_lossy(&buffer));
 
                     if !status.is_success() {
-                        return Err(format!("Failed request to {}: HTTP {}\n---\n{}\n---", path, status,
-                                   String::from_utf8_lossy(&buffer)));
+                        return Err(format!(
+                            "Failed request to {}: HTTP {}\n---\n{}\n---",
+                            path,
+                            status,
+                            String::from_utf8_lossy(&buffer)
+                        ));
                     }
 
                     return Ok(InternalResp { data: buffer });

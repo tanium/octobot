@@ -27,7 +27,7 @@ pub struct TransitionFields {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct TransitionField<T> {
     #[serde(rename = "allowedValues")]
-    pub allowed_values: Vec<T>
+    pub allowed_values: Vec<T>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -39,12 +39,12 @@ pub struct Resolution {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct TransitionRequest {
     pub transition: IDOrName,
-    pub fields: Option<TransitionFieldsRequest>
+    pub fields: Option<TransitionFieldsRequest>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct TransitionFieldsRequest {
-    pub resolution: Option<IDOrName>
+    pub resolution: Option<IDOrName>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -92,9 +92,7 @@ impl Transition {
 impl TransitionRequest {
     pub fn set_resolution(&mut self, res: &Resolution) {
         if self.fields.is_none() {
-            self.fields = Some(TransitionFieldsRequest {
-                resolution: None,
-            });
+            self.fields = Some(TransitionFieldsRequest { resolution: None });
         }
 
         if let Some(ref mut fields) = self.fields {

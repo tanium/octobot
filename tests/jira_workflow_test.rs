@@ -5,9 +5,9 @@ extern crate maplit;
 mod mocks;
 
 use octobot::config::JiraConfig;
+use octobot::github;
 use octobot::jira;
 use octobot::jira::*;
-use octobot::github;
 use octobot::version;
 
 use mocks::mock_jira::MockJira;
@@ -90,7 +90,11 @@ fn test_submit_for_review() {
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_commit("Fix [SER-1] I fixed it. And also relates to [CLI-9999][OTHER-999]", "aabbccddee");
 
-    test.jira.mock_comment_issue("SER-1", "Review submitted for branch master: http://the-pr", Ok(()));
+    test.jira.mock_comment_issue(
+        "SER-1",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
 
     test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
@@ -98,7 +102,11 @@ fn test_submit_for_review() {
     test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
     test.jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
 
-    test.jira.mock_comment_issue("CLI-9999", "Referenced by review submitted for branch master: http://the-pr", Ok(()));
+    test.jira.mock_comment_issue(
+        "CLI-9999",
+        "Referenced by review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
 
     // mentioned JIRAs should go to in-progress but not "pending review"
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
@@ -140,7 +148,8 @@ fn test_resolve_issue_no_resolution() {
 fn test_resolve_issue_with_resolution() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
-    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
+    let commit =
+        new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
 
     let comment1 = "Merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
                    {quote}Fix [SER-1] I fixed it.{quote}\n\
@@ -187,7 +196,8 @@ fn test_resolve_issue_with_resolution() {
 fn test_add_pending_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
-    let commit = new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
+    let commit =
+        new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
 
     test.jira.mock_add_pending_version("CLI-45", "5.6.7", Ok(()));
     test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
@@ -200,8 +210,13 @@ fn test_merge_pending_versions_for_real() {
     let test = new_test();
 
     let new_version = "1.2.0.500";
-    test.jira.mock_get_versions("SER", Ok(vec![Version::new("1.2.0.100"), Version::new("1.3.0.100")]));
-    test.jira.mock_find_pending_versions("SER", Ok(hashmap!{
+    test.jira.mock_get_versions(
+        "SER",
+        Ok(vec![Version::new("1.2.0.100"), Version::new("1.3.0.100")]),
+    );
+    test.jira.mock_find_pending_versions(
+        "SER",
+        Ok(hashmap!{
         "SER-1".to_string() => vec![
             version::Version::parse("1.2.0.50").unwrap(),
             version::Version::parse("1.2.0.200").unwrap()
@@ -214,22 +229,35 @@ fn test_merge_pending_versions_for_real() {
             version::Version::parse("1.2.0.700").unwrap(),
             version::Version::parse("1.2.0.300").unwrap()
         ],
-    }));
+    }),
+    );
 
     test.jira.mock_add_version("SER", new_version, Ok(()));
 
-    test.jira.mock_remove_pending_versions("SER-1", &vec![version::Version::parse("1.2.0.200").unwrap()], Ok(()));
-    test.jira.mock_remove_pending_versions("SER-4", &vec![version::Version::parse("1.2.0.300").unwrap()], Ok(()));
+    test.jira.mock_remove_pending_versions(
+        "SER-1",
+        &vec![version::Version::parse("1.2.0.200").unwrap()],
+        Ok(()),
+    );
+    test.jira.mock_remove_pending_versions(
+        "SER-4",
+        &vec![version::Version::parse("1.2.0.300").unwrap()],
+        Ok(()),
+    );
 
     test.jira.mock_assign_fix_version("SER-1", new_version, Ok(()));
     test.jira.mock_assign_fix_version("SER-4", new_version, Ok(()));
 
-    let res = hashmap! {
+    let res =
+        hashmap! {
         "SER-1".to_string() => vec![version::Version::parse("1.2.0.200").unwrap()],
         "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()],
     };
 
-    assert_eq!(Ok(res), jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal));
+    assert_eq!(
+        Ok(res),
+        jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal)
+    );
 }
 
 #[test]
@@ -237,8 +265,13 @@ fn test_merge_pending_versions_dry_run() {
     let test = new_test();
 
     let new_version = "1.2.0.500";
-    test.jira.mock_get_versions("SER", Ok(vec![Version::new("1.2.0.100"), Version::new("1.3.0.100")]));
-    test.jira.mock_find_pending_versions("SER", Ok(hashmap!{
+    test.jira.mock_get_versions(
+        "SER",
+        Ok(vec![Version::new("1.2.0.100"), Version::new("1.3.0.100")]),
+    );
+    test.jira.mock_find_pending_versions(
+        "SER",
+        Ok(hashmap!{
         "SER-1".to_string() => vec![
             version::Version::parse("1.2.0.50").unwrap(),
             version::Version::parse("1.2.0.200").unwrap()
@@ -251,16 +284,21 @@ fn test_merge_pending_versions_dry_run() {
             version::Version::parse("1.2.0.700").unwrap(),
             version::Version::parse("1.2.0.300").unwrap()
         ],
-    }));
+    }),
+    );
 
     // Don't expect the other state-changing functions to get called
 
-    let res = hashmap! {
+    let res =
+        hashmap! {
         "SER-1".to_string() => vec![version::Version::parse("1.2.0.200").unwrap()],
         "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()],
     };
 
-    assert_eq!(Ok(res), jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::DryRun));
+    assert_eq!(
+        Ok(res),
+        jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::DryRun)
+    );
 }
 
 #[test]
@@ -268,25 +306,39 @@ fn test_merge_pending_versions_missed_versions() {
     let test = new_test();
 
     let missed_version = "1.2.0.500";
-    test.jira.mock_get_versions("SER", Ok(vec![Version::new("1.2.0.100"), Version::new("1.2.0.500"), Version::new("1.2.0.600")]));
-    test.jira.mock_find_pending_versions("SER", Ok(hashmap!{
+    test.jira.mock_get_versions(
+        "SER",
+        Ok(vec![Version::new("1.2.0.100"), Version::new("1.2.0.500"), Version::new("1.2.0.600")]),
+    );
+    test.jira.mock_find_pending_versions(
+        "SER",
+        Ok(hashmap!{
         "SER-1".to_string() => vec![
             version::Version::parse("1.2.0.50").unwrap(),
             version::Version::parse("1.2.0.150").unwrap(),
             version::Version::parse("1.2.0.600").unwrap(),
         ],
-    }));
+    }),
+    );
 
     // Note: don't mock `add_version` since the version already exists
 
-    test.jira.mock_remove_pending_versions("SER-1", &vec![version::Version::parse("1.2.0.150").unwrap()], Ok(()));
+    test.jira.mock_remove_pending_versions(
+        "SER-1",
+        &vec![version::Version::parse("1.2.0.150").unwrap()],
+        Ok(()),
+    );
     test.jira.mock_assign_fix_version("SER-1", missed_version, Ok(()));
 
-    let res = hashmap! {
+    let res =
+        hashmap! {
         "SER-1".to_string() => vec![version::Version::parse("1.2.0.150").unwrap()],
     };
 
-    assert_eq!(Ok(res), jira::workflow::merge_pending_versions(missed_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal));
+    assert_eq!(
+        Ok(res),
+        jira::workflow::merge_pending_versions(missed_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal)
+    );
 }
 
 #[test]
@@ -300,7 +352,10 @@ fn test_sort_versions() {
     let v2 = Version::new("1.2.0.500");
     let v3 = Version::new("5.4.0.600");
 
-    test.jira.mock_get_versions("SER", Ok(vec![v0.clone(), v1.clone(), v2.clone(), v3.clone()]));
+    test.jira.mock_get_versions(
+        "SER",
+        Ok(vec![v0.clone(), v1.clone(), v2.clone(), v3.clone()]),
+    );
 
     test.jira.mock_reorder_version(&v2, JiraVersionPosition::First, Ok(()));
     test.jira.mock_reorder_version(&v1, JiraVersionPosition::After(v2.clone()), Ok(()));

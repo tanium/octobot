@@ -3,8 +3,8 @@ use std::io::{Read, Write};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use toml;
 
-use users;
 use repos;
+use users;
 
 pub struct Config {
     pub main: MainConfig,
@@ -252,10 +252,10 @@ fn parse_string(config_contents: &str) -> Result<ConfigModel, String> {
 }
 
 fn parse_string_and_load(config_contents: &str) -> Result<Config, String> {
-    let config = try!(parse_string(config_contents));
+    let config = parse_string(config_contents)?;
 
     let the_config = Config::new_with_model(config, users::UserConfig::new(), repos::RepoConfig::new());
-    try!(the_config.reload_users_repos());
+    the_config.reload_users_repos()?;
 
     Ok(the_config)
 }

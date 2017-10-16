@@ -70,13 +70,10 @@ struct SlackMessage {
 
 impl Slack {
     pub fn new(webhook_url: &str) -> Slack {
-        Slack {
-            webhook_url: webhook_url.into(),
-        }
+        Slack { webhook_url: webhook_url.into() }
     }
 
-    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>)
-            -> Result<(), String> {
+    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Result<(), String> {
         let slack_msg = SlackMessage {
             text: msg.to_string(),
             attachments: attachments,
@@ -85,8 +82,7 @@ impl Slack {
 
         info!("Sending message to #{}", channel);
 
-        let client = HTTPClient::new(&self.webhook_url)
-            .with_headers(hashmap!{
+        let client = HTTPClient::new(&self.webhook_url).with_headers(hashmap!{
                 "Content-Type" => "application/json".to_string(),
             });
 
@@ -114,9 +110,7 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
 }
 
 pub fn new_worker(webhook_url: &str) -> worker::Worker<SlackRequest> {
-    worker::Worker::new(Runner {
-        slack: Arc::new(Slack::new(webhook_url)),
-    })
+    worker::Worker::new(Runner { slack: Arc::new(Slack::new(webhook_url)) })
 }
 
 impl worker::Runner<SlackRequest> for Runner {

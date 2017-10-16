@@ -6,21 +6,26 @@ use threadpool::ThreadPool;
 use config::Config;
 use diffs::DiffOfDiffs;
 use git::Git;
+use git_clone_manager::GitCloneManager;
 use github;
 use github::Commit;
-use git_clone_manager::GitCloneManager;
 use worker;
 
-pub fn comment_force_push(diffs: Result<DiffOfDiffs, String>,
-                          reapply_statuses: Vec<String>,
-                          github: &github::api::Session,
-                          owner: &str,
-                          repo: &str,
-                          pull_request: &github::PullRequest,
-                          before_hash: &str,
-                          after_hash: &str) -> Result<(), String> {
-    let mut comment = format!("Force-push detected: before: {}, after: {}: ",
-                              Commit::short_hash_str(before_hash), Commit::short_hash_str(after_hash));
+pub fn comment_force_push(
+    diffs: Result<DiffOfDiffs, String>,
+    reapply_statuses: Vec<String>,
+    github: &github::api::Session,
+    owner: &str,
+    repo: &str,
+    pull_request: &github::PullRequest,
+    before_hash: &str,
+    after_hash: &str,
+) -> Result<(), String> {
+    let mut comment = format!(
+        "Force-push detected: before: {}, after: {}: ",
+        Commit::short_hash_str(before_hash),
+        Commit::short_hash_str(after_hash)
+    );
 
     let identical_diff;
     match diffs {
@@ -40,7 +45,7 @@ pub fn comment_force_push(diffs: Result<DiffOfDiffs, String>,
 
                 identical_diff = false;
             }
-        },
+        }
         Err(e) => {
             comment += "Unable to calculate diff";
             identical_diff = false;
@@ -55,7 +60,7 @@ pub fn comment_force_push(diffs: Result<DiffOfDiffs, String>,
     if identical_diff {
         let statuses = match github.get_statuses(owner, repo, before_hash) {
             Ok(s) => s,
-            Err(e) => return Err(format!("Error looking up github statuses: {}",e ))
+            Err(e) => return Err(format!("Error looking up github statuses: {}", e)),
         };
 
         // keep track of seen statuses to only track latest ones
@@ -89,34 +94,36 @@ pub fn comment_force_push(diffs: Result<DiffOfDiffs, String>,
     Ok(())
 }
 
-pub fn diff_force_push(github: &github::api::Session,
-                       clone_mgr: &GitCloneManager,
-                       owner: &str,
-                       repo: &str,
-                       pull_request: &github::PullRequest,
-                       before_hash: &str,
-                       after_hash: &str) -> Result<DiffOfDiffs, String> {
-    let held_clone_dir = try!(clone_mgr.clone(owner, repo));
+pub fn diff_force_push(
+    github: &github::api::Session,
+    clone_mgr: &GitCloneManager,
+    owner: &str,
+    repo: &str,
+    pull_request: &github::PullRequest,
+    before_hash: &str,
+    after_hash: &str,
+) -> Result<DiffOfDiffs, String> {
+    let held_clone_dir = clone_mgr.clone(owner, repo)?;
     let clone_dir = held_clone_dir.dir();
 
     let git = Git::new(github.github_host(), github.github_token(), clone_dir);
 
     // It is important to get the local branch up to date for `find_base_branch_commit`
     let base_branch = &pull_request.base.ref_name;
-    try!(git.checkout_branch(base_branch, &format!("origin/{}", base_branch)));
+    git.checkout_branch(base_branch, &format!("origin/{}", base_branch))?;
 
     // create a branch for the before hash then fetch, then delete it to get the ref
     let temp_branch = format!("octobot-{}-{}", pull_request.head.ref_name, before_hash);
-    try!(github.create_branch(owner, repo, &temp_branch, before_hash));
-    try!(git.run(&["fetch"]));
-    try!(github.delete_branch(owner, repo, &temp_branch));
+    github.create_branch(owner, repo, &temp_branch, before_hash)?;
+    git.run(&["fetch"])?;
+    github.delete_branch(owner, repo, &temp_branch)?;
 
     // find the first commits in base_branch that `before`/`after` came from
-    let before_base_commit = try!(git.find_base_branch_commit(before_hash, base_branch));
-    let after_base_commit = try!(git.find_base_branch_commit(after_hash, base_branch));
+    let before_base_commit = git.find_base_branch_commit(before_hash, base_branch)?;
+    let after_base_commit = git.find_base_branch_commit(after_hash, base_branch)?;
 
-    let before_diff = try!(git.diff(&before_base_commit, before_hash));
-    let after_diff = try!(git.diff(&after_base_commit, after_hash));
+    let before_diff = git.diff(&before_base_commit, before_hash)?;
+    let after_diff = git.diff(&after_base_commit, after_hash)?;
 
     Ok(DiffOfDiffs::new(&before_diff, &after_diff))
 }
@@ -137,7 +144,12 @@ struct Runner {
 }
 
 
-pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, before_hash: &str, after_hash: &str) -> ForcePushRequest {
+pub fn req(
+    repo: &github::Repo,
+    pull_request: &github::PullRequest,
+    before_hash: &str,
+    after_hash: &str,
+) -> ForcePushRequest {
     ForcePushRequest {
         repo: repo.clone(),
         pull_request: pull_request.clone(),
@@ -146,11 +158,12 @@ pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, before_hash:
     }
 }
 
-pub fn new_worker(max_concurrency: usize,
-                  config: Arc<Config>,
-                  github_session: Arc<github::api::Session>,
-                  clone_mgr: Arc<GitCloneManager>)
-                    -> worker::Worker<ForcePushRequest> {
+pub fn new_worker(
+    max_concurrency: usize,
+    config: Arc<Config>,
+    github_session: Arc<github::api::Session>,
+    clone_mgr: Arc<GitCloneManager>,
+) -> worker::Worker<ForcePushRequest> {
     worker::Worker::new(Runner {
         config: config,
         github_session: github_session,
@@ -169,22 +182,26 @@ impl worker::Runner<ForcePushRequest> for Runner {
         // launch another thread to do the version calculation
         self.thread_pool.execute(move || {
             let github = github_session.borrow();
-            let diffs = diff_force_push(github,
-                                        &clone_mgr,
-                                        &req.repo.owner.login(),
-                                        &req.repo.name,
-                                        &req.pull_request,
-                                        &req.before_hash,
-                                        &req.after_hash);
+            let diffs = diff_force_push(
+                github,
+                &clone_mgr,
+                &req.repo.owner.login(),
+                &req.repo.name,
+                &req.pull_request,
+                &req.before_hash,
+                &req.after_hash,
+            );
 
-            let comment = comment_force_push(diffs,
-                                             statuses,
-                                             github,
-                                             &req.repo.owner.login(),
-                                             &req.repo.name,
-                                             &req.pull_request,
-                                             &req.before_hash,
-                                             &req.after_hash);
+            let comment = comment_force_push(
+                diffs,
+                statuses,
+                github,
+                &req.repo.owner.login(),
+                &req.repo.name,
+                &req.pull_request,
+                &req.before_hash,
+                &req.after_hash,
+            );
             if let Err(e) = comment {
                 error!("Error diffing force push: {}", e);
             }

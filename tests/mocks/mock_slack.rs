@@ -33,7 +33,7 @@ impl MockSlack {
                             Some(call) => assert_eq!(call, req),
                             None => panic!("Unexpected message: {:?}", req),
                         }
-                    },
+                    }
                     Ok(WorkMessage::Stop) => break,
                     Err(_) => {
                         let is_empty = expected_calls2.lock().unwrap().is_empty();
@@ -69,8 +69,11 @@ impl Drop for MockSlack {
         if !thread::panicking() {
             self.slack_sender.stop().expect("failed to stop slack");
             self.thread.take().unwrap().join().expect("failed to wait for thread");
-            assert!(self.expected_calls.lock().unwrap().is_empty(), "Failed: Still expecting calls: {:?}",
-                    *self.expected_calls.lock().unwrap())
+            assert!(
+                self.expected_calls.lock().unwrap().is_empty(),
+                "Failed: Still expecting calls: {:?}",
+                *self.expected_calls.lock().unwrap()
+            )
         }
     }
 }

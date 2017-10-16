@@ -1,7 +1,8 @@
+
+use serde_json;
 use std;
 use std::collections::HashMap;
 use std::io::Read;
-use serde_json;
 use url::Url;
 
 use github;
@@ -21,12 +22,11 @@ pub struct UserConfig {
 }
 
 pub fn load_config(file: &str) -> std::io::Result<UserConfig> {
-    let mut f = try!(std::fs::File::open(file));
+    let mut f = std::fs::File::open(file)?;
     let mut contents = String::new();
-    try!(f.read_to_string(&mut contents));
+    f.read_to_string(&mut contents)?;
 
-    let users: UserHostMap = serde_json::from_str(&contents)
-        .expect("Invalid JSON in users configuration file");
+    let users: UserHostMap = serde_json::from_str(&contents).expect("Invalid JSON in users configuration file");
 
     Ok(UserConfig { users: users })
 }
@@ -37,13 +37,10 @@ impl UserConfig {
     }
 
     pub fn insert(&mut self, host: &str, git_user: &str, slack_user: &str) {
-        self.users
-            .entry(host.to_string())
-            .or_insert(vec![])
-            .push(UserInfo {
-                github: git_user.to_string(),
-                slack: slack_user.to_string(),
-            });
+        self.users.entry(host.to_string()).or_insert(vec![]).push(UserInfo {
+            github: git_user.to_string(),
+            slack: slack_user.to_string(),
+        });
     }
 
     // our slack convention is to use '.' but github replaces dots with dashes.
@@ -60,9 +57,7 @@ impl UserConfig {
     }
 
     pub fn slack_user_names(&self, users: &Vec<github::User>, repo: &github::Repo) -> Vec<String> {
-        users.iter()
-            .map(|a| self.slack_user_name(a.login(), repo))
-            .collect()
+        users.iter().map(|a| self.slack_user_name(a.login(), repo)).collect()
     }
 
     fn lookup_name(&self, login: &str, repo: &github::Repo) -> Option<String> {
@@ -75,9 +70,9 @@ impl UserConfig {
     fn lookup_info(&self, login: &str, repo: &github::Repo) -> Option<&UserInfo> {
         match Url::parse(&repo.html_url) {
             Ok(u) => {
-                u.host_str()
-                    .and_then(|h| self.users.get(h))
-                    .and_then(|users| users.iter().find(|u| u.github == login))
+                u.host_str().and_then(|h| self.users.get(h)).and_then(|users| {
+                    users.iter().find(|u| u.github == login)
+                })
             }
             Err(_) => None,
         }
@@ -113,10 +108,8 @@ mod tests {
         let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
         assert_eq!("the-slacker", users.slack_user_name("some-git-user", &repo));
         assert_eq!("@the-slacker", users.slack_user_ref("some-git-user", &repo));
-        assert_eq!("some.other.user",
-                   users.slack_user_name("some.other.user", &repo));
-        assert_eq!("@some.other.user",
-                   users.slack_user_ref("some.other.user", &repo));
+        assert_eq!("some.other.user", users.slack_user_name("some.other.user", &repo));
+        assert_eq!("@some.other.user", users.slack_user_ref("some.other.user", &repo));
     }
 
     #[test]
@@ -126,9 +119,10 @@ mod tests {
 
         // fail by git host
         {
-            let repo = github::Repo::parse("http://git.other-company.\
-                                            com/some-user/some-other-repo")
-                .unwrap();
+            let repo = github::Repo::parse(
+                "http://git.other-company.\
+                                            com/some-user/some-other-repo",
+            ).unwrap();
             assert_eq!("some.user", users.slack_user_name("some.user", &repo));
             assert_eq!("@some.user", users.slack_user_ref("some.user", &repo));
         }

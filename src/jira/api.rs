@@ -1,15 +1,16 @@
-use std::collections::HashMap;
+
 use base64;
 use http_client::HTTPClient;
 use regex::Regex;
 use serde_json;
-use url::percent_encoding::{utf8_percent_encode, DEFAULT_ENCODE_SET};
+use std::collections::HashMap;
+use url::percent_encoding::{DEFAULT_ENCODE_SET, utf8_percent_encode};
 
 use config::JiraConfig;
 use jira::models::*;
 use version;
 
-pub trait Session : Send + Sync {
+pub trait Session: Send + Sync {
     fn get_transitions(&self, key: &str) -> Result<Vec<Transition>, String>;
 
     fn transition_issue(&self, key: &str, transition: &TransitionRequest) -> Result<(), String>;
@@ -45,9 +46,12 @@ struct AuthResp {
 }
 
 fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String, String> {
-    fields.iter().find(|f| field == f.id || field == f.name)
-        .map(|f| f.id.clone())
-        .ok_or(format!("Error: Invalid JIRA field: {}", field))
+    fields.iter().find(|f| field == f.id || field == f.name).map(|f| f.id.clone()).ok_or(
+        format!(
+            "Error: Invalid JIRA field: {}",
+            field
+        ),
+    )
 }
 
 impl JiraSession {
@@ -56,8 +60,7 @@ impl JiraSession {
         let api_base = format!("{}/rest/api/2", jira_base);
 
         let auth = base64::encode(format!("{}:{}", config.username, config.password).as_bytes());
-        let client = HTTPClient::new(&api_base)
-            .with_headers(hashmap!{
+        let client = HTTPClient::new(&api_base).with_headers(hashmap!{
                 "Accept" => "application/json".to_string(),
                 "Content-Type" => "application/json".to_string(),
                 "Authorization" => format!("Basic {}", auth),
@@ -68,18 +71,18 @@ impl JiraSession {
             Err(e) => return Err(format!("Error authenticating to JIRA: {}", e)),
         };
 
-        let fields = try!(client.get::<Vec<Field>>("/field"));
+        let fields = client.get::<Vec<Field>>("/field")?;
 
         let pending_versions_field_id = match config.pending_versions_field {
-            Some(ref f) => Some(try!(lookup_field(f, &fields))),
+            Some(ref f) => Some(lookup_field(f, &fields)?),
             None => None,
         };
-        let fix_versions_field = try!(lookup_field(&config.fix_versions(), &fields));
+        let fix_versions_field = lookup_field(&config.fix_versions(), &fields)?;
 
         debug!("Pending Version field: {:?}", pending_versions_field_id);
         debug!("Fix Versions field: {:?}", fix_versions_field);
 
-        Ok(JiraSession{
+        Ok(JiraSession {
             client: client,
             fix_versions_field: fix_versions_field,
             pending_versions_field: config.pending_versions_field.clone(),
@@ -94,7 +97,7 @@ impl Session for JiraSession {
         struct TransitionsResp {
             transitions: Vec<Transition>,
         }
-        let resp: TransitionsResp = try!(self.client.get(&format!("/issue/{}/transitions?expand=transitions.fields", key)));
+        let resp: TransitionsResp = self.client.get(&format!("/issue/{}/transitions?expand=transitions.fields", key))?;
         Ok(resp.transitions)
     }
 
@@ -109,7 +112,7 @@ impl Session for JiraSession {
         }
 
         let req = CommentReq { body: comment.to_string() };
-        try!(self.client.post::<Comment, CommentReq>(&format!("/issue/{}/comment", key), &req));
+        self.client.post::<Comment, CommentReq>(&format!("/issue/{}/comment", key), &req)?;
         Ok(())
     }
 
@@ -120,7 +123,10 @@ impl Session for JiraSession {
             project: String,
         }
 
-        let req = AddVersionReq { name: version.into(), project: proj.into() };
+        let req = AddVersionReq {
+            name: version.into(),
+            project: proj.into(),
+        };
         self.client.post_void("/version", &req)
     }
 
@@ -145,12 +151,12 @@ impl Session for JiraSession {
                 json!({
                     "position": "First"
                 })
-            },
+            }
             JiraVersionPosition::After(v) => {
                 json!({
                     "after": v.uri
                 })
-            },
+            }
         };
 
         self.client.post_void(&format!("/version/{}/move", version.id), &req)
@@ -158,7 +164,7 @@ impl Session for JiraSession {
 
     fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String> {
         if let Some(ref field) = self.pending_versions_field_id.clone() {
-            let issue = try!(self.client.get::<serde_json::Value>(&format!("/issue/{}", key)));
+            let issue = self.client.get::<serde_json::Value>(&format!("/issue/{}", key))?;
 
             let version_parsed = match version::Version::parse(version) {
                 Some(v) => v,
@@ -187,10 +193,11 @@ impl Session for JiraSession {
 
     fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<(), String> {
         if let Some(ref field_id) = self.pending_versions_field_id.clone() {
-            let issue = try!(self.client.get::<serde_json::Value>(&format!("/issue/{}", key)));
+            let issue = self.client.get::<serde_json::Value>(&format!("/issue/{}", key))?;
 
             let pending_versions = parse_pending_version_field(&issue["fields"][field_id]);
-            let new_pending_versions = pending_versions.iter()
+            let new_pending_versions = pending_versions
+                .iter()
                 .filter(|v| !versions.contains(v))
                 .map(|v| v.to_string())
                 .collect::<Vec<_>>()
@@ -211,8 +218,9 @@ impl Session for JiraSession {
         if let Some(ref field) = self.pending_versions_field.clone() {
             if let Some(ref field_id) = self.pending_versions_field_id {
                 let jql = format!("(project = {}) and \"{}\" is not EMPTY", project, field);
-                let search = try!(self.client.get::<serde_json::Value>(
-                        &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, DEFAULT_ENCODE_SET))));
+                let search = self.client.get::<serde_json::Value>(
+                    &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, DEFAULT_ENCODE_SET))
+                )?;
                 return Ok(parse_pending_versions(&search, &field_id));
             }
         }
@@ -229,16 +237,20 @@ fn parse_pending_version_field(field: &serde_json::Value) -> Vec<version::Versio
 }
 
 fn parse_pending_versions(search: &serde_json::Value, field_id: &str) -> HashMap<String, Vec<version::Version>> {
-    search["issues"].as_array().unwrap_or(&vec![]).into_iter().filter_map(|issue| {
-        let key  = issue["key"].as_str().unwrap_or("").to_string();
-        let list = parse_pending_version_field(&issue["fields"][field_id]);
-        if key.is_empty() || list.is_empty() {
-            None
-        } else {
-            Some((key, list))
-        }
-    })
-    .collect::<HashMap<_, _>>()
+    search["issues"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .into_iter()
+        .filter_map(|issue| {
+            let key = issue["key"].as_str().unwrap_or("").to_string();
+            let list = parse_pending_version_field(&issue["fields"][field_id]);
+            if key.is_empty() || list.is_empty() {
+                None
+            } else {
+                Some((key, list))
+            }
+        })
+        .collect::<HashMap<_, _>>()
 }
 
 #[cfg(test)]
@@ -267,7 +279,8 @@ mod tests {
                 }
             ]
         });
-        let expected = hashmap! {
+        let expected =
+            hashmap! {
             "KEY-2".to_string() => vec![
                 version::Version::parse("1.2").unwrap(),
                 version::Version::parse("3.4").unwrap(),

@@ -7,8 +7,8 @@ extern crate log;
 use octobot::config;
 use octobot::server;
 
-use log::{LogRecord, LogLevelFilter};
 use env_logger::LogBuilder;
+use log::{LogLevelFilter, LogRecord};
 
 fn main() {
     if std::env::args().len() < 2 {
@@ -26,13 +26,15 @@ fn main() {
 fn setup_logging() {
     let formatter = |record: &LogRecord| {
         let t = time::now();
-        format!("[{},{:03}][{}:{}] - {} - {}",
-                time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
-                t.tm_nsec / 1000_000,
-                thread_id::get(),
-                std::thread::current().name().unwrap_or(""),
-                record.level(),
-                record.args())
+        format!(
+            "[{},{:03}][{}:{}] - {} - {}",
+            time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
+            t.tm_nsec / 1000_000,
+            thread_id::get(),
+            std::thread::current().name().unwrap_or(""),
+            record.level(),
+            record.args()
+        )
     };
 
     let mut builder = LogBuilder::new();

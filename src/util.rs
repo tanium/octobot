@@ -9,13 +9,15 @@ pub fn make_link(url: &str, text: &str) -> String {
 }
 
 fn find_github_username(name: &str) -> Option<&str> {
-    if name.len() == 0 { return None }
+    if name.len() == 0 {
+        return None;
+    }
 
     for (pos, character) in name.char_indices() {
         //All characters in usernames must be alphanumeric,
         //with the exception of '-'
         if !character.is_alphanumeric() && character != '-' {
-            return Some(name.split_at(pos).0)
+            return Some(name.split_at(pos).0);
         }
     }
     Some(name)
@@ -48,7 +50,8 @@ pub fn format_duration(dur: time::Duration) -> String {
 }
 
 pub fn check_unique_event<T>(event: T, events: &mut Vec<T>, trim_at: usize, trim_to: usize) -> bool
-    where T: PartialEq
+where
+    T: PartialEq,
 {
     let unique = !events.contains(&event);
 
@@ -71,14 +74,15 @@ mod tests {
 
     #[test]
     fn test_make_link() {
-        assert_eq!("<http://the-url|the text>",
-                   make_link("http://the-url", "the text"));
+        assert_eq!("<http://the-url|the text>", make_link("http://the-url", "the text"));
     }
 
     #[test]
     fn test_make_link_escapes() {
-        assert_eq!("<http://the-url&amp;hello=&lt;&gt;|the text &amp; &lt;&gt; stuff>",
-                   make_link("http://the-url&hello=<>", "the text & <> stuff"));
+        assert_eq!(
+            "<http://the-url&amp;hello=&lt;&gt;|the text &amp; &lt;&gt; stuff>",
+            make_link("http://the-url&hello=<>", "the text & <> stuff")
+        );
     }
 
     #[test]
@@ -94,10 +98,11 @@ mod tests {
 
     #[test]
     fn test_mentioned_users() {
-        assert_eq!(vec!["mentioned-user", "other-mentioned-user"],
-                   get_mentioned_usernames("Hey @mentioned-user, let me know what @other-mentioned-user thinks"));
-        assert_eq!(Vec::<&str>::new(),
-                   get_mentioned_usernames("This won't count as a mention@notamention"));
+        assert_eq!(
+            vec!["mentioned-user", "other-mentioned-user"],
+            get_mentioned_usernames("Hey @mentioned-user, let me know what @other-mentioned-user thinks")
+        );
+        assert_eq!(Vec::<&str>::new(), get_mentioned_usernames("This won't count as a mention@notamention"));
 
     }
 

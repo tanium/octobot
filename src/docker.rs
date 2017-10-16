@@ -9,9 +9,9 @@ pub fn in_docker() -> bool {
 }
 
 fn do_in_docker() -> std::io::Result<bool> {
-    let mut f = try!(std::fs::File::open("/proc/1/cgroup"));
+    let mut f = std::fs::File::open("/proc/1/cgroup")?;
     let mut contents = String::new();
-    try!(f.read_to_string(&mut contents));
+    f.read_to_string(&mut contents)?;
 
     Ok(contents.find("docker").is_some())
 }

@@ -1,8 +1,8 @@
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
-use ring::rand::SystemRandom;
 use ring::rand::SecureRandom;
+use ring::rand::SystemRandom;
 use rustc_serialize::hex::ToHex;
 
 static SESSION_EXPIRY_SECS: u64 = 15 * 60;
@@ -31,12 +31,12 @@ impl Sessions {
     pub fn new_session(&self) -> String {
         let mut bytes: [u8; 32] = [0; 32];
         // Doesn't look like SecureRandom, but docs claim it is.
-        SystemRandom::new().fill( &mut bytes ).expect("get random");
+        SystemRandom::new().fill(&mut bytes).expect("get random");
 
         let sess_id = bytes.to_hex();
         let session = Session {
             id: sess_id.clone(),
-            created_at: Instant::now()
+            created_at: Instant::now(),
         };
 
         self.sessions.write().unwrap().push(session);
