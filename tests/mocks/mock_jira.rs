@@ -4,6 +4,7 @@ use std::thread;
 
 use octobot::jira::*;
 use octobot::jira::api::Session;
+use octobot::version;
 
 pub struct MockJira {
     get_transitions_calls: Mutex<Vec< MockCall<Vec<Transition>> >>,
@@ -14,7 +15,7 @@ pub struct MockJira {
     assign_fix_version_calls: Mutex<Vec< MockCall<()> >>,
     add_pending_version_calls: Mutex<Vec< MockCall<()> >>,
     remove_pending_versions_calls: Mutex<Vec< MockCall<()> >>,
-    find_pending_versions_calls: Mutex<Vec< MockCall<HashMap<String, Vec<String>>> >>,
+    find_pending_versions_calls: Mutex<Vec< MockCall<HashMap<String, Vec<version::Version>>> >>,
 }
 
 #[derive(Debug)]
@@ -142,7 +143,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn remove_pending_versions(&self, key: &str, versions: &Vec<String>) -> Result<(), String> {
+    fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<(), String> {
         let mut calls = self.remove_pending_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to remove_pending_versions");
         let call = calls.remove(0);
@@ -152,7 +153,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<String>>, String> {
+    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>, String> {
         let mut calls = self.find_pending_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to find_pending_versions");
         let call = calls.remove(0);
@@ -191,11 +192,11 @@ impl MockJira {
         self.add_pending_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
     }
 
-    pub fn mock_remove_pending_versions(&self, key: &str, versions: &Vec<String>, ret: Result<(), String>) {
+    pub fn mock_remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>, ret: Result<(), String>) {
         self.remove_pending_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![key, &format!("{:?}", versions)]));
     }
 
-    pub fn mock_find_pending_versions(&self, proj: &str, ret: Result<HashMap<String, Vec<String>>, String>) {
+    pub fn mock_find_pending_versions(&self, proj: &str, ret: Result<HashMap<String, Vec<version::Version>>, String>) {
         self.find_pending_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![proj]));
     }
 }

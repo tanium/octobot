@@ -182,6 +182,14 @@ impl ConfigModel {
 }
 
 impl JiraConfig {
+    pub fn base_url(&self) -> String {
+        if self.host.starts_with("http") {
+            self.host.clone()
+        } else {
+            format!("https://{}", self.host)
+        }
+    }
+
     pub fn progress_states(&self) -> Vec<String> {
         if let Some(ref states) = self.progress_states {
             states.clone() // hmm. do these w/o a clone?

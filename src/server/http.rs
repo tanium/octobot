@@ -46,6 +46,7 @@ pub fn start(config: Config) -> Result<(), String> {
         login: get "/login.html" => HtmlHandler::new("login.html", include_str!("../../src/assets/login.html")),
         users: get "/users.html" => HtmlHandler::new("users.html", include_str!("../../src/assets/users.html")),
         repos: get "/repos.html" => HtmlHandler::new("repos.html", include_str!("../../src/assets/repos.html")),
+        versions: get "/versions.html" => HtmlHandler::new("versions.html", include_str!("../../src/assets/versions.html")),
         app_js: get "/app.js"    => HtmlHandler::new("app.js", include_str!("../../src/assets/app.js")),
         // auth
         auth_login:  post "/auth/login"  => LoginHandler::new(ui_sessions.clone(), config.clone()),
@@ -58,6 +59,7 @@ pub fn start(config: Config) -> Result<(), String> {
                 api_update_users: post "/api/users" => admin::UpdateUsers::new(config.clone()),
                 api_get_repos:    get  "/api/repos" => admin::GetRepos::new(config.clone()),
                 api_update_repos: post "/api/repos" => admin::UpdateRepos::new(config.clone()),
+                api_merge_versions: post "/api/merge-versions" => admin::MergeVersions::new(config.clone(), jira_session.clone()),
             )
         ),
         // hooks

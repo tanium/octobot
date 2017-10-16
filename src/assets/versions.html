@@ -1,0 +1,56 @@
+<h2>Versions</h2>
+
+<p class="lead">
+  Merge pending versions into new JIRA version
+</p>
+
+<form class="" ng-submit="submit()">
+  <div class="form-group">
+    <input type="text" class="form-control" ng-disabled="!dryRun" ng-model="req.project" placeholder="JIRA project (e.g. SERVER)" required>
+  </div>
+  <div class="form-group">
+    <input type="text" class="form-control" ng-disabled="!dryRun" ng-model="req.version" placeholder="New Version (e.g. 2.1.0.1000)" pattern="((\d+)\.){2,3}\d+" required>
+  </div>
+  <div class="form-group">
+    <button type="submit" ng-disabled="processing || (!dryRun && !hasRespData())" class="btn btn-sm btn-primary">{{submitText()}}</button>
+    <button type="reset" ng-disabled="processing" class="btn btn-sm btn-default" ng-click="reset()">Reset</button>
+  </div>
+</form>
+
+<div ng-hide="dryRun">
+
+  <h3>Preview</h3>
+
+  <div ng-hide="hasRespData()">
+    <i>No versions found to merge</i>
+  </div>
+
+  <div ng-show="hasRespData()">
+    <p>
+      The following JIRAs were found with pending versions to migrate:
+    </p>
+    <div class="well" ng-repeat="(key, versions) in resp">
+      <h4><a ng-href="{{jiraLink(key)}}" target="_blank">{{key}}</a></h4>
+      <ul>
+        <li ng-repeat="v in versions track by $index">{{v}}</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div ng-show="!!lastVersion">
+
+  <h3>Success!</h3>
+
+  <p>
+    The following JIRAs were found with pending versions were migrated to {{lastVersion}}
+  </p>
+  <div class="well" ng-repeat="(key, versions) in lastResp">
+    <h4><a ng-href="{{jiraLink(key)}}" target="_blank">{{key}}</a></h4>
+    <ul>
+      <li ng-repeat="v in versions track by $index">{{v}}</li>
+    </ul>
+  </div>
+
+</div>

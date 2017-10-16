@@ -8,6 +8,7 @@ use octobot::config::JiraConfig;
 use octobot::jira;
 use octobot::jira::*;
 use octobot::github;
+use octobot::version;
 
 use mocks::mock_jira::MockJira;
 
@@ -195,25 +196,69 @@ fn test_add_pending_version() {
 }
 
 #[test]
-fn test_merge_pending_versions() {
+fn test_merge_pending_versions_for_real() {
     let test = new_test();
 
     let new_version = "1.2.0.500";
     test.jira.mock_get_versions("SER", Ok(vec![Version::new("1.2.0.100"), Version::new("1.3.0.100")]));
     test.jira.mock_find_pending_versions("SER", Ok(hashmap!{
-        "SER-1".to_string() => vec![ "1.2.0.50".to_string(), "1.2.0.200".to_string() ],
+        "SER-1".to_string() => vec![
+            version::Version::parse("1.2.0.50").unwrap(),
+            version::Version::parse("1.2.0.200").unwrap()
+        ],
         "SER-2".to_string() => vec![],
-        "SER-3".to_string() => vec![ "9.9.9.9".to_string() ],
-        "SER-4".to_string() => vec![ "1.2.0.700".to_string(), "1.2.0.300".to_string() ],
+        "SER-3".to_string() => vec![
+            version::Version::parse("9.9.9.9").unwrap()
+        ],
+        "SER-4".to_string() => vec![
+            version::Version::parse("1.2.0.700").unwrap(),
+            version::Version::parse("1.2.0.300").unwrap()
+        ],
     }));
 
     test.jira.mock_add_version("SER", new_version, Ok(()));
 
-    test.jira.mock_remove_pending_versions("SER-1", &vec!["1.2.0.200".to_string()], Ok(()));
-    test.jira.mock_remove_pending_versions("SER-4", &vec!["1.2.0.300".to_string()], Ok(()));
+    test.jira.mock_remove_pending_versions("SER-1", &vec![version::Version::parse("1.2.0.200").unwrap()], Ok(()));
+    test.jira.mock_remove_pending_versions("SER-4", &vec![version::Version::parse("1.2.0.300").unwrap()], Ok(()));
 
     test.jira.mock_assign_fix_version("SER-1", new_version, Ok(()));
     test.jira.mock_assign_fix_version("SER-4", new_version, Ok(()));
 
-    jira::workflow::merge_pending_versions(new_version, "SER", &test.jira).expect("succes");
+    let res = hashmap! {
+        "SER-1".to_string() => vec![version::Version::parse("1.2.0.200").unwrap()],
+        "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()],
+    };
+
+    assert_eq!(Ok(res), jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal));
+}
+
+#[test]
+fn test_merge_pending_versions_dry_run() {
+    let test = new_test();
+
+    let new_version = "1.2.0.500";
+    test.jira.mock_get_versions("SER", Ok(vec![Version::new("1.2.0.100"), Version::new("1.3.0.100")]));
+    test.jira.mock_find_pending_versions("SER", Ok(hashmap!{
+        "SER-1".to_string() => vec![
+            version::Version::parse("1.2.0.50").unwrap(),
+            version::Version::parse("1.2.0.200").unwrap()
+        ],
+        "SER-2".to_string() => vec![],
+        "SER-3".to_string() => vec![
+            version::Version::parse("9.9.9.9").unwrap()
+        ],
+        "SER-4".to_string() => vec![
+            version::Version::parse("1.2.0.700").unwrap(),
+            version::Version::parse("1.2.0.300").unwrap()
+        ],
+    }));
+
+    // Don't expect the other state-changing functions to get called
+
+    let res = hashmap! {
+        "SER-1".to_string() => vec![version::Version::parse("1.2.0.200").unwrap()],
+        "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()],
+    };
+
+    assert_eq!(Ok(res), jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::DryRun));
 }
