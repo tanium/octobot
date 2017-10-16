@@ -59,6 +59,21 @@ pub struct Field {
     pub name: String,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct Version {
+    pub id: String,
+    pub name: String,
+}
+
+impl Version {
+    pub fn new(name: &str) -> Version {
+        Version {
+            id: "some-id".into(),
+            name: name.into(),
+        }
+    }
+}
+
 impl Transition {
     pub fn new_request(&self) -> TransitionRequest {
         TransitionRequest {

@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use regex::Regex;
+use version;
 
 use config::JiraConfig;
 use github::{Commit, CommitLike, PullRequest, PushCommit};
@@ -169,21 +171,90 @@ pub fn add_pending_version(maybe_version: Option<&str>, commits: &Vec<PushCommit
     }
 }
 
-pub fn add_version(maybe_version: Option<&str>, commits: &Vec<PushCommit>, projects: &Vec<String>, jira: &jira::api::Session) {
-    if let Some(version) = maybe_version {
-        for key in get_all_jira_keys(commits, projects) {
-            let proj = get_jira_project(&key);
-            if let Err(e) = jira.add_version(proj, version) {
-                error!("Error adding version {} to project {}: {}", version, proj, e);
-                continue;
-            }
+fn parse_versions(versions: &Vec<String>) -> Vec<version::Version> {
+    versions.iter()
+        .filter_map(|version_str| version::Version::parse(version_str) )
+        .collect::<Vec<_>>()
+}
 
-            if let Err(e) = jira.assign_fix_version(&key, version) {
-                error!("Error assigning version {} to key {}: {}", version, key, e);
-                continue;
+fn parse_jira_versions(versions: &Vec<jira::Version>) -> Vec<version::Version> {
+    parse_versions(&versions.iter().map(|v| v.name.clone()).collect())
+}
+
+pub fn merge_pending_versions(version: &str, project: &str, jira: &jira::api::Session) -> Result<(), String> {
+    let target_version = match version::Version::parse(version) {
+        Some(v) => v,
+        None => return Err(format!("Invalid target version: {}", version)),
+    };
+    let real_versions = try!(jira.get_versions(project));
+    let all_pending_versions = try!(jira.find_pending_versions(project));
+
+    let all_relevant_versions = all_pending_versions.iter()
+        .filter_map(|(key, list)| {
+            let relevant = find_relevant_versions(&target_version, &list, &real_versions);
+            if relevant.is_empty() {
+                None
+            } else {
+                Some((key.clone(), relevant))
             }
+        })
+        .collect::<HashMap<String, Vec<String>>>();
+
+    if all_relevant_versions.is_empty() {
+        return Err(format!("No relevant pending versions for version {} (all pending versions: {:?})", version, all_pending_versions));
+    }
+
+    // create the target version for this project
+    if let Err(e) = jira.add_version(project, version) {
+        return Err(format!("Error adding version {} to project {}: {}", version, project, e));
+    }
+
+    // sort the keys for deterministic results for testing purposes.
+    let mut keys = all_relevant_versions.keys().collect::<Vec<_>>();
+    keys.sort();
+
+    // group together relevant versions into this version!
+    for key in keys {
+        let relevant_versions = all_relevant_versions.get(key).unwrap();
+        if let Err(e) = jira.assign_fix_version(&key, version) {
+            error!("Error assigning version {} to key {}: {}", version, key, e);
+            continue;
+        }
+
+        if let Err(e) = jira.remove_pending_versions(&key, &relevant_versions) {
+            error!("Error clearing pending version {} from key {}: {}", version, key, e);
+            continue
         }
     }
+
+    Ok(())
+}
+
+fn find_relevant_versions(target_version: &version::Version,
+                          pending_versions: &Vec<String>,
+                          real_versions: &Vec<jira::Version>) -> Vec<String> {
+
+    let latest_real_version = parse_jira_versions(real_versions)
+        .iter()
+        .filter(|v| v.major() == target_version.major() && v.minor() == target_version.minor())
+        .max().map(|v| v.clone())
+        .unwrap_or(version::Version::parse("0.0.0.0").unwrap());
+
+    let pending_versions = parse_versions(pending_versions);
+
+    let mut matched = Vec::new();
+
+    for version in &pending_versions {
+        if version.major() == target_version.major() &&
+            version.minor() == target_version.minor() &&
+            version <= &target_version &&
+            version > &latest_real_version {
+
+            matched.push(version.to_string());
+        }
+    }
+
+    matched
 }
 
 fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {
@@ -221,6 +292,7 @@ fn pick_transition(to: &Vec<String>, choices: &Vec<Transition>) -> Option<Transi
 
     None
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -286,9 +358,97 @@ mod tests {
     }
 
     #[test]
-    fn test_get_jira_projectt() {
+    fn test_get_jira_project() {
         assert_eq!("SERVER", get_jira_project("SERVER-123"));
         assert_eq!("BUILD", get_jira_project("BUILD"));
         assert_eq!("doesn't match", get_jira_project("doesn't match"));
+    }
+
+
+    #[test]
+    fn test_find_relevant_versions() {
+        let target_version = version::Version::parse("3.4.0.1000").unwrap();
+        let real_versions = vec![
+            // wrong major
+            jira::Version::new("2.4.0.000"),
+            // wrong minor
+            jira::Version::new("3.2.0.000"),
+            // we want the max: should ignore
+            jira::Version::new("3.4.0.000"),
+            jira::Version::new("3.4.0.100"),
+            // just right -- should pick this one
+            jira::Version::new("3.4.0.400"),
+        ];
+        let pending_versions = vec![
+            // wrong major
+            "2.4.0.500".into(),
+            // wrong minor
+            "3.3.0.500".into(),
+            // too early
+            "3.4.0.300".into(),
+            // too late
+            "3.4.0.1001".into(),
+            // just right
+            "3.4.0.500".into(),
+            "3.4.0.600".into(),
+        ];
+        let expected: Vec<String> = vec![
+            "3.4.0.500".into(),
+            "3.4.0.600".into(),
+        ];
+        assert_eq!(expected, find_relevant_versions(&target_version, &pending_versions, &real_versions));
+    }
+
+    #[test]
+    fn test_find_relevant_versions_inclusive_max() {
+        let target_version = version::Version::parse("3.4.0.1000").unwrap();
+        let real_versions = vec![
+            jira::Version::new("3.4.0.400"),
+        ];
+        let pending_versions = vec![
+            "3.4.0.1000".into(),
+        ];
+        let expected: Vec<String> = vec![
+            "3.4.0.1000".into(),
+        ];
+        assert_eq!(expected, find_relevant_versions(&target_version, &pending_versions, &real_versions));
+    }
+
+    #[test]
+    fn test_find_relevant_versions_exclusive_min() {
+        let target_version = version::Version::parse("3.4.0.1000").unwrap();
+        let real_versions = vec![
+            jira::Version::new("3.4.0.400"),
+        ];
+        let pending_versions = vec![
+            "3.4.0.400".into(),
+            "3.4.0.401".into(),
+        ];
+        let expected: Vec<String> = vec![
+            "3.4.0.401".into(),
+        ];
+        assert_eq!(expected, find_relevant_versions(&target_version, &pending_versions, &real_versions));
+    }
+
+    #[test]
+    fn test_find_relevant_versions_no_real_versions() {
+        let target_version = version::Version::parse("1.2.0.500").unwrap();
+        // no real versions --> anything under target matches!
+        let real_versions = vec![];
+        let pending_versions = vec![
+            // major/minor still matter
+            "1.1.0.100".into(),
+            "2.2.0.100".into(),
+            // later than target still matters
+            "1.2.0.900".into(),
+            // just right
+            "1.2.0.100".into(),
+            "1.2.0.200".into(),
+        ];
+        let expected: Vec<String> = vec![
+            "1.2.0.100".into(),
+            "1.2.0.200".into(),
+        ];
+        assert_eq!(expected, find_relevant_versions(&target_version, &pending_versions, &real_versions));
     }
 }
