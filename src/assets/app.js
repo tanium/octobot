@@ -286,6 +286,9 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
   }
 
   function mergeVersionsDryRun() {
+    $scope.lastResp = {};
+    $scope.lastVersion = null;
+
     mergeVersions(true).then(function(resp) {
       $scope.resp = resp.data.versions;
       $scope.dryRun = false;
