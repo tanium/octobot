@@ -53,7 +53,9 @@ impl HTTPClient {
     fn request<T: DeserializeOwned, E: Serialize>(&self, method: Method, path: &str, body: Option<&E>)
                                              -> Result<T, String> {
         let url;
-        if path.starts_with("http://") || path.starts_with("https://") {
+        if path.is_empty() {
+            url = self.api_base.clone();
+        } else if path.starts_with("http://") || path.starts_with("https://") {
             url = path.to_string();
         } else if path.starts_with("/") {
             url = self.api_base.clone() + path;
