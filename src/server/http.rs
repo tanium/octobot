@@ -59,7 +59,7 @@ pub fn start(config: Config) -> Result<(), String> {
                 api_update_users: post "/api/users" => admin::UpdateUsers::new(config.clone()),
                 api_get_repos:    get  "/api/repos" => admin::GetRepos::new(config.clone()),
                 api_update_repos: post "/api/repos" => admin::UpdateRepos::new(config.clone()),
-                api_merge_versions: post "/api/merge-versions" => admin::MergeVersions::new(config.clone(), jira_session.clone()),
+                api_merge_versions: post "/api/merge-versions" => admin::MergeVersions::new(config.clone()),
             )
         ),
         // hooks

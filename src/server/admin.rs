@@ -12,7 +12,7 @@ use iron::middleware::Handler;
 use iron::modifiers::Header;
 use serde_json;
 
-use config::Config;
+use config::{Config, JiraConfig};
 use jira;
 use users::UserHostMap;
 use repos::RepoHostMap;
@@ -181,20 +181,20 @@ impl Handler for UpdateRepos {
 
 pub struct MergeVersions {
     config: Arc<Config>,
-    jira_session: Option<Arc<jira::api::Session>>,
 }
 
 impl MergeVersions {
-    pub fn new(config: Arc<Config>, jira_session: Option<Arc<jira::api::Session>>) -> MergeVersions {
+    pub fn new(config: Arc<Config>) -> MergeVersions {
         MergeVersions {
             config: config,
-            jira_session: jira_session,
         }
     }
 }
 
 #[derive(Deserialize, Clone)]
 struct MergeVersionsReq {
+    admin_user: Option<String>,
+    admin_pass: Option<String>,
     project: String,
     version: String,
     dry_run: bool,
@@ -215,16 +215,28 @@ impl Handler for MergeVersions {
                 return Ok(Response::with((status::BadRequest, format!("Error reading json"))));
             }
         };
-        let jira_config = match self.config.jira {
-            Some(ref j) => j,
+
+        // make a copy of the jira config so we can modify the auth
+        let mut jira_config: JiraConfig = match self.config.jira {
+            Some(ref j) => j.clone(),
             None => {
                 return Ok(Response::with((status::BadRequest, format!("No JIRA config"))));
             }
         };
-        let jira_sess = match self.jira_session {
-            Some(ref j) => j,
-            None => {
-                return Ok(Response::with((status::BadRequest, format!("No JIRA config"))));
+
+        if !merge_req.dry_run {
+            jira_config.username = merge_req.admin_user.unwrap_or(String::new());
+            jira_config.password = merge_req.admin_pass.unwrap_or(String::new());
+
+            if jira_config.username.is_empty() || jira_config.password.is_empty() {
+                return Ok(Response::with((status::BadRequest, format!("JIRA auth required for non dry-run"))));
+            }
+        }
+
+        let jira_sess = match jira::api::JiraSession::new(&jira_config) {
+            Ok(j) => j,
+            Err(e) => {
+                return Ok(Response::with((status::BadRequest, format!("Error creating JIRA session: {}", e))));
             }
         };
 
