@@ -263,7 +263,6 @@ fn test_merge_pending_versions_dry_run() {
     assert_eq!(Ok(res), jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::DryRun));
 }
 
-
 #[test]
 fn test_merge_pending_versions_missed_versions() {
     let test = new_test();
@@ -288,4 +287,25 @@ fn test_merge_pending_versions_missed_versions() {
     };
 
     assert_eq!(Ok(res), jira::workflow::merge_pending_versions(missed_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal));
+}
+
+#[test]
+fn test_sort_versions() {
+    let test = new_test();
+
+    use jira::api::JiraVersionPosition;
+
+    let v0 = Version::new("not really a version");
+    let v1 = Version::new("1.2.0.900");
+    let v2 = Version::new("1.2.0.500");
+    let v3 = Version::new("5.4.0.600");
+
+    test.jira.mock_get_versions("SER", Ok(vec![v0.clone(), v1.clone(), v2.clone(), v3.clone()]));
+
+    test.jira.mock_reorder_version(&v2, JiraVersionPosition::First, Ok(()));
+    test.jira.mock_reorder_version(&v1, JiraVersionPosition::After(v2.clone()), Ok(()));
+    test.jira.mock_reorder_version(&v3, JiraVersionPosition::After(v1.clone()), Ok(()));
+    test.jira.mock_reorder_version(&v0, JiraVersionPosition::After(v3.clone()), Ok(()));
+
+    assert_eq!(Ok(()), jira::workflow::sort_versions("SER", &test.jira));
 }

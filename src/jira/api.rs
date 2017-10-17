@@ -19,10 +19,17 @@ pub trait Session : Send + Sync {
     fn add_version(&self, proj: &str, version: &str) -> Result<(), String>;
     fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String>;
     fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String>;
+    fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<(), String>;
 
     fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String>;
     fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<(), String>;
     fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>, String>;
+}
+
+#[derive(Debug)]
+pub enum JiraVersionPosition {
+    First,
+    After(Version),
 }
 
 pub struct JiraSession {
@@ -139,6 +146,24 @@ impl Session for JiraSession {
         });
 
         try!(self.client.put::<VoidResp, serde_json::Value>(&format!("/issue/{}", key), &req));
+        Ok(())
+    }
+
+    fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<(), String> {
+        let req = match position {
+            JiraVersionPosition::First => {
+                json!({
+                    "position": "First"
+                })
+            },
+            JiraVersionPosition::After(v) => {
+                json!({
+                    "after": v.uri
+                })
+            },
+        };
+
+        try!(self.client.post::<VoidResp, serde_json::Value>(&format!("/version/{}/move", version.id), &req));
         Ok(())
     }
 

@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use regex::Regex;
 use version;
@@ -301,6 +302,36 @@ fn pick_transition(to: &Vec<String>, choices: &Vec<Transition>) -> Option<Transi
     }
 
     None
+}
+
+pub fn sort_versions(project: &str, jira: &jira::api::Session) -> Result<(), String> {
+    let mut versions = try!(jira.get_versions(project));
+
+    versions.sort_by(|a, b| {
+        let v1 = version::Version::parse(&a.name);
+        let v2 = version::Version::parse(&b.name);
+        if v1.is_none() && v2.is_none() {
+            return a.name.cmp(&b.name);
+        } else if v1.is_none() {
+            Ordering::Greater
+        } else if v2.is_none() {
+            Ordering::Less
+        } else {
+            v1.unwrap().cmp(&v2.unwrap())
+        }
+    });
+
+    for i in 0..versions.len() {
+        let v = &versions[i];
+        if i == 0 {
+            try!(jira.reorder_version(v, jira::api::JiraVersionPosition::First));
+        } else {
+            let prev = &versions[i - 1];
+            try!(jira.reorder_version(v, jira::api::JiraVersionPosition::After(prev.clone())));
+        }
+    }
+
+    Ok(())
 }
 
 
