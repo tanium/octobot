@@ -43,7 +43,7 @@ impl GitCloneManager {
 
         if clone_dir.join(".git").exists() {
             // prune local tags deleted from remotes: important to avoid stale/bad version tags
-            try!(git.run(&["fetch", "--prune", "+refs/tags/*:refs/tags/*"]));
+            try!(git.run(&["fetch", "--prune", "origin", "+refs/tags/*:refs/tags/*"]));
         } else {
             if let Err(e) = fs::create_dir_all(&clone_dir) {
                 return Err(format!("Error creating clone directory '{:?}': {}", clone_dir, e));
