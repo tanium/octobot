@@ -242,6 +242,12 @@ impl Handler for MergeVersions {
             }
         };
 
+        if !merge_req.dry_run {
+            if let Err(e) = jira::workflow::sort_versions(&merge_req.project, jira_sess.borrow()) {
+                error!("Error sorting versions: {}", e);
+            }
+        }
+
         let resp = MergeVersionsResp {
             jira_base: jira_config.base_url(),
             versions: all_relevant_versions,

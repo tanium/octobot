@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use std::thread;
 
 use octobot::jira::*;
-use octobot::jira::api::Session;
+use octobot::jira::api::{Session, JiraVersionPosition};
 use octobot::version;
 
 pub struct MockJira {
@@ -13,6 +13,7 @@ pub struct MockJira {
     add_version_calls: Mutex<Vec< MockCall<()> >>,
     get_versions_calls: Mutex<Vec< MockCall<Vec<Version>> >>,
     assign_fix_version_calls: Mutex<Vec< MockCall<()> >>,
+    reorder_version_calls: Mutex<Vec< MockCall<() > >>,
     add_pending_version_calls: Mutex<Vec< MockCall<()> >>,
     remove_pending_versions_calls: Mutex<Vec< MockCall<()> >>,
     find_pending_versions_calls: Mutex<Vec< MockCall<HashMap<String, Vec<version::Version>>> >>,
@@ -42,6 +43,7 @@ impl MockJira {
             add_version_calls: Mutex::new(vec![]),
             get_versions_calls: Mutex::new(vec![]),
             assign_fix_version_calls: Mutex::new(vec![]),
+            reorder_version_calls: Mutex::new(vec![]),
             add_pending_version_calls: Mutex::new(vec![]),
             remove_pending_versions_calls: Mutex::new(vec![]),
             find_pending_versions_calls: Mutex::new(vec![]),
@@ -64,6 +66,8 @@ impl Drop for MockJira {
                     "Unmet get_versions calls: {:?}", *self.get_versions_calls.lock().unwrap());
             assert!(self.assign_fix_version_calls.lock().unwrap().len() == 0,
                     "Unmet asign_fix_version calls: {:?}", *self.assign_fix_version_calls.lock().unwrap());
+            assert!(self.reorder_version_calls.lock().unwrap().len() == 0,
+                    "Unmet reorder_version calls: {:?}", *self.reorder_version_calls.lock().unwrap());
             assert!(self.add_pending_version_calls.lock().unwrap().len() == 0,
                     "Unmet add_pending_version calls: {:?}", *self.add_pending_version_calls.lock().unwrap());
             assert!(self.remove_pending_versions_calls.lock().unwrap().len() == 0,
@@ -133,6 +137,16 @@ impl Session for MockJira {
         call.ret
     }
 
+    fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<(), String> {
+        let mut calls = self.reorder_version_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to reorder_version");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], format!("{:?}", version));
+        assert_eq!(call.args[1], format!("{:?}", position));
+
+        call.ret
+    }
+
     fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String> {
         let mut calls = self.add_pending_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to add_pending_version");
@@ -187,6 +201,9 @@ impl MockJira {
     pub fn mock_assign_fix_version(&self, key: &str, version: &str, ret: Result<(), String>) {
         self.assign_fix_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
     }
+
+    pub fn mock_reorder_version(&self, version: &Version, position: JiraVersionPosition, ret: Result<(), String>) {
+        self.reorder_version_calls.lock().unwrap().push(MockCall::new(ret, vec![&format!("{:?}", version), &format!("{:?}", position)])); }
 
     pub fn mock_add_pending_version(&self, key: &str, version: &str, ret: Result<(), String>) {
         self.add_pending_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));

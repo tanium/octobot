@@ -61,6 +61,8 @@ pub struct Field {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Version {
+    #[serde(rename = "self")]
+    pub uri: String,
     pub id: String,
     pub name: String,
 }
@@ -68,6 +70,7 @@ pub struct Version {
 impl Version {
     pub fn new(name: &str) -> Version {
         Version {
+            uri: "http://something/version/some-id".into(),
             id: "some-id".into(),
             name: name.into(),
         }
