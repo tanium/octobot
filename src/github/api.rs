@@ -38,12 +38,6 @@ pub struct GithubSession {
     user: User,
 }
 
-#[allow(dead_code)]
-#[derive(Deserialize)]
-struct EmptyResponse {
-    empty: Option<String>,
-}
-
 impl GithubSession {
     pub fn new(host: &str, token: &str) -> Result<GithubSession, String> {
         let api_base = if host == "github.com" {
@@ -155,8 +149,7 @@ impl Session for GithubSession {
 
         let body = AssignPR { assignees: assignees };
 
-        self.client.post(&format!("repos/{}/{}/issues/{}/assignees", owner, repo, number),
-                         &body)
+        self.client.post(&format!("repos/{}/{}/issues/{}/assignees", owner, repo, number), &body)
     }
 
     fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str)
@@ -167,8 +160,7 @@ impl Session for GithubSession {
         }
         let body = CommentPR { body: comment.to_string() };
 
-        let _: EmptyResponse = try!(self.client.post(&format!("repos/{}/{}/issues/{}/comments", owner, repo, number), &body));
-        Ok(())
+        self.client.post_void(&format!("repos/{}/{}/issues/{}/comments", owner, repo, number), &body)
     }
 
     fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String> {
@@ -181,13 +173,11 @@ impl Session for GithubSession {
 
         let body = CreateRef { ref_name: format!("refs/heads/{}", branch_name), sha: sha.into() };
 
-        let _: EmptyResponse = try!(self.client.post(&format!("repos/{}/{}/git/refs", owner, repo), &body));
-        Ok(())
+        self.client.post_void(&format!("repos/{}/{}/git/refs", owner, repo), &body)
     }
 
     fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String> {
-        let _: EmptyResponse = try!(self.client.delete(&format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name)));
-        Ok(())
+        self.client.delete_void(&format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name))
     }
 
     fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>, String> {
@@ -200,5 +190,3 @@ impl Session for GithubSession {
         Ok(())
     }
 }
-
-

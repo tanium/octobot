@@ -1,4 +1,4 @@
-use http_client;
+use http_client::HTTPClient;
 
 // the main object for sending messages to slack
 pub struct Slack {
@@ -81,13 +81,11 @@ impl SlackSender for Slack {
 
         info!("Sending message to #{}", channel);
 
-
-        let client = http_client::HTTPClient::new(&self.webhook_url)
+        let client = HTTPClient::new(&self.webhook_url)
             .with_headers(hashmap!{
                 "Content-Type" => "application/json".to_string(),
             });
 
-        client.post::< http_client::VoidResponse, SlackMessage >("", &slack_msg)?;
-        Ok(())
+        client.post_void("", &slack_msg)
     }
 }

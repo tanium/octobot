@@ -15,9 +15,8 @@ pub struct HTTPClient {
     headers: HashMap<&'static str, String>,
 }
 
-#[derive(Deserialize)]
-pub struct VoidResponse {
-    _empty: Option<String>,
+struct InternalResp {
+    data: Vec<u8>,
 }
 
 impl HTTPClient {
@@ -35,23 +34,49 @@ impl HTTPClient {
     }
 
     pub fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
-        self.request::<T, String>(Method::Get, path, None)
+        self.request_de::<T, ()>(Method::Get, path, None)
     }
 
-    pub fn post<T: DeserializeOwned, E: Serialize>(&self, path: &str, body: &E) -> Result<T, String> {
-        self.request::<T, E>(Method::Post, path, Some(body))
+    pub fn post<T: DeserializeOwned, U: Serialize>(&self, path: &str, body: &U) -> Result<T, String> {
+        self.request_de::<T, U>(Method::Post, path, Some(body))
     }
 
-    pub fn put<T: DeserializeOwned, E: Serialize>(&self, path: &str, body: &E) -> Result<T, String> {
-        self.request::<T, E>(Method::Put, path, Some(body))
+    pub fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<(), String> {
+        self.request_void::<U>(Method::Post, path, Some(body))
     }
 
-    pub fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
-        self.request::<T, String>(Method::Delete, path, None)
+    pub fn put<T: DeserializeOwned, U: Serialize>(&self, path: &str, body: &U) -> Result<T, String> {
+        self.request_de::<T, U>(Method::Put, path, Some(body))
     }
 
-    fn request<T: DeserializeOwned, E: Serialize>(&self, method: Method, path: &str, body: Option<&E>)
-                                             -> Result<T, String> {
+    pub fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<(), String> {
+        self.request_void::<U>(Method::Put, path, Some(body))
+    }
+
+    pub fn delete_void(&self, path: &str) -> Result<(), String> {
+        self.request_void::<()>(Method::Delete, path, None)
+    }
+
+    fn request_de<T: DeserializeOwned, U: Serialize>(&self, method: Method, path: &str, body: Option<&U>)
+            -> Result<T, String> {
+        let res = self.request(method, path, body)?;
+
+        let obj: T = match serde_json::from_slice(&res.data) {
+            Ok(obj) => obj,
+            Err(e) => return Err(format!("Could not parse response: {}\n---\n{}\n---", e, String::from_utf8_lossy(&res.data))),
+        };
+
+        Ok(obj)
+    }
+
+    fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>)
+            -> Result<(), String> {
+        self.request(method, path, body)?;
+        Ok(())
+    }
+
+    fn request<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>)
+                                             -> Result<InternalResp, String> {
         let url;
         if path.is_empty() {
             url = self.api_base.clone();
@@ -92,11 +117,6 @@ impl HTTPClient {
             req.set_body(body_json)
         }
 
-        struct InternalResp<U> {
-            status: hyper::StatusCode,
-            obj: Option<U>,
-        }
-
         let work = client.request(req).and_then(|res| {
             let status = res.status();
             res.body().collect()
@@ -113,32 +133,17 @@ impl HTTPClient {
                 })
                 .map(move |buffer| {
                     if !status.is_success() {
-                        info!("Failed request to {}: HTTP {}\n---\n{}\n---", path, status,
-                              String::from_utf8_lossy(&buffer));
-                        return Ok(InternalResp { status: status, obj: None });
+                        return Err(format!("Failed request to {}: HTTP {}\n---\n{}\n---", path, status,
+                                   String::from_utf8_lossy(&buffer)));
                     }
 
-                    let obj: T = match serde_json::from_slice(&buffer) {
-                        Ok(obj) => obj,
-                        Err(e) => return Err(format!("Could not parse response: {}", e)),
-                    };
-
-                    Ok(InternalResp { status: status, obj: Some(obj) })
+                    return Ok(InternalResp { data: buffer });
                 })
         });
 
         match core.run(work) {
-            Ok(Ok(res)) => {
-                if !res.status.is_success() {
-                    return Err(format!("Error sending request: HTTP {}", res.status));
-                }
-                if let Some(obj) = res.obj {
-                    return Ok(obj);
-                } else {
-                    return Err(format!("Error sending request. Unknown failure"));
-                }
-            }
-            Ok(Err(e)) => return Err(format!("Error sending request: {:?}", e)),
+            Ok(Ok(r)) => Ok(r),
+            Ok(Err(e)) => return Err(e),
             Err(e) => return Err(format!("Error sending request: {:?}", e)),
         }
     }
