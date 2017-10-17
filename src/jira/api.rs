@@ -44,13 +44,6 @@ struct AuthResp {
     pub name: String,
 }
 
-// TODO: would be nice to specialize for () return type...
-#[derive(Deserialize)]
-struct VoidResp {
-    pub fix_json_parse: Option<String>,
-}
-
-
 fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String, String> {
     fields.iter().find(|f| field == f.id || field == f.name)
         .map(|f| f.id.clone())
@@ -106,8 +99,7 @@ impl Session for JiraSession {
     }
 
     fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<(), String> {
-        try!(self.client.post::<VoidResp, TransitionRequest>(&format!("/issue/{}/transitions", key), &req));
-        Ok(())
+        self.client.post_void(&format!("/issue/{}/transitions", key), &req)
     }
 
     fn comment_issue(&self, key: &str, comment: &str) -> Result<(), String> {
@@ -129,8 +121,7 @@ impl Session for JiraSession {
         }
 
         let req = AddVersionReq { name: version.into(), project: proj.into() };
-        try!(self.client.post::<VoidResp, AddVersionReq>("/version", &req));
-        Ok(())
+        self.client.post_void("/version", &req)
     }
 
     fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String> {
@@ -145,8 +136,7 @@ impl Session for JiraSession {
             }
         });
 
-        try!(self.client.put::<VoidResp, serde_json::Value>(&format!("/issue/{}", key), &req));
-        Ok(())
+        self.client.put_void(&format!("/issue/{}", key), &req)
     }
 
     fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<(), String> {
@@ -163,8 +153,7 @@ impl Session for JiraSession {
             },
         };
 
-        try!(self.client.post::<VoidResp, serde_json::Value>(&format!("/version/{}/move", version.id), &req));
-        Ok(())
+        self.client.post_void(&format!("/version/{}/move", version.id), &req)
     }
 
     fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String> {
@@ -190,7 +179,7 @@ impl Session for JiraSession {
                 }
             });
 
-            try!(self.client.put::<VoidResp, serde_json::Value>(&format!("/issue/{}", key), &req));
+            self.client.put_void(&format!("/issue/{}", key), &req)?;
         }
         Ok(())
     }
@@ -213,7 +202,7 @@ impl Session for JiraSession {
                 }
             });
 
-            try!(self.client.put::<VoidResp, serde_json::Value>(&format!("/issue/{}", key), &req));
+            self.client.put_void(&format!("/issue/{}", key), &req)?;
         }
         Ok(())
     }
