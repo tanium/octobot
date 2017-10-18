@@ -2,11 +2,10 @@ use std::env;
 use std::io::Read;
 use std::fs::File;
 
-use iron::prelude::*;
-use iron::status;
-use iron::headers::ContentType;
-use iron::middleware::Handler;
-use iron::modifiers::Header;
+use hyper::server::{Request, Response};
+use hyper::header::ContentType;
+
+use server::http::{FutureResponse, OctobotHandler};
 
 fn is_dev_mode() -> bool {
     env::var("DEVMODE").is_ok()
@@ -18,7 +17,7 @@ pub struct HtmlHandler {
 }
 
 impl HtmlHandler {
-    pub fn new(path: &str, contents: &str)  -> HtmlHandler {
+    pub fn new(path: &str, contents: &str) -> HtmlHandler {
         HtmlHandler {
             path: path.into(),
             contents: contents.into()
@@ -43,9 +42,12 @@ impl HtmlHandler {
     }
 }
 
-impl Handler for HtmlHandler {
-    fn handle(&self, _: &mut Request) -> IronResult<Response> {
-        Ok(Response::with((status::Ok, Header(ContentType::html()), self.contents())))
+impl OctobotHandler for HtmlHandler {
+    fn handle(self, _: Request) -> FutureResponse {
+        self.respond(
+            Response::new()
+                .with_header(ContentType::html())
+                .with_body(self.contents())
+        )
     }
 }
-
