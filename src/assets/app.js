@@ -254,6 +254,13 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
 
   var jiraBase = null;
 
+  function init() {
+    $scope.reset();
+    $('#auth-modal').on('shown.bs.modal', function () {
+      $('#auth-username').focus()
+    })
+  }
+
   $scope.reset = function() {
     $scope.resp = {};
     $scope.dryRun = true;
@@ -261,6 +268,8 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
     $scope.req = {
       project: "",
       version: "",
+      admin_user: "",
+      admin_pass: "",
     };
 
     $scope.lastVersion = null;
@@ -273,6 +282,8 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
       project: $scope.req.project,
       version: $scope.req.version,
       dry_run: !!dryRun,
+      admin_user: $scope.req.admin_user,
+      admin_pass: $scope.req.admin_pass,
     };
     return sessionHttp.post('/api/merge-versions', req).then(function(resp) {
       $scope.processing = false;
@@ -299,7 +310,6 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
 
   function mergeVersionsForReal() {
     let version = $scope.req.version;
-
     mergeVersions(false).then(function(resp) {
       notificationService.showSuccess('Created new version succesfully');
       $scope.reset();
@@ -315,8 +325,17 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
     if ($scope.dryRun) {
       mergeVersionsDryRun();
     } else{
-      mergeVersionsForReal();
+      $scope.req.admin_user = "";
+      $scope.req.admin_pass = "";
+      $('#auth-modal').modal('show');
     }
+  }
+
+  $scope.modalSubmit = function() {
+      $('#auth-modal').modal('hide');
+      mergeVersionsForReal();
+      $scope.req.admin_user = "";
+      $scope.req.admin_pass = "";
   }
 
   $scope.submitText = function() {
@@ -339,5 +358,5 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
     }
   }
 
-  $scope.reset();
+  init();
 });
