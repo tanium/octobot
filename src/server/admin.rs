@@ -14,7 +14,7 @@ use jira;
 use users::UserHostMap;
 use repos::RepoHostMap;
 use version;
-use server::http::{FutureResponse, OctobotHandler};
+use server::http::{FutureResponse, OctobotHandler, parse_json};
 
 pub struct GetUsers {
     config: Arc<Config>
@@ -33,31 +33,31 @@ pub struct UpdateRepos {
 }
 
 impl GetUsers {
-    pub fn new(config: Arc<Config>) -> GetUsers {
-        GetUsers { config: config }
+    pub fn new(config: Arc<Config>) -> Box<GetUsers> {
+        Box::new(GetUsers { config: config })
     }
 }
 
 impl UpdateUsers {
-    pub fn new(config: Arc<Config>) -> UpdateUsers {
-        UpdateUsers { config: config }
+    pub fn new(config: Arc<Config>) -> Box<UpdateUsers> {
+        Box::new(UpdateUsers { config: config })
     }
 }
 
 impl GetRepos {
-    pub fn new(config: Arc<Config>) -> GetRepos {
-        GetRepos { config: config }
+    pub fn new(config: Arc<Config>) -> Box<GetRepos> {
+        Box::new(GetRepos { config: config })
     }
 }
 
 impl UpdateRepos {
-    pub fn new(config: Arc<Config>) -> UpdateRepos {
-        UpdateRepos { config: config }
+    pub fn new(config: Arc<Config>) -> Box<UpdateRepos> {
+        Box::new(UpdateRepos { config: config })
     }
 }
 
 impl OctobotHandler for GetUsers {
-    fn handle(self, _: Request) -> FutureResponse {
+    fn handle(&self, _: Request) -> FutureResponse {
         let users = match serde_json::to_string(&*self.config.users()) {
             Ok(u) => u,
             Err(e) => {
@@ -70,7 +70,7 @@ impl OctobotHandler for GetUsers {
 }
 
 impl OctobotHandler for GetRepos {
-    fn handle(self, _: Request) -> FutureResponse {
+    fn handle(&self, _: Request) -> FutureResponse {
         let repos = match serde_json::to_string(&*self.config.repos()) {
             Ok(u) => u,
             Err(e) => {
@@ -83,10 +83,10 @@ impl OctobotHandler for GetRepos {
 }
 
 impl OctobotHandler for UpdateUsers {
-    fn handle(self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request) -> FutureResponse {
         let config = self.config.clone();
 
-        self.parse_json(req, move |users: UserHostMap| {
+        parse_json(req, move |users: UserHostMap| {
             let json = match serde_json::to_string_pretty(&users) {
                 Ok(j) => j,
                 Err(e) => {
@@ -130,10 +130,10 @@ impl OctobotHandler for UpdateUsers {
 }
 
 impl OctobotHandler for UpdateRepos {
-    fn handle(self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request) -> FutureResponse {
         let config = self.config.clone();
 
-        self.parse_json(req, move |repos: RepoHostMap| {
+        parse_json(req, move |repos: RepoHostMap| {
             let json = match serde_json::to_string_pretty(&repos) {
                 Ok(j) => j,
                 Err(e) => {
@@ -182,10 +182,10 @@ pub struct MergeVersions {
 }
 
 impl MergeVersions {
-    pub fn new(config: Arc<Config>) -> MergeVersions {
-        MergeVersions {
+    pub fn new(config: Arc<Config>) -> Box<MergeVersions> {
+        Box::new(MergeVersions {
             config: config,
-        }
+        })
     }
 }
 
@@ -205,9 +205,9 @@ struct MergeVersionsResp {
 }
 
 impl OctobotHandler for MergeVersions {
-    fn handle(self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request) -> FutureResponse {
         let config = self.config.clone();
-        self.parse_json(req, move |merge_req: MergeVersionsReq| {
+        parse_json(req, move |merge_req: MergeVersionsReq| {
             // make a copy of the jira config so we can modify the auth
             let mut jira_config: JiraConfig = match config.jira {
                 Some(ref j) => j.clone(),

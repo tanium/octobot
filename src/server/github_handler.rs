@@ -55,11 +55,11 @@ const MAX_CONCURRENT_FORCE_PUSH: usize = 20;
 impl GithubHandler {
     pub fn new(config: Arc<Config>,
                github_session: Arc<github::api::Session>,
-               jira_session: Option<Arc<jira::api::Session>>) -> GithubHandler {
+               jira_session: Option<Arc<jira::api::Session>>) -> Box<GithubHandler> {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_session.clone(), config.clone()));
 
-        GithubHandler {
+        Box::new(GithubHandler {
             config: config.clone(),
             github_session: github_session.clone(),
             jira_session: jira_session.clone(),
@@ -78,7 +78,7 @@ impl GithubHandler {
                                                       github_session.clone(),
                                                       git_clone_manager.clone()),
             recent_events: Mutex::new(Vec::new()),
-        }
+        })
     }
 }
 
@@ -99,7 +99,7 @@ fn check_unique_event(event: String, events: &mut Vec<String>, trim_at: usize, t
 }
 
 impl OctobotHandler for GithubHandler {
-    fn handle(self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request) -> FutureResponse {
         let event_id: String = match req.headers().get_raw("x-github-delivery") {
             Some(ref h) if h.len() == 1 => String::from_utf8_lossy(&h[0]).into_owned(),
             None | Some(..) => {
@@ -128,10 +128,14 @@ impl OctobotHandler for GithubHandler {
 
         let headers = req.headers().clone();
         let github_session = self.github_session.clone();
+        let config = self.config.clone();
+        let git_clone_manager = self.git_clone_manager.clone();
+        let jira_session = self.jira_session.clone();
+        let pr_merge = self.pr_merge_worker.new_sender();
+        let repo_version = self.repo_version_worker.new_sender();
+        let force_push = self.force_push_worker.new_sender();
 
         Box::new(req.body().concat2().map(move |body| {
-            let config = self.config.clone();
-
             let verifier = GithubWebhookVerifier { secret: config.github.webhook_secret.clone() };
             if !verifier.is_req_valid(&headers, &body) {
                 return Response::new().with_status(StatusCode::Forbidden).with_body("Invalid signature");
@@ -172,14 +176,14 @@ impl OctobotHandler for GithubHandler {
                 event: event.clone(),
                 data: data,
                 action: action,
-                config: self.config.clone(),
-                messenger: messenger::from_config(self.config.clone()),
-                github_session: self.github_session.clone(),
-                git_clone_manager: self.git_clone_manager.clone(),
-                jira_session: self.jira_session.clone(),
-                pr_merge: self.pr_merge_worker.new_sender(),
-                repo_version: self.repo_version_worker.new_sender(),
-                force_push: self.force_push_worker.new_sender(),
+                config: config.clone(),
+                messenger: messenger::from_config(config.clone()),
+                github_session: github_session,
+                git_clone_manager: git_clone_manager,
+                jira_session: jira_session,
+                pr_merge: pr_merge,
+                repo_version: repo_version,
+                force_push: force_push,
             };
 
             match handler.handle_event() {

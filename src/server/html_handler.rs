@@ -17,11 +17,11 @@ pub struct HtmlHandler {
 }
 
 impl HtmlHandler {
-    pub fn new(path: &str, contents: &str) -> HtmlHandler {
-        HtmlHandler {
+    pub fn new(path: &str, contents: &str) -> Box<HtmlHandler> {
+        Box::new(HtmlHandler {
             path: path.into(),
             contents: contents.into()
-        }
+        })
     }
 
     pub fn contents(&self) -> String {
@@ -43,7 +43,7 @@ impl HtmlHandler {
 }
 
 impl OctobotHandler for HtmlHandler {
-    fn handle(self, _: Request) -> FutureResponse {
+    fn handle(&self, _: Request) -> FutureResponse {
         self.respond(
             Response::new()
                 .with_header(ContentType::html())

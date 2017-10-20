@@ -8,7 +8,7 @@ use rustc_serialize::hex::{ToHex, FromHex};
 
 use config::Config;
 use server::sessions::Sessions;
-use server::http::{FutureResponse, OctobotHandler, OctobotFilter, OctobotFilterResult};
+use server::http::{FutureResponse, OctobotHandler, OctobotFilter, OctobotFilterResult, parse_json};
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
@@ -49,27 +49,27 @@ pub struct LoginSessionFilter {
 }
 
 impl LoginHandler {
-    pub fn new(sessions: Arc<Sessions>, config: Arc<Config>) -> LoginHandler {
-        LoginHandler {
+    pub fn new(sessions: Arc<Sessions>, config: Arc<Config>) -> Box<LoginHandler> {
+        Box::new(LoginHandler {
             sessions: sessions,
             config: config,
-        }
+        })
     }
 }
 
 impl LogoutHandler {
-    pub fn new(sessions: Arc<Sessions>) -> LogoutHandler {
-        LogoutHandler {
+    pub fn new(sessions: Arc<Sessions>) -> Box<LogoutHandler> {
+        Box::new(LogoutHandler {
             sessions: sessions,
-        }
+        })
     }
 }
 
 impl LoginSessionFilter {
-    pub fn new(sessions: Arc<Sessions>) -> LoginSessionFilter {
-        LoginSessionFilter {
+    pub fn new(sessions: Arc<Sessions>) -> Box<LoginSessionFilter> {
+        Box::new(LoginSessionFilter {
             sessions: sessions,
-        }
+        })
     }
 }
 
@@ -87,11 +87,11 @@ fn get_session(req: &Request) -> Option<String> {
 }
 
 impl OctobotHandler for LoginHandler {
-    fn handle(self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request) -> FutureResponse {
         let admin = self.config.admin.clone();
         let sessions = self.sessions.clone();
 
-        self.parse_json(req, move |login_req: LoginRequest| {
+        parse_json(req, move |login_req: LoginRequest| {
             let success = match admin {
                 None => false,
                 Some(ref admin) => {
@@ -124,7 +124,7 @@ fn invalid_session() -> Response {
 }
 
 impl OctobotHandler for LogoutHandler {
-    fn handle(self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request) -> FutureResponse {
         let sess: String = match get_session(&req) {
             Some(s) => s.to_string(),
             None => {

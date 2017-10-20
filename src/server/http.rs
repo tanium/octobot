@@ -18,6 +18,7 @@ use server::html_handler::HtmlHandler;
 use server::login::{LoginHandler, LogoutHandler, LoginSessionFilter};
 use server::admin;
 use server::sessions::Sessions;
+use util;
 
 pub fn start(config: Config) -> Result<(), String> {
     let config = Arc::new(config);
@@ -79,7 +80,7 @@ impl OctobotService {
 pub type FutureResponse = Box<Future<Item=Response, Error=hyper::Error>>;
 
 pub trait OctobotHandler {
-    fn handle(self, req: Request) -> FutureResponse;
+    fn handle(&self, req: Request) -> FutureResponse;
 
     fn respond(&self, resp: Response) -> FutureResponse {
         Box::new(future::ok(resp))
@@ -88,20 +89,20 @@ pub trait OctobotHandler {
     fn respond_with(&self, status: hyper::StatusCode, msg: &str) -> FutureResponse {
         self.respond(Response::new().with_status(status).with_body(msg.to_string()))
     }
+}
 
-    fn parse_json<T: DeserializeOwned, F>(&self, req: Request, func: F) -> FutureResponse
-        where F: FnOnce(T) -> Response + 'static
-    {
-        Box::new(req.body().concat2().map(move |data| {
-            let obj: T = match serde_json::from_slice(&data) {
-                Ok(l) => l,
-                Err(e) => return Response::new().with_status(StatusCode::BadRequest)
-                                                .with_body(format!("Failed to parse JSON: {}", e)),
-            };
+pub fn parse_json<T: DeserializeOwned, F>(req: Request, func: F) -> FutureResponse
+    where F: FnOnce(T) -> Response + 'static
+{
+    Box::new(req.body().concat2().map(move |data| {
+        let obj: T = match serde_json::from_slice(&data) {
+            Ok(l) => l,
+            Err(e) => return Response::new().with_status(StatusCode::BadRequest)
+                                            .with_body(format!("Failed to parse JSON: {}", e)),
+        };
 
-            func(obj)
-        }))
-    }
+        func(obj)
+    }))
 }
 
 pub trait OctobotFilter {
@@ -111,33 +112,6 @@ pub trait OctobotFilter {
 pub enum OctobotFilterResult {
     Halt(Response),
     Continue,
-}
-
-fn handle<T: OctobotHandler>(req: Request, handler: T) -> FutureResponse { handler.handle(req) }
-
-fn html(req: Request, asset: &str, contents: &str) -> FutureResponse {
-    handle(req, HtmlHandler::new(asset, contents))
-}
-
-fn filtered<T: OctobotFilter, U: OctobotHandler, >(req: Request, filterer: T, handler: U) -> FutureResponse {
-    match filterer.filter(&req) {
-        OctobotFilterResult::Halt(resp) => Box::new(future::ok(resp)),
-        OctobotFilterResult::Continue => handle(req, handler)
-    }
-}
-
-fn format_duration(dur: time::Duration) -> String {
-    let seconds = dur.num_seconds();
-    // get ms as a float
-    let ms = match dur.num_microseconds() {
-        Some(micro) => micro as f64 / 1000 as f64,
-        None => dur.num_milliseconds() as f64,
-    };
-    if seconds > 0 {
-        format!("{} s, {:.4} ms", seconds, (ms - (1000 * seconds) as f64))
-    } else {
-        format!("{:.4} ms", ms)
-    }
 }
 
 impl Service for OctobotService {
@@ -153,8 +127,8 @@ impl Service for OctobotService {
         let path = req.path().to_string();
         debug!("Received request: {} {}", method, path);
 
-        Box::new(self.handle(req).map(move |res| {
-            info!("{} {} {} ({})", method, path, res.status(), format_duration(time::now() - start));
+        Box::new(self.route(&req).handle(req).map(move |res| {
+            info!("{} {} {} ({})", method, path, res.status(), util::format_duration(time::now() - start));
             res
         }).or_else(move |e| {
             error!("Error processing request: {}", e);
@@ -164,49 +138,74 @@ impl Service for OctobotService {
 }
 
 impl OctobotService {
-    fn handle(&self, req: Request) -> FutureResponse {
+    fn route(&self, req: &Request) -> Box<OctobotHandler> {
         use hyper::Method::{Get, Post};
 
         // API routes
         if req.path().starts_with("/api") {
             let filter = LoginSessionFilter::new(self.ui_sessions.clone());
 
-            return match (req.method(), req.path()) {
-                (&Get, "/api/users") => filtered(req, filter, admin::GetUsers::new(self.config.clone())),
-                (&Post, "/api/users") => filtered(req, filter, admin::UpdateUsers::new(self.config.clone())),
-                (&Get, "/api/repos") => filtered(req, filter, admin::GetRepos::new(self.config.clone())),
-                (&Post, "/api/repos") => filtered(req, filter, admin::UpdateRepos::new(self.config.clone())),
-                (&Post, "/api/merge-versions") => filtered(req, filter, admin::MergeVersions::new(self.config.clone())),
+            return FilteredHandler::new(filter, match (req.method(), req.path()) {
+                (&Get,  "/api/users") => admin::GetUsers::new(self.config.clone()),
+                (&Post, "/api/users") => admin::UpdateUsers::new(self.config.clone()),
+                (&Get,  "/api/repos") => admin::GetRepos::new(self.config.clone()),
+                (&Post, "/api/repos") => admin::UpdateRepos::new(self.config.clone()),
+                (&Post, "/api/merge-versions") => admin::MergeVersions::new(self.config.clone()),
 
-                _ => self.not_found(),
-            };
+                _ => Box::new(NotFoundHandler),
+            });
         }
 
         // static routes
         match (req.method(), req.path()) {
             // web ui resources. kinda a funny way of doing this maybe, but avoids worries about
             // path traversal and location of a doc root on deployment, and our resource count is small.
-            (&Get, "/") => html(req, "index.html", include_str!("../../src/assets/index.html")),
-            (&Get, "/login.html") => html(req, "login.html", include_str!("../../src/assets/login.html")),
-            (&Get, "/users.html") => html(req, "users.html", include_str!("../../src/assets/users.html")),
-            (&Get, "/repos.html") => html(req, "repos.html", include_str!("../../src/assets/repos.html")),
-            (&Get, "/versions.html") => html(req, "versions.html", include_str!("../../src/assets/versions.html")),
-            (&Get, "/app.js") => html(req, "app.js", include_str!("../../src/assets/app.js")),
+            (&Get, "/")              => HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")),
+            (&Get, "/login.html")    => HtmlHandler::new("login.html", include_str!("../../src/assets/login.html")),
+            (&Get, "/users.html")    => HtmlHandler::new("users.html", include_str!("../../src/assets/users.html")),
+            (&Get, "/repos.html")    => HtmlHandler::new("repos.html", include_str!("../../src/assets/repos.html")),
+            (&Get, "/versions.html") => HtmlHandler::new("versions.html", include_str!("../../src/assets/versions.html")),
+            (&Get, "/app.js")        => HtmlHandler::new("app.js", include_str!("../../src/assets/app.js")),
 
             // auth
-            (&Post, "/auth/login") => handle(req, LoginHandler::new(self.ui_sessions.clone(), self.config.clone())),
-            (&Post, "/auth/logout") => handle(req, LogoutHandler::new(self.ui_sessions.clone())),
+            (&Post, "/auth/login")   => LoginHandler::new(self.ui_sessions.clone(), self.config.clone()),
+            (&Post, "/auth/logout")  => LogoutHandler::new(self.ui_sessions.clone()),
 
             // hooks
-            (&Post, "/hooks/github") => handle(req, GithubHandler::new(self.config.clone(),
-                                                                       self.github.clone(),
-                                                                       self.jira.clone())),
+            (&Post, "/hooks/github") => GithubHandler::new(self.config.clone(), self.github.clone(), self.jira.clone()),
 
-            _ => self.not_found(),
+            _ => Box::new(NotFoundHandler),
         }
     }
+}
 
-    fn not_found(&self) -> FutureResponse {
+struct NotFoundHandler;
+impl OctobotHandler for NotFoundHandler {
+    fn handle(&self, _: Request) -> FutureResponse {
         Box::new(future::ok(Response::new().with_status(StatusCode::NotFound)))
     }
 }
+
+struct FilteredHandler {
+    filter: Box<OctobotFilter>,
+    handler: Box<OctobotHandler>,
+}
+
+impl FilteredHandler {
+    pub fn new(filter: Box<OctobotFilter>, handler: Box<OctobotHandler>) -> Box<FilteredHandler> {
+        Box::new(FilteredHandler {
+            filter: filter,
+            handler: handler,
+        })
+    }
+}
+
+impl OctobotHandler for FilteredHandler {
+    fn handle(&self, req: Request) -> FutureResponse {
+        match self.filter.filter(&req) {
+            OctobotFilterResult::Halt(resp) => Box::new(future::ok(resp)),
+            OctobotFilterResult::Continue => self.handler.handle(req),
+        }
+    }
+}
+

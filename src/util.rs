@@ -1,3 +1,5 @@
+use time;
+
 fn escape_for_slack(str: &str) -> String {
     str.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 }
@@ -29,6 +31,20 @@ pub fn get_mentioned_usernames(body: &str) -> Vec<&str> {
         }
     }
     mentions
+}
+
+pub fn format_duration(dur: time::Duration) -> String {
+    let seconds = dur.num_seconds();
+    // get ms as a float
+    let ms = match dur.num_microseconds() {
+        Some(micro) => micro as f64 / 1000 as f64,
+        None => dur.num_milliseconds() as f64,
+    };
+    if seconds > 0 {
+        format!("{} s, {:.4} ms", seconds, (ms - (1000 * seconds) as f64))
+    } else {
+        format!("{:.4} ms", ms)
+    }
 }
 
 #[cfg(test)]
