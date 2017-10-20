@@ -4,6 +4,10 @@
   Merge pending versions into new JIRA version
 </p>
 
+<div ng-show="!dryRun && processing" class="alert alert-warning text-center">
+  <b>Processing.</b> Please do not leave this page...
+</div>
+
 <form class="" ng-submit="submit()">
   <div class="form-group">
     <input type="text" class="form-control" ng-disabled="!dryRun" ng-model="req.project" placeholder="JIRA project (e.g. SERVER)" required>
@@ -68,12 +72,12 @@
             <input id="auth-username" type="text" class="form-control" ng-model="req.admin_user" placeholder="username" required>
           </div>
           <div class="form-group">
-            <input type="password" class="form-control" ng-model="req.admin_pass" placeholder="password" required>
+            <input type="password" class="form-control" ng-model="req.admin_pass" placeholder="password" required autocomplete="off">
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-primary" ng-click="modalSubmit()">Submit</button>
+          <button type="submit" class="btn btn-primary" ng-click="modalSubmit()">Submit</button>
         </div>
       </form>
     </div>
