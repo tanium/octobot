@@ -258,7 +258,14 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
     $scope.reset();
     $('#auth-modal').on('shown.bs.modal', function () {
       $('#auth-username').focus()
-    })
+    });
+    // clear the password before show and after hide
+    $('#auth-modal').on('show.bs.modal', function() {
+        $scope.req.admin_pass = "";
+    });
+    $('#auth-modal').on('hidden.bs.modal', function() {
+        $scope.req.admin_pass = "";
+    });
   }
 
   $scope.reset = function() {
@@ -268,7 +275,6 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
     $scope.req = {
       project: "",
       version: "",
-      admin_user: "",
       admin_pass: "",
     };
 
@@ -324,18 +330,14 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
   $scope.submit = function() {
     if ($scope.dryRun) {
       mergeVersionsDryRun();
-    } else{
-      $scope.req.admin_user = "";
-      $scope.req.admin_pass = "";
+    } else {
       $('#auth-modal').modal('show');
     }
   }
 
   $scope.modalSubmit = function() {
-      $('#auth-modal').modal('hide');
       mergeVersionsForReal();
-      $scope.req.admin_user = "";
-      $scope.req.admin_pass = "";
+      $('#auth-modal').modal('hide');
   }
 
   $scope.submitText = function() {
