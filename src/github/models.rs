@@ -189,7 +189,7 @@ pub trait PullRequestLike {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PullRequest {
     pub title: String,
-    pub body: String,
+    pub body: Option<String>,
     pub number: u32,
     pub html_url: String,
     pub state: String,
@@ -206,7 +206,7 @@ impl PullRequest {
     pub fn new() -> PullRequest {
         PullRequest {
             title: String::new(),
-            body: String::new(),
+            body: None,
             number: 0,
             html_url: String::new(),
             state: "open".into(),

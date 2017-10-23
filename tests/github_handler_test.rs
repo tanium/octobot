@@ -156,7 +156,7 @@ fn new_test_with_jira() -> GithubHandlerTest {
 fn some_pr() -> Option<PullRequest> {
     Some(PullRequest {
         title: "The PR".into(),
-        body: "The body".into(),
+        body: Some("The body".into()),
         number: 32,
         html_url: "http://the-pr".into(),
         state: "open".into(),
