@@ -8,7 +8,7 @@ use rustc_serialize::hex::{ToHex, FromHex};
 
 use config::Config;
 use server::sessions::Sessions;
-use server::http::{FutureResponse, OctobotHandler, OctobotFilter, OctobotFilterResult, parse_json};
+use server::http::{FutureResponse, Handler, Filter, FilterResult, parse_json};
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
@@ -86,7 +86,7 @@ fn get_session(req: &Request) -> Option<String> {
     }
 }
 
-impl OctobotHandler for LoginHandler {
+impl Handler for LoginHandler {
     fn handle(&self, req: Request) -> FutureResponse {
         let admin = self.config.admin.clone();
         let sessions = self.sessions.clone();
@@ -123,7 +123,7 @@ fn invalid_session() -> Response {
         .with_body("Invalid session")
 }
 
-impl OctobotHandler for LogoutHandler {
+impl Handler for LogoutHandler {
     fn handle(&self, req: Request) -> FutureResponse {
         let sess: String = match get_session(&req) {
             Some(s) => s.to_string(),
@@ -141,19 +141,19 @@ impl OctobotHandler for LogoutHandler {
     }
 }
 
-impl OctobotFilter for LoginSessionFilter {
-    fn filter(&self, req: &Request) -> OctobotFilterResult {
+impl Filter for LoginSessionFilter {
+    fn filter(&self, req: &Request) -> FilterResult {
         let sess: String = match get_session(&req) {
             Some(s) => s.to_string(),
             None => {
-                return OctobotFilterResult::Halt(invalid_session())
+                return FilterResult::Halt(invalid_session())
             }
         };
 
         if self.sessions.is_valid_session(&sess) {
-            OctobotFilterResult::Continue
+            FilterResult::Continue
         } else {
-            OctobotFilterResult::Halt(invalid_session())
+            FilterResult::Halt(invalid_session())
         }
     }
 }

@@ -17,7 +17,7 @@ use messenger::{self, Messenger};
 use repo_version::{self, RepoVersionRequest};
 use pr_merge::{self, PRMergeRequest};
 use force_push::{self, ForcePushRequest};
-use server::http::{FutureResponse, OctobotHandler};
+use server::http::{FutureResponse, Handler};
 use server::github_verify::GithubWebhookVerifier;
 use slack::SlackAttachmentBuilder;
 use util;
@@ -98,7 +98,7 @@ fn check_unique_event(event: String, events: &mut Vec<String>, trim_at: usize, t
     unique
 }
 
-impl OctobotHandler for GithubHandler {
+impl Handler for GithubHandler {
     fn handle(&self, req: Request) -> FutureResponse {
         let event_id: String = match req.headers().get_raw("x-github-delivery") {
             Some(ref h) if h.len() == 1 => String::from_utf8_lossy(&h[0]).into_owned(),

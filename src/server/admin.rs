@@ -14,7 +14,7 @@ use jira;
 use users::UserHostMap;
 use repos::RepoHostMap;
 use version;
-use server::http::{FutureResponse, OctobotHandler, parse_json};
+use server::http::{FutureResponse, Handler, parse_json};
 
 pub struct GetUsers {
     config: Arc<Config>
@@ -56,7 +56,7 @@ impl UpdateRepos {
     }
 }
 
-impl OctobotHandler for GetUsers {
+impl Handler for GetUsers {
     fn handle(&self, _: Request) -> FutureResponse {
         let users = match serde_json::to_string(&*self.config.users()) {
             Ok(u) => u,
@@ -69,7 +69,7 @@ impl OctobotHandler for GetUsers {
     }
 }
 
-impl OctobotHandler for GetRepos {
+impl Handler for GetRepos {
     fn handle(&self, _: Request) -> FutureResponse {
         let repos = match serde_json::to_string(&*self.config.repos()) {
             Ok(u) => u,
@@ -82,7 +82,7 @@ impl OctobotHandler for GetRepos {
     }
 }
 
-impl OctobotHandler for UpdateUsers {
+impl Handler for UpdateUsers {
     fn handle(&self, req: Request) -> FutureResponse {
         let config = self.config.clone();
 
@@ -129,7 +129,7 @@ impl OctobotHandler for UpdateUsers {
     }
 }
 
-impl OctobotHandler for UpdateRepos {
+impl Handler for UpdateRepos {
     fn handle(&self, req: Request) -> FutureResponse {
         let config = self.config.clone();
 
@@ -204,7 +204,7 @@ struct MergeVersionsResp {
     versions: HashMap<String, Vec<version::Version>>,
 }
 
-impl OctobotHandler for MergeVersions {
+impl Handler for MergeVersions {
     fn handle(&self, req: Request) -> FutureResponse {
         let config = self.config.clone();
         parse_json(req, move |merge_req: MergeVersionsReq| {

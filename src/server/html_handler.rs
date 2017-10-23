@@ -5,7 +5,7 @@ use std::fs::File;
 use hyper::server::{Request, Response};
 use hyper::header::ContentType;
 
-use server::http::{FutureResponse, OctobotHandler};
+use server::http::{FutureResponse, Handler};
 
 fn is_dev_mode() -> bool {
     env::var("DEVMODE").is_ok()
@@ -42,7 +42,7 @@ impl HtmlHandler {
     }
 }
 
-impl OctobotHandler for HtmlHandler {
+impl Handler for HtmlHandler {
     fn handle(&self, _: Request) -> FutureResponse {
         self.respond(
             Response::new()
