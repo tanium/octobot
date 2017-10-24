@@ -156,13 +156,30 @@ impl Handler for GithubHandler {
                 None => String::new(),
             };
 
+            // Try to remap issues which are PRs as pull requests. This gives us access to PR information
+            // like reviewers which do not exist for issues.
+            if let Some(ref issue) = data.issue {
+                if data.pull_request.is_none() && issue.html_url.contains("/pull/") {
+                    data.pull_request = match
+                        github_session.get_pull_request(&data.repository.owner.login(),
+                                                        &data.repository.name,
+                                                        issue.number) {
+                        Ok(pr) => Some(pr),
+                        Err(e) => {
+                            error!("Error refetching issue #{} as pull request: {}", issue.number, e);
+                            None
+                        },
+                    };
+                }
+            }
+
             // refetch PR if present to get requested reviewers: they don't come on each webhook :cry:
             let mut changed_pr = None;
             if let Some(ref pull_request) = data.pull_request {
                 if pull_request.requested_reviewers.is_none() {
                     match github_session.get_pull_request(&data.repository.owner.login(),
-                                                               &data.repository.name,
-                                                               pull_request.number) {
+                                                          &data.repository.name,
+                                                          pull_request.number) {
                         Ok(pr) => changed_pr = Some(pr),
                         Err(e) => error!("Error refetching pull request to get reviewers: {}", e),
                     };
@@ -504,9 +521,12 @@ impl GithubEventHandler {
     }
 
     fn handle_issue_comment(&self) -> EventResponse {
-        if let Some(ref issue) = self.data.issue {
-            if let Some(ref comment) = self.data.comment {
-                if self.action == "created" {
+        if let Some(ref comment) = self.data.comment {
+            if self.action == "created" {
+                // Check to see if we remapped this "issue" to a PR
+                if let Some(ref pr) = self.data.pull_request {
+                    self.do_pull_request_comment(&pr, &comment);
+                } else if let Some(ref issue) = self.data.issue {
                     self.do_pull_request_comment(&issue, &comment);
                 }
             }

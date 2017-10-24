@@ -132,6 +132,8 @@ impl HTTPClient {
                     Ok(buffer)
                 })
                 .map(move |buffer| {
+                    debug!("Response: HTTP {}\n---\n{}\n---", status, String::from_utf8_lossy(&buffer));
+
                     if !status.is_success() {
                         return Err(format!("Failed request to {}: HTTP {}\n---\n{}\n---", path, status,
                                    String::from_utf8_lossy(&buffer)));
