@@ -1,116 +1,74 @@
-use std::sync::Arc;
-use std::io::Read;
+use futures::future::{self, Future};
+use futures::Stream;
+use hyper::{self, StatusCode};
+use hyper::server::{Request, Response};
+use serde::de::DeserializeOwned;
+use serde_json;
 
-use iron::prelude::*;
-use iron::middleware::{BeforeMiddleware, Handler};
-use logger::Logger;
+pub type FutureResponse = Box<Future<Item=Response, Error=hyper::Error>>;
 
-use config::Config;
-use github;
-use jira;
-use server::github_handler::GithubHandler;
-use server::github_verify::GithubWebhookVerifier;
-use server::html_handler::HtmlHandler;
-use server::login::{LoginHandler, LogoutHandler, LoginSessionFilter};
-use server::admin;
-use server::sessions::Sessions;
+pub trait Handler {
+    fn handle(&self, req: Request) -> FutureResponse;
 
-pub fn start(config: Config) -> Result<(), String> {
-    let github_session = match github::api::GithubSession::new(&config.github.host,
-                                                               &config.github.api_token) {
-        Ok(s) => s,
-        Err(e) => panic!("Error initiating github session: {}", e),
-    };
-
-    let config = Arc::new(config);
-
-    let jira_session;
-    if let Some(ref jira_config) = config.jira {
-        jira_session = match jira::api::JiraSession::new(&jira_config) {
-            Ok(s) => {
-                let arc : Arc<jira::api::Session> = Arc::new(s);
-                Some(arc)
-            }
-            Err(e) => panic!("Error initiating jira session: {}", e),
-        };
-    } else {
-        jira_session = None;
+    fn respond(&self, resp: Response) -> FutureResponse {
+        Box::new(future::ok(resp))
     }
 
-    let ui_sessions = Arc::new(Sessions::new());
-
-    let router = router!(
-        // web ui resources. kinda a funny way of doing this maybe, but avoids worries about
-        // path traversal and location of a doc root on deployment, and our resource count is small.
-        index: get "/"           => HtmlHandler::new("index.html", include_str!("../../src/assets/index.html")),
-        login: get "/login.html" => HtmlHandler::new("login.html", include_str!("../../src/assets/login.html")),
-        users: get "/users.html" => HtmlHandler::new("users.html", include_str!("../../src/assets/users.html")),
-        repos: get "/repos.html" => HtmlHandler::new("repos.html", include_str!("../../src/assets/repos.html")),
-        versions: get "/versions.html" => HtmlHandler::new("versions.html", include_str!("../../src/assets/versions.html")),
-        app_js: get "/app.js"    => HtmlHandler::new("app.js", include_str!("../../src/assets/app.js")),
-        // auth
-        auth_login:  post "/auth/login"  => LoginHandler::new(ui_sessions.clone(), config.clone()),
-        auth_logout: post "/auth/logout" => LogoutHandler::new(ui_sessions.clone()),
-        // api
-        api: any "/api/*" => filtered_handler(
-            LoginSessionFilter::new(ui_sessions.clone()),
-            router!(
-                api_get_users:    get  "/api/users" => admin::GetUsers::new(config.clone()),
-                api_update_users: post "/api/users" => admin::UpdateUsers::new(config.clone()),
-                api_get_repos:    get  "/api/repos" => admin::GetRepos::new(config.clone()),
-                api_update_repos: post "/api/repos" => admin::UpdateRepos::new(config.clone()),
-                api_merge_versions: post "/api/merge-versions" => admin::MergeVersions::new(config.clone()),
-            )
-        ),
-        // hooks
-        hooks_github: post "/hooks/github" => filtered_handler(
-            GithubWebhookVerifier { secret: config.github.webhook_secret.clone() },
-            GithubHandler::new(config.clone(), github_session, jira_session)
-        ),
-    );
-
-    let default_listen = String::from("0.0.0.0:3000");
-    let addr_and_port = match config.main.listen_addr {
-        Some(ref addr_and_port) => addr_and_port,
-        None => &default_listen,
-    };
-
-    let mut chain = Chain::new(router);
-    let (logger_before, logger_after) = Logger::new(None);
-
-    // before first middleware
-    chain.link_before(logger_before);
-
-    // after last middleware
-    chain.link_after(logger_after);
-
-    // Read off rest of the request body in case it wasn't used
-    // to fix issue where it appears to affect the next request
-    // (may be an http pipelining bug in iron?)
-    chain.link_after(|req: &mut Request, resp: Response| {
-        let mut buffer = [0; 8192];
-        loop {
-            match req.body.read(&mut buffer) {
-                Ok(0) | Err(_) => break,
-                Ok(read) => {
-                    info!("Unused data! {} bytes", read);
-                }
-            }
-        }
-        Ok(resp)
-    });
-
-    match Iron::new(chain).http(addr_and_port.as_str()) {
-        Ok(_) => {
-            info!("Listening on port {}", addr_and_port);
-            Ok(())
-        }
-        Err(e) => Err(format!("{}", e)),
+    fn respond_with(&self, status: hyper::StatusCode, msg: &str) -> FutureResponse {
+        self.respond(Response::new().with_status(status).with_body(msg.to_string()))
     }
 }
 
-fn filtered_handler<F: BeforeMiddleware, H: Handler>(filter: F, handler: H) -> Chain {
-    let mut chain = Chain::new(handler);
-    chain.link_before(filter);
-    chain
+pub trait Filter {
+    fn filter(&self, req: &Request) -> FilterResult;
+}
+
+pub enum FilterResult {
+    Halt(Response),
+    Continue,
+}
+
+pub struct FilteredHandler {
+    filter: Box<Filter>,
+    handler: Box<Handler>,
+}
+
+pub struct NotFoundHandler;
+
+impl FilteredHandler {
+    pub fn new(filter: Box<Filter>, handler: Box<Handler>) -> Box<FilteredHandler> {
+        Box::new(FilteredHandler {
+            filter: filter,
+            handler: handler,
+        })
+    }
+}
+
+impl Handler for FilteredHandler {
+    fn handle(&self, req: Request) -> FutureResponse {
+        match self.filter.filter(&req) {
+            FilterResult::Halt(resp) => Box::new(future::ok(resp)),
+            FilterResult::Continue => self.handler.handle(req),
+        }
+    }
+}
+
+impl Handler for NotFoundHandler {
+    fn handle(&self, _: Request) -> FutureResponse {
+        Box::new(future::ok(Response::new().with_status(StatusCode::NotFound)))
+    }
+}
+
+pub fn parse_json<T: DeserializeOwned, F>(req: Request, func: F) -> FutureResponse
+    where F: FnOnce(T) -> Response + 'static
+{
+    Box::new(req.body().concat2().map(move |data| {
+        let obj: T = match serde_json::from_slice(&data) {
+            Ok(l) => l,
+            Err(e) => return Response::new().with_status(StatusCode::BadRequest)
+                                            .with_body(format!("Failed to parse JSON: {}", e)),
+        };
+
+        func(obj)
+    }))
 }

@@ -1,17 +1,14 @@
 use std::sync::Arc;
 
-use bodyparser;
-use iron::prelude::*;
-use iron::status;
-use iron::headers::ContentType;
-use iron::middleware::{BeforeMiddleware, Handler};
-use iron::modifiers::Header;
+use hyper::header::ContentType;
+use hyper::server::{Request, Response};
+use hyper::StatusCode;
 use ring::{digest, pbkdf2};
 use rustc_serialize::hex::{ToHex, FromHex};
 
 use config::Config;
-use server::github_verify::StringError;
 use server::sessions::Sessions;
+use server::http::{FutureResponse, Handler, Filter, FilterResult, parse_json};
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
@@ -52,27 +49,27 @@ pub struct LoginSessionFilter {
 }
 
 impl LoginHandler {
-    pub fn new(sessions: Arc<Sessions>, config: Arc<Config>) -> LoginHandler {
-        LoginHandler {
+    pub fn new(sessions: Arc<Sessions>, config: Arc<Config>) -> Box<LoginHandler> {
+        Box::new(LoginHandler {
             sessions: sessions,
             config: config,
-        }
+        })
     }
 }
 
 impl LogoutHandler {
-    pub fn new(sessions: Arc<Sessions>) -> LogoutHandler {
-        LogoutHandler {
+    pub fn new(sessions: Arc<Sessions>) -> Box<LogoutHandler> {
+        Box::new(LogoutHandler {
             sessions: sessions,
-        }
+        })
     }
 }
 
 impl LoginSessionFilter {
-    pub fn new(sessions: Arc<Sessions>) -> LoginSessionFilter {
-        LoginSessionFilter {
+    pub fn new(sessions: Arc<Sessions>) -> Box<LoginSessionFilter> {
+        Box::new(LoginSessionFilter {
             sessions: sessions,
-        }
+        })
     }
 }
 
@@ -82,63 +79,81 @@ struct LoginRequest {
     password: String,
 }
 
-fn get_session(req: &Request) -> IronResult<String> {
-    match req.headers.get_raw("session") {
-        Some(ref h) if h.len() == 1 => Ok(String::from_utf8_lossy(&h[0]).into_owned()),
-        None | Some(..) => {
-            return Err(IronError::new(StringError::new("No session header found"),
-                                      status::Forbidden))
-        }
+fn get_session(req: &Request) -> Option<String> {
+    match req.headers().get_raw("session") {
+        Some(ref h) if h.len() == 1 => Some(String::from_utf8_lossy(&h[0]).into_owned()),
+        None | Some(..) => None,
     }
 }
 
 impl Handler for LoginHandler {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let login_req = match req.get::<bodyparser::Struct<LoginRequest>>() {
-            Ok(Some(r)) => r,
-            Err(_) | Ok(None) => {
-                error!("Error reading json");
-                return Ok(Response::with((status::BadRequest, format!("Error reading json"))));
+    fn handle(&self, req: Request) -> FutureResponse {
+        let admin = self.config.admin.clone();
+        let sessions = self.sessions.clone();
+
+        parse_json(req, move |login_req: LoginRequest| {
+            let success = match admin {
+                None => false,
+                Some(ref admin) => {
+                    let pw_correct = verify_password(&login_req.password, &admin.salt, &admin.pass_hash);
+                    admin.name == login_req.username && pw_correct
+                }
+            };
+
+            if success {
+                let sess_id = sessions.new_session();
+                let json = json!({
+                    "session": sess_id,
+                });
+
+                Response::new()
+                    .with_header(ContentType::json())
+                    .with_body(json.to_string())
+            } else {
+                Response::new().with_status(StatusCode::Unauthorized)
             }
-        };
-
-        let success = match self.config.admin {
-            None => false,
-            Some(ref admin) => {
-                let pw_correct = verify_password(&login_req.password, &admin.salt, &admin.pass_hash);
-                admin.name == login_req.username && pw_correct
-            }
-        };
-
-        if success {
-            let sess_id = self.sessions.new_session();
-            let json = json!({
-                "session": sess_id,
-            });
-            Ok(Response::with((status::Ok, Header(ContentType::json()), json.to_string())))
-
-        } else {
-            Ok(Response::with(status::Unauthorized))
-        }
-
+        })
     }
+}
+
+
+fn invalid_session() -> Response {
+    Response::new()
+        .with_status(StatusCode::Forbidden)
+        .with_body("Invalid session")
 }
 
 impl Handler for LogoutHandler {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let sess = try!(get_session(req));
+    fn handle(&self, req: Request) -> FutureResponse {
+        let sess: String = match get_session(&req) {
+            Some(s) => s.to_string(),
+            None => {
+                return self.respond(invalid_session())
+            }
+        };
+
         self.sessions.remove_session(&sess);
-        Ok(Response::with((status::Ok, Header(ContentType::json()), "{}")))
+        self.respond(
+            Response::new()
+                .with_header(ContentType::json())
+                .with_body("{}")
+        )
     }
 }
 
-impl BeforeMiddleware for LoginSessionFilter {
-    fn before(&self, req: &mut Request) -> IronResult<()> {
-        let sess = try!(get_session(req));
+impl Filter for LoginSessionFilter {
+    fn filter(&self, req: &Request) -> FilterResult {
+        let sess: String = match get_session(&req) {
+            Some(s) => s.to_string(),
+            None => {
+                return FilterResult::Halt(invalid_session())
+            }
+        };
+
         if self.sessions.is_valid_session(&sess) {
-            Ok(())
+            FilterResult::Continue
         } else {
-            Err(IronError::new(StringError::new("Invalid session"), status::Forbidden))
+            FilterResult::Halt(invalid_session())
         }
     }
 }
