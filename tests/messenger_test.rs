@@ -133,3 +133,33 @@ fn test_peace_and_quiet() {
                           &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
                           &vec![github::User::new("the-owner"), github::User::new("assign2")]);
 }
+
+#[test]
+fn test_does_not_send_duplicates() {
+    let mut repos = RepoConfig::new();
+    repos.insert("git.foo.com", "the-owner/the-repo", "the-review-channel");
+    let config = Arc::new(Config::new(UserConfig::new(), repos));
+
+    let slack = MockSlack::new(vec![
+        slack::req("the-review-channel", "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)", vec![]),
+        slack::req("@the.owner", "hello there", vec![]),
+        slack::req("@assign2", "hello there", vec![]),
+    ]);
+
+    let messenger = messenger::new(config, slack.new_sender());
+
+    messenger.send_to_all("hello there",
+                          &vec![],
+                          &github::User::new("the-owner"),
+                          &github::User::new("the-sender"),
+                          &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
+                          &vec![github::User::new("the-owner"), github::User::new("assign2")]);
+
+    // send it again w/ the same args -- should not send to owner, assignee, or channel again
+    messenger.send_to_all("hello there",
+                          &vec![],
+                          &github::User::new("the-owner"),
+                          &github::User::new("the-sender"),
+                          &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
+                          &vec![github::User::new("the-owner"), github::User::new("assign2")]);
+}

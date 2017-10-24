@@ -47,6 +47,24 @@ pub fn format_duration(dur: time::Duration) -> String {
     }
 }
 
+pub fn check_unique_event<T>(event: T, events: &mut Vec<T>, trim_at: usize, trim_to: usize) -> bool
+    where T: PartialEq
+{
+    let unique = !events.contains(&event);
+
+    if unique {
+        events.push(event);
+        if events.len() > trim_at {
+            // reverse so that that we keep recent events
+            events.reverse();
+            events.truncate(trim_to);
+            events.reverse();
+        }
+    }
+
+    unique
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,5 +99,29 @@ mod tests {
         assert_eq!(Vec::<&str>::new(),
                    get_mentioned_usernames("This won't count as a mention@notamention"));
 
+    }
+
+    #[test]
+    fn test_check_unique_event() {
+        let trim_at = 5;
+        let trim_to = 2;
+        let mut events: Vec<String> = vec![];
+
+        assert!(check_unique_event("A".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["A"], events);
+
+        assert!(check_unique_event("B".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["A", "B"], events);
+        assert!(!check_unique_event("B".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["A", "B"], events);
+
+        assert!(check_unique_event("C".into(), &mut events, trim_at, trim_to));
+        assert!(check_unique_event("D".into(), &mut events, trim_at, trim_to));
+        assert!(check_unique_event("E".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["A", "B", "C", "D", "E"], events);
+
+        // next one should trigger a trim!
+        assert!(check_unique_event("F".into(), &mut events, trim_at, trim_to));
+        assert_eq!(vec!["E", "F"], events);
     }
 }
