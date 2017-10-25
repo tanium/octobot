@@ -13,8 +13,8 @@ use github;
 use git_clone_manager::GitCloneManager;
 use messenger;
 use jira;
-use slack::SlackAttachmentBuilder;
-use worker;
+use slack::{SlackAttachmentBuilder, SlackRequest};
+use worker::{self, WorkSender};
 
 #[cfg(target_os="linux")]
 use docker;
@@ -151,6 +151,7 @@ struct Runner {
     github_session: Arc<github::api::Session>,
     jira_session: Option<Arc<jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
+    slack: WorkSender<SlackRequest>,
     thread_pool: ThreadPool,
 }
 
@@ -167,13 +168,15 @@ pub fn new_worker(max_concurrency: usize,
                   config: Arc<Config>,
                   github_session: Arc<github::api::Session>,
                   jira_session: Option<Arc<jira::api::Session>>,
-                  clone_mgr: Arc<GitCloneManager>)
+                  clone_mgr: Arc<GitCloneManager>,
+                  slack: WorkSender<SlackRequest>)
                    -> worker::Worker<RepoVersionRequest> {
     worker::Worker::new(Runner {
         config: config,
         github_session: github_session,
         jira_session: jira_session,
         clone_mgr: clone_mgr,
+        slack: slack,
         thread_pool: ThreadPool::new(max_concurrency),
     })
 }
@@ -184,6 +187,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
         let jira_session = self.jira_session.clone();
         let clone_mgr = self.clone_mgr.clone();
         let config = self.config.clone();
+        let slack = self.slack.clone();
 
         // launch another thread to do the version calculation
         self.thread_pool.execute(move || {
@@ -214,7 +218,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                                              &jira_projects,
                                                              jira_versions_enabled) {
                             error!("Error running version script {}: {}", version_script, e);
-                            let messenger = messenger::from_config(config.clone());
+                            let messenger = messenger::new(config.clone(), slack);
 
                             let attach = SlackAttachmentBuilder::new(&e)
                                 .title(version_script.clone())

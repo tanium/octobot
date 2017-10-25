@@ -3,7 +3,6 @@ extern crate octobot;
 
 mod mocks;
 
-use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
@@ -18,8 +17,8 @@ use octobot::github::*;
 use octobot::github::api::Session;
 use octobot::git_clone_manager::GitCloneManager;
 use octobot::jira;
-use octobot::messenger::SlackMessenger;
-use octobot::slack::SlackAttachmentBuilder;
+use octobot::messenger;
+use octobot::slack::{self, SlackAttachmentBuilder};
 use octobot::server::github_handler::GithubEventHandler;
 use octobot::pr_merge::PRMergeRequest;
 use octobot::repo_version::RepoVersionRequest;
@@ -29,7 +28,7 @@ use octobot::worker::{WorkMessage, WorkSender};
 
 use mocks::mock_github::MockGithub;
 use mocks::mock_jira::MockJira;
-use mocks::mock_slack::{SlackCall, MockSlack};
+use mocks::mock_slack::MockSlack;
 
 // this message gets appended only to review channel messages, not to slackbots
 const REPO_MSG : &'static str = "(<http://the-github-host/some-user/some-repo|some-user/some-repo>)";
@@ -41,6 +40,7 @@ fn the_repo() -> Repo {
 struct GithubHandlerTest {
     handler: GithubEventHandler,
     github: Arc<MockGithub>,
+    slack: MockSlack,
     jira: Option<Arc<MockJira>>,
     config: Arc<Config>,
     pr_merge_rx: Option<Receiver<WorkMessage<PRMergeRequest>>>,
@@ -49,13 +49,6 @@ struct GithubHandlerTest {
 }
 
 impl GithubHandlerTest {
-    fn expect_slack_calls(&mut self, calls: Vec<SlackCall>) {
-        self.handler.messenger = Box::new(SlackMessenger {
-            config: self.config.clone(),
-            slack: Rc::new(MockSlack::new(calls)),
-        });
-    }
-
     fn expect_will_merge_branches(&mut self, branches: Vec<String>) -> JoinHandle<()> {
         let timeout = Duration::from_millis(300);
         let rx = self.pr_merge_rx.take().unwrap();
@@ -84,7 +77,7 @@ fn new_test() -> GithubHandlerTest {
 
 fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     let github = Arc::new(MockGithub::new());
-    let slack = Rc::new(MockSlack::new(vec![]));
+    let slack = MockSlack::new(vec![]);
     let (pr_merge_tx, pr_merge_rx) = channel();
     let (repo_version_tx, repo_version_rx) = channel();
     let (force_push_tx, force_push_rx) = channel();
@@ -106,8 +99,11 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
 
     let git_clone_manager = Arc::new(GitCloneManager::new(github.clone(), config.clone()));
 
+    let slack_sender = slack.new_sender();
+
     GithubHandlerTest {
         github: github.clone(),
+        slack: slack,
         jira: None,
         config: config.clone(),
         pr_merge_rx: Some(pr_merge_rx),
@@ -118,10 +114,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             data: data,
             action: "".to_string(),
             config: config.clone(),
-            messenger: Box::new(SlackMessenger {
-                config: config.clone(),
-                slack: slack.clone(),
-            }),
+            messenger: messenger::new(config.clone(), slack_sender),
             github_session: github.clone(),
             git_clone_manager: git_clone_manager.clone(),
             jira_session: None,
@@ -226,8 +219,8 @@ fn test_commit_comment_with_path() {
     });
     test.handler.data.sender = User::new("joe-reviewer");
 
-    test.expect_slack_calls(vec![
-        SlackCall::new(
+    test.slack.expect(vec![
+        slack::req(
             "the-reviews-channel",
             &format!("Comment on \"src/main.rs\" (<http://the-github-host/some-user/some-repo/commit/abcdef00001111|abcdef0>) {}", REPO_MSG),
             vec![SlackAttachmentBuilder::new("I think this file should change")
@@ -255,8 +248,8 @@ fn test_commit_comment_no_path() {
     });
     test.handler.data.sender = User::new("joe-reviewer");
 
-    test.expect_slack_calls(vec![
-        SlackCall::new(
+    test.slack.expect(vec![
+        slack::req(
             "the-reviews-channel",
             &format!("Comment on \"abcdef0\" (<http://the-github-host/some-user/some-repo/commit/abcdef00001111|abcdef0>) {}", REPO_MSG),
             vec![SlackAttachmentBuilder::new("I think this file should change")
@@ -298,12 +291,12 @@ fn test_issue_comment() {
                           .build()];
     let msg = "Comment on \"<http://the-issue|The Issue>\"";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@mentioned.participant", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -332,12 +325,12 @@ fn test_pull_request_comment() {
                           .build()];
     let msg = "Comment on \"<http://the-pr|The PR>\"";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@mentioned.participant", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -365,12 +358,12 @@ fn test_pull_request_review_commented() {
                           .build()];
     let msg = "Comment on \"<http://the-pr|The PR>\"";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@mentioned.participant", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -392,7 +385,7 @@ fn test_pull_request_comments_ignore_empty_messages() {
     });
     test.handler.data.sender = User::new("joe-reviewer");
 
-    test.expect_slack_calls(vec![]);
+    test.slack.expect(vec![]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::Ok, "pr_review_comment".into()), resp);
@@ -413,7 +406,7 @@ fn test_pull_request_comments_ignore_octobot() {
     });
     test.handler.data.sender = User::new("joe-reviewer");
 
-    test.expect_slack_calls(vec![]);
+    test.slack.expect(vec![]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::Ok, "pr_review_comment".into()), resp);
@@ -441,12 +434,12 @@ fn test_pull_request_review_approved() {
                           .build()];
     let msg = "joe.reviewer approved PR \"<http://the-pr|The PR>\"";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@mentioned.participant", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -474,12 +467,12 @@ fn test_pull_request_review_changes_requested() {
                           .color("danger")
                           .build()];
     let msg = "joe.reviewer requested changes to PR \"<http://the-pr|The PR>\"";
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@mentioned.participant", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -501,8 +494,8 @@ fn test_pull_request_opened() {
                           .build()];
     let msg = "Pull Request opened by the.pr.owner";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -524,12 +517,12 @@ fn test_pull_request_closed() {
                           .build()];
     let msg = "Pull Request closed";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -551,8 +544,8 @@ fn test_pull_request_reopened() {
                           .build()];
     let msg = "Pull Request reopened";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -577,13 +570,13 @@ fn test_pull_request_assigned() {
                           .build()];
     let msg = "Pull Request assigned to assign1, assign2";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@assign2", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@assign2", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -605,8 +598,8 @@ fn test_pull_request_unassigned() {
                           .build()];
     let msg = "Pull Request unassigned";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -634,13 +627,13 @@ fn test_pull_request_review_requested() {
                           .build()];
     let msg = "Pull Request submitted for review to joe.reviewer, smith.reviewer";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
-        SlackCall::new("@smith.reviewer", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@joe.reviewer", msg, attach.clone()),
+        slack::req("@smith.reviewer", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -708,15 +701,15 @@ fn test_pull_request_merged_error_getting_labels() {
             .build()
     ];
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg1, REPO_MSG), attach1.clone()),
-        SlackCall::new("@the.pr.owner", msg1, attach1.clone()),
-        SlackCall::new("@assign1", msg1, attach1.clone()),
-        SlackCall::new("@bob.author", msg1, attach1.clone()),
-        SlackCall::new("@joe.reviewer", msg1, attach1.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg1, REPO_MSG), attach1.clone()),
+        slack::req("@the.pr.owner", msg1, attach1.clone()),
+        slack::req("@assign1", msg1, attach1.clone()),
+        slack::req("@bob.author", msg1, attach1.clone()),
+        slack::req("@joe.reviewer", msg1, attach1.clone()),
 
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg2, REPO_MSG), attach2.clone()),
-        SlackCall::new("@the.pr.owner", msg2, attach2.clone()),
+        slack::req("the-reviews-channel", &format!("{} {}", msg2, REPO_MSG), attach2.clone()),
+        slack::req("@the.pr.owner", msg2, attach2.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -743,12 +736,12 @@ fn test_pull_request_merged_no_labels() {
                           .build()];
     let msg = "Pull Request merged";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -780,12 +773,12 @@ fn test_pull_request_merged_backport_labels() {
         Label::new("non-matching"),
     ]));
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
     let expect_thread = test.expect_will_merge_branches(vec!["release/1.0".into(), "release/2.0".into()]);
@@ -892,17 +885,17 @@ fn test_push_with_pr() {
     ];
     attach2.append(&mut attach_common.clone());
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach1.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach1.clone()),
-        SlackCall::new("@assign1", msg, attach1.clone()),
-        SlackCall::new("@bob.author", msg, attach1.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach1.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach1.clone()),
+        slack::req("@the.pr.owner", msg, attach1.clone()),
+        slack::req("@assign1", msg, attach1.clone()),
+        slack::req("@bob.author", msg, attach1.clone()),
+        slack::req("@joe.reviewer", msg, attach1.clone()),
 
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach2.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach2.clone()),
-        SlackCall::new("@assign2", msg, attach2.clone()),
-        SlackCall::new("@bob.author", msg, attach2.clone()),
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach2.clone()),
+        slack::req("@the.pr.owner", msg, attach2.clone()),
+        slack::req("@assign2", msg, attach2.clone()),
+        slack::req("@bob.author", msg, attach2.clone()),
     ]);
 
     let resp = test.handler.handle_event().unwrap();
@@ -932,12 +925,12 @@ fn test_push_force_notify() {
             .title_link("http://the-pr")
             .build(),
     ];
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
     // Setup background thread to validate force-push msg
@@ -1029,11 +1022,11 @@ fn test_push_force_notify_ignored() {
             .title_link("http://the-pr")
             .build(),
     ];
-    test.expect_slack_calls(vec![
-        SlackCall::new("@the.pr.owner", msg, attach.clone()),
-        SlackCall::new("@assign1", msg, attach.clone()),
-        SlackCall::new("@bob.author", msg, attach.clone()),
-        SlackCall::new("@joe.reviewer", msg, attach.clone()),
+    test.slack.expect(vec![
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
     // Setup background thread to validate force-push msg
@@ -1114,8 +1107,8 @@ fn test_jira_pull_request_opened() {
                           .build()];
     let msg = "Pull Request opened by the.pr.owner";
 
-    test.expect_slack_calls(vec![
-        SlackCall::new("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
     ]);
 
     if let Some(ref jira) = test.jira {

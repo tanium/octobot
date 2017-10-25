@@ -1,11 +1,11 @@
 use std::sync::Arc;
-use std::rc::Rc;
 
 use github;
-use slack::{Slack, SlackSender, SlackAttachment};
+use slack::{self, SlackRequest, SlackAttachment};
 use config::Config;
 use users;
 use util;
+use worker::{WorkSender};
 
 pub trait Messenger {
     fn send_to_all(&self, msg: &str, attachments: &Vec<SlackAttachment>,
@@ -19,15 +19,14 @@ pub trait Messenger {
 }
 
 
-#[derive(Clone)]
-pub struct SlackMessenger {
+struct SlackMessenger {
     pub config: Arc<Config>,
-    pub slack: Rc<SlackSender>,
+    pub slack: WorkSender<SlackRequest>,
 }
 
-pub fn from_config(config: Arc<Config>) -> Box<Messenger> {
+pub fn new(config: Arc<Config>, slack: WorkSender<SlackRequest>) -> Box<Messenger> {
     Box::new(SlackMessenger {
-        slack: Rc::new(Slack { webhook_url: config.main.slack_webhook_url.clone() }),
+        slack: slack,
         config: config.clone(),
     })
 }
@@ -75,7 +74,7 @@ impl SlackMessenger {
             return;
         }
 
-        if let Err(e) = self.slack.send(channel, msg, attachments.clone()) {
+        if let Err(e) = self.slack.send(slack::req(channel, msg, attachments.clone())) {
             error!("Error sending to slack: {:?}", e);
         }
     }
