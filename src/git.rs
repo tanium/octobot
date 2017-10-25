@@ -1,7 +1,7 @@
 use std::env;
 use std::io::Write;
-use std::process::{Command, Stdio};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 pub struct Git {
     pub host: String,
@@ -37,7 +37,7 @@ impl Git {
     }
 
     pub fn has_branch(&self, branch: &str) -> Result<bool, String> {
-        let output = try!(self.run(&["branch"]));
+        let output = self.run(&["branch"])?;
         Ok(Git::branches_output_contains(&output, branch))
     }
 
@@ -46,7 +46,7 @@ impl Git {
     }
 
     pub fn does_branch_contain(&self, git_ref: &str, branch: &str) -> Result<bool, String> {
-        let output = try!(self.run(&["branch", "--contains", git_ref]));
+        let output = self.run(&["branch", "--contains", git_ref])?;
         Ok(Git::branches_output_contains(&output, branch))
     }
 
@@ -67,15 +67,15 @@ impl Git {
     }
 
     pub fn clean(&self) -> Result<(), String> {
-        try!(self.run(&["reset", "--hard"]));
-        try!(self.run(&["clean", "-fdx"]));
+        self.run(&["reset", "--hard"])?;
+        self.run(&["clean", "-fdx"])?;
         Ok(())
     }
 
     // checking a branch named |new_branch_name| and ensure it is up to date with |source_ref|
     // |source_ref| can be a commit hash or an origin/branch-name.
-    pub fn checkout_branch(&self, new_branch_name: &str, source_ref: &str) ->  Result<(), String> {
-        try!(self.run(&["checkout", "-B", new_branch_name, source_ref]));
+    pub fn checkout_branch(&self, new_branch_name: &str, source_ref: &str) -> Result<(), String> {
+        self.run(&["checkout", "-B", new_branch_name, source_ref])?;
         Ok(())
     }
 
@@ -85,7 +85,7 @@ impl Git {
 
     // returns (title, body)
     pub fn get_commit_desc(&self, commit_hash: &str) -> Result<(String, String), String> {
-        let message = try!(self.run(&["log", "-1", "--pretty=%B", commit_hash]));
+        let message = self.run(&["log", "-1", "--pretty=%B", commit_hash])?;
 
         let mut lines = message.lines();
         let title: String = lines.next().unwrap_or("").into();
@@ -138,10 +138,12 @@ impl Git {
             if result.stderr.len() > 0 {
                 output += String::from_utf8_lossy(&result.stderr).as_ref();
             }
-            Err(format!("Error running git (exit code {}, args: {:?}):\n{}",
-                        result.status.code().unwrap_or(-1),
-                        args,
-                        output))
+            Err(format!(
+                "Error running git (exit code {}, args: {:?}):\n{}",
+                result.status.code().unwrap_or(-1),
+                args,
+                output
+            ))
         } else {
 
             Ok(output.trim().to_string())

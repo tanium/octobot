@@ -4,9 +4,9 @@ mod mocks;
 
 use mocks::mock_github::MockGithub;
 
+use octobot::diffs::DiffOfDiffs;
 use octobot::force_push;
 use octobot::github;
-use octobot::diffs::DiffOfDiffs;
 
 #[test]
 fn test_force_push_identical() {
@@ -18,14 +18,26 @@ fn test_force_push_identical() {
     let diffs = Ok(DiffOfDiffs::new(&diff, &diff));
 
     let github = MockGithub::new();
-    github.mock_comment_pull_request("some-user", "some-repo", 32,
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
         "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase",
-        Ok(()));
+        Ok(()),
+    );
 
     github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
 
-    force_push::comment_force_push(diffs, vec![], &github, "some-user", "some-repo", &pr,
-                                   "abcdef0999999", "1111abc9999999").unwrap();
+    force_push::comment_force_push(
+        diffs,
+        vec![],
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        "abcdef0999999",
+        "1111abc9999999",
+    ).unwrap();
 }
 
 #[test]
@@ -37,9 +49,13 @@ fn test_force_push_identical_with_statuses() {
     let diffs = Ok(DiffOfDiffs::new(&diff, &diff));
 
     let github = MockGithub::new();
-    github.mock_comment_pull_request("some-user", "some-repo", 32,
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
         "Force-push detected: before: the-bef, after: the-aft: Identical diff post-rebase",
-        Ok(()));
+        Ok(()),
+    );
 
 
     let statuses = vec![
@@ -91,11 +107,31 @@ fn test_force_push_identical_with_statuses() {
     };
 
 
-    github.mock_create_status("some-user", "some-repo", "the-after-hash", &new_status1, Ok(()));
-    github.mock_create_status("some-user", "some-repo", "the-after-hash", &new_status2, Ok(()));
+    github.mock_create_status(
+        "some-user",
+        "some-repo",
+        "the-after-hash",
+        &new_status1,
+        Ok(()),
+    );
+    github.mock_create_status(
+        "some-user",
+        "some-repo",
+        "the-after-hash",
+        &new_status2,
+        Ok(()),
+    );
 
-    force_push::comment_force_push(diffs, vec!["ci/build".into(), "checks/cla".into()], &github,
-                                   "some-user", "some-repo", &pr, "the-before-hash", "the-after-hash").unwrap();
+    force_push::comment_force_push(
+        diffs,
+        vec!["ci/build".into(), "checks/cla".into()],
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        "the-before-hash",
+        "the-after-hash",
+    ).unwrap();
 }
 
 
@@ -107,12 +143,24 @@ fn test_force_push_different() {
     let diffs = Ok(DiffOfDiffs::new("diff1", "diff2"));
 
     let github = MockGithub::new();
-    github.mock_comment_pull_request("some-user", "some-repo", 32,
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
         "Force-push detected: before: abcdef0, after: 1111abc: Diff changed post-rebase",
-        Ok(()));
+        Ok(()),
+    );
 
-    force_push::comment_force_push(diffs, vec![], &github, "some-user", "some-repo", &pr,
-                                   "abcdef0999999", "1111abc9999999").unwrap();
+    force_push::comment_force_push(
+        diffs,
+        vec![],
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        "abcdef0999999",
+        "1111abc9999999",
+    ).unwrap();
 }
 
 #[test]
@@ -225,16 +273,28 @@ index 33667da..3503c28 100644
     let diffs = Ok(DiffOfDiffs::new(diff0, diff1));
 
     let github = MockGithub::new();
-    github.mock_comment_pull_request("some-user", "some-repo", 32,
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
         "Force-push detected: before: abcdef0, after: 1111abc: Diff changed post-rebase\n\n\
         Changed files:\n\
         * src/diffs.rs\n\
         * src/force_push.rs\n\
         ",
-        Ok(()));
+        Ok(()),
+    );
 
-    force_push::comment_force_push(diffs, vec![], &github, "some-user", "some-repo", &pr,
-                                   "abcdef0999999", "1111abc9999999").unwrap();
+    force_push::comment_force_push(
+        diffs,
+        vec![],
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        "abcdef0999999",
+        "1111abc9999999",
+    ).unwrap();
 }
 #[test]
 fn test_force_push_error() {
@@ -242,10 +302,22 @@ fn test_force_push_error() {
     pr.number = 32;
 
     let github = MockGithub::new();
-    github.mock_comment_pull_request("some-user", "some-repo", 32,
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
         "Force-push detected: before: abcdef0, after: 1111abc: Unable to calculate diff",
-        Ok(()));
+        Ok(()),
+    );
 
-    force_push::comment_force_push(Err("Ahh!!".into()), vec![], &github, "some-user", "some-repo", &pr,
-                                   "abcdef0999999", "1111abc9999999").unwrap();
+    force_push::comment_force_push(
+        Err("Ahh!!".into()),
+        vec![],
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        "abcdef0999999",
+        "1111abc9999999",
+    ).unwrap();
 }

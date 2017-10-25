@@ -44,7 +44,7 @@ impl GithubWebhookVerifier {
             Ok(_) => {
                 debug!("Signature verified!");
                 true
-            },
+            }
             Err(e) => {
                 error!("Signature verify failed: {}", e);
                 false

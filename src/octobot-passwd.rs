@@ -28,19 +28,19 @@ fn main() {
         std::process::exit(1);
     }
 
-   let mut salt_bytes: [u8; 32] = [0; 32];
-   SystemRandom::new().fill(&mut salt_bytes).expect("get random");
-   let salt: String = salt_bytes.to_hex().to_string();
+    let mut salt_bytes: [u8; 32] = [0; 32];
+    SystemRandom::new().fill(&mut salt_bytes).expect("get random");
+    let salt: String = salt_bytes.to_hex().to_string();
 
-   let pass_hash = login::store_password(&pass1, &salt);
+    let pass_hash = login::store_password(&pass1, &salt);
 
-   config.admin = Some(config::AdminConfig {
-       name: admin_name,
-       salt: salt,
-       pass_hash: pass_hash,
-   });
+    config.admin = Some(config::AdminConfig {
+        name: admin_name,
+        salt: salt,
+        pass_hash: pass_hash,
+    });
 
-   config.save(&config_file).expect("save config file");
+    config.save(&config_file).expect("save config file");
 
-   println!("Successfully changed password!");
+    println!("Successfully changed password!");
 }

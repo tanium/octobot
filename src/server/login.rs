@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
+use hyper::StatusCode;
 use hyper::header::ContentType;
 use hyper::server::{Request, Response};
-use hyper::StatusCode;
 use ring::{digest, pbkdf2};
-use rustc_serialize::hex::{ToHex, FromHex};
+use rustc_serialize::hex::{FromHex, ToHex};
 
 use config::Config;
+use server::http::{Filter, FilterResult, FutureResponse, Handler, parse_json};
 use server::sessions::Sessions;
-use server::http::{FutureResponse, Handler, Filter, FilterResult, parse_json};
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
@@ -16,8 +16,7 @@ const PBKDF2_ITERATIONS: u32 = 20_000;
 
 pub fn store_password(pass: &str, salt: &str) -> String {
     let mut pass_hash = [0u8; CREDENTIAL_LEN];
-    pbkdf2::derive(DIGEST_ALG, PBKDF2_ITERATIONS, salt.as_bytes(),
-                   pass.as_bytes(), &mut pass_hash);
+    pbkdf2::derive(DIGEST_ALG, PBKDF2_ITERATIONS, salt.as_bytes(), pass.as_bytes(), &mut pass_hash);
 
     pass_hash.to_hex()
 }
@@ -27,12 +26,11 @@ pub fn verify_password(pass: &str, salt: &str, pass_hash: &str) -> bool {
         Ok(h) => h,
         Err(e) => {
             error!("Invalid password hash stored: {} -- {}", pass_hash, e);
-            return false
+            return false;
         }
     };
-    pbkdf2::verify(DIGEST_ALG, PBKDF2_ITERATIONS, salt.as_bytes(),
-                   pass.as_bytes(),
-                   &pass_hash).is_ok()
+    pbkdf2::verify(DIGEST_ALG, PBKDF2_ITERATIONS, salt.as_bytes(), pass.as_bytes(), &pass_hash)
+        .is_ok()
 }
 
 pub struct LoginHandler {
@@ -59,17 +57,13 @@ impl LoginHandler {
 
 impl LogoutHandler {
     pub fn new(sessions: Arc<Sessions>) -> Box<LogoutHandler> {
-        Box::new(LogoutHandler {
-            sessions: sessions,
-        })
+        Box::new(LogoutHandler { sessions: sessions })
     }
 }
 
 impl LoginSessionFilter {
     pub fn new(sessions: Arc<Sessions>) -> Box<LoginSessionFilter> {
-        Box::new(LoginSessionFilter {
-            sessions: sessions,
-        })
+        Box::new(LoginSessionFilter { sessions: sessions })
     }
 }
 
@@ -106,9 +100,7 @@ impl Handler for LoginHandler {
                     "session": sess_id,
                 });
 
-                Response::new()
-                    .with_header(ContentType::json())
-                    .with_body(json.to_string())
+                Response::new().with_header(ContentType::json()).with_body(json.to_string())
             } else {
                 Response::new().with_status(StatusCode::Unauthorized)
             }
@@ -118,26 +110,18 @@ impl Handler for LoginHandler {
 
 
 fn invalid_session() -> Response {
-    Response::new()
-        .with_status(StatusCode::Forbidden)
-        .with_body("Invalid session")
+    Response::new().with_status(StatusCode::Forbidden).with_body("Invalid session")
 }
 
 impl Handler for LogoutHandler {
     fn handle(&self, req: Request) -> FutureResponse {
         let sess: String = match get_session(&req) {
             Some(s) => s.to_string(),
-            None => {
-                return self.respond(invalid_session())
-            }
+            None => return self.respond(invalid_session()),
         };
 
         self.sessions.remove_session(&sess);
-        self.respond(
-            Response::new()
-                .with_header(ContentType::json())
-                .with_body("{}")
-        )
+        self.respond(Response::new().with_header(ContentType::json()).with_body("{}"))
     }
 }
 
@@ -145,9 +129,7 @@ impl Filter for LoginSessionFilter {
     fn filter(&self, req: &Request) -> FilterResult {
         let sess: String = match get_session(&req) {
             Some(s) => s.to_string(),
-            None => {
-                return FilterResult::Halt(invalid_session())
-            }
+            None => return FilterResult::Halt(invalid_session()),
         };
 
         if self.sessions.is_valid_session(&sess) {

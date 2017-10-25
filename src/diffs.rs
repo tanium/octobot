@@ -1,5 +1,5 @@
 use std::cmp::max;
-use unidiff::{PatchSet, PatchedFile, Hunk, Line};
+use unidiff::{Hunk, Line, PatchSet, PatchedFile};
 
 #[derive(Debug)]
 pub struct DiffOfDiffs {

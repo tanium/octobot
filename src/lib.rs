@@ -42,5 +42,5 @@ pub mod util;
 pub mod version;
 pub mod worker;
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 mod docker;

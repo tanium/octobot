@@ -19,9 +19,7 @@ impl Version {
             parts.push(0)
         }
 
-        Some(Version {
-            parts: parts
-        })
+        Some(Version { parts: parts })
     }
 
     pub fn to_string(&self) -> String {
@@ -59,14 +57,14 @@ impl PartialOrd for Version {
         let min_len = cmp::min(self.parts.len(), other.parts.len());
         for i in 0..min_len {
             if self.parts[i] < other.parts[i] {
-                return Some(Ordering::Less)
+                return Some(Ordering::Less);
             } else if self.parts[i] > other.parts[i] {
-                return Some(Ordering::Greater)
+                return Some(Ordering::Greater);
             }
         }
 
         if self.parts.len() == other.parts.len() {
-            return Some(Ordering::Equal)
+            return Some(Ordering::Equal);
         }
 
         // if all else is equal, but one of the Versions has more elements,
@@ -99,7 +97,9 @@ impl Ord for Version {
 
 impl Serialize for Version {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-            where S: Serializer {
+    where
+        S: Serializer,
+    {
         serializer.serialize_str(&self.to_string())
     }
 }
@@ -182,12 +182,15 @@ mod tests {
         ];
         versions.sort();
 
-        assert_eq!(vec![
-            Version::parse("1.0.0.0").unwrap(),
-            Version::parse("1.2.0.0").unwrap(),
-            Version::parse("1.2.3.0").unwrap(),
-            Version::parse("1.2.3.4").unwrap(),
-        ], versions);
+        assert_eq!(
+            vec![
+                Version::parse("1.0.0.0").unwrap(),
+                Version::parse("1.2.0.0").unwrap(),
+                Version::parse("1.2.3.0").unwrap(),
+                Version::parse("1.2.3.4").unwrap(),
+            ],
+            versions
+        );
     }
 
     #[test]

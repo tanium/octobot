@@ -5,31 +5,31 @@ use std::io::Write;
 use std::sync::Arc;
 
 use hyper::StatusCode;
-use hyper::server::{Request, Response};
 use hyper::header::ContentType;
+use hyper::server::{Request, Response};
 use serde_json;
 
 use config::{Config, JiraConfig};
 use jira;
-use users::UserHostMap;
 use repos::RepoHostMap;
-use version;
 use server::http::{FutureResponse, Handler, parse_json};
+use users::UserHostMap;
+use version;
 
 pub struct GetUsers {
-    config: Arc<Config>
+    config: Arc<Config>,
 }
 
 pub struct UpdateUsers {
-    config: Arc<Config>
+    config: Arc<Config>,
 }
 
 pub struct GetRepos {
-    config: Arc<Config>
+    config: Arc<Config>,
 }
 
 pub struct UpdateRepos {
-    config: Arc<Config>
+    config: Arc<Config>,
 }
 
 impl GetUsers {
@@ -91,8 +91,10 @@ impl Handler for UpdateUsers {
                 Ok(j) => j,
                 Err(e) => {
                     error!("Error serializing users: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError)
-                                          .with_body(format!("Error serializing JSON: {}", e));
+                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                        "Error serializing JSON: {}",
+                        e
+                    ));
                 }
             };
 
@@ -103,21 +105,27 @@ impl Handler for UpdateUsers {
                 Ok(f) => f,
                 Err(e) => {
                     error!("Error opening file: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError)
-                                          .with_body(format!("Error opening file: {}", e));
+                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                        "Error opening file: {}",
+                        e
+                    ));
                 }
             };
 
             if let Err(e) = file.write_all(json.as_bytes()) {
                 error!("Error writing file: {}", e);
-                return Response::new().with_status(StatusCode::InternalServerError)
-                                      .with_body(format!("Error writing file: {}", e));
+                return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                    "Error writing file: {}",
+                    e
+                ));
             }
 
             if let Err(e) = fs::rename(&config_file_tmp, &config_file) {
                 error!("Error renaming file: {}", e);
-                return Response::new().with_status(StatusCode::InternalServerError)
-                                      .with_body(format!("Error renaming file: {}", e));
+                return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                    "Error renaming file: {}",
+                    e
+                ));
             }
 
             if let Err(e) = config.reload_users_repos() {
@@ -138,8 +146,10 @@ impl Handler for UpdateRepos {
                 Ok(j) => j,
                 Err(e) => {
                     error!("Error serializing repos: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError)
-                                          .with_body(format!("Error serializing JSON: {}", e));
+                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                        "Error serializing JSON: {}",
+                        e
+                    ));
                 }
             };
 
@@ -150,21 +160,27 @@ impl Handler for UpdateRepos {
                 Ok(f) => f,
                 Err(e) => {
                     error!("Error opening file: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError)
-                                          .with_body(format!("Error opening file: {}", e));
+                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                        "Error opening file: {}",
+                        e
+                    ));
                 }
             };
 
             if let Err(e) = file.write_all(json.as_bytes()) {
                 error!("Error writing file: {}", e);
-                return Response::new().with_status(StatusCode::InternalServerError)
-                                      .with_body(format!("Error writing file: {}", e));
+                return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                    "Error writing file: {}",
+                    e
+                ));
             }
 
             if let Err(e) = fs::rename(&config_file_tmp, &config_file) {
                 error!("Error renaming file: {}", e);
-                return Response::new().with_status(StatusCode::InternalServerError)
-                                      .with_body(format!("Error renaming file: {}", e));
+                return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                    "Error renaming file: {}",
+                    e
+                ));
             }
 
             if let Err(e) = config.reload_users_repos() {
@@ -174,7 +190,6 @@ impl Handler for UpdateRepos {
             Response::new()
         })
     }
-
 }
 
 pub struct MergeVersions {
@@ -183,9 +198,7 @@ pub struct MergeVersions {
 
 impl MergeVersions {
     pub fn new(config: Arc<Config>) -> Box<MergeVersions> {
-        Box::new(MergeVersions {
-            config: config,
-        })
+        Box::new(MergeVersions { config: config })
     }
 }
 
@@ -211,10 +224,7 @@ impl Handler for MergeVersions {
             // make a copy of the jira config so we can modify the auth
             let mut jira_config: JiraConfig = match config.jira {
                 Some(ref j) => j.clone(),
-                None => {
-                    return Response::new().with_status(StatusCode::BadRequest)
-                                          .with_body("No JIRA config")
-                }
+                None => return Response::new().with_status(StatusCode::BadRequest).with_body("No JIRA config"),
             };
 
             if !merge_req.dry_run {
@@ -222,15 +232,20 @@ impl Handler for MergeVersions {
                 jira_config.password = merge_req.admin_pass.unwrap_or(String::new());
 
                 if jira_config.username.is_empty() || jira_config.password.is_empty() {
-                    return Response::new().with_status(StatusCode::BadRequest)
-                                          .with_body("JIRA auth required for non dry-run");
+                    return Response::new().with_status(StatusCode::BadRequest).with_body(
+                        "JIRA auth required for non dry-run",
+                    );
                 }
             }
 
             let jira_sess = match jira::api::JiraSession::new(&jira_config) {
                 Ok(j) => j,
-                Err(e) => return Response::new().with_status(StatusCode::BadRequest)
-                                          .with_body(format!("Error creating JIRA session: {}", e))
+                Err(e) => {
+                    return Response::new().with_status(StatusCode::BadRequest).with_body(format!(
+                        "Error creating JIRA session: {}",
+                        e
+                    ))
+                }
             };
 
             let dry_run_mode = if merge_req.dry_run {
@@ -239,12 +254,19 @@ impl Handler for MergeVersions {
                 jira::workflow::DryRunMode::ForReal
             };
 
-            let all_relevant_versions = match jira::workflow::merge_pending_versions(&merge_req.version, &merge_req.project, jira_sess.borrow(), dry_run_mode) {
+            let all_relevant_versions = match jira::workflow::merge_pending_versions(
+                &merge_req.version,
+                &merge_req.project,
+                jira_sess.borrow(),
+                dry_run_mode,
+            ) {
                 Ok(v) => v,
                 Err(e) => {
                     error!("Error merging pending versions: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError)
-                                          .with_body(format!("Error merging pending versions: {}", e));
+                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                        "Error merging pending versions: {}",
+                        e
+                    ));
                 }
             };
 
@@ -263,8 +285,10 @@ impl Handler for MergeVersions {
                 Ok(r) => r,
                 Err(e) => {
                     error!("Error serializing versions: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError)
-                                          .with_body(format!("Error serializing pending versions: {}", e));
+                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
+                        "Error serializing pending versions: {}",
+                        e
+                    ));
                 }
             };
 

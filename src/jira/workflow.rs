@@ -1,6 +1,7 @@
+
+use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use regex::Regex;
 use version;
 
 use config::JiraConfig;
@@ -31,7 +32,8 @@ fn get_jira_keys(strings: Vec<String>, projects: &Vec<String>) -> Vec<String> {
 
 fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
     // Fix [ABC-123][OTHER-567], [YEAH-999]
-    let re = Regex::new(r"(?i)(?:Fix(?:es|ed)?):?\s*(?-i)((\[?([A-Z]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
+    let re = Regex::new(r"(?i)(?:Fix(?:es|ed)?):?\s*(?-i)((\[?([A-Z]+-[0-9]+)(?:\]|\b)[\s,]*)+)")
+        .unwrap();
 
     // first extract jiras with fix markers
     let mut all_refs = vec![];
@@ -65,14 +67,20 @@ fn get_jira_project(jira_key: &str) -> &str {
     }
 }
 
-pub fn submit_for_review(pr: &PullRequest,
-                         commits: &Vec<Commit>,
-                         projects: &Vec<String>,
-                         jira: &jira::api::Session,
-                         config: &JiraConfig) {
+pub fn submit_for_review(
+    pr: &PullRequest,
+    commits: &Vec<Commit>,
+    projects: &Vec<String>,
+    jira: &jira::api::Session,
+    config: &JiraConfig,
+) {
     for key in get_fixed_jira_keys(commits, projects) {
         // add comment
-        if let Err(e) = jira.comment_issue(&key, &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url)) {
+        if let Err(e) = jira.comment_issue(
+            &key,
+            &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url),
+        )
+        {
             error!("Error commenting on key [{}]: {}", key, e);
             continue; // give up on transitioning if we can't comment.
         }
@@ -85,7 +93,15 @@ pub fn submit_for_review(pr: &PullRequest,
 
     for key in get_referenced_jira_keys(commits, projects) {
         // add comment
-        if let Err(e) = jira.comment_issue(&key, &format!("Referenced by review submitted for branch {}: {}", pr.base.ref_name, pr.html_url)) {
+        if let Err(e) = jira.comment_issue(
+            &key,
+            &format!(
+                "Referenced by review submitted for branch {}: {}",
+                pr.base.ref_name,
+                pr.html_url
+            ),
+        )
+        {
             error!("Error commenting on key [{}]: {}", key, e);
             continue; // give up on transitioning if we can't comment.
         }
@@ -95,14 +111,21 @@ pub fn submit_for_review(pr: &PullRequest,
     }
 }
 
-pub fn resolve_issue(branch: &str,
-                     version: Option<&str>,
-                     commits: &Vec<PushCommit>,
-                     projects: &Vec<String>,
-                     jira: &jira::api::Session,
-                     config: &JiraConfig) {
+pub fn resolve_issue(
+    branch: &str,
+    version: Option<&str>,
+    commits: &Vec<PushCommit>,
+    projects: &Vec<String>,
+    jira: &jira::api::Session,
+    config: &JiraConfig,
+) {
     for commit in commits {
-        let desc = format!("[{}|{}]\n{{quote}}{}{{quote}}", Commit::short_hash(&commit), commit.html_url(), Commit::title(&commit));
+        let desc = format!(
+            "[{}|{}]\n{{quote}}{}{{quote}}",
+            Commit::short_hash(&commit),
+            commit.html_url(),
+            Commit::title(&commit)
+        );
 
         let version_desc = match version {
             None => String::new(),
@@ -136,7 +159,10 @@ pub fn resolve_issue(branch: &str,
                                 }
                             }
                             if req.fields.is_none() {
-                                error!("Could not find fixed resolution in allowed values: [{:?}]!", resolution.allowed_values);
+                                error!(
+                                    "Could not find fixed resolution in allowed values: [{:?}]!",
+                                    resolution.allowed_values
+                                );
                             }
                         }
                     }
@@ -146,7 +172,7 @@ pub fn resolve_issue(branch: &str,
                     } else {
                         info!("Transitioned [{}] to one of [{:?}]", key, to);
                     }
-                },
+                }
                 Ok(None) => info!("JIRA [{}] cannot be transitioned to  any of [{:?}]", key, to),
                 Err(e) => error!("{}", e),
             };
@@ -161,7 +187,12 @@ pub fn resolve_issue(branch: &str,
     }
 }
 
-pub fn add_pending_version(maybe_version: Option<&str>, commits: &Vec<PushCommit>, projects: &Vec<String>, jira: &jira::api::Session) {
+pub fn add_pending_version(
+    maybe_version: Option<&str>,
+    commits: &Vec<PushCommit>,
+    projects: &Vec<String>,
+    jira: &jira::api::Session,
+) {
     if let Some(version) = maybe_version {
         for key in get_all_jira_keys(commits, projects) {
             if let Err(e) = jira.add_pending_version(&key, version) {
@@ -179,19 +210,24 @@ fn parse_jira_versions(versions: &Vec<jira::Version>) -> Vec<version::Version> {
 #[derive(PartialEq)]
 pub enum DryRunMode {
     DryRun,
-    ForReal
+    ForReal,
 }
 
-pub fn merge_pending_versions(version: &str, project: &str, jira: &jira::api::Session, mode: DryRunMode)
-        -> Result<HashMap<String, Vec<version::Version>>, String> {
+pub fn merge_pending_versions(
+    version: &str,
+    project: &str,
+    jira: &jira::api::Session,
+    mode: DryRunMode,
+) -> Result<HashMap<String, Vec<version::Version>>, String> {
     let target_version = match version::Version::parse(version) {
         Some(v) => v,
         None => return Err(format!("Invalid target version: {}", version)),
     };
-    let real_versions = try!(jira.get_versions(project));
-    let all_pending_versions = try!(jira.find_pending_versions(project));
+    let real_versions = jira.get_versions(project)?;
+    let all_pending_versions = jira.find_pending_versions(project)?;
 
-    let all_relevant_versions = all_pending_versions.iter()
+    let all_relevant_versions = all_pending_versions
+        .iter()
         .filter_map(|(key, list)| {
             let relevant = find_relevant_versions(&target_version, &list, &real_versions);
             if relevant.is_empty() {
@@ -237,7 +273,7 @@ pub fn merge_pending_versions(version: &str, project: &str, jira: &jira::api::Se
             info!("Removing pending versions key {}: {:?}", key, relevant_versions);
             if let Err(e) = jira.remove_pending_versions(&key, &relevant_versions) {
                 error!("Error clearing pending version {} from key {}: {}", version, key, e);
-                continue
+                continue;
             }
         }
     }
@@ -245,27 +281,32 @@ pub fn merge_pending_versions(version: &str, project: &str, jira: &jira::api::Se
     Ok(all_relevant_versions)
 }
 
-fn find_relevant_versions(target_version: &version::Version,
-                          pending_versions: &Vec<version::Version>,
-                          real_versions: &Vec<jira::Version>) -> Vec<version::Version> {
+fn find_relevant_versions(
+    target_version: &version::Version,
+    pending_versions: &Vec<version::Version>,
+    real_versions: &Vec<jira::Version>,
+) -> Vec<version::Version> {
 
     let latest_prior_real_version = parse_jira_versions(real_versions)
         .iter()
         .filter(|v| v.major() == target_version.major() && v.minor() == target_version.minor() && v < &target_version)
-        .max().map(|v| v.clone())
+        .max()
+        .map(|v| v.clone())
         .unwrap_or(version::Version::parse("0.0.0.0").unwrap());
 
-    pending_versions.iter().filter_map(|version| {
-        if version.major() == target_version.major() &&
-            version.minor() == target_version.minor() &&
-            version <= &target_version &&
-            version > &latest_prior_real_version {
+    pending_versions
+        .iter()
+        .filter_map(
+            |version| if version.major() == target_version.major() && version.minor() == target_version.minor() &&
+                version <= &target_version && version > &latest_prior_real_version
+            {
 
-            Some(version.clone())
-        } else {
-            None
-        }
-    }).collect::<Vec<_>>()
+                Some(version.clone())
+            } else {
+                None
+            },
+        )
+        .collect::<Vec<_>>()
 }
 
 fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {
@@ -277,7 +318,7 @@ fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {
             } else {
                 info!("Transitioned [{}] to one of [{:?}]", key, to);
             }
-        },
+        }
         Ok(None) => info!("JIRA [{}] cannot be transitioned to any of [{:?}]", key, to),
         Err(e) => error!("{}", e),
     };
@@ -296,7 +337,7 @@ fn pick_transition(to: &Vec<String>, choices: &Vec<Transition>) -> Option<Transi
     for t in choices {
         for name in to {
             if &t.name == name || &t.to.name == name {
-                return Some(t.clone())
+                return Some(t.clone());
             }
         }
     }
@@ -305,7 +346,7 @@ fn pick_transition(to: &Vec<String>, choices: &Vec<Transition>) -> Option<Transi
 }
 
 pub fn sort_versions(project: &str, jira: &jira::api::Session) -> Result<(), String> {
-    let mut versions = try!(jira.get_versions(project));
+    let mut versions = jira.get_versions(project)?;
 
     versions.sort_by(|a, b| {
         let v1 = version::Version::parse(&a.name);
@@ -324,10 +365,10 @@ pub fn sort_versions(project: &str, jira: &jira::api::Session) -> Result<(), Str
     for i in 0..versions.len() {
         let v = &versions[i];
         if i == 0 {
-            try!(jira.reorder_version(v, jira::api::JiraVersionPosition::First));
+            jira.reorder_version(v, jira::api::JiraVersionPosition::First)?;
         } else {
             let prev = &versions[i - 1];
-            try!(jira.reorder_version(v, jira::api::JiraVersionPosition::After(prev.clone())));
+            jira.reorder_version(v, jira::api::JiraVersionPosition::After(prev.clone()))?;
         }
     }
 
@@ -347,11 +388,18 @@ mod tests {
         assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()], &projects));
         assert_eq!(Vec::<String>::new(), get_referenced_jira_keys(&vec![commit.clone()], &projects));
 
-        commit.commit.message = "Fix [KEY-1][KEY-2], [KEY-3] Some thing that also fixed [KEY-4] which somehow fixes KEY-5".into();
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5"], get_fixed_jira_keys(&vec![commit.clone()], &projects));
+        commit.commit.message = "Fix [KEY-1][KEY-2], [KEY-3] Some thing that also fixed [KEY-4] which somehow fixes KEY-5"
+            .into();
+        assert_eq!(
+            vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5"],
+            get_fixed_jira_keys(&vec![commit.clone()], &projects)
+        );
 
         commit.commit.message += "\n\nFix: [KEY-6], and also mentions [KEY-6], [KEY-7] but not [lowercase-99]";
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5", "KEY-6"], get_fixed_jira_keys(&vec![commit.clone()], &projects));
+        assert_eq!(
+            vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5", "KEY-6"],
+            get_fixed_jira_keys(&vec![commit.clone()], &projects)
+        );
         assert_eq!(vec!["KEY-7"], get_referenced_jira_keys(&vec![commit.clone()], &projects));
     }
 
@@ -361,7 +409,10 @@ mod tests {
         let mut commit = Commit::new();
         commit.commit.message = "KEY-1, KEY-2:Some thing that also fixed\n\nAlso [KEY-3], OTHER-5".into();
         assert_eq!(Vec::<String>::new(), get_fixed_jira_keys(&vec![commit.clone()], &projects));
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-3", "OTHER-5"], get_referenced_jira_keys(&vec![commit.clone()], &projects));
+        assert_eq!(
+            vec!["KEY-1", "KEY-2", "KEY-3", "OTHER-5"],
+            get_referenced_jira_keys(&vec![commit.clone()], &projects)
+        );
     }
 
     #[test]
@@ -393,7 +444,10 @@ mod tests {
             fields: None,
         };
         assert_eq!(Some(t1.clone()), pick_transition(&vec!["t1".into()], &vec![t1.clone(), t2.clone()]));
-        assert_eq!(Some(t1.clone()), pick_transition(&vec!["inside-t1".into(), "t2".into()], &vec![t1.clone(), t2.clone()]));
+        assert_eq!(
+            Some(t1.clone()),
+            pick_transition(&vec!["inside-t1".into(), "t2".into()], &vec![t1.clone(), t2.clone()])
+        );
         assert_eq!(Some(t2.clone()), pick_transition(&vec!["inside-t2".into()], &vec![t1.clone(), t2.clone()]));
         assert_eq!(None, pick_transition(&vec!["something-else".into()], &vec![t1.clone(), t2.clone()]));
     }
@@ -443,31 +497,21 @@ mod tests {
     #[test]
     fn test_find_relevant_versions_inclusive_max() {
         let target_version = version::Version::parse("3.4.0.1000").unwrap();
-        let real_versions = vec![
-            jira::Version::new("3.4.0.400"),
-        ];
-        let pending_versions = vec![
-            version::Version::parse("3.4.0.1000").unwrap(),
-        ];
-        let expected: Vec<version::Version> = vec![
-            version::Version::parse("3.4.0.1000").unwrap(),
-        ];
+        let real_versions = vec![jira::Version::new("3.4.0.400")];
+        let pending_versions = vec![version::Version::parse("3.4.0.1000").unwrap()];
+        let expected: Vec<version::Version> = vec![version::Version::parse("3.4.0.1000").unwrap()];
         assert_eq!(expected, find_relevant_versions(&target_version, &pending_versions, &real_versions));
     }
 
     #[test]
     fn test_find_relevant_versions_exclusive_min() {
         let target_version = version::Version::parse("3.4.0.1000").unwrap();
-        let real_versions = vec![
-            jira::Version::new("3.4.0.400"),
-        ];
+        let real_versions = vec![jira::Version::new("3.4.0.400")];
         let pending_versions = vec![
             version::Version::parse("3.4.0.400").unwrap(),
             version::Version::parse("3.4.0.401").unwrap(),
         ];
-        let expected: Vec<version::Version> = vec![
-            version::Version::parse("3.4.0.401").unwrap(),
-        ];
+        let expected: Vec<version::Version> = vec![version::Version::parse("3.4.0.401").unwrap()];
         assert_eq!(expected, find_relevant_versions(&target_version, &pending_versions, &real_versions));
     }
 
@@ -512,9 +556,7 @@ mod tests {
             // too late
             version::Version::parse("3.4.0.2001").unwrap(),
         ];
-        let expected: Vec<version::Version> = vec![
-            version::Version::parse("3.4.0.1500").unwrap(),
-        ];
+        let expected: Vec<version::Version> = vec![version::Version::parse("3.4.0.1500").unwrap()];
         assert_eq!(expected, find_relevant_versions(&target_version, &pending_versions, &real_versions));
     }
 }

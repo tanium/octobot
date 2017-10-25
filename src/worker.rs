@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use std::sync::mpsc::{channel, Sender, SendError};
+use std::sync::mpsc::{SendError, Sender, channel};
 use std::thread::{self, JoinHandle};
 
 #[derive(Debug)]
@@ -15,18 +15,16 @@ pub struct Worker<T: Send + 'static> {
 
 #[derive(Clone)]
 pub struct WorkSender<T: Send + 'static> {
-    sender: Sender<WorkMessage<T>>
+    sender: Sender<WorkMessage<T>>,
 }
 
-pub trait Runner<T: Send + 'static> : Send {
+pub trait Runner<T: Send + 'static>: Send {
     fn handle(&self, req: T);
 }
 
 impl<T: Send + 'static> WorkSender<T> {
     pub fn new(sender: Sender<WorkMessage<T>>) -> WorkSender<T> {
-        WorkSender {
-            sender: sender
-        }
+        WorkSender { sender: sender }
     }
 
     pub fn send(&self, msg: T) -> Result<(), SendError<WorkMessage<T>>> {
@@ -59,22 +57,18 @@ impl<T: Send + 'static> Worker<T> {
 
         Worker {
             sender: Mutex::new(tx),
-            thread: Some(thread::spawn(move || {
-                loop {
-                    match rx.recv() {
-                        Ok(WorkMessage::Stop) => break,
-                        Ok(WorkMessage::WorkItem(req)) => handler.handle(req),
-                        Err(e) => error!("Error receiving message: {}", e),
-                    };
-                }
+            thread: Some(thread::spawn(move || loop {
+                match rx.recv() {
+                    Ok(WorkMessage::Stop) => break,
+                    Ok(WorkMessage::WorkItem(req)) => handler.handle(req),
+                    Err(e) => error!("Error receiving message: {}", e),
+                };
             })),
         }
     }
 
     pub fn new_sender(&self) -> WorkSender<T> {
         let sender = self.sender.lock().unwrap();
-        WorkSender {
-            sender: sender.clone(),
-        }
+        WorkSender { sender: sender.clone() }
     }
 }

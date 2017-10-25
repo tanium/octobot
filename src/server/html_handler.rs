@@ -1,9 +1,9 @@
 use std::env;
-use std::io::Read;
 use std::fs::File;
+use std::io::Read;
 
-use hyper::server::{Request, Response};
 use hyper::header::ContentType;
+use hyper::server::{Request, Response};
 
 use server::http::{FutureResponse, Handler};
 
@@ -13,14 +13,14 @@ fn is_dev_mode() -> bool {
 
 pub struct HtmlHandler {
     path: String,
-    contents: String
+    contents: String,
 }
 
 impl HtmlHandler {
     pub fn new(path: &str, contents: &str) -> Box<HtmlHandler> {
         Box::new(HtmlHandler {
             path: path.into(),
-            contents: contents.into()
+            contents: contents.into(),
         })
     }
 
@@ -44,10 +44,6 @@ impl HtmlHandler {
 
 impl Handler for HtmlHandler {
     fn handle(&self, _: Request) -> FutureResponse {
-        self.respond(
-            Response::new()
-                .with_header(ContentType::html())
-                .with_body(self.contents())
-        )
+        self.respond(Response::new().with_header(ContentType::html()).with_body(self.contents()))
     }
 }

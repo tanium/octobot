@@ -2,44 +2,46 @@ use std::borrow::Borrow;
 use std::path::Path;
 use std::sync::Arc;
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
 use threadpool::ThreadPool;
 
 use config::{Config, JiraConfig};
 use git::Git;
-use github;
 use git_clone_manager::GitCloneManager;
-use messenger;
+use github;
 use jira;
+use messenger;
 use slack::{SlackAttachmentBuilder, SlackRequest};
 use worker::{self, WorkSender};
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 use docker;
 
-pub fn comment_repo_version(version_script: &str,
-                            jira_config: &JiraConfig,
-                            jira: &jira::api::Session,
-                            github: &github::api::Session,
-                            clone_mgr: &GitCloneManager,
-                            owner: &str,
-                            repo: &str,
-                            branch_name: &str,
-                            commit_hash: &str,
-                            commits: &Vec<github::PushCommit>,
-                            jira_projects: &Vec<String>,
-                            jira_versions_enabled: bool) -> Result<(), String> {
-    let held_clone_dir = try!(clone_mgr.clone(owner, repo));
+pub fn comment_repo_version(
+    version_script: &str,
+    jira_config: &JiraConfig,
+    jira: &jira::api::Session,
+    github: &github::api::Session,
+    clone_mgr: &GitCloneManager,
+    owner: &str,
+    repo: &str,
+    branch_name: &str,
+    commit_hash: &str,
+    commits: &Vec<github::PushCommit>,
+    jira_projects: &Vec<String>,
+    jira_versions_enabled: bool,
+) -> Result<(), String> {
+    let held_clone_dir = clone_mgr.clone(owner, repo)?;
     let clone_dir = held_clone_dir.dir();
 
     let git = Git::new(github.github_host(), github.github_token(), &clone_dir);
 
     // setup branch
-    try!(git.checkout_branch(branch_name, commit_hash));
+    git.checkout_branch(branch_name, commit_hash)?;
 
-    let version = try!(run_script(version_script, clone_dir));
+    let version = run_script(version_script, clone_dir)?;
 
     let maybe_version = if version.len() > 0 {
         Some(version.as_str())
@@ -59,21 +61,21 @@ pub fn comment_repo_version(version_script: &str,
 
 // Only run version scripts on Linux since firejail is only for Linux and it doesn't
 // seem like a good idea to allow generic code execution without any containerization.
-#[cfg(not(target_os="linux"))]
+#[cfg(not(target_os = "linux"))]
 fn run_script(_: &str, _: &Path) -> Result<String, String> {
     return Err("Version scripts only supported when running Linux.".into());
 }
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> {
     debug!("Running version script: {}", version_script);
     let mut cmd = Command::new("firejail");
     cmd.arg("--quiet")
-       .arg("--private=.")
-       .arg("--private-etc=hostname alternatives")
-       .arg("--net=none")
-       .arg("--private-tmp")
-       .arg("--private-dev");
+        .arg("--private=.")
+        .arg("--private-etc=hostname alternatives")
+        .arg("--net=none")
+        .arg("--private-tmp")
+        .arg("--private-dev");
 
     if docker::in_docker() {
         // Otherwise we get "Warning: an existing sandbox was detected"
@@ -85,13 +87,13 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
     }
 
     cmd.arg("-c")
-       .arg("bash")
-       .arg("-c")
-       .arg(version_script)
-       .current_dir(clone_dir)
-       .stdin(Stdio::null())
-       .stderr(Stdio::piped())
-       .stdout(Stdio::piped());
+        .arg("bash")
+        .arg("-c")
+        .arg(version_script)
+        .current_dir(clone_dir)
+        .stdin(Stdio::null())
+        .stderr(Stdio::piped())
+        .stdout(Stdio::piped());
 
 
     let child = match cmd.spawn() {
@@ -112,10 +114,7 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
         // skip over firejail output (even with --quiet)
         if output.starts_with("OverlayFS") {
             let new_lines: Vec<String> =
-                output.lines().skip(1)
-                              .skip_while(|s| s.trim().len() == 0)
-                              .map(|s| s.into())
-                              .collect();
+                output.lines().skip(1).skip_while(|s| s.trim().len() == 0).map(|s| s.into()).collect();
             output = new_lines.join("\n");
         }
     }
@@ -128,10 +127,12 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
 
     if !result.status.success() {
         output += &stderr;
-        Err(format!("Error running version script (exit code {}; script: {}):\n{}",
-                    result.status.code().unwrap_or(-1),
-                    version_script,
-                    output))
+        Err(format!(
+            "Error running version script (exit code {}; script: {}):\n{}",
+            result.status.code().unwrap_or(-1),
+            version_script,
+            output
+        ))
     } else {
 
         Ok(output.trim().to_string())
@@ -155,7 +156,12 @@ struct Runner {
     thread_pool: ThreadPool,
 }
 
-pub fn req(repo: &github::Repo, branch: &str, commit_hash: &str, commits: &Vec<github::PushCommit>) -> RepoVersionRequest {
+pub fn req(
+    repo: &github::Repo,
+    branch: &str,
+    commit_hash: &str,
+    commits: &Vec<github::PushCommit>,
+) -> RepoVersionRequest {
     RepoVersionRequest {
         repo: repo.clone(),
         branch: branch.to_string(),
@@ -164,13 +170,14 @@ pub fn req(repo: &github::Repo, branch: &str, commit_hash: &str, commits: &Vec<g
     }
 }
 
-pub fn new_worker(max_concurrency: usize,
-                  config: Arc<Config>,
-                  github_session: Arc<github::api::Session>,
-                  jira_session: Option<Arc<jira::api::Session>>,
-                  clone_mgr: Arc<GitCloneManager>,
-                  slack: WorkSender<SlackRequest>)
-                   -> worker::Worker<RepoVersionRequest> {
+pub fn new_worker(
+    max_concurrency: usize,
+    config: Arc<Config>,
+    github_session: Arc<github::api::Session>,
+    jira_session: Option<Arc<jira::api::Session>>,
+    clone_mgr: Arc<GitCloneManager>,
+    slack: WorkSender<SlackRequest>,
+) -> worker::Worker<RepoVersionRequest> {
     worker::Worker::new(Runner {
         config: config,
         github_session: github_session,
@@ -205,30 +212,38 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                 if let Some(ref jira_session) = jira_session {
                     if let Some(ref jira_config) = config.jira {
                         let jira = jira_session.borrow();
-                        if let Err(e) = comment_repo_version(&version_script,
-                                                             jira_config,
-                                                             jira,
-                                                             github_session.borrow(),
-                                                             &clone_mgr,
-                                                             &req.repo.owner.login(),
-                                                             &req.repo.name,
-                                                             &req.branch,
-                                                             &req.commit_hash,
-                                                             &req.commits,
-                                                             &jira_projects,
-                                                             jira_versions_enabled) {
+                        if let Err(e) = comment_repo_version(
+                            &version_script,
+                            jira_config,
+                            jira,
+                            github_session.borrow(),
+                            &clone_mgr,
+                            &req.repo.owner.login(),
+                            &req.repo.name,
+                            &req.branch,
+                            &req.commit_hash,
+                            &req.commits,
+                            &jira_projects,
+                            jira_versions_enabled,
+                        )
+                        {
                             error!("Error running version script {}: {}", version_script, e);
                             let messenger = messenger::new(config.clone(), slack);
 
-                            let attach = SlackAttachmentBuilder::new(&e)
-                                .title(version_script.clone())
-                                .color("danger")
-                                .build();
+                            let attach =
+                                SlackAttachmentBuilder::new(&e).title(version_script.clone()).color("danger").build();
 
                             messenger.send_to_channel("Error running version script", &vec![attach], &req.repo);
 
                             // resolve the issue with no version
-                            jira::workflow::resolve_issue(&req.branch, None, &req.commits, &jira_projects, jira, jira_config);
+                            jira::workflow::resolve_issue(
+                                &req.branch,
+                                None,
+                                &req.commits,
+                                &jira_projects,
+                                jira,
+                                jira_config,
+                            );
                         }
                     }
                 }
@@ -237,7 +252,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
     }
 }
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,7 +310,8 @@ mod tests {
         let script_file = sub_dir.join("version.sh");
         {
             let mut file = fs::File::create(&script_file).expect("create file");
-            file.write_all(br#"
+            file.write_all(
+                br#"
             # no `set -e` on purpose: try to do them all!
             rm ../private.txt
             rm version.sh
@@ -303,17 +319,24 @@ mod tests {
             touch muahaha.txt
 
             echo 1.2.3.4
-            "#).expect("write file");
+            "#,
+            ).expect("write file");
         }
 
         assert_eq!(Ok("1.2.3.4".into()), run_script("bash version.sh", &sub_dir));
 
         assert!(parent_file.exists(), "version scripts should not be able to delete files outside its directory");
-        assert!(!dir.path().join("muahaha.txt").exists(), "version scripts should not be able to create files outside its directory");
+        assert!(
+            !dir.path().join("muahaha.txt").exists(),
+            "version scripts should not be able to create files outside its directory"
+        );
 
         if !docker::in_docker() {
             assert!(script_file.exists(), "version scripts should not be able to delete files inside its directory");
-            assert!(!sub_dir.join("muahaha.txt").exists(), "version scripts should not be able to create files inside its directory");
+            assert!(
+                !sub_dir.join("muahaha.txt").exists(),
+                "version scripts should not be able to create files inside its directory"
+            );
         }
     }
 }

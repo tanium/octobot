@@ -1,30 +1,43 @@
-use http_client::HTTPClient;
-use github::models::*;
 
-pub trait Session : Send + Sync {
+use github::models::*;
+use http_client::HTTPClient;
+
+pub trait Session: Send + Sync {
     fn user(&self) -> &User;
     fn github_host(&self) -> &str;
     fn github_token(&self) -> &str;
-    fn get_pull_request(&self, owner: &str, repo: &str, number: u32)
-                        -> Result<PullRequest, String>;
-    fn get_pull_requests(&self, owner: &str, repo: &str, state: Option<&str>, head: Option<&str>)
-                         -> Result<Vec<PullRequest>, String>;
+    fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest, String>;
+    fn get_pull_requests(
+        &self,
+        owner: &str,
+        repo: &str,
+        state: Option<&str>,
+        head: Option<&str>,
+    ) -> Result<Vec<PullRequest>, String>;
 
-    fn create_pull_request(&self, owner: &str, repo: &str, title: &str, body: &str, head: &str,
-                           base: &str)
-                           -> Result<PullRequest, String>;
+    fn create_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: &str,
+    ) -> Result<PullRequest, String>;
 
-    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
-                               -> Result<Vec<Label>, String>;
+    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>, String>;
 
-    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32)
-                                    -> Result<Vec<Commit>, String>;
+    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>, String>;
 
-    fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>)
-                           -> Result<AssignResponse, String>;
+    fn assign_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        assignees: Vec<String>,
+    ) -> Result<AssignResponse, String>;
 
-    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str)
-                            -> Result<(), String>;
+    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<(), String>;
     fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String>;
     fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String>;
     fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>, String>;
@@ -46,8 +59,7 @@ impl GithubSession {
             format!("https://{}/api/v3", host)
         };
 
-        let client = HTTPClient::new(&api_base)
-            .with_headers(hashmap!{
+        let client = HTTPClient::new(&api_base).with_headers(hashmap!{
                 "Accept" => "application/vnd.github.black-cat-preview+json, application/vnd.github.v3+json".to_string(),
                 "Content-Type" => "application/json".to_string(),
                 "Authorization" => format!("Token {}", token),
@@ -65,7 +77,7 @@ impl GithubSession {
             user: user,
             host: host.to_string(),
             token: token.to_string(),
-       })
+        })
     }
 }
 
@@ -82,36 +94,44 @@ impl Session for GithubSession {
         &self.token
     }
 
-    fn get_pull_request(&self, owner: &str, repo: &str, number: u32)
-                            -> Result<PullRequest, String> {
+    fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest, String> {
         self.client.get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
     }
 
-    fn get_pull_requests(&self, owner: &str, repo: &str, state: Option<&str>,
-                             head: Option<&str>)
-                             -> Result<Vec<PullRequest>, String> {
-        let prs: Vec<PullRequest> = try!(self.client
-            .get(&format!("repos/{}/{}/pulls?state={}&head={}",
-                          owner,
-                          repo,
-                          state.unwrap_or(""),
-                          head.unwrap_or(""))));
+    fn get_pull_requests(
+        &self,
+        owner: &str,
+        repo: &str,
+        state: Option<&str>,
+        head: Option<&str>,
+    ) -> Result<Vec<PullRequest>, String> {
+        let prs: Vec<PullRequest> = self.client.get(&format!(
+            "repos/{}/{}/pulls?state={}&head={}",
+            owner,
+            repo,
+            state.unwrap_or(""),
+            head.unwrap_or("")
+        ))?;
 
         let prs: Vec<PullRequest> = prs.into_iter()
-            .filter(|p| {
-                if let Some(head) = head {
-                    p.head.ref_name == head || p.head.sha == head
-                } else {
-                    true
-                }
+            .filter(|p| if let Some(head) = head {
+                p.head.ref_name == head || p.head.sha == head
+            } else {
+                true
             })
             .collect();
         Ok(prs)
     }
 
-    fn create_pull_request(&self, owner: &str, repo: &str, title: &str, body: &str,
-                               head: &str, base: &str)
-                               -> Result<PullRequest, String> {
+    fn create_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: &str,
+    ) -> Result<PullRequest, String> {
         #[derive(Serialize)]
         struct CreatePR {
             title: String,
@@ -129,19 +149,21 @@ impl Session for GithubSession {
         self.client.post(&format!("repos/{}/{}/pulls", owner, repo), &pr)
     }
 
-    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32)
-                                   -> Result<Vec<Label>, String> {
+    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>, String> {
         self.client.get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number))
     }
 
-    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32)
-                                    -> Result<Vec<Commit>, String> {
+    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>, String> {
         self.client.get(&format!("repos/{}/{}/pulls/{}/commits", owner, repo, number))
     }
 
-    fn assign_pull_request(&self, owner: &str, repo: &str, number: u32,
-                               assignees: Vec<String>)
-                               -> Result<AssignResponse, String> {
+    fn assign_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        assignees: Vec<String>,
+    ) -> Result<AssignResponse, String> {
         #[derive(Serialize)]
         struct AssignPR {
             assignees: Vec<String>,
@@ -152,15 +174,17 @@ impl Session for GithubSession {
         self.client.post(&format!("repos/{}/{}/issues/{}/assignees", owner, repo, number), &body)
     }
 
-    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str)
-                                -> Result<(), String> {
+    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<(), String> {
         #[derive(Serialize)]
         struct CommentPR {
             body: String,
         }
         let body = CommentPR { body: comment.to_string() };
 
-        self.client.post_void(&format!("repos/{}/{}/issues/{}/comments", owner, repo, number), &body)
+        self.client.post_void(
+            &format!("repos/{}/{}/issues/{}/comments", owner, repo, number),
+            &body,
+        )
     }
 
     fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String> {
@@ -171,13 +195,18 @@ impl Session for GithubSession {
             sha: String,
         }
 
-        let body = CreateRef { ref_name: format!("refs/heads/{}", branch_name), sha: sha.into() };
+        let body = CreateRef {
+            ref_name: format!("refs/heads/{}", branch_name),
+            sha: sha.into(),
+        };
 
         self.client.post_void(&format!("repos/{}/{}/git/refs", owner, repo), &body)
     }
 
     fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String> {
-        self.client.delete_void(&format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name))
+        self.client.delete_void(
+            &format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name),
+        )
     }
 
     fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>, String> {
@@ -185,8 +214,10 @@ impl Session for GithubSession {
     }
 
     fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<(), String> {
-        let _: Status = try!(
-            self.client.post(&format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name), status));
+        let _: Status = self.client.post(
+            &format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name),
+            status
+        )?;
         Ok(())
     }
 }

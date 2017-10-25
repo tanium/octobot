@@ -1,11 +1,12 @@
-use futures::future::{self, Future};
+
 use futures::Stream;
+use futures::future::{self, Future};
 use hyper::{self, StatusCode};
 use hyper::server::{Request, Response};
 use serde::de::DeserializeOwned;
 use serde_json;
 
-pub type FutureResponse = Box<Future<Item=Response, Error=hyper::Error>>;
+pub type FutureResponse = Box<Future<Item = Response, Error = hyper::Error>>;
 
 pub trait Handler {
     fn handle(&self, req: Request) -> FutureResponse;
@@ -60,13 +61,17 @@ impl Handler for NotFoundHandler {
 }
 
 pub fn parse_json<T: DeserializeOwned, F>(req: Request, func: F) -> FutureResponse
-    where F: FnOnce(T) -> Response + 'static
+where
+    F: FnOnce(T) -> Response + 'static,
 {
     Box::new(req.body().concat2().map(move |data| {
         let obj: T = match serde_json::from_slice(&data) {
             Ok(l) => l,
-            Err(e) => return Response::new().with_status(StatusCode::BadRequest)
-                                            .with_body(format!("Failed to parse JSON: {}", e)),
+            Err(e) => {
+                return Response::new().with_status(StatusCode::BadRequest).with_body(
+                    format!("Failed to parse JSON: {}", e),
+                )
+            }
         };
 
         func(obj)

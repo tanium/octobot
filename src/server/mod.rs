@@ -8,23 +8,22 @@ pub mod login;
 mod sessions;
 
 
-use hyper::server::{Http};
+use hyper::server::Http;
 
-use std::sync::Arc;
+use self::octobot_service::OctobotService;
+use self::sessions::Sessions;
 use config::Config;
 use github;
 use github::api::GithubSession;
 use jira;
 use jira::api::JiraSession;
-use self::octobot_service::OctobotService;
-use self::sessions::Sessions;
+use std::sync::Arc;
 
 
 pub fn start(config: Config) -> Result<(), String> {
     let config = Arc::new(config);
 
-    let github: Arc<github::api::Session> =
-            match GithubSession::new(&config.github.host, &config.github.api_token) {
+    let github: Arc<github::api::Session> = match GithubSession::new(&config.github.host, &config.github.api_token) {
         Ok(s) => Arc::new(s),
         Err(e) => panic!("Error initiating github session: {}", e),
     };
@@ -46,9 +45,9 @@ pub fn start(config: Config) -> Result<(), String> {
 
     let ui_sessions = Arc::new(Sessions::new());
 
-    let server = Http::new().bind(&addr, move || {
-        Ok(OctobotService::new(config.clone(), github.clone(), jira.clone(), ui_sessions.clone()))
-    }).unwrap();
+    let server = Http::new()
+        .bind(&addr, move || Ok(OctobotService::new(config.clone(), github.clone(), jira.clone(), ui_sessions.clone())))
+        .unwrap();
 
     info!("Listening on port {}", addr);
     server.run().unwrap();

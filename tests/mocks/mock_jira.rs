@@ -3,20 +3,20 @@ use std::sync::Mutex;
 use std::thread;
 
 use octobot::jira::*;
-use octobot::jira::api::{Session, JiraVersionPosition};
+use octobot::jira::api::{JiraVersionPosition, Session};
 use octobot::version;
 
 pub struct MockJira {
-    get_transitions_calls: Mutex<Vec< MockCall<Vec<Transition>> >>,
-    transition_issue_calls: Mutex<Vec< MockCall<()> >>,
-    comment_issue_calls: Mutex<Vec< MockCall<()> >>,
-    add_version_calls: Mutex<Vec< MockCall<()> >>,
-    get_versions_calls: Mutex<Vec< MockCall<Vec<Version>> >>,
-    assign_fix_version_calls: Mutex<Vec< MockCall<()> >>,
-    reorder_version_calls: Mutex<Vec< MockCall<() > >>,
-    add_pending_version_calls: Mutex<Vec< MockCall<()> >>,
-    remove_pending_versions_calls: Mutex<Vec< MockCall<()> >>,
-    find_pending_versions_calls: Mutex<Vec< MockCall<HashMap<String, Vec<version::Version>>> >>,
+    get_transitions_calls: Mutex<Vec<MockCall<Vec<Transition>>>>,
+    transition_issue_calls: Mutex<Vec<MockCall<()>>>,
+    comment_issue_calls: Mutex<Vec<MockCall<()>>>,
+    add_version_calls: Mutex<Vec<MockCall<()>>>,
+    get_versions_calls: Mutex<Vec<MockCall<Vec<Version>>>>,
+    assign_fix_version_calls: Mutex<Vec<MockCall<()>>>,
+    reorder_version_calls: Mutex<Vec<MockCall<()>>>,
+    add_pending_version_calls: Mutex<Vec<MockCall<()>>>,
+    remove_pending_versions_calls: Mutex<Vec<MockCall<()>>>,
+    find_pending_versions_calls: Mutex<Vec<MockCall<HashMap<String, Vec<version::Version>>>>>,
 }
 
 #[derive(Debug)]
@@ -54,26 +54,56 @@ impl MockJira {
 impl Drop for MockJira {
     fn drop(&mut self) {
         if !thread::panicking() {
-            assert!(self.get_transitions_calls.lock().unwrap().len() == 0,
-                    "Unmet get_transitions calls: {:?}", *self.get_transitions_calls.lock().unwrap());
-            assert!(self.transition_issue_calls.lock().unwrap().len() == 0,
-                    "Unmet transition_issue calls: {:?}", *self.transition_issue_calls.lock().unwrap());
-            assert!(self.comment_issue_calls.lock().unwrap().len() == 0,
-                    "Unmet comment_issue calls: {:?}", *self.comment_issue_calls.lock().unwrap());
-            assert!(self.add_version_calls.lock().unwrap().len() == 0,
-                    "Unmet add_version calls: {:?}", *self.add_version_calls.lock().unwrap());
-            assert!(self.get_versions_calls.lock().unwrap().len() == 0,
-                    "Unmet get_versions calls: {:?}", *self.get_versions_calls.lock().unwrap());
-            assert!(self.assign_fix_version_calls.lock().unwrap().len() == 0,
-                    "Unmet asign_fix_version calls: {:?}", *self.assign_fix_version_calls.lock().unwrap());
-            assert!(self.reorder_version_calls.lock().unwrap().len() == 0,
-                    "Unmet reorder_version calls: {:?}", *self.reorder_version_calls.lock().unwrap());
-            assert!(self.add_pending_version_calls.lock().unwrap().len() == 0,
-                    "Unmet add_pending_version calls: {:?}", *self.add_pending_version_calls.lock().unwrap());
-            assert!(self.remove_pending_versions_calls.lock().unwrap().len() == 0,
-                    "Unmet remove_pending_versions calls: {:?}", *self.remove_pending_versions_calls.lock().unwrap());
-            assert!(self.find_pending_versions_calls.lock().unwrap().len() == 0,
-                    "Unmet find_pending_versions calls: {:?}", *self.find_pending_versions_calls.lock().unwrap());
+            assert!(
+                self.get_transitions_calls.lock().unwrap().len() == 0,
+                "Unmet get_transitions calls: {:?}",
+                *self.get_transitions_calls.lock().unwrap()
+            );
+            assert!(
+                self.transition_issue_calls.lock().unwrap().len() == 0,
+                "Unmet transition_issue calls: {:?}",
+                *self.transition_issue_calls.lock().unwrap()
+            );
+            assert!(
+                self.comment_issue_calls.lock().unwrap().len() == 0,
+                "Unmet comment_issue calls: {:?}",
+                *self.comment_issue_calls.lock().unwrap()
+            );
+            assert!(
+                self.add_version_calls.lock().unwrap().len() == 0,
+                "Unmet add_version calls: {:?}",
+                *self.add_version_calls.lock().unwrap()
+            );
+            assert!(
+                self.get_versions_calls.lock().unwrap().len() == 0,
+                "Unmet get_versions calls: {:?}",
+                *self.get_versions_calls.lock().unwrap()
+            );
+            assert!(
+                self.assign_fix_version_calls.lock().unwrap().len() == 0,
+                "Unmet asign_fix_version calls: {:?}",
+                *self.assign_fix_version_calls.lock().unwrap()
+            );
+            assert!(
+                self.reorder_version_calls.lock().unwrap().len() == 0,
+                "Unmet reorder_version calls: {:?}",
+                *self.reorder_version_calls.lock().unwrap()
+            );
+            assert!(
+                self.add_pending_version_calls.lock().unwrap().len() == 0,
+                "Unmet add_pending_version calls: {:?}",
+                *self.add_pending_version_calls.lock().unwrap()
+            );
+            assert!(
+                self.remove_pending_versions_calls.lock().unwrap().len() == 0,
+                "Unmet remove_pending_versions calls: {:?}",
+                *self.remove_pending_versions_calls.lock().unwrap()
+            );
+            assert!(
+                self.find_pending_versions_calls.lock().unwrap().len() == 0,
+                "Unmet find_pending_versions calls: {:?}",
+                *self.find_pending_versions_calls.lock().unwrap()
+            );
         }
     }
 }
@@ -183,7 +213,10 @@ impl MockJira {
     }
 
     pub fn mock_transition_issue(&self, key: &str, req: &TransitionRequest, ret: Result<(), String>) {
-        self.transition_issue_calls.lock().unwrap().push(MockCall::new(ret, vec![key, &format!("{:?}", req)]));
+        self.transition_issue_calls.lock().unwrap().push(MockCall::new(
+            ret,
+            vec![key, &format!("{:?}", req)],
+        ));
     }
 
     pub fn mock_comment_issue(&self, key: &str, comment: &str, ret: Result<(), String>) {
@@ -203,14 +236,26 @@ impl MockJira {
     }
 
     pub fn mock_reorder_version(&self, version: &Version, position: JiraVersionPosition, ret: Result<(), String>) {
-        self.reorder_version_calls.lock().unwrap().push(MockCall::new(ret, vec![&format!("{:?}", version), &format!("{:?}", position)])); }
+        self.reorder_version_calls.lock().unwrap().push(MockCall::new(
+            ret,
+            vec![
+                &format!("{:?}", version),
+                &format!("{:?}", position),
+            ],
+        ));
+    }
 
     pub fn mock_add_pending_version(&self, key: &str, version: &str, ret: Result<(), String>) {
-        self.add_pending_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
+        self.add_pending_version_calls.lock().unwrap().push(
+            MockCall::new(ret, vec![key, version]),
+        );
     }
 
     pub fn mock_remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>, ret: Result<(), String>) {
-        self.remove_pending_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![key, &format!("{:?}", versions)]));
+        self.remove_pending_versions_calls.lock().unwrap().push(MockCall::new(
+            ret,
+            vec![key, &format!("{:?}", versions)],
+        ));
     }
 
     pub fn mock_find_pending_versions(&self, proj: &str, ret: Result<HashMap<String, Vec<version::Version>>, String>) {
