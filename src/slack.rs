@@ -4,7 +4,7 @@ use http_client::HTTPClient;
 use worker;
 
 // the main object for sending messages to slack
-pub struct Slack {
+struct Slack {
     webhook_url: String,
 }
 
