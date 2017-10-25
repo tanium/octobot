@@ -1,4 +1,3 @@
-
 use futures::Stream;
 use futures::future::{self, Future};
 use hyper::{self, StatusCode};

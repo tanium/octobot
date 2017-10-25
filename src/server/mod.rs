@@ -17,6 +17,7 @@ use github;
 use github::api::GithubSession;
 use jira;
 use jira::api::JiraSession;
+use server::github_handler::GithubHandlerState;
 use std::sync::Arc;
 
 
@@ -44,9 +45,16 @@ pub fn start(config: Config) -> Result<(), String> {
     };
 
     let ui_sessions = Arc::new(Sessions::new());
+    let github_handler_state = Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone()));
 
     let server = Http::new()
-        .bind(&addr, move || Ok(OctobotService::new(config.clone(), github.clone(), jira.clone(), ui_sessions.clone())))
+        .bind(&addr, move || {
+            Ok(OctobotService::new(
+                config.clone(),
+                ui_sessions.clone(),
+                github_handler_state.clone(),
+            ))
+        })
         .unwrap();
 
     info!("Listening on port {}", addr);
