@@ -1,69 +1,76 @@
-use std::cell::Cell;
-use std::thread;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::channel;
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
-use octobot::slack::{SlackSender, SlackAttachment};
-
-pub struct SlackCall {
-    pub channel: String,
-    pub msg: String,
-    pub attachments: Vec<SlackAttachment>,
-}
-
-impl SlackCall {
-    pub fn new(channel: &str, msg: &str, attach: Vec<SlackAttachment>) -> SlackCall {
-        SlackCall {
-            channel: channel.to_string(),
-            msg: msg.to_string(),
-            attachments: attach,
-        }
-    }
-}
+use octobot::slack::SlackRequest;
+use octobot::worker::{WorkMessage, WorkSender};
 
 pub struct MockSlack {
-    pub expected_calls: Vec<SlackCall>,
-    pub call_count: Cell<usize>,
-    pub should_fail: Option<String>,
+    expected_calls: Arc<Mutex<Vec<SlackRequest>>>,
+    slack_sender: WorkSender<SlackRequest>,
+    thread: Option<JoinHandle<()>>,
 }
 
 impl MockSlack {
-    pub fn new(calls: Vec<SlackCall>) -> MockSlack {
+    pub fn new(mut expected_calls: Vec<SlackRequest>) -> MockSlack {
+        let (slack_tx, slack_rx) = channel();
+
+        // reverse them so we can pop fron the back
+        expected_calls.reverse();
+
+        let expected_calls = Arc::new(Mutex::new(expected_calls));
+        let expected_calls2 = expected_calls.clone();
+
+        let thread = Some(thread::spawn(move || {
+            let timeout = Duration::from_millis(1000);
+            loop {
+                let req = slack_rx.recv_timeout(timeout);
+                match req {
+                    Ok(WorkMessage::WorkItem(req)) => {
+                        let front = expected_calls2.lock().unwrap().pop();
+                        match front {
+                            Some(call) => assert_eq!(call, req),
+                            None => panic!("Unexpected message: {:?}", req),
+                        }
+                    },
+                    Ok(WorkMessage::Stop) => break,
+                    Err(_) => {
+                        let is_empty = expected_calls2.lock().unwrap().is_empty();
+                        if !is_empty {
+                            panic!("No messages received, but expected more");
+                        }
+                    }
+                };
+            }
+        }));
+
         MockSlack {
-            should_fail: None,
-            call_count: Cell::new(0),
-            expected_calls: calls,
+            expected_calls: expected_calls,
+            slack_sender: WorkSender::new(slack_tx),
+            thread: thread,
         }
     }
 
-    pub fn expect(&mut self, calls: Vec<SlackCall>) {
-        self.expected_calls = calls;
+    pub fn expect(&mut self, mut calls: Vec<SlackRequest>) {
+        // reverse them so we can pop fron the back
+        calls.reverse();
+
+        *self.expected_calls.lock().unwrap() = calls;
     }
-}
 
-impl SlackSender for MockSlack {
-    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>)
-            -> Result<(), String> {
-
-        assert!(self.call_count.get() < self.expected_calls.len(),
-                "Failed: received unexpected slack call: ({}, {}, {:?})", channel, msg, attachments);
-        assert_eq!(self.expected_calls[self.call_count.get()].channel, channel);
-        assert_eq!(self.expected_calls[self.call_count.get()].msg, msg);
-        assert_eq!(self.expected_calls[self.call_count.get()].attachments,
-                   attachments);
-        self.call_count.set(self.call_count.get() + 1);
-
-        if let Some(ref msg) = self.should_fail {
-            Err(msg.clone())
-        } else {
-            Ok(())
-        }
+    pub fn new_sender(&self) -> WorkSender<SlackRequest> {
+        self.slack_sender.clone()
     }
 }
 
 impl Drop for MockSlack {
     fn drop(&mut self) {
         if !thread::panicking() {
-            assert!(self.call_count.get() == self.expected_calls.len(),
-                    "Failed: Expected {} calls but only received {}", self.expected_calls.len(), self.call_count.get());
+            self.slack_sender.stop().expect("failed to stop slack");
+            self.thread.take().unwrap().join().expect("failed to wait for thread");
+            assert!(self.expected_calls.lock().unwrap().is_empty(), "Failed: Still expecting calls: {:?}",
+                    *self.expected_calls.lock().unwrap())
         }
     }
 }

@@ -13,6 +13,7 @@ pub struct Worker<T: Send + 'static> {
     thread: Option<JoinHandle<()>>,
 }
 
+#[derive(Clone)]
 pub struct WorkSender<T: Send + 'static> {
     sender: Sender<WorkMessage<T>>
 }
@@ -32,14 +33,14 @@ impl<T: Send + 'static> WorkSender<T> {
         self.sender.send(WorkMessage::WorkItem(msg))
     }
 
-    fn stop(&self) -> Result<(), SendError<WorkMessage<T>>> {
+    pub fn stop(&mut self) -> Result<(), SendError<WorkMessage<T>>> {
         self.sender.send(WorkMessage::Stop)
     }
 }
 
 impl<T: Send + 'static> Drop for Worker<T> {
     fn drop(&mut self) {
-        let sender = self.new_sender();
+        let mut sender = self.new_sender();
         match sender.stop() {
             Ok(_) => {
                 match self.thread.take().unwrap().join() {

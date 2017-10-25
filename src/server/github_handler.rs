@@ -19,7 +19,7 @@ use pr_merge::{self, PRMergeRequest};
 use force_push::{self, ForcePushRequest};
 use server::http::{FutureResponse, Handler};
 use server::github_verify::GithubWebhookVerifier;
-use slack::SlackAttachmentBuilder;
+use slack::{self, SlackRequest, SlackAttachmentBuilder};
 use util;
 use worker::{Worker, WorkSender};
 
@@ -31,6 +31,7 @@ pub struct GithubHandler {
     pr_merge_worker: Worker<PRMergeRequest>,
     repo_version_worker: Worker<RepoVersionRequest>,
     force_push_worker: Worker<ForcePushRequest>,
+    slack_worker: Worker<SlackRequest>,
     recent_events: Mutex<Vec<String>>,
 }
 
@@ -59,24 +60,32 @@ impl GithubHandler {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_session.clone(), config.clone()));
 
+        let slack_worker = slack::new_worker(&config.main.slack_webhook_url);
+        let pr_merge_worker = pr_merge::new_worker(MAX_CONCURRENT_MERGES,
+                                                  config.clone(),
+                                                  github_session.clone(),
+                                                  git_clone_manager.clone(),
+                                                  slack_worker.new_sender());
+        let repo_version_worker = repo_version::new_worker(MAX_CONCURRENT_VERSIONS,
+                                                           config.clone(),
+                                                           github_session.clone(),
+                                                           jira_session.clone(),
+                                                           git_clone_manager.clone(),
+                                                           slack_worker.new_sender());
+        let force_push_worker = force_push::new_worker(MAX_CONCURRENT_FORCE_PUSH,
+                                                      config.clone(),
+                                                      github_session.clone(),
+                                                      git_clone_manager.clone());
+
         Box::new(GithubHandler {
             config: config.clone(),
             github_session: github_session.clone(),
             jira_session: jira_session.clone(),
             git_clone_manager: git_clone_manager.clone(),
-            pr_merge_worker: pr_merge::new_worker(MAX_CONCURRENT_MERGES,
-                                                  config.clone(),
-                                                  github_session.clone(),
-                                                  git_clone_manager.clone()),
-            repo_version_worker: repo_version::new_worker(MAX_CONCURRENT_VERSIONS,
-                                                           config.clone(),
-                                                           github_session.clone(),
-                                                           jira_session.clone(),
-                                                           git_clone_manager.clone()),
-            force_push_worker: force_push::new_worker(MAX_CONCURRENT_FORCE_PUSH,
-                                                      config.clone(),
-                                                      github_session.clone(),
-                                                      git_clone_manager.clone()),
+            pr_merge_worker: pr_merge_worker,
+            repo_version_worker: repo_version_worker,
+            force_push_worker: force_push_worker,
+            slack_worker: slack_worker,
             recent_events: Mutex::new(Vec::new()),
         })
     }
@@ -134,6 +143,7 @@ impl Handler for GithubHandler {
         let pr_merge = self.pr_merge_worker.new_sender();
         let repo_version = self.repo_version_worker.new_sender();
         let force_push = self.force_push_worker.new_sender();
+        let slack = self.slack_worker.new_sender();
 
         Box::new(req.body().concat2().map(move |body| {
             let verifier = GithubWebhookVerifier { secret: config.github.webhook_secret.clone() };
@@ -194,7 +204,7 @@ impl Handler for GithubHandler {
                 data: data,
                 action: action,
                 config: config.clone(),
-                messenger: messenger::from_config(config.clone()),
+                messenger: messenger::new(config.clone(), slack),
                 github_session: github_session,
                 git_clone_manager: git_clone_manager,
                 jira_session: jira_session,

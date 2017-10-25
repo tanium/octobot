@@ -10,8 +10,8 @@ use github;
 use github::api::Session;
 use git_clone_manager::GitCloneManager;
 use messenger;
-use slack::SlackAttachmentBuilder;
-use worker;
+use slack::{SlackRequest, SlackAttachmentBuilder};
+use worker::{self, WorkSender};
 
 pub fn merge_pull_request(session: &Session, clone_mgr: &GitCloneManager, owner: &str, repo: &str,
                           pull_request: &github::PullRequest, target_branch: &str)
@@ -133,6 +133,7 @@ struct Runner {
     config: Arc<Config>,
     github_session: Arc<Session>,
     clone_mgr: Arc<GitCloneManager>,
+    slack: WorkSender<SlackRequest>,
     thread_pool: ThreadPool,
 }
 
@@ -144,12 +145,17 @@ pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branc
     }
 }
 
-pub fn new_worker(max_concurrency: usize, config: Arc<Config>, github_session: Arc<Session>, clone_mgr: Arc<GitCloneManager>)
-               -> worker::Worker<PRMergeRequest> {
+pub fn new_worker(max_concurrency: usize,
+                  config: Arc<Config>,
+                  github_session: Arc<Session>,
+                  clone_mgr: Arc<GitCloneManager>,
+                  slack: WorkSender<SlackRequest>)
+        -> worker::Worker<PRMergeRequest> {
     worker::Worker::new(Runner {
         config: config,
         github_session: github_session,
         clone_mgr: clone_mgr.clone(),
+        slack: slack,
         thread_pool: ThreadPool::new(max_concurrency),
     })
 }
@@ -159,6 +165,8 @@ impl worker::Runner<PRMergeRequest> for Runner {
         let github_session = self.github_session.clone();
         let clone_mgr = self.clone_mgr.clone();
         let config = self.config.clone();
+
+        let slack = self.slack.clone();
 
         // launch another thread to do the merge
         self.thread_pool.execute(move || {
@@ -178,7 +186,7 @@ impl worker::Runner<PRMergeRequest> for Runner {
                     .color("danger")
                     .build();
 
-                let messenger = messenger::from_config(config);
+                let messenger = messenger::new(config, slack);
                 messenger.send_to_owner("Error creating merge Pull Request",
                                         &vec![attach],
                                         &req.pull_request.user,
