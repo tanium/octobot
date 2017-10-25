@@ -6,10 +6,8 @@ use hyper::server::{Request, Response, Service};
 use time;
 
 use config::Config;
-use github;
-use jira;
 use server::admin;
-use server::github_handler::GithubHandler;
+use server::github_handler::{GithubHandler, GithubHandlerState};
 use server::html_handler::HtmlHandler;
 use server::http::{FilteredHandler, FutureResponse, Handler, NotFoundHandler};
 use server::login::{LoginHandler, LoginSessionFilter, LogoutHandler};
@@ -18,23 +16,20 @@ use util;
 
 pub struct OctobotService {
     config: Arc<Config>,
-    github: Arc<github::api::Session>,
-    jira: Option<Arc<jira::api::Session>>,
     ui_sessions: Arc<Sessions>,
+    github_handler_state: Arc<GithubHandlerState>,
 }
 
 impl OctobotService {
     pub fn new(
         config: Arc<Config>,
-        github: Arc<github::api::Session>,
-        jira: Option<Arc<jira::api::Session>>,
         ui_sessions: Arc<Sessions>,
+        github_handler_state: Arc<GithubHandlerState>,
     ) -> OctobotService {
         OctobotService {
             config: config,
-            github: github,
-            jira: jira,
             ui_sessions: ui_sessions,
+            github_handler_state: github_handler_state,
         }
     }
 }
@@ -107,7 +102,7 @@ impl OctobotService {
             (&Post, "/auth/logout") => LogoutHandler::new(self.ui_sessions.clone()),
 
             // hooks
-            (&Post, "/hooks/github") => GithubHandler::new(self.config.clone(), self.github.clone(), self.jira.clone()),
+            (&Post, "/hooks/github") => GithubHandler::from_state(self.github_handler_state.clone()),
 
             _ => Box::new(NotFoundHandler),
         }

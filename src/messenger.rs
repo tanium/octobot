@@ -106,7 +106,7 @@ impl SlackMessenger {
         }
 
         if let Err(e) = self.slack.send(req) {
-            error!("Error sending to slack: {:?}", e);
+            error!("Error sending to slack worker: {}", e);
         }
     }
 

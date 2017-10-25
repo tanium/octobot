@@ -23,7 +23,7 @@ use slack::{self, SlackAttachmentBuilder, SlackRequest};
 use util;
 use worker::{WorkSender, Worker};
 
-pub struct GithubHandler {
+pub struct GithubHandlerState {
     pub config: Arc<Config>,
     pub github_session: Arc<github::api::Session>,
     pub jira_session: Option<Arc<jira::api::Session>>,
@@ -33,6 +33,10 @@ pub struct GithubHandler {
     force_push_worker: Worker<ForcePushRequest>,
     slack_worker: Worker<SlackRequest>,
     recent_events: Mutex<Vec<String>>,
+}
+
+pub struct GithubHandler {
+    state: Arc<GithubHandlerState>,
 }
 
 pub struct GithubEventHandler {
@@ -53,12 +57,12 @@ const MAX_CONCURRENT_MERGES: usize = 20;
 const MAX_CONCURRENT_VERSIONS: usize = 20;
 const MAX_CONCURRENT_FORCE_PUSH: usize = 20;
 
-impl GithubHandler {
+impl GithubHandlerState {
     pub fn new(
         config: Arc<Config>,
         github_session: Arc<github::api::Session>,
         jira_session: Option<Arc<jira::api::Session>>,
-    ) -> Box<GithubHandler> {
+    ) -> GithubHandlerState {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_session.clone(), config.clone()));
 
@@ -85,7 +89,7 @@ impl GithubHandler {
             git_clone_manager.clone(),
         );
 
-        Box::new(GithubHandler {
+        GithubHandlerState {
             config: config.clone(),
             github_session: github_session.clone(),
             jira_session: jira_session.clone(),
@@ -95,7 +99,22 @@ impl GithubHandler {
             force_push_worker: force_push_worker,
             slack_worker: slack_worker,
             recent_events: Mutex::new(Vec::new()),
-        })
+        }
+    }
+}
+
+impl GithubHandler {
+    pub fn new(
+        config: Arc<Config>,
+        github_session: Arc<github::api::Session>,
+        jira_session: Option<Arc<jira::api::Session>>,
+    ) -> Box<GithubHandler> {
+        let state = GithubHandlerState::new(config, github_session, jira_session);
+        GithubHandler::from_state(Arc::new(state))
+    }
+
+    pub fn from_state(state: Arc<GithubHandlerState>) -> Box<GithubHandler> {
+        Box::new(GithubHandler { state: state })
     }
 }
 
@@ -110,7 +129,7 @@ impl Handler for GithubHandler {
             }
         };
         {
-            let mut recent_events = self.recent_events.lock().unwrap();
+            let mut recent_events = self.state.recent_events.lock().unwrap();
             if !util::check_unique_event(event_id.clone(), &mut *recent_events, 1000, 100) {
                 let msg = format!("Duplicate X-Github-Delivery header: {}", event_id);
                 error!("{}", msg);
@@ -127,14 +146,14 @@ impl Handler for GithubHandler {
         };
 
         let headers = req.headers().clone();
-        let github_session = self.github_session.clone();
-        let config = self.config.clone();
-        let git_clone_manager = self.git_clone_manager.clone();
-        let jira_session = self.jira_session.clone();
-        let pr_merge = self.pr_merge_worker.new_sender();
-        let repo_version = self.repo_version_worker.new_sender();
-        let force_push = self.force_push_worker.new_sender();
-        let slack = self.slack_worker.new_sender();
+        let github_session = self.state.github_session.clone();
+        let config = self.state.config.clone();
+        let git_clone_manager = self.state.git_clone_manager.clone();
+        let jira_session = self.state.jira_session.clone();
+        let pr_merge = self.state.pr_merge_worker.new_sender();
+        let repo_version = self.state.repo_version_worker.new_sender();
+        let force_push = self.state.force_push_worker.new_sender();
+        let slack = self.state.slack_worker.new_sender();
 
         Box::new(req.body().concat2().map(move |body| {
             let verifier = GithubWebhookVerifier { secret: config.github.webhook_secret.clone() };
