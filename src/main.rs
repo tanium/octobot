@@ -39,8 +39,17 @@ fn setup_logging() {
 
     let mut builder = LogBuilder::new();
     builder.format(formatter).filter(None, LogLevelFilter::Info);
-    if std::env::var("RUST_LOG").is_ok() {
-        builder.parse(&std::env::var("RUST_LOG").unwrap());
+
+    let is_info;
+    if let Ok(ref env_log) = std::env::var("RUST_LOG") {
+        builder.parse(env_log);
+        is_info = env_log.is_empty() || env_log.to_lowercase() == "info";
+    } else {
+        is_info = true;
+    }
+
+    if is_info {
+        builder.filter(Some("rustls"), LogLevelFilter::Warn);
     }
 
     builder.init().unwrap();
