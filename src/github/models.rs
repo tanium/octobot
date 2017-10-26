@@ -200,6 +200,7 @@ pub struct PullRequest {
     pub head: BranchRef,
     pub base: BranchRef,
     pub requested_reviewers: Option<Vec<User>>,
+    pub reviews: Option<Vec<Review>>,
 }
 
 impl PullRequest {
@@ -215,6 +216,7 @@ impl PullRequest {
             merge_commit_sha: None,
             assignees: vec![],
             requested_reviewers: None,
+            reviews: None,
             head: BranchRef::new(""),
             base: BranchRef::new(""),
         }
@@ -238,6 +240,9 @@ impl<'a> PullRequestLike for &'a PullRequest {
         let mut assignees = self.assignees.clone();
         if let Some(ref reviewers) = self.requested_reviewers {
             assignees.extend(reviewers.iter().map(|r| r.clone()));
+        }
+        if let Some(ref reviews) = self.reviews {
+            assignees.extend(reviews.iter().map(|r| r.user.clone()));
         }
         assignees
     }
@@ -311,6 +316,17 @@ pub struct Review {
     pub body: Option<String>,
     pub html_url: String,
     pub user: User,
+}
+
+impl Review {
+    pub fn new(body: &str, user: User) -> Review {
+        Review {
+            state: "COMMENTED".into(),
+            body: Some(body.into()),
+            html_url: String::new(),
+            user: user,
+        }
+    }
 }
 
 impl<'a> CommentLike for &'a Review {
@@ -629,8 +645,20 @@ mod tests {
         pr.requested_reviewers = Some(reviewers.clone());
 
         let all_users = vec![User::new("user1"), User::new("user2"), User::new("userC"), User::new("userD")];
-
         assert_eq!(all_users, (&pr).assignees());
+
+        let reviews = vec![Review::new("i like it", User::new("userE")), Review::new("i like it", User::new("userF"))];
+        pr.reviews = Some(reviews);
+
+        let even_more_users = vec![
+            User::new("user1"),
+            User::new("user2"),
+            User::new("userC"),
+            User::new("userD"),
+            User::new("userE"),
+            User::new("userF"),
+        ];
+        assert_eq!(even_more_users, (&pr).assignees());
     }
 
     #[test]

@@ -29,6 +29,8 @@ pub trait Session: Send + Sync {
 
     fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>, String>;
 
+    fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>, String>;
+
     fn assign_pull_request(
         &self,
         owner: &str,
@@ -60,7 +62,7 @@ impl GithubSession {
         };
 
         let client = HTTPClient::new(&api_base).with_headers(hashmap!{
-                "Accept" => "application/vnd.github.black-cat-preview+json, application/vnd.github.v3+json".to_string(),
+                "Accept" => "application/vnd.github.v3+json".to_string(),
                 "Content-Type" => "application/json".to_string(),
                 "Authorization" => format!("Token {}", token),
             });
@@ -155,6 +157,10 @@ impl Session for GithubSession {
 
     fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>, String> {
         self.client.get(&format!("repos/{}/{}/pulls/{}/commits", owner, repo, number))
+    }
+
+    fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>, String> {
+        self.client.get(&format!("repos/{}/{}/pulls/{}/reviews", owner, repo, number))
     }
 
     fn assign_pull_request(
