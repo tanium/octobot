@@ -159,6 +159,7 @@ fn some_pr() -> Option<PullRequest> {
         merge_commit_sha: None,
         assignees: vec![User::new("assign1")],
         requested_reviewers: Some(vec![User::new("joe-reviewer")]),
+        reviews: None,
         head: BranchRef {
             ref_name: "pr-branch".into(),
             sha: "ffff0000".into(),

@@ -212,6 +212,20 @@ impl Handler for GithubHandler {
                 data.pull_request = Some(changed_pr);
             }
 
+            // fetch PR's reviewers, they get removed from requested_reviewers after they submit a review. :cry:
+            if let Some(ref mut pull_request) = data.pull_request {
+                if pull_request.reviews.is_none() {
+                    match github_session.get_pull_request_reviews(
+                        &data.repository.owner.login(),
+                        &data.repository.name,
+                        pull_request.number,
+                    ) {
+                        Ok(r) => pull_request.reviews = Some(r),
+                        Err(e) => error!("Error refetching pull request reviews: {}", e),
+                    };
+                }
+            }
+
             let handler = GithubEventHandler {
                 event: event.clone(),
                 data: data,
