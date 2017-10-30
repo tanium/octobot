@@ -30,7 +30,7 @@ This will result in docker image called `octobot:latest` that you can deploy as 
 
 ### Configuration
 
-There are three important config files. Hopefully these examples will be sufficiently explanatory:
+There is one main config file to know about. Hopefully this examples will be sufficiently explanatory:
 
 config.toml
 
@@ -58,6 +58,9 @@ config.toml
     fixed_resolutions = [ "Fixed", "Done" ]
     fix_version_field = "fixVersions"
 
+
+Note: You may need to create an empty repos.json and users.json for octobot to startup, but these can then be configured
+using the web interface.
 
 For the octobot github user token, you will need to:
 
