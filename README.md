@@ -23,7 +23,8 @@ Setup
 
 This will result in docker image called `octobot:latest` that you can deploy as follows:
 
-    docker run --restart=always --privileged -d  -p 80:3000 -v /path/to/host/storage/:/data --name octobot --hostname octobot octobot:latest`
+    docker run --restart=always --privileged -d  -p 80:3000 \
+           -v /path/to/host/storage/:/data --name octobot --hostname octobot octobot:latest
 
 * Make sure that whatever path you map `/data` to is a persistent location since this is where configuration is stored.
 * Create a `config.toml` file in this location before deploying (see below).
@@ -68,11 +69,14 @@ For the octobot github user token, you will need to:
 - Create an octobot user in github
 - Run the following command to get a token:
 
-        curl -u octobot https://git.company.com/api/v3/authorizations -d '{"scopes": ["repo"], "client_id": "<app id>", "client_secret": "<app secret>"}'
+        curl -u octobot https://git.company.com/api/v3/authorizations \
+             -d '{"scopes": ["repo"], "client_id": "<app id>", "client_secret": "<app secret>"}'
 
 - Grab the "token" value and put it in the config file.
 
-  :rotating_light: **Warning** :rotating_light:: This token has read/write access to code. Guard it carefully and make sure config.toml is only readable by service account.
+  :rotating_light: **Warning** :rotating_light:
+  
+  This token has read/write access to your code. Guard it carefully and make sure config.toml is only readable by root.
 
 ### Web UI
 
