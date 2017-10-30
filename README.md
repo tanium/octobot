@@ -23,14 +23,15 @@ Setup
 
 This will result in docker image called `octobot:latest` that you can deploy as follows:
 
-    docker run --restart=always --privileged -d  -p 80:3000 -v /path/to/host/storage/:/data --name octobot --hostname octobot octobot`
+    docker run --restart=always --privileged -d  -p 80:3000 \
+           -v /path/to/host/storage/:/data --name octobot --hostname octobot octobot:latest
 
 * Make sure that whatever path you map `/data` to is a persistent location since this is where configuration is stored.
 * Create a `config.toml` file in this location before deploying (see below).
 
 ### Configuration
 
-There are three important config files. Hopefully these examples will be sufficiently explanatory:
+There is one main config file to know about. Hopefully this examples will be sufficiently explanatory:
 
 config.toml
 
@@ -59,52 +60,40 @@ config.toml
     fix_version_field = "fixVersions"
 
 
-users.json
+Note: You may need to create an empty repos.json and users.json for octobot to startup, but these can then be configured
+using the web interface.
 
-    {
-      "git.company.com": {
-        "git-user-name": {
-          "slack": "slack-user-name"
-        }
-      }
-    }
+For the octobot github user token, you will need to:
 
-repos.json
-
-    {
-      "git.company.com": {
-        "some-org": {
-           "channel": "the-org-reviews"
-        },
-        "some-org/special-repo": {
-           "channel": "special-repo-reviews",
-           "force_push_notify": false, // turn off force-push notifications
-           "jira_enabled": false, // turn off jira integration
-        }
-      }
-    }
-
-As for the octobot user token, you need to:
-
-- Create and octobot developer app in github
+- Create and octobot developer app in github for your organization
 - Create an octobot user in github
 - Run the following command to get a token:
 
-        curl -u octobot https://git.company.com/api/v3/authorizations -d '{"scopes": ["repo"], "client_id": "<app id>", "client_secret": "<app secret>"}'
+        curl -u octobot https://git.company.com/api/v3/authorizations \
+             -d '{"scopes": ["repo"], "client_id": "<app id>", "client_secret": "<app secret>"}'
 
 - Grab the "token" value and put it in the config file.
 
-  **Warning**: This token has read/write access to code. Guard it carefully and make sure config.toml is only readable by service account.
+  :rotating_light: **Warning** :rotating_light:
+  
+  This token has read/write access to your code. Guard it carefully and make sure config.toml is only readable by root.
+
+### Web UI
+
+To configure repositories and users, you will need to login to octobot's web UI, for which you will need to create a password.
+
+       octobot-passwd <path/to/config.toml> <admin username>
+
+This does not need to be run inside the docker container since it just modifies the configuration file.
 
 
-### Supervisor
+Addenda
+-------
 
-supervisord is a great way to run octobot if you don't want to use docker.
-All you have to do is add a configuration like this to /etc/supervisor/conf.d/octobot.conf:
+### Tested configurations
 
-    [program:octobot]
-    command=/home/octobot/.cargo/bin/octobot /home/octobot/config.toml
-    user=octobot
-    environment=HOME="/home/octobot",USER="octobot",RUST_LOG="info"
+Tested with GitHub Enterprise as well as GitHub.com and primarily with on-premise JIRA.
 
+### License
 
+See [LICENSE.txt](LICENSE.txt) for details.
