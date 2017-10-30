@@ -108,3 +108,7 @@ All you have to do is add a configuration like this to /etc/supervisor/conf.d/oc
     environment=HOME="/home/octobot",USER="octobot",RUST_LOG="info"
 
 
+License
+-------
+
+See [LICENSE.txt](LICENSE.txt) for details.
