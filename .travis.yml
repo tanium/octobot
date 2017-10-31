@@ -4,5 +4,5 @@ services:
 language: rust
 script: python build.py
 branches:
-  only:
-    - master
+  except:
+    - /^octobot-.*-[a-f0-9]{40}$/
