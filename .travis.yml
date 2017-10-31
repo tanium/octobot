@@ -1,9 +1,8 @@
+sudo: required
+services:
+  - docker
 language: rust
-rust:
-  - stable
-  - beta
-  - nightly
-matrix:
-  allow_failures:
-    - rust: nightly
-cache: cargo
+script: python build.py
+branches:
+  except:
+    - /^octobot-.*-[a-f0-9]{40}$/

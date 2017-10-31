@@ -1,5 +1,6 @@
 octobot
 =======
+[![Build Status](https://travis-ci.org/tanium/octobot.svg?branch=master)](https://travis-ci.org/tanium/octobot)
 
 Octobot wants to make your github and slack lives better by triggering
 more directed pull request notifications to help pull requests from their
@@ -75,7 +76,7 @@ For the octobot github user token, you will need to:
 - Grab the "token" value and put it in the config file.
 
   :rotating_light: **Warning** :rotating_light:
-  
+
   This token has read/write access to your code. Guard it carefully and make sure config.toml is only readable by root.
 
 ### Web UI
