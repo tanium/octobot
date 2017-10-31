@@ -3,3 +3,6 @@ services:
   - docker
 language: rust
 script: python build.py
+branches:
+  only:
+    - master
