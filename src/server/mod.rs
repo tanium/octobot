@@ -28,8 +28,8 @@ use github;
 use github::api::GithubSession;
 use jira;
 use jira::api::JiraSession;
-use server::redirect_service::RedirectService;
 use server::github_handler::GithubHandlerState;
+use server::redirect_service::RedirectService;
 
 pub fn start(config: Config) -> Result<(), String> {
     let config = Arc::new(config);
@@ -84,31 +84,32 @@ pub fn start(config: Config) -> Result<(), String> {
     match tls {
         Some(tls) => {
             let https = thread::spawn(move || {
-                let server = tokio_proto::TcpServer::new(tokio_rustls::proto::Server::new(Http::new(), tls), https_addr.clone());
+                let server =
+                    tokio_proto::TcpServer::new(tokio_rustls::proto::Server::new(Http::new(), tls), https_addr.clone());
                 info!("Listening (HTTPS) on {}", https_addr);
-                server.serve( move || {
+                server.serve(move || {
                     Ok(OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone()))
                 });
             });
             let http = thread::spawn(move || {
-                let server = Http::new().bind(&http_addr, move || {
-                    Ok(RedirectService::new(https_addr.port()))
-                }).unwrap();
+                let server = Http::new().bind(&http_addr, move || Ok(RedirectService::new(https_addr.port()))).unwrap();
 
                 info!("Listening (HTTP Redirect) on {}", http_addr);
                 server.run().unwrap();
             });
             https.join().unwrap();
             http.join().unwrap();
-        },
+        }
         None => {
-            let server = Http::new().bind(&http_addr, move || {
-                Ok(OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone()))
-            }).unwrap();
+            let server = Http::new()
+                .bind(&http_addr, move || {
+                    Ok(OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone()))
+                })
+                .unwrap();
 
             info!("Listening (HTTP) on {}", http_addr);
             server.run().unwrap();
-         }
+        }
     };
 
     Ok(())
@@ -126,13 +127,13 @@ fn load_private_key(filename: &str) -> rustls::PrivateKey {
 
     let keys = pemfile::rsa_private_keys(&mut reader).unwrap();
     if keys.len() == 1 {
-        return keys[0].clone()
+        return keys[0].clone();
     }
 
     reader.seek(io::SeekFrom::Start(0)).unwrap();
     let keys = pemfile::pkcs8_private_keys(&mut reader).unwrap();
     if keys.len() == 1 {
-        return keys[0].clone()
+        return keys[0].clone();
     }
 
     panic!("Unable to find private key in file {}", filename);
