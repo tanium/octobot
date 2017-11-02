@@ -8,6 +8,7 @@ RUN apt-get update \
      firejail \
      gosu \
      python \
+     openssl \
   && rm -fr /var/lib/apt/lists/
 
 RUN groupadd -r octobot
