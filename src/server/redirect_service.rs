@@ -47,6 +47,6 @@ impl Service for RedirectService {
     fn call(&self, req: Request) -> Self::Future {
         let new_uri = self.rewrite_uri(req.uri().clone(), req.headers().get::<Host>());
         debug!("Redirecting request to {}", new_uri);
-        future::ok(Response::new().with_status(StatusCode::Found).with_header(Location::new(new_uri)))
+        future::ok(Response::new().with_status(StatusCode::MovedPermanently).with_header(Location::new(new_uri)))
     }
 }
