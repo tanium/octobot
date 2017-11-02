@@ -40,7 +40,7 @@ fn main() {
                 println!("Found {} results (max {})", results.len(), max);
                 for res in results {
                     println!(" - {}", res.dn);
-                    //println!("   {:?}", res.attrs);
+                    println!("   {:?}", res.attrs);
                 }
             }
         }
