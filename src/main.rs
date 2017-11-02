@@ -20,7 +20,7 @@ fn main() {
     let config_file = std::env::args().nth(1).unwrap();
     let config = config::parse(&config_file).expect("Error parsing config");
 
-    server::start(config).expect("Failed to start server");
+    server::main::start(config).expect("Failed to start server");
 }
 
 fn setup_logging() {
