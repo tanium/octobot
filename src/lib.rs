@@ -8,6 +8,7 @@ extern crate maplit;
 extern crate regex;
 extern crate ring;
 extern crate rustc_serialize;
+extern crate rustls;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
@@ -16,6 +17,8 @@ extern crate tokio_core;
 extern crate toml;
 extern crate unidiff;
 extern crate url;
+extern crate tokio_proto;
+extern crate tokio_rustls;
 extern crate time;
 
 #[macro_use]

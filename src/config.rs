@@ -30,9 +30,12 @@ pub struct ConfigModel {
 pub struct MainConfig {
     pub slack_webhook_url: String,
     pub listen_addr: Option<String>,
+    pub listen_addr_ssl: Option<String>,
     pub users_config_file: String,
     pub repos_config_file: String,
     pub clone_root_dir: String,
+    pub ssl_cert_file: Option<String>,
+    pub ssl_key_file: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -187,9 +190,12 @@ impl ConfigModel {
             main: MainConfig {
                 slack_webhook_url: String::new(),
                 listen_addr: None,
+                listen_addr_ssl: None,
                 users_config_file: String::new(),
                 repos_config_file: String::new(),
                 clone_root_dir: String::new(),
+                ssl_cert_file: None,
+                ssl_key_file: None,
             },
             admin: None,
             github: GithubConfig {

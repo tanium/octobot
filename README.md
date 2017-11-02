@@ -24,7 +24,7 @@ Setup
 
 This will result in docker image called `octobot:latest` that you can deploy as follows:
 
-    docker run --restart=always --privileged -d  -p 80:3000 \
+    docker run --restart=always --privileged -d  -p 80:3000 -p 443:3001 \
            -v /path/to/host/storage/:/data --name octobot --hostname octobot octobot:latest
 
 * Make sure that whatever path you map `/data` to is a persistent location since this is where configuration is stored.
@@ -41,6 +41,10 @@ config.toml
     users_config_file = "/data/users.json"
     repos_config_file = "/data/repos.json"
     clone_root_dir = "/home/octobot/repos"
+    ssl_cert_file = "/data/ssl.crt"
+    ssl_key_file = "/data/ssl.key"
+    listen_addr = "0.0.0.0:3000"
+    listen_addr_ssl = "0.0.0.0:3001"
 
     [github]
     webhook_secret = "<secret for github hook>"
@@ -87,6 +91,14 @@ To configure repositories and users, you will need to login to octobot's web UI,
 
 This does not need to be run inside the docker container since it just modifies the configuration file.
 
+### SSL config
+
+It is highly recommended to enable SSL.
+
+When SSL is enabled, the plain HTTP port will always redirect to HTTPS.
+
+It should be noted that the SSL implementation is very particular about certificates and SNI.
+Make sure your SSL certificate has a subjectAltName that matches your octobot's hostname exactly.
 
 Addenda
 -------
