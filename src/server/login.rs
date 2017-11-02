@@ -7,6 +7,7 @@ use ring::{digest, pbkdf2};
 use rustc_serialize::hex::{FromHex, ToHex};
 
 use config::Config;
+use ldap_auth;
 use server::http::{Filter, FilterResult, FutureResponse, Handler, parse_json};
 use server::sessions::Sessions;
 
@@ -82,19 +83,37 @@ fn get_session(req: &Request) -> Option<String> {
 
 impl Handler for LoginHandler {
     fn handle(&self, req: Request) -> FutureResponse {
-        let admin = self.config.admin.clone();
+        let config = self.config.clone();
         let sessions = self.sessions.clone();
 
         parse_json(req, move |login_req: LoginRequest| {
-            let success = match admin {
-                None => false,
-                Some(ref admin) => {
-                    let pw_correct = verify_password(&login_req.password, &admin.salt, &admin.pass_hash);
-                    admin.name == login_req.username && pw_correct
+            let mut success = None;
+            if let Some(ref admin) = config.admin {
+                if admin.name == login_req.username {
+                    if verify_password(&login_req.password, &admin.salt, &admin.pass_hash) {
+                        info!("Admin auth success");
+                        success = Some(true);
+                    } else {
+                        warn!("Admin auth failure");
+                        success = Some(false);
+                    }
                 }
-            };
+            }
 
-            if success {
+            if success.is_none() {
+                if let Some(ref ldap) = config.ldap {
+                    match ldap_auth::auth(&login_req.username, &login_req.password, ldap) {
+                        Ok(true) => {
+                            info!("LDAP auth successfor user: {}", login_req.username);
+                            success = Some(true)
+                        }
+                        Ok(false) => warn!("LDAP auth failure for user: {}", login_req.username),
+                        Err(e) => error!("Error authenticating to LDAP: {}", e),
+                    };
+                }
+            }
+
+            if success == Some(true) {
                 let sess_id = sessions.new_session();
                 let json = json!({
                     "session": sess_id,

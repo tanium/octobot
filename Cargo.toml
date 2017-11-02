@@ -15,12 +15,17 @@ path = "src/ask-pass.rs"
 name = "octobot-passwd"
 path = "src/octobot-passwd.rs"
 
+[[bin]]
+name = "ldap-check"
+path = "src/ldap-check.rs"
+
 [dependencies]
 base64 = "0.7.0"
 env_logger = "^0.4"
 futures = "0.1.16"
 hyper = "^0.11"
 hyper-rustls = "0.11.0"
+ldap3 = "0.5.1"
 log = "0.3.7"
 maplit = "0.1.5"
 regex = "^0.2"

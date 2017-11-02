@@ -11,6 +11,7 @@ pub struct Config {
     pub admin: Option<AdminConfig>,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
+    pub ldap: Option<LdapConfig>,
 
     pub users: RwLock<users::UserConfig>,
     pub repos: RwLock<repos::RepoConfig>,
@@ -22,6 +23,7 @@ pub struct ConfigModel {
     pub admin: Option<AdminConfig>,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
+    pub ldap: Option<LdapConfig>
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -70,6 +72,23 @@ pub struct JiraConfig {
     pub pending_versions_field: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LdapConfig {
+    // LDAP URL (e.g. ldaps://ldap.company.com)
+    pub url: String,
+    // either username for AD or bind DN for LDAP
+    pub bind_user: String,
+    // bind user's password
+    pub bind_pass: String,
+    // the base DN to bind to
+    pub base_dn: String,
+    // attribute to match logins against (e.g. samAccountName for AD, uid for LDAP)
+    pub userid_attribute: String,
+    // Additional LDAP search filter for user types and group membership
+    // e.g. (&(objectCategory=Person)(memberOf=cn=octobot-admins,ou=users,dc=company,dc=com))
+    pub search_filter: Option<String>,
+}
+
 impl Config {
     pub fn empty_config() -> Config {
         Config::new(users::UserConfig::new(), repos::RepoConfig::new())
@@ -85,6 +104,7 @@ impl Config {
             admin: config.admin,
             github: config.github,
             jira: config.jira,
+            ldap: config.ldap,
             users: RwLock::new(users),
             repos: RwLock::new(repos),
         }
@@ -96,6 +116,7 @@ impl Config {
             admin: self.admin.clone(),
             github: self.github.clone(),
             jira: self.jira.clone(),
+            ldap: self.ldap.clone(),
         };
 
         let serialized = match toml::to_string(&model) {
@@ -183,6 +204,7 @@ impl ConfigModel {
                 api_token: String::new(),
             },
             jira: None,
+            ldap: None,
         }
     }
 }
