@@ -82,8 +82,8 @@ pub struct LdapConfig {
     pub bind_pass: String,
     // the base DN to bind to
     pub base_dn: String,
-    // attribute to match logins against (e.g. samAccountName for AD, uid for LDAP)
-    pub userid_attribute: String,
+    // attributes to match logins against (e.g. ["samAccountName", "userPrincipalName"] for AD, ["uid, "mail"] for LDAP)
+    pub userid_attributes: Vec<String>,
     // Additional LDAP search filter for user types and group membership
     // e.g. (&(objectCategory=Person)(memberOf=cn=octobot-admins,ou=users,dc=company,dc=com))
     pub search_filter: Option<String>,
