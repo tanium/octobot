@@ -2,6 +2,7 @@ extern crate base64;
 extern crate futures;
 extern crate hyper;
 extern crate hyper_rustls;
+extern crate ldap3;
 #[macro_use]
 extern crate maplit;
 extern crate regex;
@@ -30,6 +31,7 @@ pub mod git;
 pub mod git_clone_manager;
 pub mod github;
 pub mod http_client;
+pub mod ldap_auth;
 pub mod jira;
 pub mod messenger;
 pub mod pr_merge;
