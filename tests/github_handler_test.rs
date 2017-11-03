@@ -886,7 +886,80 @@ fn test_pull_request_merged_backport_labels() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    let expect_thread = test.expect_will_merge_branches(vec!["release/1.0".into(), "release/2.0".into(), "release/other-thing".into()]);
+    let expect_thread = test.expect_will_merge_branches(
+        vec!["release/1.0".into(), "release/2.0".into(), "release/other-thing".into()],
+    );
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+
+    expect_thread.join().unwrap();
+}
+
+#[test]
+fn test_pull_request_merged_backport_labels_custom_pattern() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "closed".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.merged = Some(true);
+    }
+    test.handler.data.sender = User::new("the-pr-merger");
+
+    test.config.repos_write().insert_info(
+        test.github.github_host(),
+        repos::RepoInfo::new("some-user/custom-branches-repo", "the-reviews-channel")
+            .with_release_branch_prefix(Some("the-other-prefix-".into())),
+    );
+
+    // change the repo to an unconfigured one
+    test.handler.data.repository = Repo::parse(
+        &format!("http://{}/some-user/custom-branches-repo", test.github.github_host()),
+    ).unwrap();
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    let msg = "Pull Request merged";
+
+    test.github.mock_get_pull_request_commits(
+        "some-user",
+        "custom-branches-repo",
+        32,
+        Ok(some_commits()),
+    );
+    test.github.mock_get_pull_request_labels(
+        "some-user",
+        "custom-branches-repo",
+        32,
+        Ok(vec![
+            Label::new("other"),
+            Label::new("backport-1.0"),
+            Label::new("BACKPORT-2.0"),
+            Label::new("BACKport-other-thing"),
+            Label::new("non-matching"),
+        ]),
+    );
+
+    let repo_msg = "(<http://the-github-host/some-user/custom-branches-repo|some-user/custom-branches-repo>)";
+
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, repo_msg), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    let expect_thread = test.expect_will_merge_branches(vec![
+        "the-other-prefix-1.0".into(),
+        "the-other-prefix-2.0".into(),
+        "the-other-prefix-other-thing".into(),
+    ]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::Ok, "pr".into()), resp);

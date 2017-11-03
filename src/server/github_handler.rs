@@ -411,12 +411,16 @@ impl GithubEventHandler {
                 }
             }
 
+            let release_branch_prefix = self.config.repos().release_branch_prefix(
+                &self.data.repository,
+                &pull_request.base.ref_name,
+            );
             if self.action == "labeled" {
                 if let Some(ref label) = self.data.label {
-                    self.merge_pull_request(pull_request, label);
+                    self.merge_pull_request(pull_request, label, &release_branch_prefix);
                 }
             } else if verb == Some("merged".to_string()) {
-                self.merge_pull_request_all_labels(pull_request);
+                self.merge_pull_request_all_labels(pull_request, &release_branch_prefix);
             }
         }
 
@@ -732,7 +736,7 @@ impl GithubEventHandler {
         (StatusCode::Ok, "push".into())
     }
 
-    fn merge_pull_request_all_labels(&self, pull_request: &github::PullRequest) {
+    fn merge_pull_request_all_labels(&self, pull_request: &github::PullRequest, release_branch_prefix: &str) {
         if !pull_request.is_merged() {
             return;
         }
@@ -755,11 +759,16 @@ impl GithubEventHandler {
         };
 
         for label in &labels {
-            self.merge_pull_request(pull_request, label);
+            self.merge_pull_request(pull_request, label, release_branch_prefix);
         }
     }
 
-    fn merge_pull_request(&self, pull_request: &github::PullRequest, label: &github::Label) {
+    fn merge_pull_request(
+        &self,
+        pull_request: &github::PullRequest,
+        label: &github::Label,
+        release_branch_prefix: &str,
+    ) {
         if !pull_request.is_merged() {
             return;
         }
@@ -769,7 +778,7 @@ impl GithubEventHandler {
             Some(c) => c[1].to_string(),
             None => return,
         };
-        let target_branch = "release/".to_string() + &backport;
+        let target_branch = release_branch_prefix.to_string() + &backport;
 
         let req = pr_merge::req(&self.data.repository, pull_request, &target_branch);
         if let Err(e) = self.pr_merge.send(req) {

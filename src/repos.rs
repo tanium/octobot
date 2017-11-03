@@ -1,4 +1,3 @@
-
 use serde_json;
 use std;
 use std::collections::HashMap;
@@ -22,6 +21,8 @@ pub struct RepoInfo {
     pub jira_projects: Option<Vec<String>>,
     pub jira_versions_enabled: Option<bool>,
     pub version_script: Option<String>,
+    // Used for backporting. Defaults to "release/"
+    pub release_branch_prefix: Option<String>,
 }
 
 // maps github host to a list of repos
@@ -53,6 +54,7 @@ impl RepoInfo {
             jira_projects: None,
             jira_versions_enabled: None,
             version_script: None,
+            release_branch_prefix: None,
         }
     }
 
@@ -77,6 +79,12 @@ impl RepoInfo {
     pub fn with_version_script(self, value: Option<String>) -> RepoInfo {
         let mut info = self;
         info.version_script = value;
+        info
+    }
+
+    pub fn with_release_branch_prefix(self, value: Option<String>) -> RepoInfo {
+        let mut info = self;
+        info.release_branch_prefix = value;
         info
     }
 }
@@ -160,6 +168,19 @@ impl RepoConfig {
                 match info.version_script {
                     Some(ref value) if value.len() > 0 => Some(value.clone()),
                     _ => None,
+                }
+            }
+        }
+    }
+
+    pub fn release_branch_prefix(&self, repo: &github::Repo, branch: &str) -> String {
+        let default = "release/".to_string();
+        match self.lookup_info(repo, Some(branch)) {
+            None => default,
+            Some(ref info) => {
+                match info.release_branch_prefix {
+                    Some(ref prefix) => prefix.clone(),
+                    None => default,
                 }
             }
         }
