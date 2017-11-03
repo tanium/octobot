@@ -873,6 +873,7 @@ fn test_pull_request_merged_backport_labels() {
             Label::new("other"),
             Label::new("backport-1.0"),
             Label::new("BACKPORT-2.0"),
+            Label::new("BACKport-other-thing"),
             Label::new("non-matching"),
         ]),
     );
@@ -885,7 +886,7 @@ fn test_pull_request_merged_backport_labels() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    let expect_thread = test.expect_will_merge_branches(vec!["release/1.0".into(), "release/2.0".into()]);
+    let expect_thread = test.expect_will_merge_branches(vec!["release/1.0".into(), "release/2.0".into(), "release/other-thing".into()]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::Ok, "pr".into()), resp);
