@@ -13,10 +13,11 @@ class task:
         if is_travis:
             print "travis_fold:start:{}".format(self.title)
         print ">> Starting {}".format(self.title)
+        return self
     def __exit__(self, type, value, traceback):
+        print ">> Ending {}".format(self.title)
         if is_travis:
             print "travis_fold:end:{}".format(self.title)
-        print ">> Ending {}".format(self.title)
 
 def run(cmd, ignore_fail=False, quiet=False):
     print ">> {}".format(cmd)
@@ -33,16 +34,16 @@ if os.path.exists(docker_tmp):
     shutil.rmtree(docker_tmp)
 os.makedirs(docker_out)
 
-with task("Dockerfile.build"):
+with task("Dockerfile.build") as _:
     run("docker build . -f Dockerfile.build -t octobot:build")
-with task("run-tests"):
+with task("run-tests") as _:
     run("docker run -t --privileged --rm octobot:build")
-with task("extract-files"):
+with task("extract-files") as _:
     run("docker rm -f extract", ignore_fail=True, quiet=True)
     run("docker create --name extract octobot:build")
     run("docker cp extract:/usr/src/app/target/release/octobot {}".format(docker_out))
     run("docker cp extract:/usr/src/app/target/release/octobot-passwd {}".format(docker_out))
     run("docker cp extract:/usr/src/app/target/release/octobot-ask-pass {}".format(docker_out))
     run("docker rm -f extract")
-with task("Dockerfile"):
+with task("Dockerfile") as _:
     run("docker build . -t octobot:latest")
