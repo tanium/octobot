@@ -1,12 +1,8 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use http_client::HTTPClient;
+use util;
 use worker;
-
-// the main object for sending messages to slack
-struct Slack {
-    webhook_url: String,
-}
 
 #[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct SlackAttachment {
@@ -61,16 +57,28 @@ impl SlackAttachmentBuilder {
 }
 
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, PartialEq)]
 struct SlackMessage {
     text: String,
     attachments: Vec<SlackAttachment>,
     channel: String,
 }
 
+// the main object for sending messages to slack
+struct Slack {
+    webhook_url: String,
+    recent_messages: Mutex<Vec<SlackMessage>>,
+}
+
+const TRIM_MESSAGES_AT: usize = 200;
+const TRIM_MESSAGES_TO: usize = 20;
+
 impl Slack {
     pub fn new(webhook_url: &str) -> Slack {
-        Slack { webhook_url: webhook_url.into() }
+        Slack {
+            webhook_url: webhook_url.into() ,
+            recent_messages: Mutex::new(Vec::new()),
+        }
     }
 
     fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Result<(), String> {
@@ -80,6 +88,11 @@ impl Slack {
             channel: channel.to_string(),
         };
 
+        if !self.is_unique(&slack_msg) {
+            info!("Skipping duplicate message to {}", channel);
+            return Ok(());
+        }
+
         info!("Sending message to #{}", channel);
 
         let client = HTTPClient::new(&self.webhook_url).with_headers(hashmap!{
@@ -87,6 +100,11 @@ impl Slack {
             });
 
         client.post_void("", &slack_msg)
+    }
+
+    fn is_unique(&self, req: &SlackMessage) -> bool {
+        let mut recent_messages = self.recent_messages.lock().unwrap();
+        util::check_unique_event(req.clone(), &mut *recent_messages, TRIM_MESSAGES_AT, TRIM_MESSAGES_TO)
     }
 }
 
