@@ -25,8 +25,10 @@ use server::sessions::Sessions;
 pub fn start(config: Config) -> Result<(), String> {
     let config = Arc::new(config);
 
+    let mut main_threads = vec![];
+
     let (core_tx, core_rx) = mpsc::channel();
-    let core_thread = thread::spawn(move || {
+    main_threads.push(thread::spawn(move || {
         let mut core = Core::new().expect("core");
 
         core_tx.send(core.remote()).expect("send core handle");
@@ -34,7 +36,7 @@ pub fn start(config: Config) -> Result<(), String> {
         loop {
             core.turn(None);
         }
-    });
+    }));
     let core_remote = core_rx.recv().expect("recv core handle");
 
     let github: Arc<github::api::Session> =
@@ -88,7 +90,7 @@ pub fn start(config: Config) -> Result<(), String> {
 
     match tls {
         Some(tls) => {
-            thread::spawn(move || {
+            main_threads.push(thread::spawn(move || {
                 let server =
                     tokio_proto::TcpServer::new(tokio_rustls::proto::Server::new(Http::new(), tls), https_addr.clone());
                 info!("Listening (HTTPS) on {}", https_addr);
@@ -100,16 +102,16 @@ pub fn start(config: Config) -> Result<(), String> {
                         core_remote.clone(),
                     ))
                 });
-            });
-            thread::spawn(move || {
+            }));
+            main_threads.push(thread::spawn(move || {
                 let server = Http::new().bind(&http_addr, move || Ok(RedirectService::new(https_addr.port()))).unwrap();
 
                 info!("Listening (HTTP Redirect) on {}", http_addr);
                 server.run().unwrap();
-            });
+            }));
         }
         None => {
-            thread::spawn(move || {
+            main_threads.push(thread::spawn(move || {
                 let server =
                     Http::new()
                         .bind(&http_addr, move || {
@@ -124,12 +126,14 @@ pub fn start(config: Config) -> Result<(), String> {
 
                 info!("Listening (HTTP) on {}", http_addr);
                 server.run().unwrap();
-            });
+            }));
         }
     };
 
-    // run the event loop!
-    core_thread.join().unwrap();
+    // run the main threads!
+    for t in main_threads {
+        t.join().unwrap();
+    }
 
     Ok(())
 }
