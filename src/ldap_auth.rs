@@ -10,7 +10,18 @@ pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> io::Result<bool> {
         return Ok(false);
     }
 
-    let user_filter = format!("({}={})", config.userid_attribute, ldap_escape(user).as_ref());
+    let user_safe = ldap_escape(user);
+    let user_filters = config.userid_attributes.iter().map(|a| format!("({}={})", a, user_safe.as_ref())).collect::<Vec<_>>();
+
+    let user_filter;
+    if user_filters.len() == 0 {
+        info!("Cannot authenticate without userid attributes");
+        return Ok(false);
+    } else if user_filters.len() == 1 {
+        user_filter = user_filters[0].clone();
+    } else {
+        user_filter = format!("(|{})", user_filters.join(""));
+    }
 
     // search for the user's DN
     let results = search(config, Some(&user_filter), 1)?;
