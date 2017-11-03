@@ -7,6 +7,7 @@ use hyper::StatusCode;
 use hyper::server::{Request, Response};
 use regex::Regex;
 use serde_json;
+use tokio_core::reactor::Remote;
 
 use config::Config;
 use force_push::{self, ForcePushRequest};
@@ -62,11 +63,12 @@ impl GithubHandlerState {
         config: Arc<Config>,
         github_session: Arc<github::api::Session>,
         jira_session: Option<Arc<jira::api::Session>>,
+        core_remote: Remote,
     ) -> GithubHandlerState {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_session.clone(), config.clone()));
 
-        let slack_worker = slack::new_worker(&config.main.slack_webhook_url);
+        let slack_worker = slack::new_worker(core_remote, &config.main.slack_webhook_url);
         let pr_merge_worker = pr_merge::new_worker(
             MAX_CONCURRENT_MERGES,
             config.clone(),
@@ -108,8 +110,9 @@ impl GithubHandler {
         config: Arc<Config>,
         github_session: Arc<github::api::Session>,
         jira_session: Option<Arc<jira::api::Session>>,
+        core_remote: Remote,
     ) -> Box<GithubHandler> {
-        let state = GithubHandlerState::new(config, github_session, jira_session);
+        let state = GithubHandlerState::new(config, github_session, jira_session, core_remote);
         GithubHandler::from_state(Arc::new(state))
     }
 

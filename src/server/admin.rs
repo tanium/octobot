@@ -8,6 +8,7 @@ use hyper::StatusCode;
 use hyper::header::ContentType;
 use hyper::server::{Request, Response};
 use serde_json;
+use tokio_core::reactor::Remote;
 
 use config::{Config, JiraConfig};
 use jira;
@@ -194,11 +195,15 @@ impl Handler for UpdateRepos {
 
 pub struct MergeVersions {
     config: Arc<Config>,
+    core_remote: Remote,
 }
 
 impl MergeVersions {
-    pub fn new(config: Arc<Config>) -> Box<MergeVersions> {
-        Box::new(MergeVersions { config: config })
+    pub fn new(config: Arc<Config>, core_remote: Remote) -> Box<MergeVersions> {
+        Box::new(MergeVersions {
+            config: config,
+            core_remote: core_remote,
+        })
     }
 }
 
@@ -220,6 +225,7 @@ struct MergeVersionsResp {
 impl Handler for MergeVersions {
     fn handle(&self, req: Request) -> FutureResponse {
         let config = self.config.clone();
+        let core_remote = self.core_remote.clone();
         parse_json(req, move |merge_req: MergeVersionsReq| {
             // make a copy of the jira config so we can modify the auth
             let mut jira_config: JiraConfig = match config.jira {
@@ -238,7 +244,7 @@ impl Handler for MergeVersions {
                 }
             }
 
-            let jira_sess = match jira::api::JiraSession::new(&jira_config) {
+            let jira_sess = match jira::api::JiraSession::new(core_remote, &jira_config) {
                 Ok(j) => j,
                 Err(e) => {
                     return Response::new().with_status(StatusCode::BadRequest).with_body(format!(

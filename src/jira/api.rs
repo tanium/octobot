@@ -1,9 +1,9 @@
-
 use base64;
 use http_client::HTTPClient;
 use regex::Regex;
 use serde_json;
 use std::collections::HashMap;
+use tokio_core::reactor::Remote;
 use url::percent_encoding::{DEFAULT_ENCODE_SET, utf8_percent_encode};
 
 use config::JiraConfig;
@@ -55,12 +55,12 @@ fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String, String> {
 }
 
 impl JiraSession {
-    pub fn new(config: &JiraConfig) -> Result<JiraSession, String> {
+    pub fn new(core_remote: Remote, config: &JiraConfig) -> Result<JiraSession, String> {
         let jira_base = config.base_url();
         let api_base = format!("{}/rest/api/2", jira_base);
 
         let auth = base64::encode(format!("{}:{}", config.username, config.password).as_bytes());
-        let client = HTTPClient::new(&api_base).with_headers(hashmap!{
+        let client = HTTPClient::new(core_remote, &api_base).with_headers(hashmap!{
                 "Accept" => "application/json".to_string(),
                 "Content-Type" => "application/json".to_string(),
                 "Authorization" => format!("Basic {}", auth),
@@ -219,7 +219,7 @@ impl Session for JiraSession {
             if let Some(ref field_id) = self.pending_versions_field_id {
                 let jql = format!("(project = {}) and \"{}\" is not EMPTY", project, field);
                 let search = self.client.get::<serde_json::Value>(
-                    &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, DEFAULT_ENCODE_SET))
+                    &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, DEFAULT_ENCODE_SET)),
                 )?;
                 return Ok(parse_pending_versions(&search, &field_id));
             }

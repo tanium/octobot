@@ -1,3 +1,4 @@
+use tokio_core::reactor::Remote;
 
 use github::models::*;
 use http_client::HTTPClient;
@@ -54,14 +55,14 @@ pub struct GithubSession {
 }
 
 impl GithubSession {
-    pub fn new(host: &str, token: &str) -> Result<GithubSession, String> {
+    pub fn new(core_remote: Remote, host: &str, token: &str) -> Result<GithubSession, String> {
         let api_base = if host == "github.com" {
             "https://api.github.com".to_string()
         } else {
             format!("https://{}/api/v3", host)
         };
 
-        let client = HTTPClient::new(&api_base).with_headers(hashmap!{
+        let client = HTTPClient::new(core_remote, &api_base).with_headers(hashmap!{
                 "Accept" => "application/vnd.github.v3+json".to_string(),
                 "Content-Type" => "application/json".to_string(),
                 "Authorization" => format!("Token {}", token),
@@ -222,7 +223,7 @@ impl Session for GithubSession {
     fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<(), String> {
         let _: Status = self.client.post(
             &format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name),
-            status
+            status,
         )?;
         Ok(())
     }

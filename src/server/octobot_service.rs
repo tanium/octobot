@@ -4,6 +4,7 @@ use futures::future::{self, Future};
 use hyper;
 use hyper::server::{Request, Response, Service};
 use time;
+use tokio_core::reactor::Remote;
 
 use config::Config;
 use server::admin;
@@ -18,6 +19,7 @@ pub struct OctobotService {
     config: Arc<Config>,
     ui_sessions: Arc<Sessions>,
     github_handler_state: Arc<GithubHandlerState>,
+    core_remote: Remote,
 }
 
 impl OctobotService {
@@ -25,11 +27,13 @@ impl OctobotService {
         config: Arc<Config>,
         ui_sessions: Arc<Sessions>,
         github_handler_state: Arc<GithubHandlerState>,
+        core_remote: Remote,
     ) -> OctobotService {
         OctobotService {
             config: config,
             ui_sessions: ui_sessions,
             github_handler_state: github_handler_state,
+            core_remote: core_remote,
         }
     }
 }
@@ -77,7 +81,9 @@ impl OctobotService {
                     (&Post, "/api/users") => admin::UpdateUsers::new(self.config.clone()),
                     (&Get, "/api/repos") => admin::GetRepos::new(self.config.clone()),
                     (&Post, "/api/repos") => admin::UpdateRepos::new(self.config.clone()),
-                    (&Post, "/api/merge-versions") => admin::MergeVersions::new(self.config.clone()),
+                    (&Post, "/api/merge-versions") => {
+                        admin::MergeVersions::new(self.config.clone(), self.core_remote.clone())
+                    }
 
                     _ => Box::new(NotFoundHandler),
                 },
