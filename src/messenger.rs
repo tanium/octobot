@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use config::Config;
 use github;
@@ -33,14 +33,12 @@ pub trait Messenger {
 struct SlackMessenger {
     pub config: Arc<Config>,
     pub slack: WorkSender<SlackRequest>,
-    recent_messages: Mutex<Vec<SlackRequest>>,
 }
 
 pub fn new(config: Arc<Config>, slack: WorkSender<SlackRequest>) -> Box<Messenger> {
     Box::new(SlackMessenger {
         slack: slack,
         config: config.clone(),
-        recent_messages: Mutex::new(Vec::new()),
     })
 }
 
@@ -89,9 +87,6 @@ impl Messenger for SlackMessenger {
     }
 }
 
-const TRIM_MESSAGES_AT: usize = 200;
-const TRIM_MESSAGES_TO: usize = 20;
-
 impl SlackMessenger {
     fn send_to_slack(&self, channel: &str, msg: &str, attachments: &Vec<SlackAttachment>) {
         // user desires peace and quiet. do not disturb!
@@ -99,13 +94,7 @@ impl SlackMessenger {
             return;
         }
 
-        let req = slack::req(channel, msg, attachments.clone());
-        if !self.is_unique(&req) {
-            info!("Skipping duplicate message: {}", msg);
-            return;
-        }
-
-        if let Err(e) = self.slack.send(req) {
+        if let Err(e) = self.slack.send(slack::req(channel, msg, attachments.clone())) {
             error!("Error sending to slack worker: {}", e);
         }
     }
@@ -121,10 +110,5 @@ impl SlackMessenger {
             let slack_ref = self.config.users().slack_user_ref(user.login(), repo);
             self.send_to_slack(slack_ref.as_str(), msg, attachments);
         }
-    }
-
-    fn is_unique(&self, req: &SlackRequest) -> bool {
-        let mut recent_messages = self.recent_messages.lock().unwrap();
-        util::check_unique_event(req.clone(), &mut *recent_messages, TRIM_MESSAGES_AT, TRIM_MESSAGES_TO)
     }
 }
