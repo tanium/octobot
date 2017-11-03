@@ -764,7 +764,7 @@ impl GithubEventHandler {
             return;
         }
 
-        let re = Regex::new(r"(?i)backport-([\d\.]+)").unwrap();
+        let re = Regex::new(r"(?i)backport-(.+)").unwrap();
         let backport = match re.captures(&label.name) {
             Some(c) => c[1].to_string(),
             None => return,
