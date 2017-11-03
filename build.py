@@ -35,9 +35,9 @@ os.makedirs(docker_out)
 
 with task("Dockerfile.build"):
     run("docker build . -f Dockerfile.build -t octobot:build")
-with task("run tests"):
+with task("run-tests"):
     run("docker run -t --privileged --rm octobot:build")
-with task("extract files"):
+with task("extract-files"):
     run("docker rm -f extract", ignore_fail=True, quiet=True)
     run("docker create --name extract octobot:build")
     run("docker cp extract:/usr/src/app/target/release/octobot {}".format(docker_out))
