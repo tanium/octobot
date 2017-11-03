@@ -2,12 +2,13 @@ use std::fs;
 use std::io;
 use std::io::Seek;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 use std::thread;
 
 use hyper::server::Http;
 use rustls;
 use rustls::internal::pemfile;
+use tokio_core::reactor::Core;
 use tokio_proto;
 use tokio_rustls;
 
@@ -24,14 +25,27 @@ use server::sessions::Sessions;
 pub fn start(config: Config) -> Result<(), String> {
     let config = Arc::new(config);
 
-    let github: Arc<github::api::Session> = match GithubSession::new(&config.github.host, &config.github.api_token) {
-        Ok(s) => Arc::new(s),
-        Err(e) => panic!("Error initiating github session: {}", e),
-    };
+    let (core_tx, core_rx) = mpsc::channel();
+    let core_thread = thread::spawn(move || {
+        let mut core = Core::new().expect("core");
+
+        core_tx.send(core.remote()).expect("send core handle");
+
+        loop {
+            core.turn(None);
+        }
+    });
+    let core_remote = core_rx.recv().expect("recv core handle");
+
+    let github: Arc<github::api::Session> =
+        match GithubSession::new(core_remote.clone(), &config.github.host, &config.github.api_token) {
+            Ok(s) => Arc::new(s),
+            Err(e) => panic!("Error initiating github session: {}", e),
+        };
 
     let jira: Option<Arc<jira::api::Session>>;
     if let Some(ref jira_config) = config.jira {
-        jira = match JiraSession::new(&jira_config) {
+        jira = match JiraSession::new(core_remote.clone(), &jira_config) {
             Ok(s) => Some(Arc::new(s)),
             Err(e) => panic!("Error initiating jira session: {}", e),
         };
@@ -69,38 +83,53 @@ pub fn start(config: Config) -> Result<(), String> {
     }
 
     let ui_sessions = Arc::new(Sessions::new());
-    let github_handler_state = Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone()));
+    let github_handler_state =
+        Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone(), core_remote.clone()));
 
     match tls {
         Some(tls) => {
-            let https = thread::spawn(move || {
+            thread::spawn(move || {
                 let server =
                     tokio_proto::TcpServer::new(tokio_rustls::proto::Server::new(Http::new(), tls), https_addr.clone());
                 info!("Listening (HTTPS) on {}", https_addr);
                 server.serve(move || {
-                    Ok(OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone()))
+                    Ok(OctobotService::new(
+                        config.clone(),
+                        ui_sessions.clone(),
+                        github_handler_state.clone(),
+                        core_remote.clone(),
+                    ))
                 });
             });
-            let http = thread::spawn(move || {
+            thread::spawn(move || {
                 let server = Http::new().bind(&http_addr, move || Ok(RedirectService::new(https_addr.port()))).unwrap();
 
                 info!("Listening (HTTP Redirect) on {}", http_addr);
                 server.run().unwrap();
             });
-            https.join().unwrap();
-            http.join().unwrap();
         }
         None => {
-            let server = Http::new()
-                .bind(&http_addr, move || {
-                    Ok(OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone()))
-                })
-                .unwrap();
+            thread::spawn(move || {
+                let server =
+                    Http::new()
+                        .bind(&http_addr, move || {
+                            Ok(OctobotService::new(
+                                config.clone(),
+                                ui_sessions.clone(),
+                                github_handler_state.clone(),
+                                core_remote.clone(),
+                            ))
+                        })
+                        .unwrap();
 
-            info!("Listening (HTTP) on {}", http_addr);
-            server.run().unwrap();
+                info!("Listening (HTTP) on {}", http_addr);
+                server.run().unwrap();
+            });
         }
     };
+
+    // run the event loop!
+    core_thread.join().unwrap();
 
     Ok(())
 }

@@ -1,6 +1,6 @@
-
 use futures::Stream;
 use futures::future::Future;
+use futures::sync::oneshot;
 use hyper;
 use hyper::{Method, Request};
 use hyper::header::UserAgent;
@@ -9,22 +9,27 @@ use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use serde_json;
 use std::collections::HashMap;
-use tokio_core::reactor::Core;
+use tokio_core::reactor::Remote;
 
 pub struct HTTPClient {
     api_base: String,
     headers: HashMap<&'static str, String>,
+    core_remote: Remote,
 }
 
 struct InternalResp {
-    data: Vec<u8>,
+    data: hyper::Chunk,
 }
 
+type InternalResponseResult = Result<InternalResp, String>;
+type FutureInternalResponse = oneshot::Receiver<InternalResponseResult>;
+
 impl HTTPClient {
-    pub fn new(api_base: &str) -> HTTPClient {
+    pub fn new(core_remote: Remote, api_base: &str) -> HTTPClient {
         HTTPClient {
             api_base: api_base.into(),
             headers: HashMap::new(),
+            core_remote: core_remote,
         }
     }
 
@@ -64,7 +69,7 @@ impl HTTPClient {
         path: &str,
         body: Option<&U>,
     ) -> Result<T, String> {
-        let res = self.request(method, path, body)?;
+        let res = self.request_sync(method, path, body)?;
 
         let obj: T = match serde_json::from_slice(&res.data) {
             Ok(obj) => obj,
@@ -77,11 +82,25 @@ impl HTTPClient {
     }
 
     fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<(), String> {
-        self.request(method, path, body)?;
+        self.request_sync(method, path, body)?;
         Ok(())
     }
 
-    fn request<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<InternalResp, String> {
+    fn request_sync<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<InternalResp, String> {
+        match self.request_async(method, path, body).wait() {
+            Ok(Ok(r)) => Ok(r),
+            Ok(Err(e)) => Err(e),
+            Err(e) => return Err(format!("{}", e)),
+        }
+    }
+
+    fn request_async<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> FutureInternalResponse {
+        let (tx, rx) = oneshot::channel::<InternalResponseResult>();
+
+        let send_future = |it| if let Err(_) = tx.send(it) {
+            error!("Error sending on future channel");
+        };
+
         let url;
         if path.is_empty() {
             url = self.api_base.clone();
@@ -92,71 +111,69 @@ impl HTTPClient {
         } else {
             url = self.api_base.clone() + "/" + path;
         }
-        let url = match url.parse() {
+        let url: hyper::Uri = match url.parse() {
             Ok(u) => u,
-            Err(e) => return Err(format!("Error: {}", e)),
+            Err(e) => {
+                let _ = send_future(Err(format!("Error: {}", e)));
+                return rx;
+            }
         };
 
-        let body_json: String;
+        let headers = self.headers.clone();
 
-        let mut core = match Core::new() {
-            Ok(c) => c,
-            Err(e) => return Err(format!("Error constructing Core: {}", e)),
-        };
-
-        // TODO: I wonder if these objects are expensive to create and we should be sharing them across requests?
-        let https = HttpsConnector::new(4, &core.handle());
-        let client = hyper::Client::configure().connector(https).build(&core.handle());
         let mut req = Request::new(method, url);
         req.headers_mut().set(UserAgent::new("octobot"));
 
-        for (k, v) in &self.headers {
+        for (k, v) in &headers {
             req.headers_mut().set_raw(k.clone(), v.clone());
         }
 
         if let Some(body) = body {
-            body_json = match serde_json::to_string(&body) {
+            let body_json = match serde_json::to_string(&body) {
                 Ok(j) => j,
-                Err(e) => return Err(format!("Error json-encoding body: {}", e)),
+                Err(e) => {
+                    send_future(Err(format!("Error json-encoding body: {}", e)));
+                    return rx;
+                }
             };
             req.set_body(body_json)
         }
 
-        let work = client.request(req).and_then(|res| {
-            let status = res.status();
-            res.body()
-                .collect()
-                .and_then(move |chunk| {
-                    let mut buffer: Vec<u8> = Vec::new();
-                    for i in chunk {
-                        buffer.append(&mut i.to_vec());
-                    }
+        let path = path.to_string();
 
-                    if buffer.len() == 0 {
-                        buffer = b"{}".to_vec();
-                    }
-                    Ok(buffer)
+        self.core_remote.spawn(move |handle| {
+            // TODO: I wonder if these objects are expensive to create and we should be sharing them across requests?
+            let https = HttpsConnector::new(4, &handle);
+            let client = hyper::Client::configure().connector(https).build(&handle);
+
+            client
+                .request(req)
+                .map_err(|e| {
+                    error!("Error in HTTP request: {}", e);
                 })
-                .map(move |buffer| {
-                    debug!("Response: HTTP {}\n---\n{}\n---", status, String::from_utf8_lossy(&buffer));
-
-                    if !status.is_success() {
-                        return Err(format!(
-                            "Failed request to {}: HTTP {}\n---\n{}\n---",
-                            path,
-                            status,
-                            String::from_utf8_lossy(&buffer)
-                        ));
-                    }
-
-                    return Ok(InternalResp { data: buffer });
+                .and_then(|res| {
+                    let status = res.status();
+                    res.body()
+                        .concat2()
+                        .map_err(|e| {
+                            error!("Error in HTTP request: {}", e);
+                        })
+                        .map(move |buffer| {
+                            debug!("Response: HTTP {}\n---\n{}\n---", status, String::from_utf8_lossy(&buffer));
+                            if !status.is_success() {
+                                send_future(Err(format!(
+                                    "Failed request to {}: HTTP {}\n---\n{}\n---",
+                                    path,
+                                    status,
+                                    String::from_utf8_lossy(&buffer)
+                                )));
+                            } else {
+                                send_future(Ok(InternalResp { data: buffer }));
+                            }
+                        })
                 })
         });
 
-        match core.run(work) {
-            Ok(Ok(r)) => Ok(r),
-            Ok(Err(e)) => return Err(e),
-            Err(e) => return Err(format!("Error sending request: {:?}", e)),
-        }
+        rx
     }
 }

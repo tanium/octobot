@@ -1,12 +1,9 @@
 use std::sync::Arc;
 
+use tokio_core::reactor::Remote;
+
 use http_client::HTTPClient;
 use worker;
-
-// the main object for sending messages to slack
-struct Slack {
-    webhook_url: String,
-}
 
 #[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct SlackAttachment {
@@ -68,9 +65,18 @@ struct SlackMessage {
     channel: String,
 }
 
+// the main object for sending messages to slack
+struct Slack {
+    client: HTTPClient,
+}
+
 impl Slack {
-    pub fn new(webhook_url: &str) -> Slack {
-        Slack { webhook_url: webhook_url.into() }
+    pub fn new(core_remote: Remote, webhook_url: &str) -> Slack {
+        let client = HTTPClient::new(core_remote, webhook_url).with_headers(hashmap!{
+                "Content-Type" => "application/json".to_string(),
+            });
+
+        Slack { client: client }
     }
 
     fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Result<(), String> {
@@ -82,11 +88,7 @@ impl Slack {
 
         info!("Sending message to #{}", channel);
 
-        let client = HTTPClient::new(&self.webhook_url).with_headers(hashmap!{
-                "Content-Type" => "application/json".to_string(),
-            });
-
-        client.post_void("", &slack_msg)
+        self.client.post_void("", &slack_msg)
     }
 }
 
@@ -109,8 +111,8 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
     }
 }
 
-pub fn new_worker(webhook_url: &str) -> worker::Worker<SlackRequest> {
-    worker::Worker::new(Runner { slack: Arc::new(Slack::new(webhook_url)) })
+pub fn new_worker(core_remote: Remote, webhook_url: &str) -> worker::Worker<SlackRequest> {
+    worker::Worker::new(Runner { slack: Arc::new(Slack::new(core_remote, webhook_url)) })
 }
 
 impl worker::Runner<SlackRequest> for Runner {
