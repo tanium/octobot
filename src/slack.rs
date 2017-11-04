@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use futures::{Future, future};
 use tokio_core::reactor::Remote;
 
 use http_client::HTTPClient;
@@ -59,8 +60,8 @@ impl SlackAttachmentBuilder {
 }
 
 
-#[derive(Serialize, Clone, PartialEq)]
-struct SlackMessage {
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct SlackMessage {
     text: String,
     attachments: Vec<SlackAttachment>,
     channel: String,
@@ -81,27 +82,28 @@ impl Slack {
                 "Content-Type" => "application/json".to_string(),
             });
 
-        Slack { 
+        Slack {
             client: client,
             recent_messages: Mutex::new(Vec::new()),
         }
     }
 
-    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Result<(), String> {
-        let slack_msg = SlackMessage {
-            text: msg.to_string(),
-            attachments: attachments,
-            channel: channel.to_string(),
-        };
-
-        if !self.is_unique(&slack_msg) {
-            info!("Skipping duplicate message to {}", channel);
-            return Ok(());
+    fn send(&self, msg: SlackMessage) {
+        if !self.is_unique(&msg) {
+            info!("Skipping duplicate message to {}", msg.channel);
+            return;
         }
 
-        info!("Sending message to #{}", channel);
+        info!("Sending message to #{}", msg.channel);
 
-        self.client.post_void("", &slack_msg)
+        self.client.spawn(self.client.post_void_async("", &msg).then(|res| {
+            match res {
+                Ok(Ok(_)) => info!("Successfully sent slack message"),
+                Ok(Err(e)) => error!("Error sending slack message: {}", e),
+                Err(_) => error!("Unknown error sending slack message"),
+            };
+            future::ok::<(), ()>(())
+        }));
     }
 
     fn is_unique(&self, req: &SlackMessage) -> bool {
@@ -111,10 +113,8 @@ impl Slack {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct SlackRequest {
-    pub channel: String,
-    pub msg: String,
-    pub attachments: Vec<SlackAttachment>,
+pub enum SlackRequest {
+    Message(SlackMessage),
 }
 
 struct Runner {
@@ -122,11 +122,11 @@ struct Runner {
 }
 
 pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> SlackRequest {
-    SlackRequest {
+    SlackRequest::Message(SlackMessage {
         channel: channel.into(),
-        msg: msg.into(),
+        text: msg.into(),
         attachments: attachments,
-    }
+    })
 }
 
 pub fn new_worker(core_remote: Remote, webhook_url: &str) -> worker::Worker<SlackRequest> {
@@ -135,8 +135,8 @@ pub fn new_worker(core_remote: Remote, webhook_url: &str) -> worker::Worker<Slac
 
 impl worker::Runner<SlackRequest> for Runner {
     fn handle(&self, req: SlackRequest) {
-        if let Err(e) = self.slack.send(&req.channel, &req.msg, req.attachments.clone()) {
-            error!("Error sending to slack: {}", e);
+        match req {
+            SlackRequest::Message(msg) => self.slack.send(msg),
         }
     }
 }

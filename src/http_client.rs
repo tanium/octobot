@@ -25,7 +25,7 @@ type InternalResponseResult = Result<InternalResp, String>;
 type FutureInternalResponse = oneshot::Receiver<InternalResponseResult>;
 
 pub type Response<T> = Result<T, String>;
-pub type FutureResponse<T> = Box<Future<Item = Response<T>, Error = ()>>;
+pub type FutureResponse<T> = Box<Future<Item = Response<T>, Error = ()> + Send + 'static>;
 
 impl HTTPClient {
     pub fn new(core_remote: Remote, api_base: &str) -> HTTPClient {
@@ -88,6 +88,15 @@ impl HTTPClient {
 
     pub fn delete_void_async(&self, path: &str) -> FutureResponse<()> {
         self.request_void_async::<()>(Method::Delete, path, None)
+    }
+
+    // `spawn` is necesary for driving futures returned by async methods and any combinations
+    // applied on top of them w/o needing to `wait` on the result
+    pub fn spawn<F>(&self, fut: F)
+    where
+        F: Future<Item = (), Error = ()> + Send + 'static,
+    {
+        self.core_remote.spawn(move |_| fut);
     }
 
     fn request_de<T: DeserializeOwned, U: Serialize>(
