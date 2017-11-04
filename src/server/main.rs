@@ -25,10 +25,12 @@ use server::sessions::Sessions;
 pub fn start(config: Config) -> Result<(), String> {
     let config = Arc::new(config);
 
+    let num_http_threads = config.main.num_http_threads.unwrap_or(20);
+
     let mut main_threads = vec![];
 
     let (core_tx, core_rx) = mpsc::channel();
-    main_threads.push(thread::spawn(move || {
+    main_threads.push(thread::Builder::new().name("octobot-core".to_string()).spawn(move || {
         let mut core = Core::new().expect("core");
 
         core_tx.send(core.remote()).expect("send core handle");
@@ -88,52 +90,40 @@ pub fn start(config: Config) -> Result<(), String> {
     let github_handler_state =
         Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone(), core_remote.clone()));
 
+    let main_service = move || {
+        Ok(OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone(), core_remote.clone()))
+    };
     match tls {
         Some(tls) => {
-            main_threads.push(thread::spawn(move || {
-                let server =
+            main_threads.push(thread::Builder::new().name("https-main".to_string()).spawn(move || {
+                let mut server =
                     tokio_proto::TcpServer::new(tokio_rustls::proto::Server::new(Http::new(), tls), https_addr.clone());
+                server.threads(num_http_threads);
                 info!("Listening (HTTPS) on {}", https_addr);
-                server.serve(move || {
-                    Ok(OctobotService::new(
-                        config.clone(),
-                        ui_sessions.clone(),
-                        github_handler_state.clone(),
-                        core_remote.clone(),
-                    ))
-                });
+                server.serve(main_service);
             }));
-            main_threads.push(thread::spawn(move || {
+            main_threads.push(thread::Builder::new().name("http-main".to_string()).spawn(move || {
                 let server = Http::new().bind(&http_addr, move || Ok(RedirectService::new(https_addr.port()))).unwrap();
-
                 info!("Listening (HTTP Redirect) on {}", http_addr);
                 server.run().unwrap();
             }));
         }
         None => {
-            main_threads.push(thread::spawn(move || {
-                let server =
-                    Http::new()
-                        .bind(&http_addr, move || {
-                            Ok(OctobotService::new(
-                                config.clone(),
-                                ui_sessions.clone(),
-                                github_handler_state.clone(),
-                                core_remote.clone(),
-                            ))
-                        })
-                        .unwrap();
-
+            main_threads.push(thread::Builder::new().name("http-main".to_string()).spawn(move || {
+                let mut server = tokio_proto::TcpServer::new(Http::new(), http_addr.clone());
+                server.threads(num_http_threads);
                 info!("Listening (HTTP) on {}", http_addr);
-                server.run().unwrap();
+                server.serve(main_service);
             }));
         }
     };
 
     // run the main threads!
-    for t in main_threads {
-        t.join().unwrap();
-    }
+    main_threads
+        .into_iter()
+        .map(|t| t.unwrap())
+        .map(|t| t.join().unwrap())
+        .collect::<Vec<_>>();
 
     Ok(())
 }

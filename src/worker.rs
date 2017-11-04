@@ -52,18 +52,18 @@ impl<T: Send + 'static> Drop for Worker<T> {
 }
 
 impl<T: Send + 'static> Worker<T> {
-    pub fn new<R: Runner<T> + 'static>(handler: R) -> Worker<T> {
+    pub fn new<R: Runner<T> + 'static>(name: &str, handler: R) -> Worker<T> {
         let (tx, rx) = channel();
 
         Worker {
             sender: Mutex::new(tx),
-            thread: Some(thread::spawn(move || loop {
+            thread: Some(thread::Builder::new().name(name.to_string() + "-runner").spawn(move || loop {
                 match rx.recv() {
                     Ok(WorkMessage::Stop) => break,
                     Ok(WorkMessage::WorkItem(req)) => handler.handle(req),
                     Err(e) => error!("Error receiving message: {}", e),
                 };
-            })),
+            }).unwrap()),
         }
     }
 

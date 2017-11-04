@@ -5,7 +5,7 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
-use threadpool::ThreadPool;
+use threadpool::{self, ThreadPool};
 
 use config::{Config, JiraConfig};
 use git::Git;
@@ -178,14 +178,20 @@ pub fn new_worker(
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
 ) -> worker::Worker<RepoVersionRequest> {
-    worker::Worker::new(Runner {
-        config: config,
-        github_session: github_session,
-        jira_session: jira_session,
-        clone_mgr: clone_mgr,
-        slack: slack,
-        thread_pool: ThreadPool::new(max_concurrency),
-    })
+    worker::Worker::new(
+        "repo-version",
+        Runner {
+            config: config,
+            github_session: github_session,
+            jira_session: jira_session,
+            clone_mgr: clone_mgr,
+            slack: slack,
+            thread_pool: threadpool::Builder::new()
+                .num_threads(max_concurrency)
+                .thread_name("repo-version".to_string())
+                .build(),
+        },
+    )
 }
 
 impl worker::Runner<RepoVersionRequest> for Runner {
