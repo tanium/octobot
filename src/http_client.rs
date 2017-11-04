@@ -1,5 +1,5 @@
 use futures::Stream;
-use futures::future::Future;
+use futures::future::{self, Future};
 use futures::sync::oneshot;
 use hyper;
 use hyper::{Method, Request};
@@ -24,6 +24,9 @@ struct InternalResp {
 type InternalResponseResult = Result<InternalResp, String>;
 type FutureInternalResponse = oneshot::Receiver<InternalResponseResult>;
 
+pub type Response<T> = Result<T, String>;
+pub type FutureResponse<T> = Box<Future<Item = Response<T>, Error = ()>>;
+
 impl HTTPClient {
     pub fn new(core_remote: Remote, api_base: &str) -> HTTPClient {
         HTTPClient {
@@ -39,28 +42,52 @@ impl HTTPClient {
         c
     }
 
-    pub fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub fn get<T: DeserializeOwned>(&self, path: &str) -> Response<T> {
         self.request_de::<T, ()>(Method::Get, path, None)
     }
 
-    pub fn post<T: DeserializeOwned, U: Serialize>(&self, path: &str, body: &U) -> Result<T, String> {
+    pub fn get_async<T: DeserializeOwned>(&self, path: &str) -> FutureResponse<T> {
+        self.request_de_async::<T, ()>(Method::Get, path, None)
+    }
+
+    pub fn post<T: DeserializeOwned, U: Serialize>(&self, path: &str, body: &U) -> Response<T> {
         self.request_de::<T, U>(Method::Post, path, Some(body))
     }
 
-    pub fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<(), String> {
+    pub fn post_async<T: DeserializeOwned, U: Serialize>(&self, path: &str, body: &U) -> FutureResponse<T> {
+        self.request_de_async::<T, U>(Method::Post, path, Some(body))
+    }
+
+    pub fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Response<()> {
         self.request_void::<U>(Method::Post, path, Some(body))
     }
 
-    pub fn put<T: DeserializeOwned, U: Serialize>(&self, path: &str, body: &U) -> Result<T, String> {
+    pub fn post_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResponse<()> {
+        self.request_void_async::<U>(Method::Post, path, Some(body))
+    }
+
+    pub fn put<T: DeserializeOwned, U: Serialize>(&self, path: &str, body: &U) -> Response<T> {
         self.request_de::<T, U>(Method::Put, path, Some(body))
     }
 
-    pub fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<(), String> {
+    pub fn put_async<T: DeserializeOwned, U: Serialize>(&self, path: &str, body: &U) -> FutureResponse<T> {
+        self.request_de_async::<T, U>(Method::Put, path, Some(body))
+    }
+
+    pub fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Response<()> {
         self.request_void::<U>(Method::Put, path, Some(body))
     }
 
-    pub fn delete_void(&self, path: &str) -> Result<(), String> {
+    pub fn put_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResponse<()> {
+        self.request_void_async::<U>(Method::Put, path, Some(body))
+    }
+
+    pub fn delete_void(&self, path: &str) -> Response<()> {
         self.request_void::<()>(Method::Delete, path, None)
+    }
+
+    pub fn delete_void_async(&self, path: &str) -> FutureResponse<()> {
+        self.request_void_async::<()>(Method::Delete, path, None)
     }
 
     fn request_de<T: DeserializeOwned, U: Serialize>(
@@ -68,30 +95,57 @@ impl HTTPClient {
         method: Method,
         path: &str,
         body: Option<&U>,
-    ) -> Result<T, String> {
-        let res = self.request_sync(method, path, body)?;
-
-        let obj: T = match serde_json::from_slice(&res.data) {
-            Ok(obj) => obj,
-            Err(e) => {
-                return Err(format!("Could not parse response: {}\n---\n{}\n---", e, String::from_utf8_lossy(&res.data)))
-            }
-        };
-
-        Ok(obj)
-    }
-
-    fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<(), String> {
-        self.request_sync(method, path, body)?;
-        Ok(())
-    }
-
-    fn request_sync<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<InternalResp, String> {
-        match self.request_async(method, path, body).wait() {
-            Ok(Ok(r)) => Ok(r),
-            Ok(Err(e)) => Err(e),
-            Err(e) => return Err(format!("{}", e)),
+    ) -> Response<T> {
+        match self.request_de_async(method, path, body).wait() {
+            Ok(r) => r,
+            Err(_) => Err(format!("Error waiting for HTTP response")),
         }
+    }
+
+    fn request_de_async<T: DeserializeOwned, U: Serialize>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&U>,
+    ) -> FutureResponse<T> {
+        Box::new(
+            self.request_async(method, path, body)
+                .or_else(|_| future::ok(Err(format!("HTTP Request was cancelled"))))
+                .map(|res| match res {
+                    Ok(res) => {
+                        let obj: T = match serde_json::from_slice(&res.data) {
+                            Ok(obj) => obj,
+                            Err(e) => {
+                                return Err(format!(
+                                    "Could not parse response: {}\n---\n{}\n---",
+                                    e,
+                                    String::from_utf8_lossy(&res.data)
+                                ))
+                            }
+                        };
+                        Ok(obj)
+                    }
+                    Err(e) => Err(e),
+                }),
+        )
+    }
+
+    fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Response<()> {
+        match self.request_void_async(method, path, body).wait() {
+            Ok(r) => r,
+            Err(_) => Err(format!("Error waiting for HTTP response")),
+        }
+    }
+
+    fn request_void_async<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> FutureResponse<()> {
+        Box::new(
+            self.request_async(method, path, body)
+                .or_else(|_| future::ok(Err(format!("HTTP Request was cancelled"))))
+                .map(|res| match res {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(e),
+                }),
+        )
     }
 
     fn request_async<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> FutureInternalResponse {
