@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::sync::Arc;
 
 use regex::Regex;
-use threadpool::ThreadPool;
+use threadpool::{self, ThreadPool};
 
 use config::Config;
 use git::Git;
@@ -83,7 +83,7 @@ impl<'a> Merger<'a> {
             &pr_branch_name,
             pull_request.number,
             &target_branch,
-            &pull_request.base.ref_name
+            &pull_request.base.ref_name,
         )?;
 
         git.run(&["push", "origin", &format!("{}:{}", pr_branch_name, pr_branch_name)])?;
@@ -94,7 +94,7 @@ impl<'a> Merger<'a> {
             &title,
             &body,
             &pr_branch_name,
-            &target_branch
+            &target_branch,
         )?;
 
         let assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
@@ -123,7 +123,7 @@ impl<'a> Merger<'a> {
                 "-X",
                 "ignore-all-space",
                 commit_hash,
-            ]
+            ],
         )?;
 
         let desc = git.get_commit_desc(commit_hash)?;
@@ -132,7 +132,7 @@ impl<'a> Merger<'a> {
         // change commit message
         git.run_with_stdin(
             &["commit", "--amend", "-F", "-"],
-            &format!("{}\n\n{}", &desc.0, &desc.1)
+            &format!("{}\n\n{}", &desc.0, &desc.1),
         )?;
 
         Ok(desc)
@@ -192,13 +192,19 @@ pub fn new_worker(
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
 ) -> worker::Worker<PRMergeRequest> {
-    worker::Worker::new(Runner {
-        config: config,
-        github_session: github_session,
-        clone_mgr: clone_mgr.clone(),
-        slack: slack,
-        thread_pool: ThreadPool::new(max_concurrency),
-    })
+    worker::Worker::new(
+        "pr-merge",
+        Runner {
+            config: config,
+            github_session: github_session,
+            clone_mgr: clone_mgr.clone(),
+            slack: slack,
+            thread_pool: threadpool::Builder::new()
+                .num_threads(max_concurrency)
+                .thread_name("pr-merge".to_string())
+                .build(),
+        },
+    )
 }
 
 impl worker::Runner<PRMergeRequest> for Runner {

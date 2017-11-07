@@ -36,6 +36,7 @@ pub struct MainConfig {
     pub clone_root_dir: String,
     pub ssl_cert_file: Option<String>,
     pub ssl_key_file: Option<String>,
+    pub num_http_threads: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -196,6 +197,7 @@ impl ConfigModel {
                 clone_root_dir: String::new(),
                 ssl_cert_file: None,
                 ssl_key_file: None,
+                num_http_threads: None,
             },
             admin: None,
             github: GithubConfig {

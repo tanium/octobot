@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::sync::Arc;
 
-use threadpool::ThreadPool;
+use threadpool::{self, ThreadPool};
 
 use config::Config;
 use diffs::DiffOfDiffs;
@@ -164,12 +164,18 @@ pub fn new_worker(
     github_session: Arc<github::api::Session>,
     clone_mgr: Arc<GitCloneManager>,
 ) -> worker::Worker<ForcePushRequest> {
-    worker::Worker::new(Runner {
-        config: config,
-        github_session: github_session,
-        clone_mgr: clone_mgr,
-        thread_pool: ThreadPool::new(max_concurrency),
-    })
+    worker::Worker::new(
+        "force-push",
+        Runner {
+            config: config,
+            github_session: github_session,
+            clone_mgr: clone_mgr,
+            thread_pool: threadpool::Builder::new()
+                .num_threads(max_concurrency)
+                .thread_name("force-push".to_string())
+                .build(),
+        },
+    )
 }
 
 impl worker::Runner<ForcePushRequest> for Runner {
