@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use futures::{Future, future};
 use tokio_core::reactor::Remote;
 
 use http_client::HTTPClient;
@@ -81,13 +82,13 @@ impl Slack {
                 "Content-Type" => "application/json".to_string(),
             });
 
-        Slack { 
+        Slack {
             client: client,
             recent_messages: Mutex::new(Vec::new()),
         }
     }
 
-    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Result<(), String> {
+    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
         let slack_msg = SlackMessage {
             text: msg.to_string(),
             attachments: attachments,
@@ -96,12 +97,19 @@ impl Slack {
 
         if !self.is_unique(&slack_msg) {
             info!("Skipping duplicate message to {}", channel);
-            return Ok(());
+            return;
         }
 
         info!("Sending message to #{}", channel);
 
-        self.client.post_void("", &slack_msg)
+        self.client.spawn(self.client.post_void_async("", &slack_msg).then(|res| {
+            match res {
+                Ok(Ok(_)) => info!("Successfully sent slack message"),
+                Ok(Err(e)) => error!("Error sending slack message: {}", e),
+                Err(_) => error!("Unknown error sending slack message"),
+            };
+            future::ok::<(), ()>(())
+        }));
     }
 
     fn is_unique(&self, req: &SlackMessage) -> bool {
@@ -135,8 +143,6 @@ pub fn new_worker(core_remote: Remote, webhook_url: &str) -> worker::Worker<Slac
 
 impl worker::Runner<SlackRequest> for Runner {
     fn handle(&self, req: SlackRequest) {
-        if let Err(e) = self.slack.send(&req.channel, &req.msg, req.attachments.clone()) {
-            error!("Error sending to slack: {}", e);
-        }
+        self.slack.send(&req.channel, &req.msg, req.attachments);
     }
 }
