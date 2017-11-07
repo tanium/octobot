@@ -60,8 +60,8 @@ impl SlackAttachmentBuilder {
 }
 
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
-pub struct SlackMessage {
+#[derive(Serialize, Clone, PartialEq)]
+struct SlackMessage {
     text: String,
     attachments: Vec<SlackAttachment>,
     channel: String,
@@ -88,15 +88,21 @@ impl Slack {
         }
     }
 
-    fn send(&self, msg: SlackMessage) {
-        if !self.is_unique(&msg) {
-            info!("Skipping duplicate message to {}", msg.channel);
+    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
+        let slack_msg = SlackMessage {
+            text: msg.to_string(),
+            attachments: attachments,
+            channel: channel.to_string(),
+        };
+
+        if !self.is_unique(&slack_msg) {
+            info!("Skipping duplicate message to {}", channel);
             return;
         }
 
-        info!("Sending message to #{}", msg.channel);
+        info!("Sending message to #{}", channel);
 
-        self.client.spawn(self.client.post_void_async("", &msg).then(|res| {
+        self.client.spawn(self.client.post_void_async("", &slack_msg).then(|res| {
             match res {
                 Ok(Ok(_)) => info!("Successfully sent slack message"),
                 Ok(Err(e)) => error!("Error sending slack message: {}", e),
@@ -113,8 +119,10 @@ impl Slack {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum SlackRequest {
-    Message(SlackMessage),
+pub struct SlackRequest {
+    pub channel: String,
+    pub msg: String,
+    pub attachments: Vec<SlackAttachment>,
 }
 
 struct Runner {
@@ -122,11 +130,11 @@ struct Runner {
 }
 
 pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> SlackRequest {
-    SlackRequest::Message(SlackMessage {
+    SlackRequest {
         channel: channel.into(),
-        text: msg.into(),
+        msg: msg.into(),
         attachments: attachments,
-    })
+    }
 }
 
 pub fn new_worker(core_remote: Remote, webhook_url: &str) -> worker::Worker<SlackRequest> {
@@ -135,8 +143,6 @@ pub fn new_worker(core_remote: Remote, webhook_url: &str) -> worker::Worker<Slac
 
 impl worker::Runner<SlackRequest> for Runner {
     fn handle(&self, req: SlackRequest) {
-        match req {
-            SlackRequest::Message(msg) => self.slack.send(msg),
-        }
+        self.slack.send(&req.channel, &req.msg, req.attachments);
     }
 }
