@@ -255,8 +255,9 @@ fn test_merge_pending_versions_for_real() {
     };
 
     assert_eq!(
-        Ok(res),
+        res,
         jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal)
+            .unwrap()
     );
 }
 
@@ -296,8 +297,9 @@ fn test_merge_pending_versions_dry_run() {
     };
 
     assert_eq!(
-        Ok(res),
+        res,
         jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::DryRun)
+            .unwrap()
     );
 }
 
@@ -336,8 +338,9 @@ fn test_merge_pending_versions_missed_versions() {
     };
 
     assert_eq!(
-        Ok(res),
+        res,
         jira::workflow::merge_pending_versions(missed_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal)
+            .unwrap()
     );
 }
 
@@ -362,5 +365,5 @@ fn test_sort_versions() {
     test.jira.mock_reorder_version(&v3, JiraVersionPosition::After(v1.clone()), Ok(()));
     test.jira.mock_reorder_version(&v0, JiraVersionPosition::After(v3.clone()), Ok(()));
 
-    assert_eq!(Ok(()), jira::workflow::sort_versions("SER", &test.jira));
+    assert_eq!((), jira::workflow::sort_versions("SER", &test.jira).unwrap());
 }

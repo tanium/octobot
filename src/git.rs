@@ -3,6 +3,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use errors::*;
+
 pub struct Git {
     pub host: String,
     pub token: String,
@@ -18,11 +20,11 @@ impl Git {
         }
     }
 
-    pub fn run(&self, args: &[&str]) -> Result<String, String> {
+    pub fn run(&self, args: &[&str]) -> Result<String> {
         self.do_run(args, None)
     }
 
-    pub fn run_with_stdin(&self, args: &[&str], stdin: &str) -> Result<String, String> {
+    pub fn run_with_stdin(&self, args: &[&str], stdin: &str) -> Result<String> {
         self.do_run(args, Some(stdin))
     }
 
@@ -36,16 +38,16 @@ impl Git {
         }
     }
 
-    pub fn has_branch(&self, branch: &str) -> Result<bool, String> {
+    pub fn has_branch(&self, branch: &str) -> Result<bool> {
         let output = self.run(&["branch"])?;
         Ok(Git::branches_output_contains(&output, branch))
     }
 
-    pub fn current_branch(&self) -> Result<String, String> {
+    pub fn current_branch(&self) -> Result<String> {
         self.run(&["rev-parse", "--abbrev-ref", "HEAD"])
     }
 
-    pub fn does_branch_contain(&self, git_ref: &str, branch: &str) -> Result<bool, String> {
+    pub fn does_branch_contain(&self, git_ref: &str, branch: &str) -> Result<bool> {
         let output = self.run(&["branch", "--contains", git_ref])?;
         Ok(Git::branches_output_contains(&output, branch))
     }
@@ -59,14 +61,14 @@ impl Git {
     // Find the commit at which |leaf_ref| forked from |base_branch|.
     // This can find which commits belong to a PR.
     // Returns the ref found in the base branch that this git_ref came from.
-    pub fn find_base_branch_commit(&self, leaf_ref: &str, base_branch: &str) -> Result<String, String> {
+    pub fn find_base_branch_commit(&self, leaf_ref: &str, base_branch: &str) -> Result<String> {
         match self.run(&["merge-base", "--fork-point", base_branch, leaf_ref]) {
             Ok(base) => Ok(base),
             Err(_) => self.run(&["merge-base", base_branch, leaf_ref]),
         }
     }
 
-    pub fn clean(&self) -> Result<(), String> {
+    pub fn clean(&self) -> Result<()> {
         self.run(&["reset", "--hard"])?;
         self.run(&["clean", "-fdx"])?;
         Ok(())
@@ -74,17 +76,17 @@ impl Git {
 
     // checking a branch named |new_branch_name| and ensure it is up to date with |source_ref|
     // |source_ref| can be a commit hash or an origin/branch-name.
-    pub fn checkout_branch(&self, new_branch_name: &str, source_ref: &str) -> Result<(), String> {
+    pub fn checkout_branch(&self, new_branch_name: &str, source_ref: &str) -> Result<()> {
         self.run(&["checkout", "-B", new_branch_name, source_ref])?;
         Ok(())
     }
 
-    pub fn diff(&self, base: &str, head: &str) -> Result<String, String> {
+    pub fn diff(&self, base: &str, head: &str) -> Result<String> {
         self.run(&["diff", base, head, "-w"])
     }
 
     // returns (title, body)
-    pub fn get_commit_desc(&self, commit_hash: &str) -> Result<(String, String), String> {
+    pub fn get_commit_desc(&self, commit_hash: &str) -> Result<(String, String)> {
         let message = self.run(&["log", "-1", "--pretty=%B", commit_hash])?;
 
         let mut lines = message.lines();
@@ -94,10 +96,10 @@ impl Git {
         Ok((title, body.join("\n")))
     }
 
-    fn do_run(&self, args: &[&str], stdin: Option<&str>) -> Result<String, String> {
+    fn do_run(&self, args: &[&str], stdin: Option<&str>) -> Result<String> {
         debug!("Running git with args: {:?}", args);
-        let cmd = Command::new("git")
-            .current_dir(&self.repo_dir)
+        let mut cmd = Command::new("git");
+        cmd.current_dir(&self.repo_dir)
             .stdin(if stdin.is_some() {
                 Stdio::piped()
             } else {
@@ -108,26 +110,23 @@ impl Git {
             .args(args)
             .env("GIT_ASKPASS", &self.ask_pass_path())
             .env("OCTOBOT_HOST", &self.host)
-            .env("OCTOBOT_PASS", &self.token)
-            .spawn();
+            .env("OCTOBOT_PASS", &self.token);
 
-        let mut child = match cmd {
-            Ok(c) => c,
-            Err(e) => return Err(format!("Error starting git (args: {:?}): {}", args, e)),
-        };
+        let mut child = cmd.spawn().map_err(
+            |e| Error::from(format!("Error starting git (args: {:?}): {}", args, e)),
+        )?;
 
         if let Some(ref stdin) = stdin {
             if let Some(ref mut child_stdin) = child.stdin {
-                if let Err(e) = child_stdin.write_all(stdin.as_bytes()) {
-                    return Err(format!("Error writing to stdin: {}", e));
-                }
+                child_stdin.write_all(stdin.as_bytes()).map_err(|e| {
+                    Error::from(format!("Error writing to stdin: {}", e))
+                })?;
             }
         }
 
-        let result = match child.wait_with_output() {
-            Ok(r) => r,
-            Err(e) => return Err(format!("Error running git (args: {:?}): {}", args, e)),
-        };
+        let result = child.wait_with_output().map_err(|e| {
+            Error::from(format!("Error running git (args: {:?}): {}", args, e))
+        })?;
 
         let mut output = String::new();
         if result.stdout.len() > 0 {
@@ -138,14 +137,15 @@ impl Git {
             if result.stderr.len() > 0 {
                 output += String::from_utf8_lossy(&result.stderr).as_ref();
             }
-            Err(format!(
-                "Error running git (exit code {}, args: {:?}):\n{}",
-                result.status.code().unwrap_or(-1),
-                args,
-                output
-            ))
+            Err(
+                format!(
+                    "Error running git (exit code {}, args: {:?}):\n{}",
+                    result.status.code().unwrap_or(-1),
+                    args,
+                    output
+                ).into(),
+            )
         } else {
-
             Ok(output.trim().to_string())
         }
     }

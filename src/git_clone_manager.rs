@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use config::Config;
 use dir_pool::{DirPool, HeldDir};
+use errors::*;
 use git::Git;
 use github;
 
@@ -23,14 +24,14 @@ impl GitCloneManager {
         }
     }
 
-    pub fn clone(&self, owner: &str, repo: &str) -> Result<HeldDir, String> {
+    pub fn clone(&self, owner: &str, repo: &str) -> Result<HeldDir> {
         let held_clone_dir = self.dir_pool.take_directory(self.github_session.github_host(), owner, repo);
         self.clone_repo(owner, repo, &held_clone_dir.dir())?;
 
         Ok(held_clone_dir)
     }
 
-    fn clone_repo(&self, owner: &str, repo: &str, clone_dir: &PathBuf) -> Result<(), String> {
+    fn clone_repo(&self, owner: &str, repo: &str, clone_dir: &PathBuf) -> Result<()> {
         let url = format!(
             "https://{}@{}/{}/{}",
             self.github_session.user().login(),
@@ -46,7 +47,7 @@ impl GitCloneManager {
             git.run(&["fetch", "--prune", "origin", "+refs/tags/*:refs/tags/*"])?;
         } else {
             if let Err(e) = fs::create_dir_all(&clone_dir) {
-                return Err(format!("Error creating clone directory '{:?}': {}", clone_dir, e));
+                return Err(format!("Error creating clone directory '{:?}': {}", clone_dir, e).into());
             }
             git.run(&["clone", &url, "."])?;
         }

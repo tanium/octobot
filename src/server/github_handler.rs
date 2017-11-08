@@ -753,7 +753,7 @@ impl GithubEventHandler {
             Err(e) => {
                 self.messenger.send_to_owner(
                     "Error getting Pull Request labels",
-                    &vec![SlackAttachmentBuilder::new(&e).color("danger").build()],
+                    &vec![SlackAttachmentBuilder::new(&format!("{}", e)).color("danger").build()],
                     &pull_request.user,
                     &self.data.repository,
                 );

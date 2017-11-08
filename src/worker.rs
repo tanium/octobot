@@ -57,13 +57,18 @@ impl<T: Send + 'static> Worker<T> {
 
         Worker {
             sender: Mutex::new(tx),
-            thread: Some(thread::Builder::new().name(name.to_string() + "-runner").spawn(move || loop {
-                match rx.recv() {
-                    Ok(WorkMessage::Stop) => break,
-                    Ok(WorkMessage::WorkItem(req)) => handler.handle(req),
-                    Err(e) => error!("Error receiving message: {}", e),
-                };
-            }).unwrap()),
+            thread: Some(
+                thread::Builder::new()
+                    .name(name.to_string() + "-runner")
+                    .spawn(move || loop {
+                        match rx.recv() {
+                            Ok(WorkMessage::Stop) => break,
+                            Ok(WorkMessage::WorkItem(req)) => handler.handle(req),
+                            Err(e) => error!("Error receiving message: {}", e),
+                        };
+                    })
+                    .unwrap(),
+            ),
         }
     }
 

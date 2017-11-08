@@ -13,6 +13,7 @@ use tokio_proto;
 use tokio_rustls;
 
 use config::Config;
+use errors::*;
 use github;
 use github::api::GithubSession;
 use jira;
@@ -22,7 +23,7 @@ use server::octobot_service::OctobotService;
 use server::redirect_service::RedirectService;
 use server::sessions::Sessions;
 
-pub fn start(config: Config) -> Result<(), String> {
+pub fn start(config: Config) -> Result<()> {
     let config = Arc::new(config);
 
     let num_http_threads = config.main.num_http_threads.unwrap_or(20);

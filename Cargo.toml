@@ -6,22 +6,27 @@ version = "0.1.0"
 [[bin]]
 name = "octobot"
 path = "src/main.rs"
+doc = false
 
 [[bin]]
 name = "octobot-ask-pass"
 path = "src/ask-pass.rs"
+doc = false
 
 [[bin]]
 name = "octobot-passwd"
 path = "src/octobot-passwd.rs"
+doc = false
 
 [[bin]]
 name = "ldap-check"
 path = "src/ldap-check.rs"
+doc = false
 
 [dependencies]
 base64 = "0.7.0"
 env_logger = "^0.4"
+error-chain = "0.11.0"
 futures = "0.1.16"
 hyper = "^0.11"
 hyper-rustls = "0.11.0"

@@ -1,5 +1,7 @@
 use url::Url;
 
+use errors::*;
+
 // An incomplete container for all the kinds of events that we care about.
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct HookBody {
@@ -131,30 +133,25 @@ impl Repo {
         }
     }
 
-    pub fn parse(html_url: &str) -> Result<Repo, String> {
-        match Url::parse(html_url) {
-            Ok(url) => {
-                let segments: Vec<&str> = match url.path_segments() {
-                    Some(s) => s.filter(|p| p.len() > 0).collect(),
-                    None => return Err(format!("No path segments in URL")),
-                };
-                if segments.len() != 2 {
-                    return Err(format!("Expectd only two path segments!"));
-                }
-
-                let user = segments[0];
-                let repo = segments[1];
-
-                Ok(Repo {
-                    html_url: html_url.to_string(),
-                    full_name: format!("{}/{}", user, repo),
-                    name: repo.to_string(),
-                    owner: User::new(user),
-                })
-            }
-            Err(e) => return Err(format!("Error parsing url: {}", e)),
+    pub fn parse(html_url: &str) -> Result<Repo> {
+        let url = Url::parse(html_url)?;
+        let segments: Vec<&str> = match url.path_segments() {
+            Some(s) => s.filter(|p| p.len() > 0).collect(),
+            None => return Err("No path segments in URL".into()),
+        };
+        if segments.len() != 2 {
+            return Err("Expectd only two path segments!".into());
         }
 
+        let user = segments[0];
+        let repo = segments[1];
+
+        Ok(Repo {
+            html_url: html_url.to_string(),
+            full_name: format!("{}/{}", user, repo),
+            name: repo.to_string(),
+            owner: User::new(user),
+        })
     }
 }
 

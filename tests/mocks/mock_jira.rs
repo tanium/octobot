@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::thread;
 
+use octobot::errors::*;
 use octobot::jira::*;
 use octobot::jira::api::{JiraVersionPosition, Session};
 use octobot::version;
@@ -22,11 +23,11 @@ pub struct MockJira {
 #[derive(Debug)]
 struct MockCall<T> {
     args: Vec<String>,
-    ret: Result<T, String>,
+    ret: Result<T>,
 }
 
 impl<T> MockCall<T> {
-    pub fn new(ret: Result<T, String>, args: Vec<&str>) -> MockCall<T> {
+    pub fn new(ret: Result<T>, args: Vec<&str>) -> MockCall<T> {
         MockCall {
             ret: ret,
             args: args.iter().map(|a| a.to_string()).collect(),
@@ -109,7 +110,7 @@ impl Drop for MockJira {
 }
 
 impl Session for MockJira {
-    fn get_transitions(&self, key: &str) -> Result<Vec<Transition>, String> {
+    fn get_transitions(&self, key: &str) -> Result<Vec<Transition>> {
         let mut calls = self.get_transitions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_transitions");
         let call = calls.remove(0);
@@ -118,7 +119,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<(), String> {
+    fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<()> {
         let mut calls = self.transition_issue_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to transition_issue");
         let call = calls.remove(0);
@@ -128,7 +129,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn comment_issue(&self, key: &str, comment: &str) -> Result<(), String> {
+    fn comment_issue(&self, key: &str, comment: &str) -> Result<()> {
         let mut calls = self.comment_issue_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to comment_issue");
         let call = calls.remove(0);
@@ -138,7 +139,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn add_version(&self, proj: &str, version: &str) -> Result<(), String> {
+    fn add_version(&self, proj: &str, version: &str) -> Result<()> {
         let mut calls = self.add_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to add_version");
         let call = calls.remove(0);
@@ -148,7 +149,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn get_versions(&self, proj: &str) -> Result<Vec<Version>, String> {
+    fn get_versions(&self, proj: &str) -> Result<Vec<Version>> {
         let mut calls = self.get_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_versions");
         let call = calls.remove(0);
@@ -157,7 +158,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn assign_fix_version(&self, key: &str, version: &str) -> Result<(), String> {
+    fn assign_fix_version(&self, key: &str, version: &str) -> Result<()> {
         let mut calls = self.assign_fix_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to assign_fix_version");
         let call = calls.remove(0);
@@ -167,7 +168,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<(), String> {
+    fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<()> {
         let mut calls = self.reorder_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to reorder_version");
         let call = calls.remove(0);
@@ -177,7 +178,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn add_pending_version(&self, key: &str, version: &str) -> Result<(), String> {
+    fn add_pending_version(&self, key: &str, version: &str) -> Result<()> {
         let mut calls = self.add_pending_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to add_pending_version");
         let call = calls.remove(0);
@@ -187,7 +188,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<(), String> {
+    fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<()> {
         let mut calls = self.remove_pending_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to remove_pending_versions");
         let call = calls.remove(0);
@@ -197,7 +198,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>, String> {
+    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>> {
         let mut calls = self.find_pending_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to find_pending_versions");
         let call = calls.remove(0);
@@ -208,34 +209,34 @@ impl Session for MockJira {
 }
 
 impl MockJira {
-    pub fn mock_get_transitions(&self, key: &str, ret: Result<Vec<Transition>, String>) {
+    pub fn mock_get_transitions(&self, key: &str, ret: Result<Vec<Transition>>) {
         self.get_transitions_calls.lock().unwrap().push(MockCall::new(ret, vec![key]));
     }
 
-    pub fn mock_transition_issue(&self, key: &str, req: &TransitionRequest, ret: Result<(), String>) {
+    pub fn mock_transition_issue(&self, key: &str, req: &TransitionRequest, ret: Result<()>) {
         self.transition_issue_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![key, &format!("{:?}", req)],
         ));
     }
 
-    pub fn mock_comment_issue(&self, key: &str, comment: &str, ret: Result<(), String>) {
+    pub fn mock_comment_issue(&self, key: &str, comment: &str, ret: Result<()>) {
         self.comment_issue_calls.lock().unwrap().push(MockCall::new(ret, vec![key, comment]));
     }
 
-    pub fn mock_add_version(&self, proj: &str, version: &str, ret: Result<(), String>) {
+    pub fn mock_add_version(&self, proj: &str, version: &str, ret: Result<()>) {
         self.add_version_calls.lock().unwrap().push(MockCall::new(ret, vec![proj, version]));
     }
 
-    pub fn mock_get_versions(&self, proj: &str, ret: Result<Vec<Version>, String>) {
+    pub fn mock_get_versions(&self, proj: &str, ret: Result<Vec<Version>>) {
         self.get_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![proj]));
     }
 
-    pub fn mock_assign_fix_version(&self, key: &str, version: &str, ret: Result<(), String>) {
+    pub fn mock_assign_fix_version(&self, key: &str, version: &str, ret: Result<()>) {
         self.assign_fix_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
     }
 
-    pub fn mock_reorder_version(&self, version: &Version, position: JiraVersionPosition, ret: Result<(), String>) {
+    pub fn mock_reorder_version(&self, version: &Version, position: JiraVersionPosition, ret: Result<()>) {
         self.reorder_version_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![
@@ -245,20 +246,20 @@ impl MockJira {
         ));
     }
 
-    pub fn mock_add_pending_version(&self, key: &str, version: &str, ret: Result<(), String>) {
+    pub fn mock_add_pending_version(&self, key: &str, version: &str, ret: Result<()>) {
         self.add_pending_version_calls.lock().unwrap().push(
             MockCall::new(ret, vec![key, version]),
         );
     }
 
-    pub fn mock_remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>, ret: Result<(), String>) {
+    pub fn mock_remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>, ret: Result<()>) {
         self.remove_pending_versions_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![key, &format!("{:?}", versions)],
         ));
     }
 
-    pub fn mock_find_pending_versions(&self, proj: &str, ret: Result<HashMap<String, Vec<version::Version>>, String>) {
+    pub fn mock_find_pending_versions(&self, proj: &str, ret: Result<HashMap<String, Vec<version::Version>>>) {
         self.find_pending_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![proj]));
     }
 }
