@@ -97,7 +97,9 @@ impl Session for GithubSession {
     }
 
     fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
-        self.client.get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
+        self.client.get(&format!("repos/{}/{}/pulls/{}", owner, repo, number)).map_err(|e| {
+            format!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e).into()
+        })
     }
 
     fn get_pull_requests(
@@ -113,7 +115,11 @@ impl Session for GithubSession {
             repo,
             state.unwrap_or(""),
             head.unwrap_or("")
-        ))?;
+        )).map_err(
+            |e| {
+                format!("Error looking up PRs: {}/{} {}: {}", owner, repo, head, e).into()
+            },
+        )?;
 
         let prs: Vec<PullRequest> = prs.into_iter()
             .filter(|p| if let Some(head) = head {
@@ -154,7 +160,7 @@ impl Session for GithubSession {
     fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>> {
         self.client.get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number)).map_err(
             |e| {
-                format!("Error looking up PR labels: {}/{} #{}: {}", owner, repo, number, e).into()
+                format!("error looking up pr labels: {}/{} #{}: {}", owner, repo, number, e).into()
             },
         )
     }
