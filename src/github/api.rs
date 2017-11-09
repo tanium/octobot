@@ -117,7 +117,7 @@ impl Session for GithubSession {
             head.unwrap_or("")
         )).map_err(
             |e| {
-                format!("Error looking up PRs: {}/{} {}: {}", owner, repo, head, e).into()
+                format!("Error looking up PRs: {}/{}: {}", owner, repo, e).into()
             },
         )?;
 
