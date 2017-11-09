@@ -104,9 +104,8 @@ impl Slack {
 
         self.client.spawn(self.client.post_void_async("", &slack_msg).then(|res| {
             match res {
-                Ok(Ok(_)) => info!("Successfully sent slack message"),
-                Ok(Err(e)) => error!("Error sending slack message: {}", e),
-                Err(_) => error!("Unknown error sending slack message"),
+                Ok(_) => info!("Successfully sent slack message"),
+                Err(e) => error!("Error sending slack message: {}", e),
             };
             future::ok::<(), ()>(())
         }));
