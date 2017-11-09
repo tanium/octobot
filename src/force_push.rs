@@ -5,6 +5,7 @@ use threadpool::{self, ThreadPool};
 
 use config::Config;
 use diffs::DiffOfDiffs;
+use errors::*;
 use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
@@ -12,7 +13,7 @@ use github::Commit;
 use worker;
 
 pub fn comment_force_push(
-    diffs: Result<DiffOfDiffs, String>,
+    diffs: Result<DiffOfDiffs>,
     reapply_statuses: Vec<String>,
     github: &github::api::Session,
     owner: &str,
@@ -20,7 +21,7 @@ pub fn comment_force_push(
     pull_request: &github::PullRequest,
     before_hash: &str,
     after_hash: &str,
-) -> Result<(), String> {
+) -> Result<()> {
     let mut comment = format!(
         "Force-push detected: before: {}, after: {}: ",
         Commit::short_hash_str(before_hash),
@@ -58,10 +59,7 @@ pub fn comment_force_push(
     }
 
     if identical_diff {
-        let statuses = match github.get_statuses(owner, repo, before_hash) {
-            Ok(s) => s,
-            Err(e) => return Err(format!("Error looking up github statuses: {}", e)),
-        };
+        let statuses = github.get_statuses(owner, repo, before_hash)?;
 
         // keep track of seen statuses to only track latest ones
         let mut seen = vec![];
@@ -102,7 +100,7 @@ pub fn diff_force_push(
     pull_request: &github::PullRequest,
     before_hash: &str,
     after_hash: &str,
-) -> Result<DiffOfDiffs, String> {
+) -> Result<DiffOfDiffs> {
     let held_clone_dir = clone_mgr.clone(owner, repo)?;
     let clone_dir = held_clone_dir.dir();
 

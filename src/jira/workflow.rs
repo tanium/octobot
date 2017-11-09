@@ -1,10 +1,10 @@
-
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use version;
 
 use config::JiraConfig;
+use errors::*;
 use github::{Commit, CommitLike, PullRequest, PushCommit};
 use jira;
 use jira::Transition;
@@ -218,11 +218,12 @@ pub fn merge_pending_versions(
     project: &str,
     jira: &jira::api::Session,
     mode: DryRunMode,
-) -> Result<HashMap<String, Vec<version::Version>>, String> {
+) -> Result<HashMap<String, Vec<version::Version>>> {
     let target_version = match version::Version::parse(version) {
         Some(v) => v,
-        None => return Err(format!("Invalid target version: {}", version)),
+        None => return Err(format!("Invalid target version: {}", version).into()),
     };
+
     let real_versions = jira.get_versions(project)?;
     let all_pending_versions = jira.find_pending_versions(project)?;
 
@@ -243,7 +244,7 @@ pub fn merge_pending_versions(
     }
 
     if all_relevant_versions.is_empty() {
-        return Err(format!("No relevant pending versions for version {}", version));
+        return Err(format!("No relevant pending versions for version {}", version).into());
     }
 
     // create the target version for this project
@@ -251,9 +252,7 @@ pub fn merge_pending_versions(
         info!("JIRA version {} already exists for project {}", version, project);
     } else {
         info!("Creating new JIRA version {} for project {}", version, project);
-        if let Err(e) = jira.add_version(project, version) {
-            return Err(format!("Error adding version {} to project {}: {}", version, project, e));
-        }
+        jira.add_version(project, version)?;
     }
 
     {
@@ -324,11 +323,8 @@ fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {
     };
 }
 
-fn find_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) -> Result<Option<Transition>, String> {
-    let transitions = match jira.get_transitions(&key) {
-        Ok(t) => t,
-        Err(e) => return Err(format!("Error looking up JIRA transitions for key [{}]: {}", key, e)),
-    };
+fn find_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) -> Result<Option<Transition>> {
+    let transitions = jira.get_transitions(&key)?;
 
     Ok(pick_transition(to, &transitions))
 }
@@ -345,7 +341,7 @@ fn pick_transition(to: &Vec<String>, choices: &Vec<Transition>) -> Option<Transi
     None
 }
 
-pub fn sort_versions(project: &str, jira: &jira::api::Session) -> Result<(), String> {
+pub fn sort_versions(project: &str, jira: &jira::api::Session) -> Result<()> {
     let mut versions = jira.get_versions(project)?;
 
     versions.sort_by(|a, b| {

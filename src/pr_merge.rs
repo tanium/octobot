@@ -5,6 +5,7 @@ use regex::Regex;
 use threadpool::{self, ThreadPool};
 
 use config::Config;
+use errors::*;
 use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
@@ -20,7 +21,7 @@ pub fn merge_pull_request(
     repo: &str,
     pull_request: &github::PullRequest,
     target_branch: &str,
-) -> Result<github::PullRequest, String> {
+) -> Result<github::PullRequest> {
     Merger::new(session, clone_mgr).merge_pull_request(
         owner,
         repo,
@@ -49,16 +50,16 @@ impl<'a> Merger<'a> {
         repo: &str,
         pull_request: &github::PullRequest,
         target_branch: &str,
-    ) -> Result<github::PullRequest, String> {
+    ) -> Result<github::PullRequest> {
         if !pull_request.is_merged() {
-            return Err(format!("Pull Request #{} is not yet merged.", pull_request.number));
+            return Err(format!("Pull Request #{} is not yet merged.", pull_request.number).into());
         }
 
         let merge_commit_sha;
         if let Some(ref sha) = pull_request.merge_commit_sha {
             merge_commit_sha = sha;
         } else {
-            return Err(format!("Pull Request #{} has no merge commit.", pull_request.number));
+            return Err(format!("Pull Request #{} has no merge commit.", pull_request.number).into());
         }
 
         // strip everything before last slash
@@ -74,7 +75,7 @@ impl<'a> Merger<'a> {
         // make sure there isn't already such a branch
         let current_remotes = git.run(&["ls-remote", "--heads"])?;
         if current_remotes.contains(&format!("refs/heads/{}", pr_branch_name)) {
-            return Err(format!("PR branch already exists on origin: '{}'", pr_branch_name));
+            return Err(format!("PR branch already exists on origin: '{}'", pr_branch_name).into());
         }
 
         let (title, body) = self.cherry_pick(
@@ -111,7 +112,7 @@ impl<'a> Merger<'a> {
         pr_number: u32,
         target_branch: &str,
         orig_base_branch: &str,
-    ) -> Result<(String, String), String> {
+    ) -> Result<(String, String)> {
         git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch))?;
 
         // cherry-pick!
@@ -226,7 +227,7 @@ impl worker::Runner<PRMergeRequest> for Runner {
         )
         {
 
-            let attach = SlackAttachmentBuilder::new(&e)
+            let attach = SlackAttachmentBuilder::new(&format!("{}", e))
                 .title(
                     format!("Source PR: #{}: \"{}\"", req.pull_request.number, req.pull_request.title)
                         .as_str(),

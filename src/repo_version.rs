@@ -8,6 +8,7 @@ use std::process::{Command, Stdio};
 use threadpool::{self, ThreadPool};
 
 use config::{Config, JiraConfig};
+use errors::*;
 use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
@@ -32,7 +33,7 @@ pub fn comment_repo_version(
     commits: &Vec<github::PushCommit>,
     jira_projects: &Vec<String>,
     jira_versions_enabled: bool,
-) -> Result<(), String> {
+) -> Result<()> {
     let held_clone_dir = clone_mgr.clone(owner, repo)?;
     let clone_dir = held_clone_dir.dir();
 
@@ -62,12 +63,12 @@ pub fn comment_repo_version(
 // Only run version scripts on Linux since firejail is only for Linux and it doesn't
 // seem like a good idea to allow generic code execution without any containerization.
 #[cfg(not(target_os = "linux"))]
-fn run_script(_: &str, _: &Path) -> Result<String, String> {
+fn run_script(_: &str, _: &Path) -> Result<String> {
     return Err("Version scripts only supported when running Linux.".into());
 }
 
 #[cfg(target_os = "linux")]
-fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> {
+fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
     debug!("Running version script: {}", version_script);
     let mut cmd = Command::new("firejail");
     cmd.arg("--quiet")
@@ -95,16 +96,12 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
         .stderr(Stdio::piped())
         .stdout(Stdio::piped());
 
-
-    let child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Error starting version script (script: {}): {}", version_script, e)),
-    };
-
-    let result = match child.wait_with_output() {
-        Ok(r) => r,
-        Err(e) => return Err(format!("Error running version script (script: {}): {}", version_script, e)),
-    };
+    let child = cmd.spawn().map_err(|e| {
+        Error::from(format!("Error starting version script (script: {}): {}", version_script, e))
+    })?;
+    let result = child.wait_with_output().map_err(|e| {
+        Error::from(format!("Error running version script (script: {}): {}", version_script, e))
+    })?;
 
     let mut output = String::new();
     if result.stdout.len() > 0 {
@@ -127,12 +124,14 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String, String> 
 
     if !result.status.success() {
         output += &stderr;
-        Err(format!(
-            "Error running version script (exit code {}; script: {}):\n{}",
-            result.status.code().unwrap_or(-1),
-            version_script,
-            output
-        ))
+        Err(
+            format!(
+                "Error running version script (exit code {}; script: {}):\n{}",
+                result.status.code().unwrap_or(-1),
+                version_script,
+                output
+            ).into(),
+        )
     } else {
 
         Ok(output.trim().to_string())
@@ -236,8 +235,10 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             error!("Error running version script {}: {}", version_script, e);
                             let messenger = messenger::new(config.clone(), slack);
 
-                            let attach =
-                                SlackAttachmentBuilder::new(&e).title(version_script.clone()).color("danger").build();
+                            let attach = SlackAttachmentBuilder::new(&format!("{}", e))
+                                .title(version_script.clone())
+                                .color("danger")
+                                .build();
 
                             messenger.send_to_channel("Error running version script", &vec![attach], &req.repo);
 
@@ -281,7 +282,7 @@ mod tests {
             file.write_all(b"echo 1.2.3.4").expect("write file");
         }
 
-        assert_eq!(Ok("1.2.3.4".into()), run_script("bash version.sh", &sub_dir));
+        assert_eq!("1.2.3.4", run_script("bash version.sh", &sub_dir).unwrap());
     }
 
     #[test]
@@ -297,7 +298,7 @@ mod tests {
             file.write_all(b"print '1.2.3.4'").expect("write file");
         }
 
-        assert_eq!(Ok("1.2.3.4".into()), run_script("python version.py", &sub_dir));
+        assert_eq!("1.2.3.4", run_script("python version.py", &sub_dir).unwrap());
     }
 
     #[test]
@@ -329,7 +330,7 @@ mod tests {
             ).expect("write file");
         }
 
-        assert_eq!(Ok("1.2.3.4".into()), run_script("bash version.sh", &sub_dir));
+        assert_eq!("1.2.3.4", run_script("bash version.sh", &sub_dir).unwrap());
 
         assert!(parent_file.exists(), "version scripts should not be able to delete files outside its directory");
         assert!(

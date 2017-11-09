@@ -1,4 +1,9 @@
+// `error_chain!` can recurse deeply
+#![recursion_limit = "1024"]
+
 extern crate base64;
+#[macro_use]
+extern crate error_chain;
 extern crate futures;
 extern crate hyper;
 extern crate hyper_rustls;
@@ -46,6 +51,17 @@ pub mod users;
 pub mod util;
 pub mod version;
 pub mod worker;
+
+pub mod errors {
+    // Create the Error, ErrorKind, ResultExt, and Result types
+    error_chain!{
+        foreign_links {
+            Fmt(::std::fmt::Error);
+            Io(::std::io::Error);
+            Url(::url::ParseError);
+        }
+    }
+}
 
 #[cfg(target_os = "linux")]
 mod docker;

@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use toml;
 
+use errors::*;
 use repos;
 use users;
 
@@ -23,7 +24,7 @@ pub struct ConfigModel {
     pub admin: Option<AdminConfig>,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
-    pub ldap: Option<LdapConfig>
+    pub ldap: Option<LdapConfig>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -111,7 +112,7 @@ impl Config {
         }
     }
 
-    pub fn save(&self, config_file: &str) -> Result<(), String> {
+    pub fn save(&self, config_file: &str) -> Result<()> {
         let model = ConfigModel {
             main: self.main.clone(),
             admin: self.admin.clone(),
@@ -120,48 +121,30 @@ impl Config {
             ldap: self.ldap.clone(),
         };
 
-        let serialized = match toml::to_string(&model) {
-            Ok(c) => c,
-            Err(e) => return Err(format!("Error serializing config: {}", e)),
-        };
+        let serialized = toml::to_string(&model).map_err(
+            |e| Error::from(format!("Error serializing config: {}", e)),
+        )?;
 
         let tmp_file = config_file.to_string() + ".tmp";
         let bak_file = config_file.to_string() + ".bak";
 
-        let mut file = match fs::File::create(&tmp_file) {
-            Ok(f) => f,
-            Err(e) => return Err(format!("Error opening file: {}", e)),
-        };
+        let mut file = fs::File::create(&tmp_file)?;
 
-        if let Err(e) = file.write_all(serialized.as_bytes()) {
-            return Err(format!("Error writing file: {}", e));
-        }
-
-        if let Err(e) = fs::rename(&config_file, &bak_file) {
-            return Err(format!("Error backing up config file: {}", e));
-        }
-
-        if let Err(e) = fs::rename(&tmp_file, &config_file) {
-            return Err(format!("Error renaming temp file: {}", e));
-        }
-
-        if let Err(e) = fs::remove_file(&bak_file) {
-            info!("Error removing backup file: {}", e);
-        }
+        file.write_all(serialized.as_bytes())?;
+        fs::rename(&config_file, &bak_file)?;
+        fs::rename(&tmp_file, &config_file)?;
+        fs::remove_file(&bak_file)?;
 
         Ok(())
     }
 
-    pub fn reload_users_repos(&self) -> Result<(), String> {
-        let users = match users::load_config(&self.main.users_config_file) {
-            Ok(c) => c,
-            Err(e) => return Err(format!("Error reading user config file: {}", e)),
-        };
-
-        let repos = match repos::load_config(&self.main.repos_config_file) {
-            Ok(c) => c,
-            Err(e) => return Err(format!("Error reading repo config file: {}", e)),
-        };
+    pub fn reload_users_repos(&self) -> Result<()> {
+        let users = users::load_config(&self.main.users_config_file).map_err(|e| {
+            Error::from(format!("Error reading user config file: {}", e))
+        })?;
+        let repos = repos::load_config(&self.main.repos_config_file).map_err(|e| {
+            Error::from(format!("Error reading repo config file: {}", e))
+        })?;
 
         *self.users.write().unwrap() = users;
         *self.repos.write().unwrap() = repos;
@@ -261,27 +244,20 @@ impl JiraConfig {
     }
 }
 
-pub fn parse(config_file: &str) -> Result<Config, String> {
-    let mut config_file_open = match fs::File::open(config_file) {
-        Ok(f) => f,
-        Err(e) => return Err(format!("Could not open config file '{}': {}", config_file, e)),
-    };
+pub fn parse(config_file: &str) -> Result<Config> {
+    let mut config_file_open = fs::File::open(config_file)?;
     let mut config_contents = String::new();
-    match config_file_open.read_to_string(&mut config_contents) {
-        Ok(_) => (),
-        Err(e) => return Err(format!("Could not read config file '{}': {}", config_file, e)),
-    };
+    config_file_open.read_to_string(&mut config_contents)?;
     parse_string_and_load(&config_contents)
 }
 
-fn parse_string(config_contents: &str) -> Result<ConfigModel, String> {
-    match toml::from_str::<ConfigModel>(config_contents) {
-        Ok(c) => Ok(c),
-        Err(e) => return Err(format!("Error decoding config: {}", e)),
-    }
+fn parse_string(config_contents: &str) -> Result<ConfigModel> {
+    toml::from_str::<ConfigModel>(config_contents).map_err(|e| {
+        Error::from(format!("Error parsing config: {}", e))
+    })
 }
 
-fn parse_string_and_load(config_contents: &str) -> Result<Config, String> {
+fn parse_string_and_load(config_contents: &str) -> Result<Config> {
     let config = parse_string(config_contents)?;
 
     let the_config = Config::new_with_model(config, users::UserConfig::new(), repos::RepoConfig::new());

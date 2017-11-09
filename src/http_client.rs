@@ -11,6 +11,8 @@ use serde_json;
 use std::collections::HashMap;
 use tokio_core::reactor::Remote;
 
+use errors::*;
+
 pub struct HTTPClient {
     api_base: String,
     headers: HashMap<&'static str, String>,
@@ -21,10 +23,10 @@ struct InternalResp {
     data: hyper::Chunk,
 }
 
-type InternalResponseResult = Result<InternalResp, String>;
+type InternalResponseResult = Result<InternalResp>;
 type FutureInternalResponse = oneshot::Receiver<InternalResponseResult>;
 
-pub type Response<T> = Result<T, String>;
+pub type Response<T> = Result<T>;
 pub type FutureResponse<T> = Box<Future<Item = Response<T>, Error = ()> + Send + 'static>;
 
 impl HTTPClient {
@@ -107,7 +109,7 @@ impl HTTPClient {
     ) -> Response<T> {
         match self.request_de_async(method, path, body).wait() {
             Ok(r) => r,
-            Err(_) => Err(format!("Error waiting for HTTP response")),
+            Err(_) => Err("Error waiting for HTTP response".into()),
         }
     }
 
@@ -119,22 +121,14 @@ impl HTTPClient {
     ) -> FutureResponse<T> {
         Box::new(
             self.request_async(method, path, body)
-                .or_else(|_| future::ok(Err(format!("HTTP Request was cancelled"))))
+                .or_else(|_| future::ok(Err("HTTP Request was cancelled".into())))
                 .map(|res| match res {
                     Ok(res) => {
-                        let obj: T = match serde_json::from_slice(&res.data) {
-                            Ok(obj) => obj,
-                            Err(e) => {
-                                return Err(format!(
-                                    "Could not parse response: {}\n---\n{}\n---",
-                                    e,
-                                    String::from_utf8_lossy(&res.data)
-                                ))
-                            }
-                        };
-                        Ok(obj)
+                        serde_json::from_slice::<T>(&res.data).map_err(|e| {
+                            Error::from(format!("Could not parse response: {}\n---\n{}\n---", e, String::from_utf8_lossy(&res.data)))
+                        })
                     }
-                    Err(e) => Err(e),
+                    Err(e) => Err(Error::from(e))
                 }),
         )
     }
@@ -142,14 +136,14 @@ impl HTTPClient {
     fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Response<()> {
         match self.request_void_async(method, path, body).wait() {
             Ok(r) => r,
-            Err(_) => Err(format!("Error waiting for HTTP response")),
+            Err(_) => Err("Error waiting for HTTP response".into()),
         }
     }
 
     fn request_void_async<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> FutureResponse<()> {
         Box::new(
             self.request_async(method, path, body)
-                .or_else(|_| future::ok(Err(format!("HTTP Request was cancelled"))))
+                .or_else(|_| future::ok(Err("HTTP Request was cancelled".into())))
                 .map(|res| match res {
                     Ok(_) => Ok(()),
                     Err(e) => Err(e),
@@ -177,7 +171,7 @@ impl HTTPClient {
         let url: hyper::Uri = match url.parse() {
             Ok(u) => u,
             Err(e) => {
-                let _ = send_future(Err(format!("Error: {}", e)));
+                send_future(Err(format!("Error parsing url: {}: {}", url, e).into()));
                 return rx;
             }
         };
@@ -195,7 +189,7 @@ impl HTTPClient {
             let body_json = match serde_json::to_string(&body) {
                 Ok(j) => j,
                 Err(e) => {
-                    send_future(Err(format!("Error json-encoding body: {}", e)));
+                    send_future(Err(format!("Error json-encoding body: {}", e).into()));
                     return rx;
                 }
             };
@@ -224,12 +218,14 @@ impl HTTPClient {
                         .map(move |buffer| {
                             debug!("Response: HTTP {}\n---\n{}\n---", status, String::from_utf8_lossy(&buffer));
                             if !status.is_success() {
-                                send_future(Err(format!(
-                                    "Failed request to {}: HTTP {}\n---\n{}\n---",
-                                    path,
-                                    status,
-                                    String::from_utf8_lossy(&buffer)
-                                )));
+                                send_future(Err(
+                                    format!(
+                                        "Failed request to {}: HTTP {}\n---\n{}\n---",
+                                        path,
+                                        status,
+                                        String::from_utf8_lossy(&buffer)
+                                    ).into(),
+                                ));
                             } else {
                                 send_future(Ok(InternalResp { data: buffer }));
                             }

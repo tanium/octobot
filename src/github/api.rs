@@ -1,5 +1,6 @@
 use tokio_core::reactor::Remote;
 
+use errors::*;
 use github::models::*;
 use http_client::HTTPClient;
 
@@ -7,14 +8,14 @@ pub trait Session: Send + Sync {
     fn user(&self) -> &User;
     fn github_host(&self) -> &str;
     fn github_token(&self) -> &str;
-    fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest, String>;
+    fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest>;
     fn get_pull_requests(
         &self,
         owner: &str,
         repo: &str,
         state: Option<&str>,
         head: Option<&str>,
-    ) -> Result<Vec<PullRequest>, String>;
+    ) -> Result<Vec<PullRequest>>;
 
     fn create_pull_request(
         &self,
@@ -24,13 +25,13 @@ pub trait Session: Send + Sync {
         body: &str,
         head: &str,
         base: &str,
-    ) -> Result<PullRequest, String>;
+    ) -> Result<PullRequest>;
 
-    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>, String>;
+    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>>;
 
-    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>, String>;
+    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>>;
 
-    fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>, String>;
+    fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>>;
 
     fn assign_pull_request(
         &self,
@@ -38,13 +39,13 @@ pub trait Session: Send + Sync {
         repo: &str,
         number: u32,
         assignees: Vec<String>,
-    ) -> Result<AssignResponse, String>;
+    ) -> Result<AssignResponse>;
 
-    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<(), String>;
-    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String>;
-    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String>;
-    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>, String>;
-    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<(), String>;
+    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()>;
+    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()>;
+    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()>;
+    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>>;
+    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<()>;
 }
 
 pub struct GithubSession {
@@ -55,7 +56,7 @@ pub struct GithubSession {
 }
 
 impl GithubSession {
-    pub fn new(core_remote: Remote, host: &str, token: &str) -> Result<GithubSession, String> {
+    pub fn new(core_remote: Remote, host: &str, token: &str) -> Result<GithubSession> {
         let api_base = if host == "github.com" {
             "https://api.github.com".to_string()
         } else {
@@ -69,11 +70,9 @@ impl GithubSession {
             });
 
         // make sure we can auth as this user befor handing out session.
-        let user: User = match client.get("/user") {
-            Ok(u) => u,
-            Err(e) => return Err(format!("Error authenticating with token: {}", e)),
-        };
-
+        let user: User = client.get("/user").map_err(|e| {
+            Error::from(format!("Error authenticating to github with token: {}", e))
+        })?;
 
         Ok(GithubSession {
             client: client,
@@ -97,7 +96,7 @@ impl Session for GithubSession {
         &self.token
     }
 
-    fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest, String> {
+    fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
         self.client.get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
     }
 
@@ -107,7 +106,7 @@ impl Session for GithubSession {
         repo: &str,
         state: Option<&str>,
         head: Option<&str>,
-    ) -> Result<Vec<PullRequest>, String> {
+    ) -> Result<Vec<PullRequest>> {
         let prs: Vec<PullRequest> = self.client.get(&format!(
             "repos/{}/{}/pulls?state={}&head={}",
             owner,
@@ -134,7 +133,7 @@ impl Session for GithubSession {
         body: &str,
         head: &str,
         base: &str,
-    ) -> Result<PullRequest, String> {
+    ) -> Result<PullRequest> {
         #[derive(Serialize)]
         struct CreatePR {
             title: String,
@@ -152,16 +151,28 @@ impl Session for GithubSession {
         self.client.post(&format!("repos/{}/{}/pulls", owner, repo), &pr)
     }
 
-    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>, String> {
-        self.client.get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number))
+    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>> {
+        self.client.get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number)).map_err(
+            |e| {
+                format!("Error looking up PR labels: {}/{} #{}: {}", owner, repo, number, e).into()
+            },
+        )
     }
 
-    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>, String> {
-        self.client.get(&format!("repos/{}/{}/pulls/{}/commits", owner, repo, number))
+    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>> {
+        self.client.get(&format!("repos/{}/{}/pulls/{}/commits", owner, repo, number)).map_err(
+            |e| {
+                format!("Error looking up PR commits: {}/{} #{}: {}", owner, repo, number, e).into()
+            },
+        )
     }
 
-    fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>, String> {
-        self.client.get(&format!("repos/{}/{}/pulls/{}/reviews", owner, repo, number))
+    fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>> {
+        self.client.get(&format!("repos/{}/{}/pulls/{}/reviews", owner, repo, number)).map_err(
+            |e| {
+                format!("Error looking up PR reviews: {}/{} #{}: {}", owner, repo, number, e).into()
+            },
+        )
     }
 
     fn assign_pull_request(
@@ -170,7 +181,7 @@ impl Session for GithubSession {
         repo: &str,
         number: u32,
         assignees: Vec<String>,
-    ) -> Result<AssignResponse, String> {
+    ) -> Result<AssignResponse> {
         #[derive(Serialize)]
         struct AssignPR {
             assignees: Vec<String>,
@@ -178,23 +189,24 @@ impl Session for GithubSession {
 
         let body = AssignPR { assignees: assignees };
 
-        self.client.post(&format!("repos/{}/{}/issues/{}/assignees", owner, repo, number), &body)
+        self.client
+            .post(&format!("repos/{}/{}/issues/{}/assignees", owner, repo, number), &body)
+            .map_err(|e| format!("Error assigning PR: {}/{} #{}: {}", owner, repo, number, e).into())
     }
 
-    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<(), String> {
+    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()> {
         #[derive(Serialize)]
         struct CommentPR {
             body: String,
         }
         let body = CommentPR { body: comment.to_string() };
 
-        self.client.post_void(
-            &format!("repos/{}/{}/issues/{}/comments", owner, repo, number),
-            &body,
-        )
+        self.client
+            .post_void(&format!("repos/{}/{}/issues/{}/comments", owner, repo, number), &body)
+            .map_err(|e| format!("Error commenting on PR: {}/{} #{}: {}", owner, repo, number, e).into())
     }
 
-    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String> {
+    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()> {
         #[derive(Serialize)]
         struct CreateRef {
             #[serde(rename = "ref")]
@@ -207,24 +219,26 @@ impl Session for GithubSession {
             sha: sha.into(),
         };
 
-        self.client.post_void(&format!("repos/{}/{}/git/refs", owner, repo), &body)
+        self.client.post_void(&format!("repos/{}/{}/git/refs", owner, repo), &body).map_err(|e| {
+            format!("Error creating branch {}/{} {}, {}: {}", owner, repo, branch_name, sha, e).into()
+        })
     }
 
-    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String> {
-        self.client.delete_void(
-            &format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name),
-        )
+    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()> {
+        self.client
+            .delete_void(&format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name))
+            .map_err(|e| format!("Error deleting branch {}/{} {}: {}", owner, repo, branch_name, e).into())
     }
 
-    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>, String> {
-        self.client.get(&format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name))
+    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>> {
+        self.client
+            .get(&format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name))
+            .map_err(|e| format!("Error getting statuses {}/{} {}: {}", owner, repo, ref_name, e).into())
     }
 
-    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<(), String> {
-        let _: Status = self.client.post(
-            &format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name),
-            status,
-        )?;
-        Ok(())
+    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<()> {
+        self.client
+            .post_void(&format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name), status)
+            .map_err(|e| format!("Error creating status {}/{} {}: {}", owner, repo, ref_name, e).into())
     }
 }

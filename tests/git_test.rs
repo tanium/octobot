@@ -79,23 +79,23 @@ impl GitTest {
 fn test_current_branch() {
     let test = GitTest::new();
 
-    assert_eq!(Ok("master".into()), test.git.current_branch());
+    assert_eq!("master", test.git.current_branch().unwrap());
     test.run_git(&["checkout", "-b", "other-branch"]);
-    assert_eq!(Ok("other-branch".into()), test.git.current_branch());
+    assert_eq!("other-branch", test.git.current_branch().unwrap());
 }
 
 #[test]
 fn test_has_branch() {
     let test = GitTest::new();
 
-    assert_eq!(Ok(true), test.git.has_branch("master"), "should have master branch");
+    assert_eq!(true, test.git.has_branch("master").unwrap(), "should have master branch");
 
     test.run_git(&["branch", "falcon"]);
     test.run_git(&["branch", "eagle"]);
 
-    assert_eq!(Ok(true), test.git.has_branch("falcon"), "should have falcon branch");
-    assert_eq!(Ok(true), test.git.has_branch("eagle"), "should have eagle branch");
-    assert_eq!(Ok(false), test.git.has_branch("eagles"), "should NOT have eagles branch");
+    assert_eq!(true, test.git.has_branch("falcon").unwrap(), "should have falcon branch");
+    assert_eq!(true, test.git.has_branch("eagle").unwrap(), "should have eagle branch");
+    assert_eq!(false, test.git.has_branch("eagles").unwrap(), "should NOT have eagles branch");
 }
 
 #[test]
@@ -107,20 +107,20 @@ fn test_does_branch_contain() {
     test.run_git(&["branch", "falcon"]);
     test.run_git(&["branch", "eagle"]);
 
-    assert_eq!(Ok(true), test.git.does_branch_contain(&commit, "master"), "master should contain commit");
-    assert_eq!(Ok(true), test.git.does_branch_contain(&commit, "eagle"), "eagle should contain commit");
-    assert_eq!(Ok(true), test.git.does_branch_contain(&commit, "falcon"), "falcon should contain commit");
+    assert_eq!(true, test.git.does_branch_contain(&commit, "master").unwrap(), "master should contain commit");
+    assert_eq!(true, test.git.does_branch_contain(&commit, "eagle").unwrap(), "eagle should contain commit");
+    assert_eq!(true, test.git.does_branch_contain(&commit, "falcon").unwrap(), "falcon should contain commit");
 
     test.run_git(&["checkout", "-b", "stallion"]);
     test.add_repo_file("horses.txt", "Stallion\nSteed\nMustang\n", "Horses and stuff");
 
     let commit2 = test.run_git(&["rev-parse", "HEAD"]);
-    assert_eq!(Ok(true), test.git.does_branch_contain(&commit, "stallion"), "stallion should contain commit");
-    assert_eq!(Ok(true), test.git.does_branch_contain(&commit2, "stallion"), "stallion should contain commit2");
+    assert_eq!(true, test.git.does_branch_contain(&commit, "stallion").unwrap(), "stallion should contain commit");
+    assert_eq!(true, test.git.does_branch_contain(&commit2, "stallion").unwrap(), "stallion should contain commit2");
 
-    assert_eq!(Ok(false), test.git.does_branch_contain(&commit2, "master"), "master should not contain commit2");
-    assert_eq!(Ok(false), test.git.does_branch_contain(&commit2, "eagle"), "eagle should not contain commit2");
-    assert_eq!(Ok(false), test.git.does_branch_contain(&commit2, "falcon"), "falcon should not contain commit2");
+    assert_eq!(false, test.git.does_branch_contain(&commit2, "master").unwrap(), "master should not contain commit2");
+    assert_eq!(false, test.git.does_branch_contain(&commit2, "eagle").unwrap(), "eagle should not contain commit2");
+    assert_eq!(false, test.git.does_branch_contain(&commit2, "falcon").unwrap(), "falcon should not contain commit2");
 }
 
 #[test]
@@ -151,21 +151,21 @@ fn test_find_base_commit() {
     test.run_git(&["push"]);
 
     // multiple commits back
-    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit(&falcon_commit, "master"));
-    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit("origin/falcon", "master"));
+    assert_eq!(base_commit.clone(), test.git.find_base_branch_commit(&falcon_commit, "master").unwrap());
+    assert_eq!(base_commit.clone(), test.git.find_base_branch_commit("origin/falcon", "master").unwrap());
 
     // single commit back
-    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit(&horses_commit, "master"));
-    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit("origin/horses", "master"));
+    assert_eq!(base_commit.clone(), test.git.find_base_branch_commit(&horses_commit, "master").unwrap());
+    assert_eq!(base_commit.clone(), test.git.find_base_branch_commit("origin/horses", "master").unwrap());
 
     // now rebase falcon!
     test.run_git(&["checkout", "falcon"]);
     test.run_git(&["rebase", "master"]);
     test.run_git(&["push", "-f"]);
     let new_falcon_commit = test.run_git(&["rev-parse", "HEAD"]);
-    assert_eq!(Ok(base_commit.clone()), test.git.find_base_branch_commit(&falcon_commit, "master"));
-    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
-    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit("falcon", "master"));
+    assert_eq!(base_commit.clone(), test.git.find_base_branch_commit(&falcon_commit, "master").unwrap());
+    assert_eq!(new_base_commit.clone(), test.git.find_base_branch_commit(&new_falcon_commit, "master").unwrap());
+    assert_eq!(new_base_commit.clone(), test.git.find_base_branch_commit("falcon", "master").unwrap());
 
     // now force-push and reclone to clear reflog
     test.run_git(&["push", "-f"]);
@@ -175,20 +175,20 @@ fn test_find_base_commit() {
     test.run_git(&["checkout", "falcon"]);
     test.run_git(&["checkout", "master"]);
     let new_falcon_commit = test.run_git(&["rev-parse", "HEAD"]);
-    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
-    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit("falcon", "master"));
+    assert_eq!(new_base_commit.clone(), test.git.find_base_branch_commit(&new_falcon_commit, "master").unwrap());
+    assert_eq!(new_base_commit.clone(), test.git.find_base_branch_commit("falcon", "master").unwrap());
 
     // try rewriting the master branch. should stay the same...
     test.run_git(&["commit", "--amend", "-m", "some other commit 2 -- muaha. re-written!"]);
     test.run_git(&["push", "-f"]);
     let some_commit_1 = test.run_git(&["rev-parse", "HEAD^1"]);
     // --fork-point here knows that the base actually new_base_commit.
-    assert_eq!(Ok(new_base_commit.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
+    assert_eq!(new_base_commit.clone(), test.git.find_base_branch_commit(&new_falcon_commit, "master").unwrap());
 
     // recloning again, reflog is gone, --fork-point would now fail.
     // regular merge-base is now be the one commit before the rewritten one.
     test.reclone();
-    assert_eq!(Ok(some_commit_1.clone()), test.git.find_base_branch_commit(&new_falcon_commit, "master"));
+    assert_eq!(some_commit_1.clone(), test.git.find_base_branch_commit(&new_falcon_commit, "master").unwrap());
 }
 
 #[test]
@@ -203,11 +203,11 @@ fn test_checkout_branch_new_local_branch() {
     test.run_git(&["push"]);
     test.run_git(&["reset", "--hard", &base_commit]);
 
-    assert_eq!(Ok(()), test.git.checkout_branch("some-new-branch", "origin/master"));
+    assert_eq!((), test.git.checkout_branch("some-new-branch", "origin/master").unwrap());
     let now_commit = test.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);
-    assert_eq!(Ok("some-new-branch".into()), test.git.current_branch());
+    assert_eq!("some-new-branch", test.git.current_branch().unwrap());
 }
 
 #[test]
@@ -217,11 +217,11 @@ fn test_checkout_branch_with_ref() {
     let base_commit = test.run_git(&["rev-parse", "HEAD"]);
     test.add_repo_file("prarie-falcon.txt", "Prarie", "falcons 1");
 
-    assert_eq!(Ok(()), test.git.checkout_branch("some-new-branch", &base_commit));
+    assert_eq!((), test.git.checkout_branch("some-new-branch", &base_commit).unwrap());
     let now_commit = test.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, base_commit);
-    assert_eq!(Ok("some-new-branch".into()), test.git.current_branch());
+    assert_eq!("some-new-branch", test.git.current_branch().unwrap());
 }
 
 #[test]
@@ -236,11 +236,11 @@ fn test_checkout_branch_already_checked_out() {
     test.run_git(&["push"]);
     test.run_git(&["reset", "--hard", &base_commit]);
 
-    assert_eq!(Ok(()), test.git.checkout_branch("master", "origin/master"));
+    assert_eq!((), test.git.checkout_branch("master", "origin/master").unwrap());
     let now_commit = test.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);
-    assert_eq!(Ok("master".into()), test.git.current_branch());
+    assert_eq!("master", test.git.current_branch().unwrap());
 }
 
 #[test]
@@ -256,11 +256,11 @@ fn test_checkout_branch_already_exists() {
 
     test.run_git(&["reset", "--hard", &base_commit]);
 
-    assert_eq!(Ok(()), test.git.checkout_branch("the-branch", "origin/master"));
+    assert_eq!((), test.git.checkout_branch("the-branch", "origin/master").unwrap());
     let now_commit = test.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);
-    assert_eq!(Ok("the-branch".into()), test.git.current_branch());
+    assert_eq!("the-branch", test.git.current_branch().unwrap());
 }
 
 #[test]
@@ -268,13 +268,16 @@ fn test_get_commit_desc() {
     let test = GitTest::new();
 
     test.run_git(&["commit", "--amend", "-m", "I have just a subject"]);
-    assert_eq!(Ok(("I have just a subject".into(), String::new())), test.git.get_commit_desc("HEAD"));
+    assert_eq!(("I have just a subject".into(), String::new()), test.git.get_commit_desc("HEAD").unwrap());
 
     test.run_git(&["commit", "--amend", "-m", "I have a subject\n\nAnd I have a body"]);
-    assert_eq!(Ok(("I have a subject".into(), "And I have a body".into())), test.git.get_commit_desc("HEAD"));
+    assert_eq!(("I have a subject".into(), "And I have a body".into()), test.git.get_commit_desc("HEAD").unwrap());
 
     test.run_git(
         &["commit", "--amend", "-m", "I have a subject\nAnd I forgot to skip a line"],
     );
-    assert_eq!(Ok(("I have a subject".into(), "And I forgot to skip a line".into())), test.git.get_commit_desc("HEAD"));
+    assert_eq!(
+        ("I have a subject".into(), "And I forgot to skip a line".into()),
+        test.git.get_commit_desc("HEAD").unwrap()
+    );
 }

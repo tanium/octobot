@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 use std::thread;
 
+use octobot::errors::*;
 use octobot::github::*;
 use octobot::github::api::Session;
 
@@ -26,11 +27,11 @@ pub struct MockGithub {
 #[derive(Debug)]
 struct MockCall<T> {
     args: Vec<String>,
-    ret: Result<T, String>,
+    ret: Result<T>,
 }
 
 impl<T> MockCall<T> {
-    pub fn new(ret: Result<T, String>, args: Vec<&str>) -> MockCall<T> {
+    pub fn new(ret: Result<T>, args: Vec<&str>) -> MockCall<T> {
         MockCall {
             ret: ret,
             args: args.iter().map(|a| a.to_string()).collect(),
@@ -121,7 +122,7 @@ impl Session for MockGithub {
         &self.token
     }
 
-    fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest, String> {
+    fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
         let mut calls = self.get_pr_calls.lock().unwrap();
         if calls.len() == 0 {
             panic!("Unexpected call to get_pull_request");
@@ -140,7 +141,7 @@ impl Session for MockGithub {
         repo: &str,
         state: Option<&str>,
         head: Option<&str>,
-    ) -> Result<Vec<PullRequest>, String> {
+    ) -> Result<Vec<PullRequest>> {
         let mut calls = self.get_prs_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_pull_requests");
         let call = calls.remove(0);
@@ -160,7 +161,7 @@ impl Session for MockGithub {
         body: &str,
         head: &str,
         base: &str,
-    ) -> Result<PullRequest, String> {
+    ) -> Result<PullRequest> {
         let mut calls = self.create_pr_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to create_pull_request");
         let call = calls.remove(0);
@@ -174,7 +175,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>, String> {
+    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>> {
         let mut calls = self.get_pr_labels_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_pull_request_labels");
         let call = calls.remove(0);
@@ -185,7 +186,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>, String> {
+    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>> {
         let mut calls = self.get_pr_commits_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_pull_request_commits");
         let call = calls.remove(0);
@@ -196,7 +197,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>, String> {
+    fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>> {
         let mut calls = self.get_pr_reviews_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_pull_request_reviews");
         let call = calls.remove(0);
@@ -213,7 +214,7 @@ impl Session for MockGithub {
         repo: &str,
         number: u32,
         assignees: Vec<String>,
-    ) -> Result<AssignResponse, String> {
+    ) -> Result<AssignResponse> {
         let mut calls = self.assign_pr_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to assign_pull_request");
         let call = calls.remove(0);
@@ -225,7 +226,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<(), String> {
+    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()> {
         let mut calls = self.comment_pr_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to comment_pull_request");
         let call = calls.remove(0);
@@ -237,7 +238,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<(), String> {
+    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()> {
         let mut calls = self.create_branch_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to create_branch");
         let call = calls.remove(0);
@@ -249,7 +250,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<(), String> {
+    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()> {
         let mut calls = self.create_branch_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to delete_branch");
         let call = calls.remove(0);
@@ -260,7 +261,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>, String> {
+    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>> {
         let mut calls = self.get_status_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_statuses");
         let call = calls.remove(0);
@@ -271,7 +272,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<(), String> {
+    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<()> {
         let mut calls = self.create_status_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to create_status");
         let call = calls.remove(0);
@@ -285,7 +286,7 @@ impl Session for MockGithub {
 }
 
 impl MockGithub {
-    pub fn get_pull_request(&self, owner: &str, repo: &str, number: u32, ret: Result<PullRequest, String>) {
+    pub fn get_pull_request(&self, owner: &str, repo: &str, number: u32, ret: Result<PullRequest>) {
         self.get_pr_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, &number.to_string()],
@@ -298,7 +299,7 @@ impl MockGithub {
         repo: &str,
         state: Option<&str>,
         head: Option<&str>,
-        ret: Result<Vec<PullRequest>, String>,
+        ret: Result<Vec<PullRequest>>,
     ) {
         self.get_prs_calls.lock().unwrap().push(MockCall::new(
             ret,
@@ -319,7 +320,7 @@ impl MockGithub {
         body: &str,
         head: &str,
         base: &str,
-        ret: Result<PullRequest, String>,
+        ret: Result<PullRequest>,
     ) {
         self.create_pr_calls.lock().unwrap().push(MockCall::new(
             ret,
@@ -327,47 +328,28 @@ impl MockGithub {
         ));
     }
 
-    pub fn mock_get_pull_request_labels(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<Label>, String>) {
+    pub fn mock_get_pull_request_labels(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<Label>>) {
         self.get_pr_labels_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, &number.to_string()],
         ));
     }
 
-    pub fn mock_get_pull_request_commits(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-        ret: Result<Vec<Commit>, String>,
-    ) {
+    pub fn mock_get_pull_request_commits(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<Commit>>) {
         self.get_pr_commits_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, &number.to_string()],
         ));
     }
 
-    pub fn mock_get_pull_request_reviews(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-        ret: Result<Vec<Review>, String>,
-    ) {
+    pub fn mock_get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<Review>>) {
         self.get_pr_reviews_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, &number.to_string()],
         ));
     }
 
-    pub fn mock_comment_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-        comment: &str,
-        ret: Result<(), String>,
-    ) {
+    pub fn mock_comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str, ret: Result<()>) {
         self.comment_pr_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, &number.to_string(), comment],
@@ -380,7 +362,7 @@ impl MockGithub {
         repo: &str,
         number: u32,
         assignees: Vec<String>,
-        ret: Result<AssignResponse, String>,
+        ret: Result<AssignResponse>,
     ) {
         self.assign_pr_calls.lock().unwrap().push(MockCall::new(
             ret,
@@ -393,33 +375,26 @@ impl MockGithub {
         ));
     }
 
-    pub fn mock_create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str, ret: Result<(), String>) {
+    pub fn mock_create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str, ret: Result<()>) {
         self.create_branch_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, branch_name, sha],
         ));
     }
 
-    pub fn mock_delete_branch(&self, owner: &str, repo: &str, branch_name: &str, ret: Result<(), String>) {
+    pub fn mock_delete_branch(&self, owner: &str, repo: &str, branch_name: &str, ret: Result<()>) {
         self.delete_branch_calls.lock().unwrap().push(
             MockCall::new(ret, vec![owner, repo, branch_name]),
         );
     }
 
-    pub fn mock_get_statuses(&self, owner: &str, repo: &str, ref_name: &str, ret: Result<Vec<Status>, String>) {
+    pub fn mock_get_statuses(&self, owner: &str, repo: &str, ref_name: &str, ret: Result<Vec<Status>>) {
         self.get_status_calls.lock().unwrap().push(
             MockCall::new(ret, vec![owner, repo, ref_name]),
         );
     }
 
-    pub fn mock_create_status(
-        &self,
-        owner: &str,
-        repo: &str,
-        ref_name: &str,
-        status: &Status,
-        ret: Result<(), String>,
-    ) {
+    pub fn mock_create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status, ret: Result<()>) {
         self.create_status_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![

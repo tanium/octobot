@@ -11,7 +11,11 @@ pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> io::Result<bool> {
     }
 
     let user_safe = ldap_escape(user);
-    let user_filters = config.userid_attributes.iter().map(|a| format!("({}={})", a, user_safe.as_ref())).collect::<Vec<_>>();
+    let user_filters = config
+        .userid_attributes
+        .iter()
+        .map(|a| format!("({}={})", a, user_safe.as_ref()))
+        .collect::<Vec<_>>();
 
     let user_filter;
     if user_filters.len() == 0 {
