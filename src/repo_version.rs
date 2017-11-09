@@ -282,7 +282,7 @@ mod tests {
             file.write_all(b"echo 1.2.3.4").expect("write file");
         }
 
-        assert_eq!(Ok("1.2.3.4".into()), run_script("bash version.sh", &sub_dir));
+        assert_eq!("1.2.3.4", run_script("bash version.sh", &sub_dir).unwrap());
     }
 
     #[test]
@@ -298,7 +298,7 @@ mod tests {
             file.write_all(b"print '1.2.3.4'").expect("write file");
         }
 
-        assert_eq!(Ok("1.2.3.4".into()), run_script("python version.py", &sub_dir));
+        assert_eq!("1.2.3.4", run_script("python version.py", &sub_dir).unwrap());
     }
 
     #[test]
@@ -330,7 +330,7 @@ mod tests {
             ).expect("write file");
         }
 
-        assert_eq!(Ok("1.2.3.4".into()), run_script("bash version.sh", &sub_dir));
+        assert_eq!("1.2.3.4", run_script("bash version.sh", &sub_dir).unwrap());
 
         assert!(parent_file.exists(), "version scripts should not be able to delete files outside its directory");
         assert!(
