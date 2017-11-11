@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use time;
 
 fn escape_for_slack(str: &str) -> String {
@@ -66,6 +68,23 @@ where
     }
 
     unique
+}
+
+pub fn parse_query(query_params: Option<&str>) -> HashMap<String, String> {
+    if query_params.is_none() {
+        return HashMap::new();
+    }
+    query_params.unwrap()
+        .split("&")
+        .filter_map(|v| {
+            let parts = v.splitn(2, "=").collect::<Vec<_>>();
+            if parts.len() != 2 {
+                None
+            } else {
+                Some((parts[0].to_string(), parts[1].to_string()))
+            }
+        })
+        .collect::<HashMap<_, _>>()
 }
 
 #[cfg(test)]

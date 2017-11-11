@@ -1,6 +1,4 @@
-repos
-target
-config.toml
-repos.json
-users.json
-.docker-tmp
+repos/
+target/
+config/
+.docker-tmp/

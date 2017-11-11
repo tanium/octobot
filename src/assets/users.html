@@ -1,32 +1,45 @@
 <h3>Users</h3>
-<form class="form-inline" ng-submit="saveRepos()">
-  <div ng-repeat="(host, users) in usersMap">
-    <h4>Host: {{host}}</h4>
+  <table class="table">
+    <tr>
+      <th>GitHub Username</th>
+      <th>Slack Username</th>
+      <th>&nbsp;</th>
+    </tr>
 
-    <table class="table">
-      <tr>
-        <th>GitHub Username</th>
-        <th>Slack Username</th>
-        <th>&nbsp;</th>
-      </tr>
+    <tr ng-repeat="user in users">
+      <td>{{user.github}}</td>
+      <td>{{user.slack}}</td>
+      <td>
+        <a href ng-click="removeUser(user)"><span class="glyphicon glyphicon-trash" /></a>
+      </td>
+    </tr>
+  </table>
+  <div style="margin: 10px">
+    <button type="button" class="btn btn-sm btn-default" ng-click="addUser()">Add user</button>
+  </div>
+</div>
 
-      <tr ng-repeat="info in users">
-        <td>
-          <input type="text" class="form-control" ng-model="info.github" placeholder="GitHub username" required>
-        </td>
-        <td>
-          <input type="text" class="form-control" ng-model="info.slack" placeholder="Slack username" required>
-        </td>
-        <td>
-          <a href ng-click="removeUser(host, info.github)"><span class="glyphicon glyphicon-trash" /></a>
-        </td>
-      </tr>
-    </table>
-    <div style="margin: 10px">
-      <button type="button" class="btn btn-sm btn-default" ng-click="addUser(host)">Add user</button>
+<div class="modal fade" tabindex="-1" role="dialog" id="add-user-modal">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <form class="" ng-submit="addUserSubmit()">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+          <h4 class="modal-title">Add new user</h4>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <input id="add-user-username" type="text" class="form-control" ng-model="newUser.github" placeholder="GitHub username" required>
+          </div>
+          <div class="form-group">
+            <input type="text" class="form-control" ng-model="newUser.slack" placeholder="Slack username" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit</button>
+        </div>
+      </form>
     </div>
   </div>
-  <div style="margin: 10px">
-    <button type="submit" class="btn btn-sm btn-primary" ng-click="saveUsers()">Save Users</button>
-  </div>
-</form>
+</div>

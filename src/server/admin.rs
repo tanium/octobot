@@ -14,15 +14,20 @@ use config::{Config, JiraConfig};
 use jira;
 use repos::RepoHostMap;
 use server::http::{FutureResponse, Handler, parse_json};
-use users::UserHostMap;
+use users::UserInfo;
+use util;
 use version;
 
-pub struct GetUsers {
-    config: Arc<Config>,
+pub enum Op {
+    List,
+    Create,
+    Update,
+    Delete,
 }
 
-pub struct UpdateUsers {
+pub struct UserAdmin {
     config: Arc<Config>,
+    op: Op,
 }
 
 pub struct GetRepos {
@@ -33,15 +38,12 @@ pub struct UpdateRepos {
     config: Arc<Config>,
 }
 
-impl GetUsers {
-    pub fn new(config: Arc<Config>) -> Box<GetUsers> {
-        Box::new(GetUsers { config: config })
-    }
-}
-
-impl UpdateUsers {
-    pub fn new(config: Arc<Config>) -> Box<UpdateUsers> {
-        Box::new(UpdateUsers { config: config })
+impl UserAdmin {
+    pub fn new(config: Arc<Config>, op: Op) -> Box<UserAdmin> {
+        Box::new(UserAdmin {
+            config: config,
+            op: op,
+        })
     }
 }
 
@@ -57,9 +59,33 @@ impl UpdateRepos {
     }
 }
 
-impl Handler for GetUsers {
-    fn handle(&self, _: Request) -> FutureResponse {
-        let users = match serde_json::to_string(&*self.config.users()) {
+impl Handler for UserAdmin {
+    fn handle(&self, req: Request) -> FutureResponse {
+        match &self.op {
+            &Op::List => self.get_all(req),
+            &Op::Create => self.create(req),
+            &Op::Update => self.update(req),
+            &Op::Delete => self.delete(req),
+        }
+    }
+}
+
+impl UserAdmin {
+    fn get_all(&self, _: Request) -> FutureResponse {
+        #[derive(Serialize)]
+        struct UsersResp {
+            users: Vec<UserInfo>,
+        }
+
+        let users = match self.config.users().get_all() {
+            Ok(u) => u,
+            Err(e) => {
+                return self.respond_error(&format!("{}", e));
+            }
+        };
+        let resp = UsersResp { users: users };
+
+        let users = match serde_json::to_string(&resp) {
             Ok(u) => u,
             Err(e) => {
                 error!("Error serializing users: {}", e);
@@ -67,6 +93,52 @@ impl Handler for GetUsers {
             }
         };
         self.respond(Response::new().with_header(ContentType::json()).with_body(users))
+    }
+
+    fn create(&self, req: Request) -> FutureResponse {
+        #[derive(Deserialize)]
+        struct NewUserReq {
+            github: String,
+            slack: String,
+        }
+
+        let config = self.config.clone();
+        parse_json(req, move |user: NewUserReq| {
+            if let Err(e) = config.users_write().insert(String::new(), user.github, user.slack) {
+                error!("{}", e);
+                return Response::new().with_status(StatusCode::InternalServerError);
+            }
+            Response::new().with_status(StatusCode::Ok)
+        })
+    }
+
+    fn update(&self, req: Request) -> FutureResponse {
+        let config = self.config.clone();
+
+        parse_json(req, move |user: UserInfo| {
+            if let Err(e) = config.users_write().update(&user) {
+                error!("{}", e);
+                return Response::new().with_status(StatusCode::InternalServerError);
+            }
+            Response::new().with_status(StatusCode::Ok)
+        })
+    }
+
+    fn delete(&self, req: Request) -> FutureResponse {
+        let config = self.config.clone();
+
+        let query = util::parse_query(req.uri().query());
+        println!("QUERIES! {:?}", query);
+
+        let user_id = match query.get("id").map(|id| id.parse::<i32>()) {
+            None | Some(Err(_)) => return self.respond_with(StatusCode::BadRequest, "No `id` param specified"),
+            Some(Ok(id)) => id,
+        };
+
+        if let Err(e) = config.users_write().delete(user_id) {
+            return self.respond_error(&format!("{}", e));
+        }
+        self.respond_with(StatusCode::Ok, "")
     }
 }
 
@@ -80,61 +152,6 @@ impl Handler for GetRepos {
             }
         };
         self.respond(Response::new().with_header(ContentType::json()).with_body(repos))
-    }
-}
-
-impl Handler for UpdateUsers {
-    fn handle(&self, req: Request) -> FutureResponse {
-        let config = self.config.clone();
-
-        parse_json(req, move |users: UserHostMap| {
-            let json = match serde_json::to_string_pretty(&users) {
-                Ok(j) => j,
-                Err(e) => {
-                    error!("Error serializing users: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                        "Error serializing JSON: {}",
-                        e
-                    ));
-                }
-            };
-
-            let config_file = config.main.users_config_file.clone();
-            let config_file_tmp = config_file.clone() + ".tmp";
-
-            let mut file = match fs::File::create(&config_file_tmp) {
-                Ok(f) => f,
-                Err(e) => {
-                    error!("Error opening file: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                        "Error opening file: {}",
-                        e
-                    ));
-                }
-            };
-
-            if let Err(e) = file.write_all(json.as_bytes()) {
-                error!("Error writing file: {}", e);
-                return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                    "Error writing file: {}",
-                    e
-                ));
-            }
-
-            if let Err(e) = fs::rename(&config_file_tmp, &config_file) {
-                error!("Error renaming file: {}", e);
-                return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                    "Error renaming file: {}",
-                    e
-                ));
-            }
-
-            if let Err(e) = config.reload_users_repos() {
-                error!("Error reloading config: {}", e);
-            }
-
-            Response::new()
-        })
     }
 }
 

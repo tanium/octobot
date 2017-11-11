@@ -75,6 +75,28 @@ app.service('sessionHttp', function($http, $state) {
     });
   };
 
+  this.put = function(url, data) {
+    return $http.put(url, data, {
+      headers: {
+        session: sessionStorage['session'],
+      },
+    }).catch(function(e) {
+      catch_403(e);
+      throw e;
+    });
+  };
+
+  this.delete = function(url) {
+    return $http.delete(url, {
+      headers: {
+        session: sessionStorage['session'],
+      },
+    }).catch(function(e) {
+      catch_403(e);
+      throw e;
+    });
+  };
+
   this.logout = function() {
     self.post('/auth/logout', null).finally(function() {
       console.log('logging out!');
@@ -145,11 +167,18 @@ function parseError(e) {
 }
 
 app.controller('UsersController', function($scope, sessionHttp, notificationService)  {
-  $scope.usersMap = {};
+
+  function init() {
+    $('#add-user-modal').on('shown.bs.modal', function () {
+      $('#add-user-username').focus()
+    });
+
+    refresh();
+  }
 
   function refresh() {
     return sessionHttp.get('/api/users').then(function(resp) {
-      $scope.usersMap = resp.data.users;
+      $scope.users = resp.data.users;
 
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -159,33 +188,42 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
     });
   }
 
-  $scope.addUser = function(host) {
-    $scope.usersMap[host].push({});
+  $scope.addUser = function() {
+    $scope.newUser = {};
+    $('#add-user-modal').modal('show');
   }
 
-  $scope.removeUser = function(host, github_username) {
-    for (var i = 0; i < $scope.usersMap[host].length; ++i) {
-      if ($scope.usersMap[host][i].github == github_username) {
-        $scope.usersMap[host].splice(i, 1);
-        return;
-      }
-    }
-  }
+  $scope.addUserSubmit = function() {
+    $('#add-user-modal').modal('hide');
 
-  $scope.saveUsers = function() {
-    sessionHttp.post('/api/users', $scope.usersMap).then(function() {
-      refresh();
-      notificationService.showSuccess('Updated users succesfully');
+    sessionHttp.post('/api/users', $scope.newUser).then(function(resp) {
+      notificationService.showSuccess('Added user succesfully');
+      refresh()
     }).catch(function(e) {
       if (!isLoggedIn()) {
         return;
       }
-      notificationService.showError('Error updating users: ' + parseError(e));
+      notificationService.showError('Error removing user: ' + parseError(e));
     });
-  };
+  }
+
+  $scope.removeUser = function(user) {
+    if (!confirm("Are you sure you want to delete user " + user.github + "?")) {
+      return;
+    }
+    return sessionHttp.delete('/api/user?id=' + Number(user.id)).then(function(resp) {
+      notificationService.showSuccess('Remove user succesfully');
+      refresh();
+    }).catch(function(e) {
+      if (!isLoggedIn()) {
+        return;
+      }
+      notificationService.showError('Error removing user: ' + parseError(e));
+    });
+  }
 
   // init
-  refresh();
+  init();
 });
 
 app.controller('ReposController', function($rootScope, $scope, sessionHttp, notificationService)  {

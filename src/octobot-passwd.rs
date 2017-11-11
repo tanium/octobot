@@ -18,7 +18,7 @@ fn main() {
     let config_file = std::env::args().nth(1).unwrap();
     let admin_name = std::env::args().nth(2).unwrap();
 
-    let mut config = config::parse(&config_file).expect("Error parsing config");
+    let mut config = config::new(config_file.clone().into()).expect("Error parsing config");
 
     let pass1 = rpassword::prompt_password_stdout("Enter new password: ").expect("password");
     let pass2 = rpassword::prompt_password_stdout("Retype new password: ").expect("password");

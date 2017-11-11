@@ -17,6 +17,11 @@ pub trait Handler {
     fn respond_with(&self, status: hyper::StatusCode, msg: &str) -> FutureResponse {
         self.respond(Response::new().with_status(status).with_body(msg.to_string()))
     }
+
+    fn respond_error(&self, err: &str) -> FutureResponse {
+        error!("InternalServerError: {}", err);
+        self.respond(Response::new().with_status(StatusCode::InternalServerError))
+    }
 }
 
 pub trait Filter {

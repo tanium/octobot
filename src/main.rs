@@ -43,7 +43,7 @@ fn run() -> Result<()> {
 
     setup_logging();
 
-    let config = config::parse(&config_file).chain_err(|| "Error parsing config")?;
+    let config = config::new(config_file.into()).chain_err(|| "Error parsing config")?;
 
     server::main::start(config).chain_err(|| "Failed to start server")
 }

@@ -1,8 +1,10 @@
 use std::fs;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use toml;
 
+use db::Database;
 use errors::*;
 use repos;
 use users;
@@ -92,23 +94,19 @@ pub struct LdapConfig {
 }
 
 impl Config {
-    pub fn empty_config() -> Config {
-        Config::new(users::UserConfig::new(), repos::RepoConfig::new())
+    pub fn new(db: Database) -> Config {
+        Config::new_with_model(ConfigModel::new(), db)
     }
 
-    pub fn new(users: users::UserConfig, repos: repos::RepoConfig) -> Config {
-        Config::new_with_model(ConfigModel::new(), users, repos)
-    }
-
-    fn new_with_model(config: ConfigModel, users: users::UserConfig, repos: repos::RepoConfig) -> Config {
+    fn new_with_model(config: ConfigModel, db: Database) -> Config {
         Config {
             main: config.main,
             admin: config.admin,
             github: config.github,
             jira: config.jira,
             ldap: config.ldap,
-            users: RwLock::new(users),
-            repos: RwLock::new(repos),
+            users: RwLock::new(users::UserConfig::new(db.clone())),
+            repos: RwLock::new(repos::RepoConfig::new()),
         }
     }
 
@@ -139,6 +137,7 @@ impl Config {
     }
 
     pub fn reload_users_repos(&self) -> Result<()> {
+        /*
         let users = users::load_config(&self.main.users_config_file).map_err(|e| {
             Error::from(format!("Error reading user config file: {}", e))
         })?;
@@ -148,6 +147,7 @@ impl Config {
 
         *self.users.write().unwrap() = users;
         *self.repos.write().unwrap() = repos;
+    */
         Ok(())
     }
 
@@ -244,26 +244,33 @@ impl JiraConfig {
     }
 }
 
-pub fn parse(config_file: &str) -> Result<Config> {
-    let mut config_file_open = fs::File::open(config_file)?;
+pub fn new(config_file: PathBuf) -> Result<Config> {
+    let db_file_name = "db.sqlite3";
+    match config_file.file_name() {
+        Some(name) => {
+            if name == db_file_name {
+                return Err("Must provide toml config file".into());
+            }
+        }
+        None => return Err("Provided config file has no file name".into()),
+    };
+
+    let mut db_file = config_file.clone();
+    db_file.set_file_name(db_file_name);
+    let db = Database::new(&db_file.to_string_lossy())?;
+
+    let mut config_file_open = fs::File::open(&config_file)?;
     let mut config_contents = String::new();
     config_file_open.read_to_string(&mut config_contents)?;
-    parse_string_and_load(&config_contents)
+    let config_model = parse_string(&config_contents)?;
+
+    Ok(Config::new_with_model(config_model, db))
 }
 
 fn parse_string(config_contents: &str) -> Result<ConfigModel> {
     toml::from_str::<ConfigModel>(config_contents).map_err(|e| {
         Error::from(format!("Error parsing config: {}", e))
     })
-}
-
-fn parse_string_and_load(config_contents: &str) -> Result<Config> {
-    let config = parse_string(config_contents)?;
-
-    let the_config = Config::new_with_model(config, users::UserConfig::new(), repos::RepoConfig::new());
-    the_config.reload_users_repos()?;
-
-    Ok(the_config)
 }
 
 

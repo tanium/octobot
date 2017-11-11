@@ -1,45 +1,52 @@
-use serde_json;
-use std;
-use std::collections::HashMap;
-use std::io::Read;
-use url::Url;
-
+use db::Database;
+use errors::*;
 use github;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct UserInfo {
+    pub id: i32,
     pub github: String,
     pub slack: String,
 }
 
-// maps github host to list of users
-pub type UserHostMap = HashMap<String, Vec<UserInfo>>;
-
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Clone)]
 pub struct UserConfig {
-    users: UserHostMap,
-}
-
-pub fn load_config(file: &str) -> std::io::Result<UserConfig> {
-    let mut f = std::fs::File::open(file)?;
-    let mut contents = String::new();
-    f.read_to_string(&mut contents)?;
-
-    let users: UserHostMap = serde_json::from_str(&contents).expect("Invalid JSON in users configuration file");
-
-    Ok(UserConfig { users: users })
+    db: Database,
 }
 
 impl UserConfig {
-    pub fn new() -> UserConfig {
-        UserConfig { users: UserHostMap::new() }
+    pub fn new(db: Database) -> UserConfig {
+        UserConfig { db: db }
     }
 
-    pub fn insert(&mut self, host: &str, git_user: &str, slack_user: &str) {
-        self.users.entry(host.to_string()).or_insert(vec![]).push(UserInfo {
-            github: git_user.to_string(),
-            slack: slack_user.to_string(),
-        });
+    pub fn insert(&mut self, _: String, git_user: String, slack_user: String) -> Result<()> {
+        let conn = self.db.connect()?;
+        conn.execute(
+            "INSERT INTO users (github_name, slack_name) VALUES (?1, ?2)",
+            &[&git_user, &slack_user],
+        ).map_err(|e| Error::from(format!("Error inserting user {}: {}", git_user, e)))?;
+
+        Ok(())
+    }
+
+    pub fn update(&mut self, user: &UserInfo) -> Result<()> {
+        let conn = self.db.connect()?;
+        conn.execute(
+            "UPDATE users set github_name = ?1, slack_name = ?2 where id = ?3",
+            &[&user.github, &user.slack, &user.id],
+        ).map_err(|e| Error::from(format!("Error updating user {}: {}", user.github, e)))?;
+
+        Ok(())
+    }
+
+    pub fn delete(&mut self, user_id: i32) -> Result<()> {
+        let conn = self.db.connect()?;
+        conn.execute(
+            "DELETE from users where id = ?1",
+            &[&user_id],
+        ).map_err(|e| Error::from(format!("Error deleting user {}: {}", user_id, e)))?;
+
+        Ok(())
     }
 
     // our slack convention is to use '.' but github replaces dots with dashes.
@@ -60,21 +67,59 @@ impl UserConfig {
     }
 
     fn lookup_name(&self, login: &str, repo: &github::Repo) -> Option<String> {
-        match self.lookup_info(login, repo) {
-            Some(info) => Some(info.slack.clone()),
-            None => None,
+        self.lookup_info(login, repo).map(|u| u.slack)
+    }
+
+    pub fn get_all(&self) -> Result<Vec<UserInfo>> {
+        let conn = self.db.connect()?;
+        let mut stmt = conn.prepare("SELECT id, slack_name, github_name FROM users")?;
+        let found = stmt.query_map(&[], |row| {
+            UserInfo {
+                id: row.get(0),
+                slack: row.get(1),
+                github: row.get(2),
+            }
+        })?;
+
+        let mut users = vec![];
+        for user in found {
+            users.push(user?);
+        }
+
+        Ok(users)
+    }
+
+    fn lookup_info(&self, github_name: &str, repo: &github::Repo) -> Option<UserInfo> {
+        match self.do_lookup_info(github_name, repo) {
+            Ok(u) => u,
+            Err(e) => {
+                error!("Error looking up user: {}", e);
+                None
+            }
         }
     }
 
-    fn lookup_info(&self, login: &str, repo: &github::Repo) -> Option<&UserInfo> {
-        match Url::parse(&repo.html_url) {
-            Ok(u) => {
-                u.host_str().and_then(|h| self.users.get(h)).and_then(|users| {
-                    users.iter().find(|u| u.github == login)
-                })
+    fn do_lookup_info(&self, github_name: &str, _repo: &github::Repo) -> Result<Option<UserInfo>> {
+        let github_name = github_name.to_string();
+        let conn = self.db.connect()?;
+        let mut stmt = conn.prepare("SELECT id, slack_name FROM users where github_name = ?1")?;
+        let found = stmt.query_map(&[&github_name], |row| {
+            UserInfo {
+                id: row.get(0),
+                slack: row.get(1),
+                github: github_name.clone(),
             }
-            Err(_) => None,
+        })?;
+
+        // kinda ugly....
+        let mut user = None;
+        for u in found {
+            if let Ok(u) = u {
+                user = Some(u);
+                break;
+            }
         }
+        Ok(user)
     }
 }
 
@@ -112,24 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn test_slack_user_name_wrong_repo() {
-        let mut users = UserConfig::new();
-        users.insert("git.company.com", "some-user", "the-slacker");
-
-        // fail by git host
-        {
-            let repo = github::Repo::parse(
-                "http://git.other-company.\
-                                            com/some-user/some-other-repo",
-            ).unwrap();
-            assert_eq!("some.user", users.slack_user_name("some.user", &repo));
-            assert_eq!("@some.user", users.slack_user_ref("some.user", &repo));
-        }
-    }
-
-    #[test]
     fn test_mention() {
         assert_eq!("@me", mention("me"));
     }
-
 }
