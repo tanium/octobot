@@ -38,7 +38,6 @@ config.toml
 
     [main]
     slack_webhook_url = "<slack webhook URL>"
-    users_config_file = "/data/users.json"
     repos_config_file = "/data/repos.json"
     clone_root_dir = "/home/octobot/repos"
     ssl_cert_file = "/data/ssl.crt"

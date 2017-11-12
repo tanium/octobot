@@ -19,6 +19,13 @@ impl UserConfig {
         UserConfig { db: db }
     }
 
+    pub fn new_memory() -> Result<UserConfig> {
+        let db = Database::new(":memory:")?;
+        Ok(UserConfig {
+            db: db,
+        })
+    }
+
     pub fn insert(&mut self, git_user: &str, slack_user: &str) -> Result<()> {
         let conn = self.db.connect()?;
         conn.execute(
@@ -129,11 +136,14 @@ pub fn mention<S: Into<String>>(username: S) -> String {
 
 #[cfg(test)]
 mod tests {
+    extern crate tempdir;
+
     use super::*;
+    use self::tempdir::TempDir;
 
     #[test]
     fn test_slack_user_name_defaults() {
-        let users = UserConfig::new();
+        let users = UserConfig::new_memory().unwrap();
 
         assert_eq!("joe", users.slack_user_name("joe"));
         assert_eq!("@joe", users.slack_user_ref("joe"));
@@ -143,8 +153,12 @@ mod tests {
 
     #[test]
     fn test_slack_user_name() {
-        let mut users = UserConfig::new();
-        users.insert("some-git-user", "the-slacker");
+        let temp_dir = TempDir::new("users.rs").unwrap();
+        let db_file = temp_dir.path().join("db.sqlite3");
+        let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
+
+        let mut users = UserConfig::new(db);
+        users.insert("some-git-user", "the-slacker").unwrap();
 
         assert_eq!("the-slacker", users.slack_user_name("some-git-user"));
         assert_eq!("@the-slacker", users.slack_user_ref("some-git-user"));

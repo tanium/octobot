@@ -34,7 +34,6 @@ pub struct MainConfig {
     pub slack_webhook_url: String,
     pub listen_addr: Option<String>,
     pub listen_addr_ssl: Option<String>,
-    pub users_config_file: String,
     pub repos_config_file: String,
     pub clone_root_dir: String,
     pub ssl_cert_file: Option<String>,
@@ -94,11 +93,12 @@ pub struct LdapConfig {
 }
 
 impl Config {
-    pub fn new(db: Database) -> Config {
-        Config::new_with_model(ConfigModel::new(), db)
+    // TODO: weird that `new` is used only by tests and the actual `new` is below...
+    pub fn new(db: Database, repos: repos::RepoConfig) -> Config {
+        Config::new_with_model(ConfigModel::new(), db, repos)
     }
 
-    fn new_with_model(config: ConfigModel, db: Database) -> Config {
+    fn new_with_model(config: ConfigModel, db: Database, repos: repos::RepoConfig) -> Config {
         Config {
             main: config.main,
             admin: config.admin,
@@ -106,7 +106,7 @@ impl Config {
             jira: config.jira,
             ldap: config.ldap,
             users: RwLock::new(users::UserConfig::new(db.clone())),
-            repos: RwLock::new(repos::RepoConfig::new()),
+            repos: RwLock::new(repos),
         }
     }
 
@@ -137,17 +137,10 @@ impl Config {
     }
 
     pub fn reload_users_repos(&self) -> Result<()> {
-        /*
-        let users = users::load_config(&self.main.users_config_file).map_err(|e| {
-            Error::from(format!("Error reading user config file: {}", e))
-        })?;
         let repos = repos::load_config(&self.main.repos_config_file).map_err(|e| {
             Error::from(format!("Error reading repo config file: {}", e))
         })?;
-
-        *self.users.write().unwrap() = users;
         *self.repos.write().unwrap() = repos;
-    */
         Ok(())
     }
 
@@ -175,7 +168,6 @@ impl ConfigModel {
                 slack_webhook_url: String::new(),
                 listen_addr: None,
                 listen_addr_ssl: None,
-                users_config_file: String::new(),
                 repos_config_file: String::new(),
                 clone_root_dir: String::new(),
                 ssl_cert_file: None,
@@ -264,7 +256,10 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
     config_file_open.read_to_string(&mut config_contents)?;
     let config_model = parse_string(&config_contents)?;
 
-    Ok(Config::new_with_model(config_model, db))
+    let config = Config::new_with_model(config_model, db, repos::RepoConfig::new());
+    config.reload_users_repos()?;
+
+    Ok(config)
 }
 
 fn parse_string(config_contents: &str) -> Result<ConfigModel> {
@@ -283,7 +278,6 @@ mod tests {
         let config_str = r#"
 [main]
 slack_webhook_url = "https://hooks.slack.com/foo"
-users_config_file = "users.json"
 repos_config_file = "repos.json"
 clone_root_dir = "./repos"
 
@@ -295,7 +289,6 @@ api_token = "some-tokens"
         let config = parse_string(config_str).unwrap();
 
         assert_eq!("https://hooks.slack.com/foo", config.main.slack_webhook_url);
-        assert_eq!("users.json", config.main.users_config_file);
         assert_eq!("repos.json", config.main.repos_config_file);
 
     }

@@ -1,20 +1,23 @@
 extern crate octobot;
+extern crate tempdir;
 
 mod mocks;
 
 use std::sync::Arc;
 
+use tempdir::TempDir;
+
 use octobot::config::Config;
+use octobot::db::Database;
 use octobot::github;
 use octobot::messenger::{self, Messenger};
 use octobot::repos::RepoConfig;
 use octobot::slack;
-use octobot::users::UserConfig;
 
 use mocks::mock_slack::MockSlack;
 
 fn new_messenger(slack: &MockSlack) -> Box<Messenger> {
-    messenger::new(Arc::new(Config::new(UserConfig::new(), RepoConfig::new())), slack.new_sender())
+    messenger::new(Arc::new(Config::new(Database::new(":memory:").unwrap(), RepoConfig::new())), slack.new_sender())
 }
 
 #[test]
@@ -33,9 +36,11 @@ fn test_sends_to_owner() {
 
 #[test]
 fn test_sends_to_mapped_usernames() {
-    let mut users = UserConfig::new();
-    users.insert("git.foo.com", "the-owner", "the-owners-slack-name");
-    let config = Arc::new(Config::new(users, RepoConfig::new()));
+    let dir = TempDir::new("messenger_test.rs").unwrap();
+    let db_file = dir.path().join("db.sqlite3");
+
+    let config = Arc::new(Config::new(Database::new(&db_file.to_string_lossy()).unwrap(), RepoConfig::new()));
+    config.users_write().insert("the-owner", "the-owners-slack-name").unwrap();
 
     let slack = MockSlack::new(vec![slack::req("@the-owners-slack-name", "hello there", vec![])]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -54,7 +59,7 @@ fn test_sends_to_mapped_usernames() {
 fn test_sends_to_owner_with_channel() {
     let mut repos = RepoConfig::new();
     repos.insert("git.foo.com", "the-owner/the-repo", "the-review-channel");
-    let config = Arc::new(Config::new(UserConfig::new(), repos));
+    let config = Arc::new(Config::new(Database::new(":memory:").unwrap(), repos));
 
     // Note: it should put the repo name w/ link in the message
     let slack = MockSlack::new(vec![
@@ -133,11 +138,13 @@ fn test_sends_only_once() {
 
 #[test]
 fn test_peace_and_quiet() {
-    let mut users = UserConfig::new();
-    users.insert("git.foo.com", "the-owner", "DO NOT DISTURB");
-    let mut repos = RepoConfig::new();
-    repos.insert("git.foo.com", "the-owner/the-repo", "DO NOT DISTURB");
-    let config = Arc::new(Config::new(users, repos));
+    let dir = TempDir::new("messenger_test.rs").unwrap();
+    let db_file = dir.path().join("db.sqlite3");
+
+    let config = Arc::new(Config::new(Database::new(&db_file.to_string_lossy()).unwrap(), RepoConfig::new()));
+
+    config.users_write().insert("the-owner", "DO NOT DISTURB").unwrap();
+    config.repos_write().insert("git.foo.com", "the-owner/the-repo", "DO NOT DISTURB");
 
     // should not send to channel or to owner, only to asignee
     let slack = MockSlack::new(vec![slack::req("@assign2", "hello there", vec![])]);

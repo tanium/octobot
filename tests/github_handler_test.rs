@@ -1,5 +1,6 @@
 extern crate hyper;
 extern crate octobot;
+extern crate tempdir;
 
 mod mocks;
 
@@ -9,8 +10,10 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use hyper::StatusCode;
+use tempdir::TempDir;
 
 use octobot::config::{Config, JiraConfig};
+use octobot::db::Database;
 use octobot::force_push::ForcePushRequest;
 use octobot::git_clone_manager::GitCloneManager;
 use octobot::github::*;
@@ -23,7 +26,6 @@ use octobot::repos;
 use octobot::repos::RepoConfig;
 use octobot::server::github_handler::GithubEventHandler;
 use octobot::slack::{self, SlackAttachmentBuilder};
-use octobot::users::UserConfig;
 use octobot::worker::{WorkMessage, WorkSender};
 
 use mocks::mock_github::MockGithub;
@@ -42,6 +44,7 @@ struct GithubHandlerTest {
     github: Arc<MockGithub>,
     slack: MockSlack,
     jira: Option<Arc<MockJira>>,
+    _temp_dir: TempDir,
     config: Arc<Config>,
     pr_merge_rx: Option<Receiver<WorkMessage<PRMergeRequest>>>,
     repo_version_rx: Option<Receiver<WorkMessage<RepoVersionRequest>>>,
@@ -82,6 +85,10 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     let (repo_version_tx, repo_version_rx) = channel();
     let (force_push_tx, force_push_rx) = channel();
 
+    let temp_dir = TempDir::new("github_handler_test.rs").unwrap();
+    let db_file = temp_dir.path().join("db.sqlite3");
+    let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
+
     let mut repos = RepoConfig::new();
     let mut data = HookBody::new();
 
@@ -94,7 +101,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     data.repository = Repo::parse(&format!("http://{}/some-user/some-repo", github.github_host())).unwrap();
     data.sender = User::new("joe-sender");
 
-    let mut config = Config::new(UserConfig::new(), repos);
+    let mut config = Config::new(db, repos);
     config.jira = jira;
     let config = Arc::new(config);
 
@@ -106,6 +113,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
         github: github.clone(),
         slack: slack,
         jira: None,
+        _temp_dir: temp_dir,
         config: config.clone(),
         pr_merge_rx: Some(pr_merge_rx),
         repo_version_rx: Some(repo_version_rx),
