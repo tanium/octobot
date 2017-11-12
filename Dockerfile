@@ -9,6 +9,7 @@ RUN apt-get update \
      gosu \
      python \
      openssl \
+     libsqlite3-0 \
   && rm -fr /var/lib/apt/lists/
 
 RUN groupadd -r octobot
