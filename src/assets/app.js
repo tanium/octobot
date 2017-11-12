@@ -188,22 +188,47 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
     });
   }
 
+  $scope.editUser = function(user) {
+    $scope.theUser = user;
+    $('#add-user-modal').modal('show');
+  }
+
   $scope.addUser = function() {
-    $scope.newUser = {};
+    $scope.theUser = {};
     $('#add-user-modal').modal('show');
   }
 
   $scope.addUserSubmit = function() {
     $('#add-user-modal').modal('hide');
+    var editing = $scope.theUser.id;
+    if (editing) {
+      doEditUser();
+    } else {
+      doAddUser();
+    }
+  }
 
-    sessionHttp.post('/api/users', $scope.newUser).then(function(resp) {
+  function doAddUser() {
+    sessionHttp.post('/api/users', $scope.theUser).then(function(resp) {
       notificationService.showSuccess('Added user succesfully');
       refresh()
     }).catch(function(e) {
       if (!isLoggedIn()) {
         return;
       }
-      notificationService.showError('Error removing user: ' + parseError(e));
+      notificationService.showError('Error adding user: ' + parseError(e));
+    });
+  }
+
+  function doEditUser() {
+    sessionHttp.put('/api/user', $scope.theUser).then(function(resp) {
+      notificationService.showSuccess('Edited user succesfully');
+      refresh()
+    }).catch(function(e) {
+      if (!isLoggedIn()) {
+        return;
+      }
+      notificationService.showError('Error editing user: ' + parseError(e));
     });
   }
 
