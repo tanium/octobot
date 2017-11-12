@@ -35,6 +35,12 @@ impl UserConfig {
         UserConfig { users: UserHostMap::new() }
     }
 
+    pub fn from_github_host(host: &str) -> UserConfig {
+        let mut config = UserConfig { users: UserHostMap::new() };
+        config.users.insert(host.into(), vec![]);
+        config
+    }
+
     pub fn insert(&mut self, host: &str, git_user: &str, slack_user: &str) {
         self.users.entry(host.to_string()).or_insert(vec![]).push(UserInfo {
             github: git_user.to_string(),

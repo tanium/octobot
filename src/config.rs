@@ -139,12 +139,12 @@ impl Config {
     }
 
     pub fn reload_users_repos(&self) -> Result<()> {
-        let users = users::load_config(&self.main.users_config_file).map_err(|e| {
-            Error::from(format!("Error reading user config file: {}", e))
-        })?;
-        let repos = repos::load_config(&self.main.repos_config_file).map_err(|e| {
-            Error::from(format!("Error reading repo config file: {}", e))
-        })?;
+        let users = users::load_config(&self.main.users_config_file).unwrap_or(
+            users::UserConfig::from_github_host(&self.github.host)
+        );
+        let repos = repos::load_config(&self.main.repos_config_file).unwrap_or(
+            repos::RepoConfig::from_github_host(&self.github.host)
+        );
 
         *self.users.write().unwrap() = users;
         *self.repos.write().unwrap() = repos;
