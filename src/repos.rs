@@ -94,6 +94,12 @@ impl RepoConfig {
         RepoConfig { repos: RepoHostMap::new() }
     }
 
+    pub fn from_github_host(host: &str) -> RepoConfig {
+        let mut config = RepoConfig { repos: RepoHostMap::new() };
+        config.repos.insert(host.into(), vec![]);
+        config
+    }
+
     pub fn insert(&mut self, host: &str, repo: &str, channel: &str) {
         self.insert_info(host, RepoInfo::new(repo, channel));
     }
