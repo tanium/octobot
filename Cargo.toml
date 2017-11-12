@@ -4,24 +4,29 @@ name = "octobot"
 version = "0.1.0"
 
 [[bin]]
+doc = false
 name = "octobot"
 path = "src/main.rs"
-doc = false
 
 [[bin]]
+doc = false
 name = "octobot-ask-pass"
 path = "src/ask-pass.rs"
-doc = false
 
 [[bin]]
+doc = false
 name = "octobot-passwd"
 path = "src/octobot-passwd.rs"
-doc = false
 
 [[bin]]
+doc = false
 name = "ldap-check"
 path = "src/ldap-check.rs"
+
+[[bin]]
 doc = false
+name = "migrate-db"
+path = "src/migrate-db.rs"
 
 [dependencies]
 base64 = "0.7.0"
@@ -36,6 +41,7 @@ maplit = "0.1.5"
 regex = "^0.2"
 ring = "^0.12"
 rpassword = "^1.0"
+rusqlite = "0.12.0"
 rust-crypto = "0.2.36"
 rustc-serialize = "^0.3"
 rustls = "0.11.0"

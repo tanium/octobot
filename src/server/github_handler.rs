@@ -280,7 +280,7 @@ impl GithubEventHandler {
     }
 
     fn slack_user_name(&self, user: &github::User) -> String {
-        self.config.users().slack_user_name(user.login(), &self.data.repository)
+        self.config.users().slack_user_name(user.login())
     }
 
     fn pull_request_commits(&self, pull_request: &github::PullRequestLike) -> Vec<github::Commit> {
@@ -346,7 +346,7 @@ impl GithubEventHandler {
             } else if self.action == "assigned" {
                 let assignees_str = self.config
                     .users()
-                    .slack_user_names(&pull_request.assignees, &self.data.repository)
+                    .slack_user_names(&pull_request.assignees)
                     .join(", ");
                 verb = Some(format!("assigned to {}", assignees_str));
                 notify_channel_only = false;
@@ -356,7 +356,7 @@ impl GithubEventHandler {
             } else if self.action == "review_requested" {
                 if let Some(ref reviewers) = pull_request.requested_reviewers {
                     let assignees_str =
-                        self.config.users().slack_user_names(reviewers, &self.data.repository).join(", ");
+                        self.config.users().slack_user_names(reviewers).join(", ");
                     verb = Some(format!("submitted for review to {}", assignees_str));
                 } else {
                     verb = None;

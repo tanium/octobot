@@ -25,6 +25,7 @@ extern crate url;
 extern crate tokio_proto;
 extern crate tokio_rustls;
 extern crate time;
+extern crate rusqlite;
 
 #[macro_use]
 extern crate log;
@@ -32,6 +33,7 @@ extern crate log;
 extern crate serde_derive;
 
 pub mod config;
+pub mod db;
 pub mod diffs;
 pub mod dir_pool;
 pub mod force_push;
@@ -59,6 +61,7 @@ pub mod errors {
             Fmt(::std::fmt::Error);
             Io(::std::io::Error);
             Url(::url::ParseError);
+            DB(::rusqlite::Error);
         }
     }
 }

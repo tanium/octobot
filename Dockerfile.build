@@ -2,7 +2,7 @@ FROM ubuntu:latest
 
 # install build deps
 RUN apt-get update \
-  && apt-get install -y ca-certificates build-essential curl libssl-dev pkg-config
+  && apt-get install -y ca-certificates build-essential curl libssl-dev pkg-config libsqlite3-dev
 
 # install run deps for testing
 RUN apt-get update \
@@ -12,6 +12,7 @@ RUN apt-get update \
      firejail \
      gosu \
      python \
+     libsqlite3-0 \
   && rm -fr /var/lib/apt/lists/
 
 ENV PATH $PATH:/root/.cargo/bin

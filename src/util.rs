@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use time;
 
 fn escape_for_slack(str: &str) -> String {
@@ -68,6 +70,23 @@ where
     unique
 }
 
+pub fn parse_query(query_params: Option<&str>) -> HashMap<String, String> {
+    if query_params.is_none() {
+        return HashMap::new();
+    }
+    query_params.unwrap()
+        .split("&")
+        .filter_map(|v| {
+            let parts = v.splitn(2, "=").collect::<Vec<_>>();
+            if parts.len() != 2 {
+                None
+            } else {
+                Some((parts[0].to_string(), parts[1].to_string()))
+            }
+        })
+        .collect::<HashMap<_, _>>()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +147,20 @@ mod tests {
         // next one should trigger a trim!
         assert!(check_unique_event("F".into(), &mut events, trim_at, trim_to));
         assert_eq!(vec!["E", "F"], events);
+    }
+
+    #[test]
+    fn test_parse_query() {
+        let map = hashmap!{
+            "A".to_string() => "1".to_string(),
+            "B".to_string() => "Hello%20There".to_string(),
+        };
+
+        assert_eq!(map, parse_query(Some("A=1&B=Hello%20There")));
+    }
+
+    #[test]
+    fn test_parse_query_none() {
+        assert_eq!(HashMap::new(), parse_query(None));
     }
 }

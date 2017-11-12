@@ -15,7 +15,7 @@ fn main() {
     let config_file = std::env::args().nth(1).unwrap();
     let command = std::env::args().nth(2).unwrap();
 
-    let config = config::parse(&config_file).expect("Error parsing config");
+    let config = config::new(config_file.into()).expect("Error parsing config");
     let ldap_config = config.ldap.expect("No LDAP config");
 
     if command != "auth" && command != "search" {
