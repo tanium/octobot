@@ -47,7 +47,7 @@ fn run() -> Result<()> {
 
     for (_, users) in &users_map {
         for user in users {
-            if let Err(e) = users_db.insert(String::new(), user.github.clone(), user.slack.clone()) {
+            if let Err(e) = users_db.insert(&user.github, &user.slack) {
                 println!("Error adding user {}: {}", user.github, e);
             } else {
                 println!("Added user: {}", user.github);

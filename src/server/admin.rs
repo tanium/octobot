@@ -104,7 +104,7 @@ impl UserAdmin {
 
         let config = self.config.clone();
         parse_json(req, move |user: NewUserReq| {
-            if let Err(e) = config.users_write().insert(String::new(), user.github, user.slack) {
+            if let Err(e) = config.users_write().insert(&user.github, &user.slack) {
                 error!("{}", e);
                 return Response::new().with_status(StatusCode::InternalServerError);
             }

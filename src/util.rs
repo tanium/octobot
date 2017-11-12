@@ -148,4 +148,19 @@ mod tests {
         assert!(check_unique_event("F".into(), &mut events, trim_at, trim_to));
         assert_eq!(vec!["E", "F"], events);
     }
+
+    #[test]
+    fn test_parse_query() {
+        let map = hashmap!{
+            "A".to_string() => "1".to_string(),
+            "B".to_string() => "Hello%20There".to_string(),
+        };
+
+        assert_eq!(map, parse_query(Some("A=1&B=Hello%20There")));
+    }
+
+    #[test]
+    fn test_parse_query_none() {
+        assert_eq!(HashMap::new(), parse_query(None));
+    }
 }

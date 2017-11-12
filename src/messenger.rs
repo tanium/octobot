@@ -65,7 +65,7 @@ impl Messenger for SlackMessenger {
         // make sure we do not send private message to author of that message
         slackbots.retain(|u| u.login != sender.login && u.login() != "octobot");
 
-        self.send_to_slackbots(slackbots, repo, msg, attachments);
+        self.send_to_slackbots(slackbots, msg, attachments);
     }
 
     fn send_to_owner(
@@ -76,7 +76,7 @@ impl Messenger for SlackMessenger {
         repo: &github::Repo,
     ) {
         self.send_to_channel(msg, attachments, repo);
-        self.send_to_slackbots(vec![item_owner.clone()], repo, msg, attachments);
+        self.send_to_slackbots(vec![item_owner.clone()], msg, attachments);
     }
 
     fn send_to_channel(&self, msg: &str, attachments: &Vec<SlackAttachment>, repo: &github::Repo) {
@@ -102,12 +102,11 @@ impl SlackMessenger {
     fn send_to_slackbots(
         &self,
         users: Vec<github::User>,
-        repo: &github::Repo,
         msg: &str,
         attachments: &Vec<SlackAttachment>,
     ) {
         for user in users {
-            let slack_ref = self.config.users().slack_user_ref(user.login(), repo);
+            let slack_ref = self.config.users().slack_user_ref(user.login());
             self.send_to_slack(slack_ref.as_str(), msg, attachments);
         }
     }

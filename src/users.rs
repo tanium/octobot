@@ -19,7 +19,7 @@ impl UserConfig {
         UserConfig { db: db }
     }
 
-    pub fn insert(&mut self, _: String, git_user: String, slack_user: String) -> Result<()> {
+    pub fn insert(&mut self, git_user: &str, slack_user: &str) -> Result<()> {
         let conn = self.db.connect()?;
         conn.execute(
             "INSERT INTO users (github_name, slack_name) VALUES (?1, ?2)",
@@ -50,24 +50,24 @@ impl UserConfig {
     }
 
     // our slack convention is to use '.' but github replaces dots with dashes.
-    pub fn slack_user_name<S: Into<String>>(&self, login: S, repo: &github::Repo) -> String {
+    pub fn slack_user_name<S: Into<String>>(&self, login: S) -> String {
         let login = login.into();
-        match self.lookup_name(login.as_str(), repo) {
+        match self.lookup_name(login.as_str()) {
             Some(name) => name,
             None => login.as_str().replace('-', "."),
         }
     }
 
-    pub fn slack_user_ref<S: Into<String>>(&self, login: S, repo: &github::Repo) -> String {
-        mention(self.slack_user_name(login.into(), repo))
+    pub fn slack_user_ref<S: Into<String>>(&self, login: S) -> String {
+        mention(self.slack_user_name(login.into()))
     }
 
-    pub fn slack_user_names(&self, users: &Vec<github::User>, repo: &github::Repo) -> Vec<String> {
-        users.iter().map(|a| self.slack_user_name(a.login(), repo)).collect()
+    pub fn slack_user_names(&self, users: &Vec<github::User>) -> Vec<String> {
+        users.iter().map(|a| self.slack_user_name(a.login())).collect()
     }
 
-    fn lookup_name(&self, login: &str, repo: &github::Repo) -> Option<String> {
-        self.lookup_info(login, repo).map(|u| u.slack)
+    fn lookup_name(&self, login: &str) -> Option<String> {
+        self.lookup_info(login).map(|u| u.slack)
     }
 
     pub fn get_all(&self) -> Result<Vec<UserInfo>> {
@@ -89,8 +89,8 @@ impl UserConfig {
         Ok(users)
     }
 
-    fn lookup_info(&self, github_name: &str, repo: &github::Repo) -> Option<UserInfo> {
-        match self.do_lookup_info(github_name, repo) {
+    fn lookup_info(&self, github_name: &str) -> Option<UserInfo> {
+        match self.do_lookup_info(github_name) {
             Ok(u) => u,
             Err(e) => {
                 error!("Error looking up user: {}", e);
@@ -99,7 +99,7 @@ impl UserConfig {
         }
     }
 
-    fn do_lookup_info(&self, github_name: &str, _repo: &github::Repo) -> Result<Option<UserInfo>> {
+    fn do_lookup_info(&self, github_name: &str) -> Result<Option<UserInfo>> {
         let github_name = github_name.to_string();
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare("SELECT id, slack_name FROM users where github_name = ?1")?;
@@ -130,30 +130,26 @@ pub fn mention<S: Into<String>>(username: S) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use github;
 
     #[test]
     fn test_slack_user_name_defaults() {
         let users = UserConfig::new();
 
-        let repo = github::Repo::new();
-
-        assert_eq!("joe", users.slack_user_name("joe", &repo));
-        assert_eq!("@joe", users.slack_user_ref("joe", &repo));
-        assert_eq!("joe.smith", users.slack_user_name("joe-smith", &repo));
-        assert_eq!("@joe.smith", users.slack_user_ref("joe-smith", &repo));
+        assert_eq!("joe", users.slack_user_name("joe"));
+        assert_eq!("@joe", users.slack_user_ref("joe"));
+        assert_eq!("joe.smith", users.slack_user_name("joe-smith"));
+        assert_eq!("@joe.smith", users.slack_user_ref("joe-smith"));
     }
 
     #[test]
     fn test_slack_user_name() {
         let mut users = UserConfig::new();
-        users.insert("git.company.com", "some-git-user", "the-slacker");
+        users.insert("some-git-user", "the-slacker");
 
-        let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
-        assert_eq!("the-slacker", users.slack_user_name("some-git-user", &repo));
-        assert_eq!("@the-slacker", users.slack_user_ref("some-git-user", &repo));
-        assert_eq!("some.other.user", users.slack_user_name("some.other.user", &repo));
-        assert_eq!("@some.other.user", users.slack_user_ref("some.other.user", &repo));
+        assert_eq!("the-slacker", users.slack_user_name("some-git-user"));
+        assert_eq!("@the-slacker", users.slack_user_ref("some-git-user"));
+        assert_eq!("some.other.user", users.slack_user_name("some.other.user"));
+        assert_eq!("@some.other.user", users.slack_user_ref("some.other.user"));
     }
 
     #[test]
