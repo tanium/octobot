@@ -72,7 +72,7 @@ impl UserConfig {
 
     pub fn get_all(&self) -> Result<Vec<UserInfo>> {
         let conn = self.db.connect()?;
-        let mut stmt = conn.prepare("SELECT id, slack_name, github_name FROM users")?;
+        let mut stmt = conn.prepare("SELECT id, slack_name, github_name FROM users ORDER BY github_name")?;
         let found = stmt.query_map(&[], |row| {
             UserInfo {
                 id: row.get(0),
