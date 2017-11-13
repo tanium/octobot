@@ -74,7 +74,8 @@ pub fn parse_query(query_params: Option<&str>) -> HashMap<String, String> {
     if query_params.is_none() {
         return HashMap::new();
     }
-    query_params.unwrap()
+    query_params
+        .unwrap()
         .split("&")
         .filter_map(|v| {
             let parts = v.splitn(2, "=").collect::<Vec<_>>();
@@ -151,7 +152,8 @@ mod tests {
 
     #[test]
     fn test_parse_query() {
-        let map = hashmap!{
+        let map =
+            hashmap!{
             "A".to_string() => "1".to_string(),
             "B".to_string() => "Hello%20There".to_string(),
         };

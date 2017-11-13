@@ -4,7 +4,7 @@ use github;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct UserInfo {
-    pub id: i32,
+    pub id: Option<i32>,
     pub github: String,
     pub slack: String,
 }
@@ -21,17 +21,13 @@ impl UserConfig {
 
     pub fn new_memory() -> Result<UserConfig> {
         let db = Database::new(":memory:")?;
-        Ok(UserConfig {
-            db: db,
-        })
+        Ok(UserConfig { db: db })
     }
 
     pub fn insert(&mut self, git_user: &str, slack_user: &str) -> Result<()> {
         let conn = self.db.connect()?;
-        conn.execute(
-            "INSERT INTO users (github_name, slack_name) VALUES (?1, ?2)",
-            &[&git_user, &slack_user],
-        ).map_err(|e| Error::from(format!("Error inserting user {}: {}", git_user, e)))?;
+        conn.execute("INSERT INTO users (github_name, slack_name) VALUES (?1, ?2)", &[&git_user, &slack_user])
+            .map_err(|e| Error::from(format!("Error inserting user {}: {}", git_user, e)))?;
 
         Ok(())
     }
@@ -48,10 +44,9 @@ impl UserConfig {
 
     pub fn delete(&mut self, user_id: i32) -> Result<()> {
         let conn = self.db.connect()?;
-        conn.execute(
-            "DELETE from users where id = ?1",
-            &[&user_id],
-        ).map_err(|e| Error::from(format!("Error deleting user {}: {}", user_id, e)))?;
+        conn.execute("DELETE from users where id = ?1", &[&user_id]).map_err(|e| {
+            Error::from(format!("Error deleting user {}: {}", user_id, e))
+        })?;
 
         Ok(())
     }
@@ -138,8 +133,8 @@ pub fn mention<S: Into<String>>(username: S) -> String {
 mod tests {
     extern crate tempdir;
 
-    use super::*;
     use self::tempdir::TempDir;
+    use super::*;
 
     #[test]
     fn test_slack_user_name_defaults() {

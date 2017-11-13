@@ -8,7 +8,7 @@ use tokio_core::reactor::Remote;
 
 use config::Config;
 use server::admin;
-use server::admin::{Op, UserAdmin};
+use server::admin::{Op, RepoAdmin, UserAdmin};
 use server::github_handler::{GithubHandler, GithubHandlerState};
 use server::html_handler::HtmlHandler;
 use server::http::{FilteredHandler, FutureResponse, Handler, NotFoundHandler};
@@ -69,7 +69,7 @@ impl Service for OctobotService {
 
 impl OctobotService {
     fn route(&self, req: &Request) -> Box<Handler> {
-        use hyper::Method::{Get, Post, Put, Delete};
+        use hyper::Method::{Delete, Get, Post, Put};
 
         // API routes
         if req.path().starts_with("/api") {
@@ -83,8 +83,11 @@ impl OctobotService {
                     (&Post, "/api/users") => UserAdmin::new(self.config.clone(), Op::Create),
                     (&Delete, "/api/user") => UserAdmin::new(self.config.clone(), Op::Delete),
 
-                    (&Get, "/api/repos") => admin::GetRepos::new(self.config.clone()),
-                    (&Post, "/api/repos") => admin::UpdateRepos::new(self.config.clone()),
+                    (&Get, "/api/repos") => RepoAdmin::new(self.config.clone(), Op::List),
+                    (&Put, "/api/repo") => RepoAdmin::new(self.config.clone(), Op::Update),
+                    (&Post, "/api/repos") => RepoAdmin::new(self.config.clone(), Op::Create),
+                    (&Delete, "/api/repo") => RepoAdmin::new(self.config.clone(), Op::Delete),
+
                     (&Post, "/api/merge-versions") => {
                         admin::MergeVersions::new(self.config.clone(), self.core_remote.clone())
                     }

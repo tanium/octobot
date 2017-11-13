@@ -1,63 +1,87 @@
 <h3>Repos</h3>
-<form class="form-inline" ng-submit="saveRepos()">
-  <div ng-repeat="(host, repos) in reposMap">
-    <h4>Host: {{host}}</h4>
+  <table class="table">
+    <tr>
+      <th>Repo</th>
+      <th>Branches</th>
+      <th>Slack Channel</th>
+      <th>&nbsp;</th>
+    </tr>
+    <tr ng-repeat="repo in repos">
+      <td>{{repo.repo}}
+      <td>{{repo.branch || '(any)'}}
+      <td>{{repo.channel}}</td>
+      </td>
+      <td>
+        <a href title="Edit" ng-click="editRepo(repo)"><span class="glyphicon glyphicon-edit" /></a>&nbsp;
+        <a href ng-click="removeRepo(repo)"><span class="glyphicon glyphicon-trash" /></a>
+      </td>
+    </tr>
+  </table>
+  <div style="margin: 10px">
+    <button type="button" class="btn btn-sm btn-primary" ng-click="addRepo()">Add repo</button>
+  </div>
+</div>
 
-    <table class="table">
-      <tr>
-        <th>Repo</th>
-        <th>Slack Channel</th>
-        <th>Config</th>
-        <th>&nbsp;</th>
-      </tr>
-      <tr ng-repeat="info in repos">
-        <td>
-          <input type="text" class="form-control" ng-model="info.repo" placeholder="Repo" required>
-        </td>
-        <td>
-          <input type="text" class="form-control" ng-model="info.channel" placeholder="Slack channel" required>
-        </td>
-        <td>
-          <h3>Git</h3>
-          <div>
-            <label><input type="checkbox" class="form-control" ng-model="info.force_push_notify"> Force-push notification</label>
+<div class="modal fade" tabindex="-1" role="dialog" id="add-repo-modal">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <form class="" ng-submit="addRepoSubmit()">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+          <h4 class="modal-title">{{!!theRepo.id ? 'Edit' : 'Add'}} Repo</h4>
+        </div>
+        <div class="modal-body">
+          <h4>Repo</h4>
+          <div class="form-group">
+            <label>Repository full name or org</label>
+            <input id="add-repo-repo" type="text" class="form-control" ng-model="theRepo.repo"
+                   placeholder="some-org/some-repo, or some-org" required />
           </div>
-          <div class="row">
-            <div class="col-md-5">Force-push status reapply</div>
-            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.force_push_reapply_statuses" ng-list=", " style="width:100%"></div>
+          <div class="form-group">
+            <label>Slack channel</label>
+
+            <input type="text" class="form-control" ng-model="theRepo.channel" placeholder="the-reviews" required />
           </div>
-          <div class="row">
-            <div class="col-md-5">Release branch prefix</div>
-            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.release_branch_prefix" placeholder="release/" style="width:100%"></div>
+          <div class="form-group">
+            <label>Restrict to branches (optional)</label>
+            <input type="text" class="form-control" ng-model="theRepo.branches" ng-list=", " placeholder="features/special-branch1" />
           </div>
 
-          <h3>JIRA</h3>
-          <div class="row">
-            <div class="col-md-5">Branches</div>
-            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.branches" ng-list=", " style="width:100%"></div>
+          <h4>JIRA</h4>
+          <div class="form-group">
+            <label>JIRA project(s)</label>
+            <input type="text" class="form-control" ng-model="theRepo.jira_projects" ng-list=", " placeholder="SERVER, APP" />
           </div>
-          <div class="row">
-            <div class="col-md-5">JIRA project(s)</div>
-            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.jira_projects" ng-list=", " style="width:100%"></div>
+          <div class="checkbox">
+            <label>
+              <input type="checkbox" ng-model="theRepo.jira_versions_enabled" /> JIRA versions enabled
+            </label>
           </div>
-          <div>
-            <label><input type="checkbox" class="form-control" ng-model="info.jira_versions_enabled"> JIRA versions enabled</label>
+          <div class="form-group">
+            <label>Version script</label>
+            <input type="text" class="form-control" ng-model="repo.version_script"  placeholder="./make-the-version.sh" />
           </div>
-          <div class="row">
-            <div class="col-md-5">Version script</div>
-            <div class="col-md-7"><input type="text" class="form-control" ng-model="info.version_script" style="width:100%"></div>
+
+          <h4>Git</h4>
+          <div class="checkbox">
+            <label>
+              <input type="checkbox" ng-model="theRepo.force_push_notify"> Force-push notification
+            </label>
           </div>
-        </td>
-        <td>
-          <a href ng-click="removeRepo(host, info.repo)"><span class="glyphicon glyphicon-trash" /></a>
-        </td>
-      </tr>
-    </table>
-    <div style="margin: 10px">
-      <button type="button" class="btn btn-sm btn-default" ng-click="addRepo(host)">Add repo</button>
+          <div class="form-group">
+            <label>Force-push status reapply</label>
+            <input type="text" class="form-control" ng-model="theRepo.force_push_reapply_statuses" ng-list=", " />
+          </div>
+          <div class="form-group">
+            <label>Release branch prefix</label>
+            <input type="text" class="form-control" ng-model="theRepo.release_branch_prefix" placeholder="release/" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
     </div>
   </div>
-  <div style="margin: 10px">
-    <button type="submit" class="btn btn-sm btn-primary">Save Repos</button>
-  </div>
-</form>
+</div>

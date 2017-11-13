@@ -344,10 +344,7 @@ impl GithubEventHandler {
                 verb = Some("reopened".to_string());
                 notify_channel_only = true;
             } else if self.action == "assigned" {
-                let assignees_str = self.config
-                    .users()
-                    .slack_user_names(&pull_request.assignees)
-                    .join(", ");
+                let assignees_str = self.config.users().slack_user_names(&pull_request.assignees).join(", ");
                 verb = Some(format!("assigned to {}", assignees_str));
                 notify_channel_only = false;
             } else if self.action == "unassigned" {
@@ -355,8 +352,7 @@ impl GithubEventHandler {
                 notify_channel_only = true;
             } else if self.action == "review_requested" {
                 if let Some(ref reviewers) = pull_request.requested_reviewers {
-                    let assignees_str =
-                        self.config.users().slack_user_names(reviewers).join(", ");
+                    let assignees_str = self.config.users().slack_user_names(reviewers).join(", ");
                     verb = Some(format!("submitted for review to {}", assignees_str));
                 } else {
                     verb = None;

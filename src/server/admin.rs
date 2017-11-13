@@ -1,7 +1,5 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::fs;
-use std::io::Write;
 use std::sync::Arc;
 
 use hyper::StatusCode;
@@ -12,7 +10,7 @@ use tokio_core::reactor::Remote;
 
 use config::{Config, JiraConfig};
 use jira;
-use repos::RepoHostMap;
+use repos::RepoInfo;
 use server::http::{FutureResponse, Handler, parse_json};
 use users::UserInfo;
 use util;
@@ -30,13 +28,11 @@ pub struct UserAdmin {
     op: Op,
 }
 
-pub struct GetRepos {
+pub struct RepoAdmin {
     config: Arc<Config>,
+    op: Op,
 }
 
-pub struct UpdateRepos {
-    config: Arc<Config>,
-}
 
 impl UserAdmin {
     pub fn new(config: Arc<Config>, op: Op) -> Box<UserAdmin> {
@@ -47,17 +43,15 @@ impl UserAdmin {
     }
 }
 
-impl GetRepos {
-    pub fn new(config: Arc<Config>) -> Box<GetRepos> {
-        Box::new(GetRepos { config: config })
+impl RepoAdmin {
+    pub fn new(config: Arc<Config>, op: Op) -> Box<RepoAdmin> {
+        Box::new(RepoAdmin {
+            config: config,
+            op: op,
+        })
     }
 }
 
-impl UpdateRepos {
-    pub fn new(config: Arc<Config>) -> Box<UpdateRepos> {
-        Box::new(UpdateRepos { config: config })
-    }
-}
 
 impl Handler for UserAdmin {
     fn handle(&self, req: Request) -> FutureResponse {
@@ -96,14 +90,8 @@ impl UserAdmin {
     }
 
     fn create(&self, req: Request) -> FutureResponse {
-        #[derive(Deserialize)]
-        struct NewUserReq {
-            github: String,
-            slack: String,
-        }
-
         let config = self.config.clone();
-        parse_json(req, move |user: NewUserReq| {
+        parse_json(req, move |user: UserInfo| {
             if let Err(e) = config.users_write().insert(&user.github, &user.slack) {
                 error!("{}", e);
                 return Response::new().with_status(StatusCode::InternalServerError);
@@ -128,7 +116,6 @@ impl UserAdmin {
         let config = self.config.clone();
 
         let query = util::parse_query(req.uri().query());
-        println!("QUERIES! {:?}", query);
 
         let user_id = match query.get("id").map(|id| id.parse::<i32>()) {
             None | Some(Err(_)) => return self.respond_with(StatusCode::BadRequest, "No `id` param specified"),
@@ -142,9 +129,33 @@ impl UserAdmin {
     }
 }
 
-impl Handler for GetRepos {
-    fn handle(&self, _: Request) -> FutureResponse {
-        let repos = match serde_json::to_string(&*self.config.repos()) {
+impl Handler for RepoAdmin {
+    fn handle(&self, req: Request) -> FutureResponse {
+        match &self.op {
+            &Op::List => self.get_all(req),
+            &Op::Create => self.create(req),
+            &Op::Update => self.update(req),
+            &Op::Delete => self.delete(req),
+        }
+    }
+}
+
+impl RepoAdmin {
+    fn get_all(&self, _: Request) -> FutureResponse {
+        #[derive(Serialize)]
+        struct ReposResp {
+            repos: Vec<RepoInfo>,
+        }
+
+        let repos = match self.config.repos().get_all() {
+            Ok(u) => u,
+            Err(e) => {
+                return self.respond_error(&format!("{}", e));
+            }
+        };
+        let resp = ReposResp { repos: repos };
+
+        let repos = match serde_json::to_string(&resp) {
             Ok(u) => u,
             Err(e) => {
                 error!("Error serializing repos: {}", e);
@@ -153,60 +164,44 @@ impl Handler for GetRepos {
         };
         self.respond(Response::new().with_header(ContentType::json()).with_body(repos))
     }
-}
 
-impl Handler for UpdateRepos {
-    fn handle(&self, req: Request) -> FutureResponse {
+    fn create(&self, req: Request) -> FutureResponse {
+        let config = self.config.clone();
+        parse_json(req, move |repo: RepoInfo| {
+            if let Err(e) = config.repos_write().insert_info(&repo) {
+                error!("{}", e);
+                return Response::new().with_status(StatusCode::InternalServerError);
+            }
+            Response::new().with_status(StatusCode::Ok)
+        })
+    }
+
+    fn update(&self, req: Request) -> FutureResponse {
         let config = self.config.clone();
 
-        parse_json(req, move |repos: RepoHostMap| {
-            let json = match serde_json::to_string_pretty(&repos) {
-                Ok(j) => j,
-                Err(e) => {
-                    error!("Error serializing repos: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                        "Error serializing JSON: {}",
-                        e
-                    ));
-                }
-            };
-
-            let config_file = config.main.repos_config_file.clone();
-            let config_file_tmp = config_file.clone() + ".tmp";
-
-            let mut file = match fs::File::create(&config_file_tmp) {
-                Ok(f) => f,
-                Err(e) => {
-                    error!("Error opening file: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                        "Error opening file: {}",
-                        e
-                    ));
-                }
-            };
-
-            if let Err(e) = file.write_all(json.as_bytes()) {
-                error!("Error writing file: {}", e);
-                return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                    "Error writing file: {}",
-                    e
-                ));
+        parse_json(req, move |repo: RepoInfo| {
+            if let Err(e) = config.repos_write().update(&repo) {
+                error!("{}", e);
+                return Response::new().with_status(StatusCode::InternalServerError);
             }
-
-            if let Err(e) = fs::rename(&config_file_tmp, &config_file) {
-                error!("Error renaming file: {}", e);
-                return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                    "Error renaming file: {}",
-                    e
-                ));
-            }
-
-            if let Err(e) = config.reload_users_repos() {
-                error!("Error reloading config: {}", e);
-            }
-
-            Response::new()
+            Response::new().with_status(StatusCode::Ok)
         })
+    }
+
+    fn delete(&self, req: Request) -> FutureResponse {
+        let config = self.config.clone();
+
+        let query = util::parse_query(req.uri().query());
+
+        let repo_id = match query.get("id").map(|id| id.parse::<i32>()) {
+            None | Some(Err(_)) => return self.respond_with(StatusCode::BadRequest, "No `id` param specified"),
+            Some(Ok(id)) => id,
+        };
+
+        if let Err(e) = config.repos_write().delete(repo_id) {
+            return self.respond_error(&format!("{}", e));
+        }
+        self.respond_with(StatusCode::Ok, "")
     }
 }
 

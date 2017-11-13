@@ -200,7 +200,7 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
 
   $scope.addUserSubmit = function() {
     $('#add-user-modal').modal('hide');
-    var editing = $scope.theUser.id;
+    var editing = !!$scope.theUser.id;
     if (editing) {
       doEditUser();
     } else {
@@ -253,25 +253,17 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
 
 app.controller('ReposController', function($rootScope, $scope, sessionHttp, notificationService)  {
 
-  $scope.reposMap = {};
+  function init() {
+    $('#add-repo-modal').on('shown.bs.modal', function () {
+      $('#add-repo-repo').focus()
+    });
+
+    refresh();
+  }
 
   function refresh() {
     return sessionHttp.get('/api/repos').then(function(resp) {
-      $scope.reposMap = resp.data.repos;
-
-      for (var host in $scope.reposMap) {
-        for (var repo in $scope.reposMap[host]) {
-          var info = $scope.reposMap[host][repo];
-          info._repo = repo;
-
-          if (info.force_push_notify == null)  {
-            info.force_push_notify = true;
-          }
-          if (info.jira_versions_enabled == null)  {
-            info.jira_versions_enabled = false;
-          }
-        }
-      }
+      $scope.repos = resp.data.repos;
     }).catch(function(e) {
       if (!isLoggedIn()) {
         return;
@@ -281,36 +273,70 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
     });
   }
 
-  $scope.addRepo = function(host) {
-    $scope.reposMap[host].push({
-      force_push_notify: true,
-      jira_versions_enabled: false,
-    });
+  $scope.editRepo = function(repo) {
+    $scope.theRepo = repo;
+    $('#add-repo-modal').modal('show');
   }
 
-  $scope.saveRepos = function() {
-    sessionHttp.post('/api/repos', $scope.reposMap).then(function() {
-      refresh();
-      notificationService.showSuccess('Updated repos succesfully');
+  $scope.addRepo = function() {
+    $scope.theRepo = {
+      force_push_notify: true,
+      jira_versions_enabled: true,
+    };
+    $('#add-repo-modal').modal('show');
+  }
+
+  $scope.addRepoSubmit = function() {
+    $('#add-repo-modal').modal('hide');
+    var editing = !!$scope.theRepo.id;
+    if (editing) {
+      doEditRepo();
+    } else {
+      doAddRepo();
+    }
+  }
+
+  function doAddRepo() {
+    sessionHttp.post('/api/repos', $scope.theRepo).then(function(resp) {
+      notificationService.showSuccess('Added repo succesfully');
+      refresh()
     }).catch(function(e) {
       if (!isLoggedIn()) {
         return;
       }
-      notificationService.showError('Error updating repos: ' + parseError(e));
+      notificationService.showError('Error adding repo: ' + parseError(e));
     });
-  };
+  }
 
-  $scope.removeRepo = function(host, repo) {
-    for (var i = 0; i < $scope.reposMap[host].length; ++i) {
-      if ($scope.reposMap[host][i].repo == repo) {
-        $scope.reposMap[host].splice(i, 1);
+  function doEditRepo() {
+    sessionHttp.put('/api/repo', $scope.theRepo).then(function(resp) {
+      notificationService.showSuccess('Edited repo succesfully');
+      refresh()
+    }).catch(function(e) {
+      if (!isLoggedIn()) {
         return;
       }
+      notificationService.showError('Error editing repo: ' + parseError(e));
+    });
+  }
+
+  $scope.removeRepo = function(repo) {
+    if (!confirm("Are you sure you want to delete repo " + repo.repo + "?")) {
+      return;
     }
+    return sessionHttp.delete('/api/repo?id=' + Number(repo.id)).then(function(resp) {
+      notificationService.showSuccess('Remove repo succesfully');
+      refresh();
+    }).catch(function(e) {
+      if (!isLoggedIn()) {
+        return;
+      }
+      notificationService.showError('Error removing repo: ' + parseError(e));
+    });
   }
 
   // init
-  refresh();
+  init();
 });
 
 app.controller('VersionsController', function($rootScope, $scope, sessionHttp, notificationService)  {

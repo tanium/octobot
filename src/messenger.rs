@@ -99,12 +99,7 @@ impl SlackMessenger {
         }
     }
 
-    fn send_to_slackbots(
-        &self,
-        users: Vec<github::User>,
-        msg: &str,
-        attachments: &Vec<SlackAttachment>,
-    ) {
+    fn send_to_slackbots(&self, users: Vec<github::User>, msg: &str, attachments: &Vec<SlackAttachment>) {
         for user in users {
             let slack_ref = self.config.users().slack_user_ref(user.login());
             self.send_to_slack(slack_ref.as_str(), msg, attachments);

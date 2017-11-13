@@ -23,7 +23,6 @@ use octobot::messenger;
 use octobot::pr_merge::PRMergeRequest;
 use octobot::repo_version::RepoVersionRequest;
 use octobot::repos;
-use octobot::repos::RepoConfig;
 use octobot::server::github_handler::GithubEventHandler;
 use octobot::slack::{self, SlackAttachmentBuilder};
 use octobot::worker::{WorkMessage, WorkSender};
@@ -89,19 +88,20 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     let db_file = temp_dir.path().join("db.sqlite3");
     let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
 
-    let mut repos = RepoConfig::new();
     let mut data = HookBody::new();
-
-    let repo_info = repos::RepoInfo::new("some-user/some-repo", "the-reviews-channel").with_jira(vec![
-        "SER".to_string(),
-        "CLI".to_string(),
-    ]);
-    repos.insert_info(github.github_host(), repo_info);
 
     data.repository = Repo::parse(&format!("http://{}/some-user/some-repo", github.github_host())).unwrap();
     data.sender = User::new("joe-sender");
 
-    let mut config = Config::new(db, repos);
+    let mut config = Config::new(db);
+
+    config
+        .repos_write()
+        .insert_info(&repos::RepoInfo::new("some-user/some-repo", "the-reviews-channel")
+            .with_jira(vec!["SER".to_string(), "CLI".to_string()])
+            .with_force_push(true))
+        .expect("Failed to add some-user/some-repo");
+
     config.jira = jira;
     let config = Arc::new(config);
 
@@ -915,11 +915,11 @@ fn test_pull_request_merged_backport_labels_custom_pattern() {
     }
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.config.repos_write().insert_info(
-        test.github.github_host(),
-        repos::RepoInfo::new("some-user/custom-branches-repo", "the-reviews-channel")
-            .with_release_branch_prefix(Some("the-other-prefix-".into())),
-    );
+    test.config
+        .repos_write()
+        .insert_info(&repos::RepoInfo::new("some-user/custom-branches-repo", "the-reviews-channel")
+            .with_release_branch_prefix("the-other-prefix-".into()))
+        .expect("Failed to add repo");
 
     // change the repo to an unconfigured one
     test.handler.data.repository = Repo::parse(
@@ -1489,11 +1489,11 @@ fn test_jira_disabled() {
 fn test_jira_push_triggers_version_script() {
     let mut test = new_test_with_jira();
 
-    test.config.repos_write().insert_info(
-        test.github.github_host(),
-        repos::RepoInfo::new("some-user/versioning-repo", "the-reviews-channel")
-            .with_version_script(Some("echo 1.2.3.4".into())),
-    );
+    test.config
+        .repos_write()
+        .insert_info(&repos::RepoInfo::new("some-user/versioning-repo", "the-reviews-channel")
+            .with_version_script("echo 1.2.3.4".into()))
+        .expect("Failed to add repo");
 
     // change the repo to an unconfigured one
     test.handler.data.repository = Repo::parse(
