@@ -11,7 +11,6 @@ pub struct RepoInfo {
     pub repo: String,
     // slack channel to send all messages to
     pub channel: String,
-    #[serde(default)]
     pub force_push_notify: bool,
     // white-listed statuses to reapply on force-push w/ identical diff
     #[serde(default)]
@@ -22,7 +21,6 @@ pub struct RepoInfo {
     // A list of jira projects to be respected in processing.
     #[serde(default)]
     pub jira_projects: Vec<String>,
-    #[serde(default)]
     pub jira_versions_enabled: bool,
     #[serde(default)]
     pub version_script: String,
