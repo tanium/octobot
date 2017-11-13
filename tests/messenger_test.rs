@@ -11,13 +11,13 @@ use octobot::config::Config;
 use octobot::db::Database;
 use octobot::github;
 use octobot::messenger::{self, Messenger};
-use octobot::repos::RepoConfig;
 use octobot::slack;
 
 use mocks::mock_slack::MockSlack;
 
 fn new_messenger(slack: &MockSlack) -> Box<Messenger> {
-    messenger::new(Arc::new(Config::new(Database::new(":memory:").unwrap(), RepoConfig::new())), slack.new_sender())
+    let emptydb = Database::new(":memory:").unwrap();
+    messenger::new(Arc::new(Config::new(emptydb)), slack.new_sender())
 }
 
 #[test]
@@ -38,8 +38,9 @@ fn test_sends_to_owner() {
 fn test_sends_to_mapped_usernames() {
     let dir = TempDir::new("messenger_test.rs").unwrap();
     let db_file = dir.path().join("db.sqlite3");
+    let db = Database::new(&db_file.to_string_lossy()).unwrap();
 
-    let config = Arc::new(Config::new(Database::new(&db_file.to_string_lossy()).unwrap(), RepoConfig::new()));
+    let config = Arc::new(Config::new(db));
     config.users_write().insert("the-owner", "the-owners-slack-name").unwrap();
 
     let slack = MockSlack::new(vec![slack::req("@the-owners-slack-name", "hello there", vec![])]);
@@ -57,17 +58,18 @@ fn test_sends_to_mapped_usernames() {
 
 #[test]
 fn test_sends_to_owner_with_channel() {
-    let mut repos = RepoConfig::new();
-    repos.insert("git.foo.com", "the-owner/the-repo", "the-review-channel");
-    let config = Arc::new(Config::new(Database::new(":memory:").unwrap(), repos));
+    let dir = TempDir::new("messenger_test.rs").unwrap();
+    let db_file = dir.path().join("db.sqlite3");
+    let db = Database::new(&db_file.to_string_lossy()).unwrap();
+
+    let config = Arc::new(Config::new(db));
+    config.repos_write().insert("the-owner/the-repo", "the-review-channel").unwrap();
 
     // Note: it should put the repo name w/ link in the message
     let slack = MockSlack::new(vec![
         slack::req(
             "the-review-channel",
-            "hello there \
-                                                    (<http://git.foo.\
-                                                    com/the-owner/the-repo|the-owner/the-repo>)",
+            "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
             vec![]
         ),
         slack::req("@the.owner", "hello there", vec![]),
@@ -141,10 +143,10 @@ fn test_peace_and_quiet() {
     let dir = TempDir::new("messenger_test.rs").unwrap();
     let db_file = dir.path().join("db.sqlite3");
 
-    let config = Arc::new(Config::new(Database::new(&db_file.to_string_lossy()).unwrap(), RepoConfig::new()));
+    let config = Arc::new(Config::new(Database::new(&db_file.to_string_lossy()).unwrap()));
 
     config.users_write().insert("the-owner", "DO NOT DISTURB").unwrap();
-    config.repos_write().insert("git.foo.com", "the-owner/the-repo", "DO NOT DISTURB");
+    config.repos_write().insert("the-owner/the-repo", "DO NOT DISTURB").unwrap();
 
     // should not send to channel or to owner, only to asignee
     let slack = MockSlack::new(vec![slack::req("@assign2", "hello there", vec![])]);

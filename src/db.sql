@@ -10,13 +10,14 @@ create table if not exists repos (
   id integer not null,
   repo varchar not null,
   channel varchar not null,
-  force_push_notify tinyint,
-  branches varchar,
-  jira_projects varchar,
-  jira_versions_enabled tinyint,
-  version_script varchar,
-  release_branch_prefix varchar,
+  force_push_notify tinyint not null,
+  force_push_reapply_statuses varchar not null,
+  branches varchar not null,
+  jira_projects varchar not null,
+  jira_versions_enabled tinyint not null,
+  version_script varchar not null,
+  release_branch_prefix varchar not null,
 
-  UNIQUE( repo ),
+  UNIQUE( repo, branches ),
   PRIMARY KEY( id )
 );

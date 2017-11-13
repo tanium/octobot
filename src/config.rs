@@ -94,11 +94,11 @@ pub struct LdapConfig {
 
 impl Config {
     // TODO: weird that `new` is used only by tests and the actual `new` is below...
-    pub fn new(db: Database, repos: repos::RepoConfig) -> Config {
-        Config::new_with_model(ConfigModel::new(), db, repos)
+    pub fn new(db: Database) -> Config {
+        Config::new_with_model(ConfigModel::new(), db)
     }
 
-    fn new_with_model(config: ConfigModel, db: Database, repos: repos::RepoConfig) -> Config {
+    fn new_with_model(config: ConfigModel, db: Database) -> Config {
         Config {
             main: config.main,
             admin: config.admin,
@@ -106,7 +106,7 @@ impl Config {
             jira: config.jira,
             ldap: config.ldap,
             users: RwLock::new(users::UserConfig::new(db.clone())),
-            repos: RwLock::new(repos),
+            repos: RwLock::new(repos::RepoConfig::new(db.clone())),
         }
     }
 
@@ -133,14 +133,6 @@ impl Config {
         fs::rename(&tmp_file, &config_file)?;
         fs::remove_file(&bak_file)?;
 
-        Ok(())
-    }
-
-    pub fn reload_users_repos(&self) -> Result<()> {
-        let repos = repos::load_config(&self.main.repos_config_file).map_err(|e| {
-            Error::from(format!("Error reading repo config file: {}", e))
-        })?;
-        *self.repos.write().unwrap() = repos;
         Ok(())
     }
 
@@ -256,10 +248,7 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
     config_file_open.read_to_string(&mut config_contents)?;
     let config_model = parse_string(&config_contents)?;
 
-    let config = Config::new_with_model(config_model, db, repos::RepoConfig::new());
-    config.reload_users_repos()?;
-
-    Ok(config)
+    Ok(Config::new_with_model(config_model, db))
 }
 
 fn parse_string(config_contents: &str) -> Result<ConfigModel> {
