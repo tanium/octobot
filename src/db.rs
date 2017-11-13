@@ -4,6 +4,7 @@ use rusqlite::{Connection, Row, Statement};
 use rusqlite::types::FromSql;
 
 use errors::*;
+use db_migrations;
 
 #[derive(Clone)]
 pub struct Database {
@@ -25,8 +26,7 @@ impl Database {
     }
 
     fn migrate(&mut self) -> Result<()> {
-        let sql = include_str!("db.sql");
-        let conn = self.connect()?;
+        let mut conn = self.connect()?;
         conn.query_row("PRAGMA journal_mode=WAL", &[], |row| {
             let res: String = row.get(0);
             if res.trim() != "wal" {
@@ -34,11 +34,8 @@ impl Database {
             }
         }).map_err(|e| Error::from(format!("Error turning on WAL mode: {}", e)))?;
 
-        conn.execute_batch(sql).map_err(
-            |e| Error::from(format!("Error running migrations: {}", e)),
-        )?;
 
-        Ok(())
+        db_migrations::migrate(&mut conn)
     }
 }
 
