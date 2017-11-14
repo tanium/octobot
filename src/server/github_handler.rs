@@ -279,6 +279,8 @@ impl GithubEventHandler {
         }
     }
 
+    // This defaults to using the github name if no slack name is configured, since this is not
+    // used for actually sending messages, but just for referring to users in slack messages.
     fn slack_user_name(&self, user: &github::User) -> String {
         match self.config.users().slack_user_name(&user.login()) {
             Some(slack_user) => slack_user.to_string(),
