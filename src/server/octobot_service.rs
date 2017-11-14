@@ -12,7 +12,7 @@ use server::admin::{Op, RepoAdmin, UserAdmin};
 use server::github_handler::{GithubHandler, GithubHandlerState};
 use server::html_handler::HtmlHandler;
 use server::http::{FilteredHandler, FutureResponse, Handler, NotFoundHandler};
-use server::login::{LoginHandler, LoginSessionFilter, LogoutHandler};
+use server::login::{LoginHandler, LoginSessionFilter, LogoutHandler, SessionCheckHandler};
 use server::sessions::Sessions;
 use util;
 
@@ -112,6 +112,7 @@ impl OctobotService {
 
             // auth
             (&Post, "/auth/login") => LoginHandler::new(self.ui_sessions.clone(), self.config.clone()),
+            (&Post, "/auth/check") => SessionCheckHandler::new(self.ui_sessions.clone()),
             (&Post, "/auth/logout") => LogoutHandler::new(self.ui_sessions.clone()),
 
             // hooks
