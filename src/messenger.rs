@@ -87,11 +87,6 @@ impl Messenger for SlackMessenger {
 
 impl SlackMessenger {
     fn send_to_slack(&self, channel: &str, msg: &str, attachments: &Vec<SlackAttachment>) {
-        // user desires peace and quiet. do not disturb!
-        if false {
-            return;
-        }
-
         if let Err(e) = self.slack.send(slack::req(channel, msg, attachments.clone())) {
             error!("Error sending to slack worker: {}", e);
         }
