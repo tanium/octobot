@@ -34,7 +34,7 @@ function loggedInUser() {
   return sessionStorage['username'];
 }
 
-app.run(function($state, $rootScope, sessionHttp) {
+app.run(function($state, $rootScope, $timeout, sessionHttp, notificationService) {
   $rootScope.isLoggedIn = isLoggedIn;
 
   $rootScope.logout = function() {
@@ -43,17 +43,46 @@ app.run(function($state, $rootScope, sessionHttp) {
 
   $rootScope.$on('$stateChangeStart', function(event, toState, toParams, fromState, fromParams) {
     if (!isLoggedIn() && toState.name !== 'login')  {
+      event.preventDefault();
       $state.go('login');
     }
   });
+
+  var checkPromise = null;
+  const checkInterval = 30 * 1000;
+
+  function checkSession() {
+    if (isLoggedIn()) {
+      sessionHttp.post('/auth/check', {}).then(function() {
+        checkPromise = $timeout(checkSession, checkInterval);
+      }).catch(function(e) {
+        if (e && e.status == 403) {
+          notificationService.showError("Session expired: Logged out");
+        } else {
+          checkPromise = $timeout(checkSession, checkInterval);
+        }
+      });
+    } else {
+      if ($state.current.name != 'login') {
+        console.log("Redirecting to login page");
+        $state.go('login');
+      }
+
+      $rootScope.$on('octobot.login', function() {
+        console.log("Logged in. Starting check-session loop");
+        if (checkPromise) {
+          $timeout.cancel(checkPromise);
+        }
+        checkSession();
+      });
+    }
+  }
 
   $rootScope.$on('$stateChangeError', function(event) {
     $state.go('login');
   });
 
-  if (!isLoggedIn() || !$state.current.name) {
-    $state.go('login');
-  }
+  checkSession();
 });
 
 app.service('sessionHttp', function($http, $state) {
@@ -102,12 +131,20 @@ app.service('sessionHttp', function($http, $state) {
     });
   };
 
+  function postLogout() {
+    console.log('Logging out!');
+    sessionStorage.clear();
+    $state.go('login');
+  }
+
   this.logout = function() {
-    self.post('/auth/logout', null).finally(function() {
-      console.log('logging out!');
-      sessionStorage.clear();
-      $state.go('login');
-    });
+    if (!isLoggedIn()) {
+      postLogout();
+    } else {
+      self.post('/auth/logout', null).finally(function() {
+        postLogout();
+      });
+    }
   }
 
   function catch_403(e) {
@@ -135,7 +172,7 @@ app.service('notificationService', function($rootScope, $timeout) {
   };
 });
 
-app.controller('LoginController', function($scope, $state, $http, notificationService) {
+app.controller('LoginController', function($scope, $rootScope, $state, $http, notificationService) {
 
   $scope.username = '';
   $scope.password = '';
@@ -152,6 +189,7 @@ app.controller('LoginController', function($scope, $state, $http, notificationSe
       notificationService.showSuccess('Logged in successfully');
       sessionStorage['session'] = resp.data.session;
       sessionStorage['username'] = $scope.username;
+      $rootScope.$emit('octobot.login');
       $state.go('users');
 
     }).catch(function(e) {

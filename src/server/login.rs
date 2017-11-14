@@ -43,6 +43,10 @@ pub struct LogoutHandler {
     sessions: Arc<Sessions>,
 }
 
+pub struct SessionCheckHandler {
+    sessions: Arc<Sessions>,
+}
+
 pub struct LoginSessionFilter {
     sessions: Arc<Sessions>,
 }
@@ -59,6 +63,12 @@ impl LoginHandler {
 impl LogoutHandler {
     pub fn new(sessions: Arc<Sessions>) -> Box<LogoutHandler> {
         Box::new(LogoutHandler { sessions: sessions })
+    }
+}
+
+impl SessionCheckHandler {
+    pub fn new(sessions: Arc<Sessions>) -> Box<SessionCheckHandler> {
+        Box::new(SessionCheckHandler { sessions: sessions })
     }
 }
 
@@ -141,6 +151,21 @@ impl Handler for LogoutHandler {
 
         self.sessions.remove_session(&sess);
         self.respond(Response::new().with_header(ContentType::json()).with_body("{}"))
+    }
+}
+
+impl Handler for SessionCheckHandler {
+    fn handle(&self, req: Request) -> FutureResponse {
+        let sess: String = match get_session(&req) {
+            Some(s) => s.to_string(),
+            None => return self.respond(invalid_session()),
+        };
+
+        if self.sessions.is_valid_session(&sess) {
+            self.respond_with(StatusCode::Ok, "")
+        } else {
+            self.respond(invalid_session())
+        }
     }
 }
 
