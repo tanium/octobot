@@ -280,7 +280,10 @@ impl GithubEventHandler {
     }
 
     fn slack_user_name(&self, user: &github::User) -> String {
-        self.config.users().slack_user_name(user.login())
+        match self.config.users().slack_user_name(&user.login()) {
+            Some(slack_user) => slack_user.to_string(),
+            None => user.login().to_string(),
+        }
     }
 
     fn pull_request_commits(&self, pull_request: &github::PullRequestLike) -> Vec<github::Commit> {

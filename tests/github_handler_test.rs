@@ -95,6 +95,15 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
 
     let mut config = Config::new(db);
 
+    config.users_write().insert("the-pr-owner", "the.pr.owner").unwrap();
+    config.users_write().insert("joe-sender", "joe.sender").unwrap();
+    config.users_write().insert("joe-reviewer", "joe.reviewer").unwrap();
+    config.users_write().insert("smith-reviewer", "smith.reviewer").unwrap();
+    config.users_write().insert("assign1", "assign1").unwrap();
+    config.users_write().insert("assign2", "assign2").unwrap();
+    config.users_write().insert("bob-author", "bob.author").unwrap();
+    config.users_write().insert("mentioned-participant", "mentioned.participant").unwrap();
+
     config
         .repos_write()
         .insert_info(&repos::RepoInfo::new("some-user/some-repo", "the-reviews-channel")

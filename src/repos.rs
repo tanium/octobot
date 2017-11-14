@@ -283,7 +283,7 @@ mod tests {
     use super::*;
     use github;
 
-    pub fn new_test() -> (RepoConfig, TempDir) {
+    fn new_test() -> (RepoConfig, TempDir) {
         let temp_dir = TempDir::new("repos.rs").unwrap();
         let db_file = temp_dir.path().join("db.sqlite3");
         let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
