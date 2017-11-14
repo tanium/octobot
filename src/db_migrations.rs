@@ -6,7 +6,7 @@ const CREATE_VERSIONS: &'static str = r#"
 create table __version ( current_version integer primary key )
 "#;
 
-const MIGRATIONS: [&'static str; 1] = [
+const MIGRATIONS: [&'static str; 2] = [
     r#"
     create table users (
       id integer not null,
@@ -31,7 +31,9 @@ const MIGRATIONS: [&'static str; 1] = [
       UNIQUE( repo, branches ),
       PRIMARY KEY( id )
     );
-"#,
+    "#,
+
+    r#"alter table users add column mute_direct_messages tinyint not null default 0"#,
 ];
 
 fn current_version(conn: &Connection) -> Result<Option<i32>> {

@@ -92,7 +92,7 @@ impl UserAdmin {
     fn create(&self, req: Request) -> FutureResponse {
         let config = self.config.clone();
         parse_json(req, move |user: UserInfo| {
-            if let Err(e) = config.users_write().insert(&user.github, &user.slack) {
+            if let Err(e) = config.users_write().insert_info(&user) {
                 error!("{}", e);
                 return Response::new().with_status(StatusCode::InternalServerError);
             }

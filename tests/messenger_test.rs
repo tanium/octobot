@@ -11,6 +11,7 @@ use octobot::config::Config;
 use octobot::db::Database;
 use octobot::github;
 use octobot::messenger::{self, Messenger};
+use octobot::users::UserInfo;
 use octobot::slack;
 
 use mocks::mock_slack::MockSlack;
@@ -145,8 +146,9 @@ fn test_peace_and_quiet() {
 
     let config = Arc::new(Config::new(Database::new(&db_file.to_string_lossy()).unwrap()));
 
-    config.users_write().insert("the-owner", "DO NOT DISTURB").unwrap();
-    config.repos_write().insert("the-owner/the-repo", "DO NOT DISTURB").unwrap();
+    let mut user = UserInfo::new("the-owner", "the.owner");
+    user.mute_direct_messages = true;
+    config.users_write().insert_info(&user).unwrap();
 
     // should not send to channel or to owner, only to asignee
     let slack = MockSlack::new(vec![slack::req("@assign2", "hello there", vec![])]);

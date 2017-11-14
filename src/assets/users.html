@@ -35,6 +35,11 @@
           <div class="form-group">
             <input type="text" class="form-control" ng-model="theUser.slack" placeholder="Slack username" required>
           </div>
+          <div class="checkbox">
+            <label>
+              <input type="checkbox" ng-model="theUser.mute_direct_messages"> Mute Direct Messages
+            </label>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
