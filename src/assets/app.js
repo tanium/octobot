@@ -29,6 +29,11 @@ function isLoggedIn() {
   return !!sessionStorage['session'];
 }
 
+// Note: this is stored client side for convenience only, not used for any auth purposes.
+function loggedInUser() {
+  return sessionStorage['username'];
+}
+
 app.run(function($state, $rootScope, sessionHttp) {
   $rootScope.isLoggedIn = isLoggedIn;
 
@@ -100,7 +105,7 @@ app.service('sessionHttp', function($http, $state) {
   this.logout = function() {
     self.post('/auth/logout', null).finally(function() {
       console.log('logging out!');
-      delete sessionStorage['session'];
+      sessionStorage.clear();
       $state.go('login');
     });
   }
@@ -146,6 +151,7 @@ app.controller('LoginController', function($scope, $state, $http, notificationSe
     }).then(function(resp) {
       notificationService.showSuccess('Logged in successfully');
       sessionStorage['session'] = resp.data.session;
+      sessionStorage['username'] = $scope.username;
       $state.go('users');
 
     }).catch(function(e) {
@@ -345,8 +351,10 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
 
   function init() {
     $scope.reset();
+    $scope.req.admin_user = loggedInUser();
+
     $('#auth-modal').on('shown.bs.modal', function () {
-      $('#auth-username').focus()
+      $('#auth-password').focus()
     });
     // clear the password before show and after hide
     $('#auth-modal').on('show.bs.modal', function() {
