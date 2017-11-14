@@ -66,5 +66,6 @@ pub mod errors {
     }
 }
 
+mod db_migrations;
 #[cfg(target_os = "linux")]
 mod docker;
