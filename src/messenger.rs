@@ -42,8 +42,6 @@ pub fn new(config: Arc<Config>, slack: WorkSender<SlackRequest>) -> Box<Messenge
     })
 }
 
-const DND_MARKER: &'static str = "DO NOT DISTURB";
-
 impl Messenger for SlackMessenger {
     fn send_to_all(
         &self,
@@ -90,7 +88,7 @@ impl Messenger for SlackMessenger {
 impl SlackMessenger {
     fn send_to_slack(&self, channel: &str, msg: &str, attachments: &Vec<SlackAttachment>) {
         // user desires peace and quiet. do not disturb!
-        if channel == DND_MARKER || channel == users::mention(DND_MARKER) {
+        if false {
             return;
         }
 
@@ -101,8 +99,22 @@ impl SlackMessenger {
 
     fn send_to_slackbots(&self, users: Vec<github::User>, msg: &str, attachments: &Vec<SlackAttachment>) {
         for user in users {
-            let slack_ref = self.config.users().slack_user_ref(user.login());
-            self.send_to_slack(slack_ref.as_str(), msg, attachments);
+            let slack_ref = match self.config.users().lookup_info(user.login()) {
+                Some(info) => {
+                    if info.mute_direct_messages {
+                        None
+                    } else {
+                        Some(users::mention(info.slack))
+                    }
+                }
+                None => {
+                    Some(self.config.users().slack_user_ref(user.login()))
+                }
+            };
+
+            if let Some(ref slack_ref) = slack_ref {
+                self.send_to_slack(&slack_ref, msg, attachments);
+            }
         }
     }
 }
