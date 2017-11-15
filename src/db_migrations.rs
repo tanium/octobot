@@ -69,9 +69,11 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
             Error::from(format!("Error running migrations: {}", e))
         })?;
 
-        tx.execute("REPLACE INTO __version VALUES (?1)", &[&next_version]).map_err(|e| {
-            Error::from(format!("Error updating version: {}", e))
-        })?;
+        if next_version == 0 {
+            tx.execute("INSERT INTO __version VALUES (?1)", &[&next_version])
+        } else {
+            tx.execute("UPDATE __version set current_version = ?1", &[&next_version])
+        }.map_err(|e| Error::from(format!("Error updating version: {}", e)))?;
 
         tx.commit()?;
 
@@ -79,4 +81,38 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate tempdir;
+
+    use self::tempdir::TempDir;
+    use super::*;
+
+    #[test]
+    fn test_migration_versions() {
+        let temp_dir = TempDir::new("users.rs").unwrap();
+        let db_file = temp_dir.path().join("db.sqlite3");
+        let mut conn = Connection::open(&db_file).expect("create temp database");
+
+        migrate(&mut conn).unwrap();
+
+        assert_eq!(Some((MIGRATIONS.len() as i32) - 1), current_version(&conn).unwrap());
+    }
+
+    #[test]
+    fn test_multiple_migration() {
+        let temp_dir = TempDir::new("users.rs").unwrap();
+        let db_file = temp_dir.path().join("db.sqlite3");
+        let mut conn = Connection::open(&db_file).expect("create temp database");
+
+        // migration #1
+        migrate(&mut conn).unwrap();
+
+        // migration #2
+        if let Err(e) = migrate(&mut conn) {
+            panic!("Failed: expected second migration to be a noop: {}", e);
+        }
+    }
 }
