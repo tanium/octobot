@@ -31,11 +31,6 @@ impl UserConfig {
         UserConfig { db: db }
     }
 
-    pub fn new_memory() -> Result<UserConfig> {
-        let db = Database::new(":memory:")?;
-        Ok(UserConfig { db: db })
-    }
-
     pub fn insert(&mut self, git_user: &str, slack_user: &str) -> Result<()> {
         self.insert_info(&UserInfo::new(git_user, slack_user))
     }
@@ -69,25 +64,20 @@ impl UserConfig {
         Ok(())
     }
 
-    // our slack convention is to use '.' but github replaces dots with dashes.
-    pub fn slack_user_name<S: Into<String>>(&self, login: S) -> String {
-        let login = login.into();
-        match self.lookup_name(login.as_str()) {
-            Some(name) => name,
-            None => login.as_str().replace('-', "."),
-        }
+    pub fn slack_user_name(&self, github_name: &str) -> Option<String> {
+        self.lookup_info(github_name).map(|u| u.slack)
     }
 
-    pub fn slack_user_ref<S: Into<String>>(&self, login: S) -> String {
-        mention(self.slack_user_name(login.into()))
+    pub fn slack_user_mention(&self, github_name: &str) -> Option<String> {
+        self.lookup_info(github_name).and_then(|u| if u.mute_direct_messages {
+            None
+        } else {
+            Some(mention(&u.slack))
+        })
     }
 
     pub fn slack_user_names(&self, users: &Vec<github::User>) -> Vec<String> {
-        users.iter().map(|a| self.slack_user_name(a.login())).collect()
-    }
-
-    fn lookup_name(&self, login: &str) -> Option<String> {
-        self.lookup_info(login).map(|u| u.slack)
+        users.iter().filter_map(|a| self.slack_user_name(a.login())).collect()
     }
 
     pub fn get_all(&self) -> Result<Vec<UserInfo>> {
@@ -149,8 +139,8 @@ impl UserConfig {
     }
 }
 
-pub fn mention<S: Into<String>>(username: S) -> String {
-    format!("@{}", username.into())
+pub fn mention(username: &str) -> String {
+    format!("@{}", username)
 }
 
 #[cfg(test)]
@@ -160,29 +150,32 @@ mod tests {
     use self::tempdir::TempDir;
     use super::*;
 
-    #[test]
-    fn test_slack_user_name_defaults() {
-        let users = UserConfig::new_memory().unwrap();
-
-        assert_eq!("joe", users.slack_user_name("joe"));
-        assert_eq!("@joe", users.slack_user_ref("joe"));
-        assert_eq!("joe.smith", users.slack_user_name("joe-smith"));
-        assert_eq!("@joe.smith", users.slack_user_ref("joe-smith"));
-    }
-
-    #[test]
-    fn test_slack_user_name() {
+    fn new_test() -> (UserConfig, TempDir) {
         let temp_dir = TempDir::new("users.rs").unwrap();
         let db_file = temp_dir.path().join("db.sqlite3");
         let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
 
-        let mut users = UserConfig::new(db);
+        (UserConfig::new(db), temp_dir)
+    }
+
+    #[test]
+    fn test_slack_user_name_no_defaults() {
+        let (users, _temp) = new_test();
+
+        assert_eq!(None, users.slack_user_name("joe"));
+        assert_eq!(None, users.slack_user_mention("joe"));
+    }
+
+    #[test]
+    fn test_slack_user_name() {
+        let (mut users, _temp) = new_test();
+
         users.insert("some-git-user", "the-slacker").unwrap();
 
-        assert_eq!("the-slacker", users.slack_user_name("some-git-user"));
-        assert_eq!("@the-slacker", users.slack_user_ref("some-git-user"));
-        assert_eq!("some.other.user", users.slack_user_name("some.other.user"));
-        assert_eq!("@some.other.user", users.slack_user_ref("some.other.user"));
+        assert_eq!(Some("the-slacker".into()), users.slack_user_name("some-git-user"));
+        assert_eq!(Some("@the-slacker".into()), users.slack_user_mention("some-git-user"));
+        assert_eq!(None, users.slack_user_name("some.other.user"));
+        assert_eq!(None, users.slack_user_mention("some.other.user"));
     }
 
     #[test]

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use config::Config;
 use github;
 use slack::{self, SlackAttachment, SlackRequest};
-use users;
 use util;
 use worker::WorkSender;
 
@@ -94,20 +93,7 @@ impl SlackMessenger {
 
     fn send_to_slackbots(&self, users: Vec<github::User>, msg: &str, attachments: &Vec<SlackAttachment>) {
         for user in users {
-            let slack_ref = match self.config.users().lookup_info(user.login()) {
-                Some(info) => {
-                    if info.mute_direct_messages {
-                        None
-                    } else {
-                        Some(users::mention(info.slack))
-                    }
-                }
-                None => {
-                    Some(self.config.users().slack_user_ref(user.login()))
-                }
-            };
-
-            if let Some(ref slack_ref) = slack_ref {
+            if let Some(slack_ref) = self.config.users().slack_user_mention(&user.login()) {
                 self.send_to_slack(&slack_ref, msg, attachments);
             }
         }

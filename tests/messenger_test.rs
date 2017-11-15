@@ -10,21 +10,29 @@ use tempdir::TempDir;
 use octobot::config::Config;
 use octobot::db::Database;
 use octobot::github;
-use octobot::messenger::{self, Messenger};
-use octobot::users::UserInfo;
+use octobot::messenger;
 use octobot::slack;
 
 use mocks::mock_slack::MockSlack;
 
-fn new_messenger(slack: &MockSlack) -> Box<Messenger> {
-    let emptydb = Database::new(":memory:").unwrap();
-    messenger::new(Arc::new(Config::new(emptydb)), slack.new_sender())
+fn new_test() -> (Arc<Config>, TempDir) {
+    let temp_dir = TempDir::new("repos.rs").unwrap();
+    let db_file = temp_dir.path().join("db.sqlite3");
+    let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
+
+    let config = Arc::new(Config::new(db));
+    config.users_write().insert("the-owner", "the.owner").unwrap();
+    config.users_write().insert("the-sender", "the.sender").unwrap();
+
+    (config, temp_dir)
 }
 
 #[test]
 fn test_sends_to_owner() {
+    let (config, _temp) = new_test();
+
     let slack = MockSlack::new(vec![slack::req("@the.owner", "hello there", vec![])]);
-    let messenger = new_messenger(&slack);
+    let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
         "hello there",
         &vec![],
@@ -37,14 +45,9 @@ fn test_sends_to_owner() {
 
 #[test]
 fn test_sends_to_mapped_usernames() {
-    let dir = TempDir::new("messenger_test.rs").unwrap();
-    let db_file = dir.path().join("db.sqlite3");
-    let db = Database::new(&db_file.to_string_lossy()).unwrap();
+    let (config, _temp) = new_test();
 
-    let config = Arc::new(Config::new(db));
-    config.users_write().insert("the-owner", "the-owners-slack-name").unwrap();
-
-    let slack = MockSlack::new(vec![slack::req("@the-owners-slack-name", "hello there", vec![])]);
+    let slack = MockSlack::new(vec![slack::req("@the.owner", "hello there", vec![])]);
     let messenger = messenger::new(config, slack.new_sender());
 
     messenger.send_to_all(
@@ -59,11 +62,8 @@ fn test_sends_to_mapped_usernames() {
 
 #[test]
 fn test_sends_to_owner_with_channel() {
-    let dir = TempDir::new("messenger_test.rs").unwrap();
-    let db_file = dir.path().join("db.sqlite3");
-    let db = Database::new(&db_file.to_string_lossy()).unwrap();
+    let (config, _temp) = new_test();
 
-    let config = Arc::new(Config::new(db));
     config.repos_write().insert("the-owner/the-repo", "the-review-channel").unwrap();
 
     // Note: it should put the repo name w/ link in the message
@@ -89,12 +89,17 @@ fn test_sends_to_owner_with_channel() {
 
 #[test]
 fn test_sends_to_assignees() {
+    let (config, _temp) = new_test();
+
+    config.users_write().insert("assign1", "assign1").unwrap();
+    config.users_write().insert("assign2", "assign2").unwrap();
+
     let slack = MockSlack::new(vec![
         slack::req("@the.owner", "hello there", vec![]),
         slack::req("@assign1", "hello there", vec![]),
         slack::req("@assign2", "hello there", vec![]),
     ]);
-    let messenger = new_messenger(&slack);
+    let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
         "hello there",
         &vec![],
@@ -107,8 +112,13 @@ fn test_sends_to_assignees() {
 
 #[test]
 fn test_does_not_send_to_event_sender() {
+    let (config, _temp) = new_test();
+
+    config.users_write().insert("userA", "userA").unwrap();
+    config.users_write().insert("userB", "userB").unwrap();
+
     let slack = MockSlack::new(vec![slack::req("@userB", "hello there", vec![])]);
-    let messenger = new_messenger(&slack);
+    let messenger = messenger::new(config, slack.new_sender());
     // Note: 'userA' is owner, sender, and assignee. (i.e. commented on a PR that he opened and is
     // assigned to). Being sender excludes receipt from any of these messages.
     messenger.send_to_all(
@@ -123,11 +133,15 @@ fn test_does_not_send_to_event_sender() {
 
 #[test]
 fn test_sends_only_once() {
+    let (config, _temp) = new_test();
+
+    config.users_write().insert("assign2", "assign2").unwrap();
+
     let slack = MockSlack::new(vec![
         slack::req("@the.owner", "hello there", vec![]),
         slack::req("@assign2", "hello there", vec![]),
     ]);
-    let messenger = new_messenger(&slack);
+    let messenger = messenger::new(config, slack.new_sender());
     // Note: 'the-owner' is also assigned. Should only receive one slackbot message though.
     messenger.send_to_all(
         "hello there",
@@ -141,14 +155,13 @@ fn test_sends_only_once() {
 
 #[test]
 fn test_peace_and_quiet() {
-    let dir = TempDir::new("messenger_test.rs").unwrap();
-    let db_file = dir.path().join("db.sqlite3");
+    let (config, _temp) = new_test();
 
-    let config = Arc::new(Config::new(Database::new(&db_file.to_string_lossy()).unwrap()));
+    config.users_write().insert("assign2", "assign2").unwrap();
 
-    let mut user = UserInfo::new("the-owner", "the.owner");
+    let mut user = config.users().lookup_info("the-owner").unwrap();
     user.mute_direct_messages = true;
-    config.users_write().insert_info(&user).unwrap();
+    config.users_write().update(&user).unwrap();
 
     // should not send to channel or to owner, only to asignee
     let slack = MockSlack::new(vec![slack::req("@assign2", "hello there", vec![])]);
