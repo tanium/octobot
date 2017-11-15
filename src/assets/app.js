@@ -317,6 +317,14 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
     });
   }
 
+  $scope.displayBranches = function(repo) {
+    if (!repo.branches || repo.branches.length == 0) {
+      return '(any)';
+    } else {
+      return repo.branches.join(', ');
+    }
+  }
+
   $scope.editRepo = function(repo) {
     $scope.theRepo = repo;
     $('#add-repo-modal').modal('show');
