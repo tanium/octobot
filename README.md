@@ -38,7 +38,6 @@ config.toml
 
     [main]
     slack_webhook_url = "<slack webhook URL>"
-    repos_config_file = "/data/repos.json"
     clone_root_dir = "/home/octobot/repos"
     ssl_cert_file = "/data/ssl.crt"
     ssl_key_file = "/data/ssl.key"
@@ -63,9 +62,6 @@ config.toml
     fixed_resolutions = [ "Fixed", "Done" ]
     fix_version_field = "fixVersions"
 
-
-Note: You may need to create an empty repos.json and users.json for octobot to startup, but these can then be configured
-using the web interface.
 
 For the octobot github user token, you will need to:
 

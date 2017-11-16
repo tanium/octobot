@@ -34,7 +34,6 @@ pub struct MainConfig {
     pub slack_webhook_url: String,
     pub listen_addr: Option<String>,
     pub listen_addr_ssl: Option<String>,
-    pub repos_config_file: String,
     pub clone_root_dir: String,
     pub ssl_cert_file: Option<String>,
     pub ssl_key_file: Option<String>,
@@ -160,7 +159,6 @@ impl ConfigModel {
                 slack_webhook_url: String::new(),
                 listen_addr: None,
                 listen_addr_ssl: None,
-                repos_config_file: String::new(),
                 clone_root_dir: String::new(),
                 ssl_cert_file: None,
                 ssl_key_file: None,
@@ -267,7 +265,6 @@ mod tests {
         let config_str = r#"
 [main]
 slack_webhook_url = "https://hooks.slack.com/foo"
-repos_config_file = "repos.json"
 clone_root_dir = "./repos"
 
 [github]
@@ -278,7 +275,6 @@ api_token = "some-tokens"
         let config = parse_string(config_str).unwrap();
 
         assert_eq!("https://hooks.slack.com/foo", config.main.slack_webhook_url);
-        assert_eq!("repos.json", config.main.repos_config_file);
 
     }
 }
