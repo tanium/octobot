@@ -238,7 +238,9 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
   }
 
   $scope.addUser = function() {
-    $scope.theUser = {};
+    $scope.theUser = {
+      mute_direct_messages: false,
+    };
     $('#add-user-modal').modal('show');
   }
 
