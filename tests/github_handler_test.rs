@@ -1005,6 +1005,46 @@ fn test_pull_request_merged_retroactively_labeled() {
 }
 
 #[test]
+fn test_pull_request_merged_master_branch() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "labeled".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.merged = Some(true);
+    }
+    test.handler.data.label = Some(Label::new("backport-master"));
+    test.handler.data.sender = User::new("the-pr-merger");
+
+    let expect_thread = test.expect_will_merge_branches(vec!["master".into()]);
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+
+    expect_thread.join().unwrap();
+}
+
+#[test]
+fn test_pull_request_merged_develop_branch() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "labeled".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.merged = Some(true);
+    }
+    test.handler.data.label = Some(Label::new("backport-develop"));
+    test.handler.data.sender = User::new("the-pr-merger");
+
+    let expect_thread = test.expect_will_merge_branches(vec!["develop".into()]);
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+
+    expect_thread.join().unwrap();
+}
+
+#[test]
 fn test_push_no_pr() {
     let mut test = new_test();
     test.handler.event = "push".into();
