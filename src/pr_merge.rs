@@ -217,32 +217,34 @@ impl worker::Runner<PRMergeRequest> for Runner {
         let slack = self.slack.clone();
 
         // launch another thread to do the merge
-        self.thread_pool.execute(move || if let Err(e) = merge_pull_request(
-            github_session.borrow(),
-            &clone_mgr,
-            &req.repo.owner.login(),
-            &req.repo.name,
-            &req.pull_request,
-            &req.target_branch,
-        )
-        {
-
-            let attach = SlackAttachmentBuilder::new(&format!("{}", e))
-                .title(
-                    format!("Source PR: #{}: \"{}\"", req.pull_request.number, req.pull_request.title)
-                        .as_str(),
-                )
-                .title_link(req.pull_request.html_url.clone())
-                .color("danger")
-                .build();
-
-            let messenger = messenger::new(config, slack);
-            messenger.send_to_owner(
-                "Error creating merge Pull Request",
-                &vec![attach],
-                &req.pull_request.user,
-                &req.repo,
+        self.thread_pool.execute(move || {
+            let merge_result = merge_pull_request(
+                github_session.borrow(),
+                &clone_mgr,
+                &req.repo.owner.login(),
+                &req.repo.name,
+                &req.pull_request,
+                &req.target_branch,
             );
+            if let Err(e) = merge_result {
+
+                let attach = SlackAttachmentBuilder::new(&format!("{}", e))
+                    .title(
+                        format!("Source PR: #{}: \"{}\"", req.pull_request.number, req.pull_request.title)
+                            .as_str(),
+                    )
+                    .title_link(req.pull_request.html_url.clone())
+                    .color("danger")
+                    .build();
+
+                let messenger = messenger::new(config, slack);
+                messenger.send_to_owner(
+                    &format!("Error creating merge PR from {} to {}", req.pull_request.head.ref_name, req.target_branch),
+                    &vec![attach],
+                    &req.pull_request.user,
+                    &req.repo,
+                );
+            }
         });
     }
 }
