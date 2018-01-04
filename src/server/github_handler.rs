@@ -782,7 +782,11 @@ impl GithubEventHandler {
             Some(c) => c[1].to_string(),
             None => return,
         };
-        let target_branch = release_branch_prefix.to_string() + &backport;
+        let target_branch = if backport == "master" || backport == "develop" {
+            backport
+        } else {
+            release_branch_prefix.to_string() + &backport
+        };
 
         let req = pr_merge::req(&self.data.repository, pull_request, &target_branch);
         if let Err(e) = self.pr_merge.send(req) {
