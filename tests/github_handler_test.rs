@@ -736,6 +736,43 @@ fn test_pull_request_review_requested() {
     assert_eq!((StatusCode::Ok, "pr".into()), resp);
 }
 
+
+#[test]
+fn test_pull_request_review_no_username() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "review_requested".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.requested_reviewers = Some(vec![User::new("some-unknown-reviewer")]);
+    }
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.github.mock_get_pull_request_commits(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(some_commits()),
+    );
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    let msg = "Pull Request submitted for review to some-unknown-reviewer";
+
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+    ]);
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+}
+
 #[test]
 fn test_pull_request_other() {
     let mut test = new_test();
