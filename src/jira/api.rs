@@ -237,7 +237,7 @@ impl Session for JiraSession {
     fn find_pending_versions(&self, project: &str) -> Result<HashMap<String, Vec<version::Version>>> {
         if let Some(ref field) = self.pending_versions_field.clone() {
             if let Some(ref field_id) = self.pending_versions_field_id {
-                let jql = format!("(project = {}) and \"{}\" is not EMPTY", project, field);
+                let jql = format!("(project = \"{}\") and \"{}\" is not EMPTY", project, field);
                 let search =
                     self.client
                         .get::<serde_json::Value>(
