@@ -1,38 +1,3 @@
-[root]
-name = "octobot"
-version = "0.1.0"
-dependencies = [
- "base64 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "env_logger 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "error-chain 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.11.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper-rustls 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ldap3 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "maplit 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "regex 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "ring 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "rpassword 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "rusqlite 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rust-crypto 0.2.36 (registry+https://github.com/rust-lang/crates.io-index)",
- "rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)",
- "rustls 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde 1.0.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_derive 1.0.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_json 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "tempdir 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "thread-id 3.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "threadpool 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "time 0.1.38 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-core 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-proto 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-rustls 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "toml 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "unidiff 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "url 1.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
 [[package]]
 name = "advapi32-sys"
 version = "0.2.0"
@@ -593,6 +558,41 @@ version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.32 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "octobot"
+version = "0.1.0"
+dependencies = [
+ "base64 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "env_logger 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "error-chain 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.11.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper-rustls 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ldap3 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "maplit 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "regex 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ring 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rpassword 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rusqlite 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rust-crypto 0.2.36 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustls 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.15 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.15 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tempdir 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thread-id 3.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "threadpool 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "time 0.1.38 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-core 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-proto 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-rustls 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "toml 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "unidiff 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 1.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
