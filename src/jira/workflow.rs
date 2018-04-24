@@ -5,7 +5,7 @@ use version;
 
 use config::JiraConfig;
 use errors::*;
-use github::{Commit, CommitLike, PullRequest, PushCommit};
+use github::{Commit, CommitLike, PushCommit};
 use jira;
 use jira::Transition;
 
@@ -64,50 +64,6 @@ fn get_jira_project(jira_key: &str) -> &str {
     match re.captures(&jira_key) {
         Some(c) => c.get(1).map_or(jira_key, |m| m.as_str()),
         None => jira_key,
-    }
-}
-
-pub fn submit_for_review(
-    pr: &PullRequest,
-    commits: &Vec<Commit>,
-    projects: &Vec<String>,
-    jira: &jira::api::Session,
-    config: &JiraConfig,
-) {
-    for key in get_fixed_jira_keys(commits, projects) {
-        // add comment
-        if let Err(e) = jira.comment_issue(
-            &key,
-            &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url),
-        )
-        {
-            error!("Error commenting on key [{}]: {}", key, e);
-            continue; // give up on transitioning if we can't comment.
-        }
-
-        // try to transition to in-progress
-        try_transition(&key, &config.progress_states(), jira);
-        // try transition to pending-review
-        try_transition(&key, &config.review_states(), jira);
-    }
-
-    for key in get_referenced_jira_keys(commits, projects) {
-        // add comment
-        if let Err(e) = jira.comment_issue(
-            &key,
-            &format!(
-                "Referenced by review submitted for branch {}: {}",
-                pr.base.ref_name,
-                pr.html_url
-            ),
-        )
-        {
-            error!("Error commenting on key [{}]: {}", key, e);
-            continue; // give up on transitioning if we can't comment.
-        }
-
-        // try to transition to in-progress
-        try_transition(&key, &config.progress_states(), jira);
     }
 }
 
@@ -306,21 +262,6 @@ fn find_relevant_versions(
             },
         )
         .collect::<Vec<_>>()
-}
-
-fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {
-    match find_transition(&key, to, jira) {
-        Ok(Some(transition)) => {
-            let req = transition.new_request();
-            if let Err(e) = jira.transition_issue(&key, &req) {
-                error!("Error transitioning JIRA issue [{}] to one of [{:?}]: {}", key, to, e);
-            } else {
-                info!("Transitioned [{}] to one of [{:?}]", key, to);
-            }
-        }
-        Ok(None) => info!("JIRA [{}] cannot be transitioned to any of [{:?}]", key, to),
-        Err(e) => error!("{}", e),
-    };
 }
 
 fn find_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) -> Result<Option<Transition>> {

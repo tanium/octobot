@@ -56,8 +56,6 @@ config.toml
     password = <jira password>
 
     # optional. shown here with defaults:
-    progress_states = [ "In Progress" ]
-    review_states = [ "Pending Review" ]
     resolved_states = [ "Resolved", "Done" ]
     fixed_resolutions = [ "Fixed", "Done" ]
     fix_version_field = "fixVersions"

@@ -60,10 +60,6 @@ pub struct JiraConfig {
     pub username: String,
     pub password: String,
 
-    // review state that may be necessary before submitting for review (defaults to ["In Progress"])
-    pub progress_states: Option<Vec<String>>,
-    // review state to transition to when marked for review (defaults to ["Pending Review"])
-    pub review_states: Option<Vec<String>>,
     // resolved state to transition to when PR is merged. (defaults to ["Resolved", "Done"])
     pub resolved_states: Option<Vec<String>>,
     // when marking as resolved, add this resolution (defaults to ["Fixed", "Done"])
@@ -182,22 +178,6 @@ impl JiraConfig {
             self.host.clone()
         } else {
             format!("https://{}", self.host)
-        }
-    }
-
-    pub fn progress_states(&self) -> Vec<String> {
-        if let Some(ref states) = self.progress_states {
-            states.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["In Progress".into()]
-        }
-    }
-
-    pub fn review_states(&self) -> Vec<String> {
-        if let Some(ref states) = self.review_states {
-            states.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["Pending Review".into()]
         }
     }
 
