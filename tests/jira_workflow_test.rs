@@ -147,17 +147,17 @@ fn test_resolve_issue_no_resolution() {
 #[test]
 fn test_resolve_issue_with_resolution() {
     let test = new_test();
-    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let projects = vec!["SER2".to_string(), "CLI".to_string()];
     let commit =
-        new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
+        new_push_commit("Fix [SER2-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
 
     let comment1 = "Merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
-                   {quote}Fix [SER-1] I fixed it.{quote}\n\
+                   {quote}Fix [SER2-1] I fixed it.{quote}\n\
                    Included in version 5.6.7";
-    test.jira.mock_comment_issue("SER-1", comment1, Ok(()));
+    test.jira.mock_comment_issue("SER2-1", comment1, Ok(()));
 
     let comment2 = "Referenced by commit merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
-                   {quote}Fix [SER-1] I fixed it.{quote}\n\
+                   {quote}Fix [SER2-1] I fixed it.{quote}\n\
                    Included in version 5.6.7";
     test.jira.mock_comment_issue("CLI-45", comment2, Ok(()));
 
@@ -186,8 +186,8 @@ fn test_resolve_issue_with_resolution() {
         }),
     });
 
-    test.jira.mock_get_transitions("SER-1", Ok(vec![trans]));
-    test.jira.mock_transition_issue("SER-1", &req, Ok(()));
+    test.jira.mock_get_transitions("SER2-1", Ok(vec![trans]));
+    test.jira.mock_transition_issue("SER2-1", &req, Ok(()));
 
     jira::workflow::resolve_issue("release/99", Some("5.6.7"), &vec![commit], &projects, &test.jira, &test.config);
 }
