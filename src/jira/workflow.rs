@@ -10,7 +10,7 @@ use jira;
 use jira::Transition;
 
 fn get_jira_keys(strings: Vec<String>, projects: &Vec<String>) -> Vec<String> {
-    let re = Regex::new(r"\b([A-Z]+-[0-9]+)\b").unwrap();
+    let re = Regex::new(r"\b([A-Z0-9]+-[0-9]+)\b").unwrap();
 
     let mut all_keys = vec![];
     for s in strings {
@@ -32,7 +32,7 @@ fn get_jira_keys(strings: Vec<String>, projects: &Vec<String>) -> Vec<String> {
 
 fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
     // Fix [ABC-123][OTHER-567], [YEAH-999]
-    let re = Regex::new(r"(?i)(?:Fix(?:es|ed)?):?\s*(?-i)((\[?([A-Z]+-[0-9]+)(?:\]|\b)[\s,]*)+)")
+    let re = Regex::new(r"(?i)(?:Fix(?:es|ed)?):?\s*(?-i)((\[?([A-Z0-9]+-[0-9]+)(?:\]|\b)[\s,]*)+)")
         .unwrap();
 
     // first extract jiras with fix markers
@@ -59,7 +59,7 @@ fn get_all_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) ->
 }
 
 fn get_jira_project(jira_key: &str) -> &str {
-    let re = Regex::new(r"^([A-Za-z]+)(-[0-9]+)?$").unwrap();
+    let re = Regex::new(r"^([A-Za-z0-9]+)(-[0-9]+)?$").unwrap();
 
     match re.captures(&jira_key) {
         Some(c) => c.get(1).map_or(jira_key, |m| m.as_str()),
