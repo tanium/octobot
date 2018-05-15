@@ -1,5 +1,7 @@
 FROM ubuntu:latest
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # install build deps
 RUN apt-get update \
   && apt-get install -y ca-certificates build-essential curl libssl-dev pkg-config libsqlite3-dev
