@@ -8,6 +8,7 @@ use octobot::jira::api::{JiraVersionPosition, Session};
 use octobot::version;
 
 pub struct MockJira {
+    get_issue_calls: Mutex<Vec<MockCall<Issue>>>,
     get_transitions_calls: Mutex<Vec<MockCall<Vec<Transition>>>>,
     transition_issue_calls: Mutex<Vec<MockCall<()>>>,
     comment_issue_calls: Mutex<Vec<MockCall<()>>>,
@@ -38,6 +39,7 @@ impl<T> MockCall<T> {
 impl MockJira {
     pub fn new() -> MockJira {
         MockJira {
+            get_issue_calls: Mutex::new(vec![]),
             get_transitions_calls: Mutex::new(vec![]),
             transition_issue_calls: Mutex::new(vec![]),
             comment_issue_calls: Mutex::new(vec![]),
@@ -55,6 +57,11 @@ impl MockJira {
 impl Drop for MockJira {
     fn drop(&mut self) {
         if !thread::panicking() {
+            assert!(
+                self.get_issue_calls.lock().unwrap().len() == 0,
+                "Unmet get_issue_calls: {:?}",
+                *self.get_issue_calls.lock().unwrap()
+            );
             assert!(
                 self.get_transitions_calls.lock().unwrap().len() == 0,
                 "Unmet get_transitions calls: {:?}",
@@ -110,6 +117,14 @@ impl Drop for MockJira {
 }
 
 impl Session for MockJira {
+    fn get_issue(&self, key: &str) -> Result<Issue> {
+        let mut calls = self.get_issue_calls.lock().unwrap();
+        assert!(calls.len() > 0, format!("Unexpected call to get_issue {}", key));
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], key);
+
+        call.ret
+    }
     fn get_transitions(&self, key: &str) -> Result<Vec<Transition>> {
         let mut calls = self.get_transitions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_transitions");
@@ -209,6 +224,10 @@ impl Session for MockJira {
 }
 
 impl MockJira {
+    pub fn mock_get_issue(&self, key: &str, ret: Result<Issue>) {
+        self.get_issue_calls.lock().unwrap().push(MockCall::new(ret, vec![key]));
+    }
+
     pub fn mock_get_transitions(&self, key: &str, ret: Result<Vec<Transition>>) {
         self.get_transitions_calls.lock().unwrap().push(MockCall::new(ret, vec![key]));
     }

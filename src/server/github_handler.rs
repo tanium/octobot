@@ -57,6 +57,7 @@ pub struct GithubEventHandler {
 const MAX_CONCURRENT_MERGES: usize = 20;
 const MAX_CONCURRENT_VERSIONS: usize = 20;
 const MAX_CONCURRENT_FORCE_PUSH: usize = 20;
+const MAX_COMMITS_FOR_JIRA_CONSIDERATION: usize = 20;
 
 impl GithubHandlerState {
     pub fn new(
@@ -371,15 +372,15 @@ impl GithubEventHandler {
             if let Some(ref verb) = verb {
                 let commits = self.pull_request_commits(&pull_request);
 
+                let attachments = vec![
+                    SlackAttachmentBuilder::new("")
+                        .title(format!("Pull Request #{}: \"{}\"", pull_request.number, pull_request.title.as_str()))
+                        .title_link(pull_request.html_url.as_str())
+                        .build(),
+                ];
+
                 if !pull_request.is_wip() {
                     let msg = format!("Pull Request {}", verb);
-                    let attachments =
-                        vec![SlackAttachmentBuilder::new("")
-                                               .title(format!("Pull Request #{}: \"{}\"",
-                                                              pull_request.number,
-                                                              pull_request.title.as_str()))
-                                               .title_link(pull_request.html_url.as_str())
-                                               .build()];
 
                     if notify_channel_only {
                         self.messenger.send_to_channel(&msg, &attachments, &self.data.repository);
@@ -400,16 +401,26 @@ impl GithubEventHandler {
                 if self.action == "opened" {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
-                            let jira_projects =
-                                self.config.repos().jira_projects(&self.data.repository, &pull_request.base.ref_name);
+                            if commits.len() > MAX_COMMITS_FOR_JIRA_CONSIDERATION {
+                                let msg = format!(
+                                    "Too many commits on Pull Request #{}. Ignoring JIRAs.",
+                                    pull_request.number
+                                );
+                                self.messenger.send_to_owner(&msg, &attachments, &pull_request.user, &self.data.repository);
 
-                            jira::workflow::submit_for_review(
-                                &pull_request,
-                                &commits,
-                                &jira_projects,
-                                jira_session.deref(),
-                                jira_config,
-                            );
+                            } else {
+                                let jira_projects = self.config.repos().jira_projects(
+                                    &self.data.repository,
+                                    &pull_request.base.ref_name,
+                                );
+
+                                jira::workflow::submit_for_review(
+                                    &commits,
+                                    &jira_projects,
+                                    jira_session.deref(),
+                                    jira_config,
+                                );
+                            }
                         }
                     }
                 }

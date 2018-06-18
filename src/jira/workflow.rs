@@ -5,7 +5,7 @@ use version;
 
 use config::JiraConfig;
 use errors::*;
-use github::{Commit, CommitLike, PullRequest, PushCommit};
+use github::{Commit, CommitLike, PushCommit};
 use jira;
 use jira::Transition;
 
@@ -67,47 +67,48 @@ fn get_jira_project(jira_key: &str) -> &str {
     }
 }
 
+fn needs_transition(state: &Option<jira::Status>, target: &Vec<String>) -> bool {
+    if let &Some(ref state) = state {
+        return !target.contains(&state.name);
+    } else {
+        return true;
+    }
+}
+
 pub fn submit_for_review(
-    pr: &PullRequest,
     commits: &Vec<Commit>,
     projects: &Vec<String>,
     jira: &jira::api::Session,
     config: &JiraConfig,
 ) {
+    let review_states = config.review_states();
+    let progress_states = config.progress_states();
+
     for key in get_fixed_jira_keys(commits, projects) {
-        // add comment
-        if let Err(e) = jira.comment_issue(
-            &key,
-            &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url),
-        )
-        {
-            error!("Error commenting on key [{}]: {}", key, e);
-            continue; // give up on transitioning if we can't comment.
+        let issue_state = try_get_issue_state(&key, jira);
+
+        if !needs_transition(&issue_state, &review_states) {
+            continue;
         }
 
         // try to transition to in-progress
-        try_transition(&key, &config.progress_states(), jira);
+        if needs_transition(&issue_state, &progress_states) {
+            try_transition(&key, &progress_states, jira);
+        }
+
         // try transition to pending-review
-        try_transition(&key, &config.review_states(), jira);
+        try_transition(&key, &review_states, jira);
     }
 
     for key in get_referenced_jira_keys(commits, projects) {
-        // add comment
-        if let Err(e) = jira.comment_issue(
-            &key,
-            &format!(
-                "Referenced by review submitted for branch {}: {}",
-                pr.base.ref_name,
-                pr.html_url
-            ),
-        )
-        {
-            error!("Error commenting on key [{}]: {}", key, e);
-            continue; // give up on transitioning if we can't comment.
+        let issue_state = try_get_issue_state(&key, jira);
+
+        if !needs_transition(&issue_state, &progress_states) {
+            continue;
         }
 
         // try to transition to in-progress
-        try_transition(&key, &config.progress_states(), jira);
+        try_transition(&key, &progress_states, jira);
     }
 }
 
@@ -134,14 +135,19 @@ pub fn resolve_issue(
 
         let fix_msg = format!("Merged into branch {}: {}{}", branch, desc, version_desc);
         let ref_msg = format!("Referenced by commit merged into branch {}: {}{}", branch, desc, version_desc);
+        let resolved_states = config.resolved_states();
 
         for key in get_fixed_jira_keys(&vec![commit], projects) {
             if let Err(e) = jira.comment_issue(&key, &fix_msg) {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
 
-            let to = config.resolved_states();
-            match find_transition(&key, &to, jira) {
+            let issue_state = try_get_issue_state(&key, jira);
+            if !needs_transition(&issue_state, &resolved_states) {
+                continue;
+            }
+
+            match find_transition(&key, &resolved_states, jira) {
                 Ok(Some(transition)) => {
                     let mut req = transition.new_request();
 
@@ -168,12 +174,12 @@ pub fn resolve_issue(
                     }
 
                     if let Err(e) = jira.transition_issue(&key, &req) {
-                        error!("Error transitioning JIRA issue [{}] to one of [{:?}]: {}", key, to, e);
+                        error!("Error transitioning JIRA issue [{}] to one of [{:?}]: {}", key, resolved_states, e);
                     } else {
-                        info!("Transitioned [{}] to one of [{:?}]", key, to);
+                        info!("Transitioned [{}] to one of [{:?}]", key, resolved_states);
                     }
                 }
-                Ok(None) => info!("JIRA [{}] cannot be transitioned to  any of [{:?}]", key, to),
+                Ok(None) => info!("JIRA [{}] cannot be transitioned to  any of [{:?}]", key, resolved_states),
                 Err(e) => error!("{}", e),
             };
         }
@@ -306,6 +312,16 @@ fn find_relevant_versions(
             },
         )
         .collect::<Vec<_>>()
+}
+
+fn try_get_issue_state(key: &str, jira: &jira::api::Session) -> Option<jira::Status> {
+    match jira.get_issue(key) {
+        Ok(issue) => issue.status,
+        Err(e) => {
+            error!("Error getting JIRA [{}] {}", key, e);
+            None
+        },
+    }
 }
 
 fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {

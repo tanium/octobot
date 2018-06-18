@@ -12,6 +12,7 @@ use jira::models::*;
 use version;
 
 pub trait Session: Send + Sync {
+    fn get_issue(&self, key: &str) -> Result<Issue>;
     fn get_transitions(&self, key: &str) -> Result<Vec<Transition>>;
 
     fn transition_issue(&self, key: &str, transition: &TransitionRequest) -> Result<()>;
@@ -93,6 +94,12 @@ impl JiraSession {
 }
 
 impl Session for JiraSession {
+    fn get_issue(&self, key: &str) -> Result<Issue> {
+        self.client
+            .get::<Issue>(&format!("/issue/{}", key))
+            .map_err(|e| Error::from(format!("Error creating getting issue [{}]: {}", key, e)))
+    }
+
     fn get_transitions(&self, key: &str) -> Result<Vec<Transition>> {
         #[derive(Deserialize)]
         struct TransitionsResp {
