@@ -23,6 +23,8 @@ fn new_test() -> JiraWorkflowTest {
         host: "the-host".into(),
         username: "the-jira-user".into(),
         password: "the-jira-pass".into(),
+        progress_states: Some(vec!["progress1".into()]),
+        review_states: Some(vec!["reviewing1".into()]),
         resolved_states: Some(vec!["resolved1".into(), "resolved2".into()]),
         fixed_resolutions: Some(vec!["it-is-fixed".into()]),
         fix_versions_field: Some("the-versions".into()),
@@ -33,6 +35,22 @@ fn new_test() -> JiraWorkflowTest {
         jira: jira,
         config: config,
     }
+}
+
+fn new_pr() -> github::PullRequest {
+    let mut pr = github::PullRequest::new();
+    pr.head.ref_name = "pr-branch".into();
+    pr.base.ref_name = "master".into();
+    pr.html_url = "http://the-pr".into();
+    pr
+}
+
+fn new_commit(msg: &str, hash: &str) -> github::Commit {
+    let mut commit = github::Commit::new();
+    commit.commit.message = msg.into();
+    commit.sha = hash.into();
+    commit.html_url = format!("http://the-commit/{}", hash);
+    commit
 }
 
 fn new_push_commit(msg: &str, hash: &str) -> github::PushCommit {
@@ -63,6 +81,38 @@ fn new_transition_req(id: &str) -> TransitionRequest {
         },
         fields: None,
     }
+}
+
+#[test]
+fn test_submit_for_review() {
+    let test = new_test();
+    let pr = new_pr();
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit = new_commit("Fix [SER-1] I fixed it. And also relates to [CLI-9999][OTHER-999]", "aabbccddee");
+
+    test.jira.mock_comment_issue(
+        "SER-1",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+
+    test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
+    test.jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
+
+    test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
+    test.jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
+
+    test.jira.mock_comment_issue(
+        "CLI-9999",
+        "Referenced by review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+
+    // mentioned JIRAs should go to in-progress but not "pending review"
+    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
+    test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
+
+    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config);
 }
 
 #[test]

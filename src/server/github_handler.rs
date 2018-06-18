@@ -395,6 +395,24 @@ impl GithubEventHandler {
 
                     }
                 }
+
+                // Mark JIRAs in review for PR open
+                if self.action == "opened" {
+                    if let Some(ref jira_config) = self.config.jira {
+                        if let Some(ref jira_session) = self.jira_session {
+                            let jira_projects =
+                                self.config.repos().jira_projects(&self.data.repository, &pull_request.base.ref_name);
+
+                            jira::workflow::submit_for_review(
+                                &pull_request,
+                                &commits,
+                                &jira_projects,
+                                jira_session.deref(),
+                                jira_config,
+                            );
+                        }
+                    }
+                }
             }
 
             let release_branch_prefix = self.config.repos().release_branch_prefix(

@@ -148,6 +148,8 @@ fn new_test_with_jira() -> GithubHandlerTest {
         host: "the-jira-host".into(),
         username: "the-jira-user".into(),
         password: "the-jira-pass".into(),
+        progress_states: Some(vec!["the-progress".into()]),
+        review_states: Some(vec!["the-review".into()]),
         resolved_states: Some(vec!["the-resolved".into()]),
         fixed_resolutions: Some(vec![":boom:".into()]),
         fix_versions_field: Some("the-versions".into()),
@@ -1409,7 +1411,19 @@ fn test_jira_pull_request_opened() {
         ),
     ]);
 
-    // no jira mocks: nothing w/ jira should happen on PR open
+    if let Some(ref jira) = test.jira {
+        jira.mock_comment_issue(
+            "SER-1",
+            "Review submitted for branch master: http://the-pr",
+            Ok(()),
+        );
+
+        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "the-progress")]));
+        jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
+
+        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("002", "the-review")]));
+        jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
+    }
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::Ok, "pr".into()), resp);
