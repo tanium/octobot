@@ -1,5 +1,6 @@
 use std;
 use std::fs::File;
+use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -71,5 +72,13 @@ impl TempGit {
 
         let mut file = File::create(path).expect("create file");
         file.write_all(contents.as_bytes()).expect("write contents to file");
+    }
+
+    pub fn read_file(&self, path: &str) -> String {
+        let path = self.repo_dir.join(path);
+        let mut f = std::fs::File::open(&path).expect(&format!("unable to open file {:?}", path));
+        let mut contents = String::new();
+        f.read_to_string(&mut contents).expect(&format!("error reading file {:?}", path));
+        return contents;
     }
 }
