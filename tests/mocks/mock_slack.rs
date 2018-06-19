@@ -4,6 +4,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use octobot::slack::SlackRequest;
+use octobot::util;
 use octobot::worker::{WorkMessage, WorkSender};
 
 pub struct MockSlack {
@@ -25,7 +26,7 @@ impl MockSlack {
         let thread = Some(thread::spawn(move || {
             let timeout = Duration::from_millis(1000);
             loop {
-                let req = slack_rx.recv_timeout(timeout);
+                let req = util::recv_timeout(&slack_rx, timeout);
                 match req {
                     Ok(WorkMessage::WorkItem(req)) => {
                         let front = expected_calls2.lock().unwrap().pop();

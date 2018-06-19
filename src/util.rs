@@ -1,6 +1,12 @@
+
+use std;
 use std::collections::HashMap;
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
 
 use time;
+
+use errors::*;
 
 fn escape_for_slack(str: &str) -> String {
     str.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -86,6 +92,33 @@ pub fn parse_query(query_params: Option<&str>) -> HashMap<String, String> {
             }
         })
         .collect::<HashMap<_, _>>()
+}
+
+// cf. https://github.com/rust-lang/rust/issues/39364
+pub fn recv_timeout<T>(rx: &Receiver<T>, timeout: std::time::Duration) -> Result<T> {
+    let sleep_time = std::time::Duration::from_millis(50);
+    let mut time_left = timeout;
+    loop {
+        match rx.try_recv() {
+            Ok(r) => {
+                return Ok(r);
+            }
+            Err(mpsc::TryRecvError::Empty) => {
+                match time_left.checked_sub(sleep_time) {
+                    Some(sub) => {
+                        time_left = sub;
+                        thread::sleep(sleep_time);
+                    }
+                    None => {
+                        return Err("Timed out waiting".into());
+                    }
+                }
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                return Err("Channel disconnected!".into());
+            }
+        };
+    }
 }
 
 #[cfg(test)]
