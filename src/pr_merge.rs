@@ -121,6 +121,7 @@ impl<'a> Merger<'a> {
                 "-c",
                 "merge.renameLimit=999999",
                 "cherry-pick",
+                "--allow-empty",
                 "-X",
                 "ignore-all-space",
                 commit_hash,

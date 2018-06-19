@@ -1,6 +1,5 @@
 use db::{self, Database};
 use errors::*;
-use github;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct UserInfo {
@@ -74,10 +73,6 @@ impl UserConfig {
         } else {
             Some(mention(&u.slack))
         })
-    }
-
-    pub fn slack_user_names(&self, users: &Vec<github::User>) -> Vec<String> {
-        users.iter().filter_map(|a| self.slack_user_name(a.login())).collect()
     }
 
     pub fn get_all(&self) -> Result<Vec<UserInfo>> {
