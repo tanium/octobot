@@ -71,7 +71,14 @@ pub fn merge_pull_request(
 
     git.run(&["push", "origin", &format!("HEAD:{}", pr_branch_name)])?;
 
-    let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &target_branch)?;
+    let new_pr = session.create_pull_request(
+        owner,
+        repo,
+        &title,
+        &body,
+        &pr_branch_name,
+        &target_branch,
+    )?;
 
     let assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
     session.assign_pull_request(owner, repo, new_pr.number, assignees)?;
@@ -89,18 +96,19 @@ pub fn cherry_pick(
 ) -> Result<(String, String)> {
     git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch))?;
 
-    // cherry pick!
-    git.run(
-        &[
-            "-c",
-            "merge.renameLimit=999999",
-            "cherry-pick",
-            "--allow-empty",
-            "-X",
-            "ignore-all-space",
-            commit_hash,
-        ],
-    )?;
+    // cherry-pick!
+    if let Err(e) = do_cherry_pick(git, &commit_hash, &[]) {
+        info!("Could not cherry-pick normally. Ignoring changed whitespace. {}", e);
+
+        if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", "ignore-space-change"]) {
+            info!("Could not cherry-pick with `-X ignore-space-change`. Ignoring all whitespace. {}", e);
+
+            if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", "ignore-all-space"]) {
+                info!("Could not cherry-pick with `-X ignore-all-space`: {}", e);
+                return Err(e);
+            }
+        }
+    }
 
     let desc = git.get_commit_desc(commit_hash)?;
     let desc = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch);
@@ -112,6 +120,19 @@ pub fn cherry_pick(
     )?;
 
     Ok(desc)
+}
+
+fn do_cherry_pick(git: &Git, commit_hash: &str, opts: &[&str]) -> Result<String> {
+    git.run(&vec!["reset", "--hard"])?;
+
+    let mut args = vec!["-c", "merge.renameLimit=999999", "cherry-pick", "--allow-empty"];
+
+    for i in 0..opts.len() {
+        args.push(opts[i]);
+    }
+    args.push(commit_hash);
+
+    git.run(&args)
 }
 
 fn make_merge_desc(
