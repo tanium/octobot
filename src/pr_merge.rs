@@ -14,7 +14,7 @@ use messenger;
 use slack::{SlackAttachmentBuilder, SlackRequest};
 use worker::{self, WorkSender};
 
-pub fn merge_pull_request(
+fn clone_and_merge_pull_request(
     session: &Session,
     clone_mgr: &GitCloneManager,
     owner: &str,
@@ -22,123 +22,96 @@ pub fn merge_pull_request(
     pull_request: &github::PullRequest,
     target_branch: &str,
 ) -> Result<github::PullRequest> {
-    Merger::new(session, clone_mgr).merge_pull_request(
-        owner,
-        repo,
-        pull_request,
-        target_branch,
-    )
+
+    let held_clone_dir = clone_mgr.clone(owner, repo)?;
+    let clone_dir = held_clone_dir.dir();
+    let git = Git::new(session.github_host(), session.github_token(), clone_dir);
+
+    merge_pull_request(&git, session, owner, repo, pull_request, target_branch)
 }
 
+pub fn merge_pull_request(
+    git: &Git,
+    session: &Session,
+    owner: &str,
+    repo: &str,
+    pull_request: &github::PullRequest,
+    target_branch: &str,
+) -> Result<github::PullRequest> {
+    if !pull_request.is_merged() {
+        return Err(format!("Pull Request #{} is not yet merged.", pull_request.number).into());
+    }
 
-struct Merger<'a> {
-    session: &'a Session,
-    clone_mgr: &'a GitCloneManager,
+    let merge_commit_sha;
+    if let Some(ref sha) = pull_request.merge_commit_sha {
+        merge_commit_sha = sha;
+    } else {
+        return Err(format!("Pull Request #{} has no merge commit.", pull_request.number).into());
+    }
+
+    // strip everything before last slash
+    let regex = Regex::new(r".*/").unwrap();
+    let pr_branch_name =
+        format!("{}-{}", regex.replace(&pull_request.head.ref_name, ""), regex.replace(&target_branch, ""));
+
+    // make sure there isn't already such a branch
+    let current_remotes = git.run(&["ls-remote", "--heads"])?;
+    if current_remotes.contains(&format!("refs/heads/{}", pr_branch_name)) {
+        return Err(format!("PR branch already exists on origin: '{}'", pr_branch_name).into());
+    }
+
+    let (title, body) = cherry_pick(
+        &git,
+        &merge_commit_sha,
+        &pr_branch_name,
+        pull_request.number,
+        &target_branch,
+        &pull_request.base.ref_name,
+    )?;
+
+    git.run(&["push", "origin", &format!("{}:{}", pr_branch_name, pr_branch_name)])?;
+
+    let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &target_branch)?;
+
+    let assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
+    session.assign_pull_request(owner, repo, new_pr.number, assignees)?;
+
+    Ok(new_pr)
 }
 
-impl<'a> Merger<'a> {
-    pub fn new(session: &'a Session, clone_mgr: &'a GitCloneManager) -> Merger<'a> {
-        Merger {
-            session: session,
-            clone_mgr: clone_mgr,
-        }
-    }
+pub fn cherry_pick(
+    git: &Git,
+    commit_hash: &str,
+    pr_branch_name: &str,
+    pr_number: u32,
+    target_branch: &str,
+    orig_base_branch: &str,
+) -> Result<(String, String)> {
+    git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch))?;
 
-    pub fn merge_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        pull_request: &github::PullRequest,
-        target_branch: &str,
-    ) -> Result<github::PullRequest> {
-        if !pull_request.is_merged() {
-            return Err(format!("Pull Request #{} is not yet merged.", pull_request.number).into());
-        }
+    // cherry pick!
+    git.run(
+        &[
+            "-c",
+            "merge.renameLimit=999999",
+            "cherry-pick",
+            "--allow-empty",
+            "-X",
+            "ignore-all-space",
+            commit_hash,
+        ],
+    )?;
 
-        let merge_commit_sha;
-        if let Some(ref sha) = pull_request.merge_commit_sha {
-            merge_commit_sha = sha;
-        } else {
-            return Err(format!("Pull Request #{} has no merge commit.", pull_request.number).into());
-        }
+    let desc = git.get_commit_desc(commit_hash)?;
+    let desc = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch);
 
-        // strip everything before last slash
-        let regex = Regex::new(r".*/").unwrap();
-        let pr_branch_name =
-            format!("{}-{}", regex.replace(&pull_request.head.ref_name, ""), regex.replace(&target_branch, ""));
+    // change commit message
+    git.run_with_stdin(
+        &["commit", "--amend", "-F", "-"],
+        &format!("{}\n\n{}", &desc.0, &desc.1),
+    )?;
 
-        let held_clone_dir = self.clone_mgr.clone(owner, repo)?;
-        let clone_dir = held_clone_dir.dir();
-
-        let git = Git::new(self.session.github_host(), self.session.github_token(), clone_dir);
-
-        // make sure there isn't already such a branch
-        let current_remotes = git.run(&["ls-remote", "--heads"])?;
-        if current_remotes.contains(&format!("refs/heads/{}", pr_branch_name)) {
-            return Err(format!("PR branch already exists on origin: '{}'", pr_branch_name).into());
-        }
-
-        let (title, body) = self.cherry_pick(
-            &git,
-            &merge_commit_sha,
-            &pr_branch_name,
-            pull_request.number,
-            &target_branch,
-            &pull_request.base.ref_name,
-        )?;
-
-        git.run(&["push", "origin", &format!("{}:{}", pr_branch_name, pr_branch_name)])?;
-
-        let new_pr = self.session.create_pull_request(
-            owner,
-            repo,
-            &title,
-            &body,
-            &pr_branch_name,
-            &target_branch,
-        )?;
-
-        let assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
-        self.session.assign_pull_request(owner, repo, new_pr.number, assignees)?;
-
-        Ok(new_pr)
-    }
-
-    fn cherry_pick(
-        &self,
-        git: &Git,
-        commit_hash: &str,
-        pr_branch_name: &str,
-        pr_number: u32,
-        target_branch: &str,
-        orig_base_branch: &str,
-    ) -> Result<(String, String)> {
-        git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch))?;
-
-        // cherry-pick!
-        git.run(
-            &[
-                "-c",
-                "merge.renameLimit=999999",
-                "cherry-pick",
-                "--allow-empty",
-                "-X",
-                "ignore-all-space",
-                commit_hash,
-            ],
-        )?;
-
-        let desc = git.get_commit_desc(commit_hash)?;
-        let desc = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch);
-
-        // change commit message
-        git.run_with_stdin(
-            &["commit", "--amend", "-F", "-"],
-            &format!("{}\n\n{}", &desc.0, &desc.1),
-        )?;
-
-        Ok(desc)
-    }
+    Ok(desc)
 }
 
 fn make_merge_desc(
@@ -219,7 +192,7 @@ impl worker::Runner<PRMergeRequest> for Runner {
 
         // launch another thread to do the merge
         self.thread_pool.execute(move || {
-            let merge_result = merge_pull_request(
+            let merge_result = clone_and_merge_pull_request(
                 github_session.borrow(),
                 &clone_mgr,
                 &req.repo.owner.login(),
@@ -240,7 +213,11 @@ impl worker::Runner<PRMergeRequest> for Runner {
 
                 let messenger = messenger::new(config, slack);
                 messenger.send_to_owner(
-                    &format!("Error creating merge PR from {} to {}", req.pull_request.head.ref_name, req.target_branch),
+                    &format!(
+                        "Error creating merge PR from {} to {}",
+                        req.pull_request.head.ref_name,
+                        req.target_branch
+                    ),
                     &vec![attach],
                     &req.pull_request.user,
                     &req.repo,
