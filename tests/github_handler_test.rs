@@ -1374,6 +1374,13 @@ fn test_push_force_notify_ignored() {
     expect_thread.join().unwrap();
 }
 
+fn new_issue(key: &str) -> jira::Issue {
+    jira::Issue {
+        key: key.into(),
+        status: None,
+    }
+}
+
 fn new_transition(id: &str, name: &str) -> jira::Transition {
     jira::Transition {
         id: id.into(),
@@ -1407,6 +1414,17 @@ fn some_jira_commits() -> Vec<Commit> {
     ]
 }
 
+fn many_jira_commits() -> Vec<Commit> {
+    let commit = Commit {
+            sha: "ffeedd00110011".into(),
+            html_url: "http://commit/ffeedd00110011".into(),
+            author: Some(User::new("bob-author")),
+            commit: CommitDetails { message: "Fix [SER-1] Add the feature\n\nThe body ([OTHER-123])".into() },
+        };
+
+    return (0..21).collect::<Vec<u32>>().into_iter().map(|_| commit.clone()).collect();
+}
+
 fn some_jira_push_commits() -> Vec<PushCommit> {
     vec![
         PushCommit {
@@ -1417,6 +1435,7 @@ fn some_jira_push_commits() -> Vec<PushCommit> {
         },
     ]
 }
+
 #[test]
 fn test_jira_pull_request_opened() {
     let mut test = new_test_with_jira();
@@ -1449,11 +1468,7 @@ fn test_jira_pull_request_opened() {
     ]);
 
     if let Some(ref jira) = test.jira {
-        jira.mock_comment_issue(
-            "SER-1",
-            "Review submitted for branch master: http://the-pr",
-            Ok(()),
-        );
+        jira.mock_get_issue("SER-1", Ok(new_issue("SER-1")));
 
         jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "the-progress")]));
         jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
@@ -1461,6 +1476,52 @@ fn test_jira_pull_request_opened() {
         jira.mock_get_transitions("SER-1", Ok(vec![new_transition("002", "the-review")]));
         jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
     }
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+}
+
+#[test]
+fn test_jira_pull_request_opened_too_many_commits() {
+    let mut test = new_test_with_jira();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "opened".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.sender = User::new("the-pr-owner");
+
+    test.github.mock_get_pull_request_commits(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(many_jira_commits()),
+    );
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+
+    test.slack.expect(vec![
+        slack::req(
+            "the-reviews-channel",
+            &format!("Pull Request opened by the.pr.owner {}", REPO_MSG),
+            attach.clone()
+        ),
+        slack::req(
+            "the-reviews-channel",
+            &format!("Too many commits on Pull Request #32. Ignoring JIRAs. {}", REPO_MSG),
+            attach.clone()
+        ),
+        slack::req(
+            "@the.pr.owner",
+            &format!("Too many commits on Pull Request #32. Ignoring JIRAs."),
+            attach.clone()
+        ),
+    ]);
+
+    // do not set jira expectations
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::Ok, "pr".into()), resp);
@@ -1476,6 +1537,7 @@ fn test_jira_push_master() {
     test.handler.data.commits = Some(some_jira_push_commits());
 
     if let Some(ref jira) = test.jira {
+        jira.mock_get_issue("SER-1", Ok(new_issue("SER-1")));
         jira.mock_comment_issue("SER-1", "Merged into branch master: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
 
         jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
@@ -1496,6 +1558,7 @@ fn test_jira_push_develop() {
     test.handler.data.commits = Some(some_jira_push_commits());
 
     if let Some(ref jira) = test.jira {
+        jira.mock_get_issue("SER-1", Ok(new_issue("SER-1")));
         jira.mock_comment_issue("SER-1", "Merged into branch develop: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
 
         jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
@@ -1516,6 +1579,7 @@ fn test_jira_push_release() {
     test.handler.data.commits = Some(some_jira_push_commits());
 
     if let Some(ref jira) = test.jira {
+        jira.mock_get_issue("SER-1", Ok(new_issue("SER-1")));
         jira.mock_comment_issue("SER-1", "Merged into branch release/55: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
 
         jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));

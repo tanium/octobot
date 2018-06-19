@@ -1,4 +1,14 @@
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Issue {
+    pub key: String,
+    pub status: Option<Status>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Status {
+    pub name: String,
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Comment {
