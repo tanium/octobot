@@ -69,7 +69,7 @@ pub fn merge_pull_request(
         &pull_request.base.ref_name,
     )?;
 
-    git.run(&["push", "origin", &format!("{}:{}", pr_branch_name, pr_branch_name)])?;
+    git.run(&["push", "origin", &format!("HEAD:{}", pr_branch_name)])?;
 
     let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &target_branch)?;
 
