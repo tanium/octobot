@@ -60,7 +60,7 @@ pub fn merge_pull_request(
         return Err(format!("PR branch already exists on origin: '{}'", pr_branch_name).into());
     }
 
-    let (title, body) = cherry_pick(
+    let (title, body, whitespace_mode) = cherry_pick(
         &git,
         &merge_commit_sha,
         &pr_branch_name,
@@ -76,6 +76,13 @@ pub fn merge_pull_request(
     let assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
     session.assign_pull_request(owner, repo, new_pr.number, assignees)?;
 
+    if whitespace_mode.len() > 0 {
+        let msg = format!("Cherry-pick required option `{}`. Please verify correctness.", whitespace_mode);
+        if let Err(e) = session.comment_pull_request(owner, repo, new_pr.number, &msg) {
+            error!("Error making whitespace comment on pull request: {}", e);
+        }
+    }
+
     Ok(new_pr)
 }
 
@@ -86,32 +93,47 @@ pub fn cherry_pick(
     pr_number: u32,
     target_branch: &str,
     orig_base_branch: &str,
-) -> Result<(String, String)> {
+) -> Result<(String, String, String)> {
     git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch))?;
 
-    // cherry pick!
-    git.run(
-        &[
-            "-c",
-            "merge.renameLimit=999999",
-            "cherry-pick",
-            "--allow-empty",
-            "-X",
-            "ignore-all-space",
-            commit_hash,
-        ],
-    )?;
+    // cherry-pick!
+
+    let mut whitespace_mode = "";
+    if let Err(e) = do_cherry_pick(git, &commit_hash, &[]) {
+        info!("Could not cherry-pick normally. Ignoring changed whitespace. {}", e);
+
+        whitespace_mode = "ignore-space-change";
+        if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode]) {
+            info!("Could not cherry-pick with `-X {}`. Ignoring all whitespace. {}", whitespace_mode, e);
+
+            whitespace_mode = "ignore-all-space";
+            if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode]) {
+                info!("Could not cherry-pick with `-X {}`: {}", whitespace_mode, e);
+                return Err(e);
+            }
+        }
+    }
 
     let desc = git.get_commit_desc(commit_hash)?;
-    let desc = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch);
+    let (title, body) = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch);
 
     // change commit message
-    git.run_with_stdin(
-        &["commit", "--amend", "-F", "-"],
-        &format!("{}\n\n{}", &desc.0, &desc.1),
-    )?;
+    git.run_with_stdin(&["commit", "--amend", "-F", "-"], &format!("{}\n\n{}", &title, &body))?;
 
-    Ok(desc)
+    Ok((title, body, whitespace_mode.into()))
+}
+
+fn do_cherry_pick(git: &Git, commit_hash: &str, opts: &[&str]) -> Result<String> {
+    git.run(&vec!["reset", "--hard"])?;
+
+    let mut args = vec!["-c", "merge.renameLimit=999999", "cherry-pick", "--allow-empty"];
+
+    for i in 0..opts.len() {
+        args.push(opts[i]);
+    }
+    args.push(commit_hash);
+
+    git.run(&args)
 }
 
 fn make_merge_desc(
