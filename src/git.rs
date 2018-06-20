@@ -47,6 +47,10 @@ impl Git {
         self.run(&["rev-parse", "--abbrev-ref", "HEAD"])
     }
 
+    pub fn current_commit(&self) -> Result<String> {
+        self.run(&["rev-parse", "HEAD"])
+    }
+
     pub fn does_branch_contain(&self, git_ref: &str, branch: &str) -> Result<bool> {
         let output = self.run(&["branch", "--contains", git_ref])?;
         Ok(Git::branches_output_contains(&output, branch))
