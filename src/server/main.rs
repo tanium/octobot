@@ -124,7 +124,7 @@ pub fn start(config: Config) -> Result<()> {
         .into_iter()
         .map(|t| t.unwrap())
         .map(|t| t.join().unwrap())
-        .collect::<Vec<_>>();
+        .for_each(drop);
 
     Ok(())
 }
