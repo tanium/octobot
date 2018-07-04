@@ -46,6 +46,15 @@ pub trait Session: Send + Sync {
     fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()>;
     fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>>;
     fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<()>;
+    fn approve_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        commit_hash: &str,
+        comment: Option<&str>,
+    ) -> Result<()>;
+    fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>>;
 }
 
 pub struct GithubSession {
@@ -64,7 +73,10 @@ impl GithubSession {
         };
 
         let client = HTTPClient::new(core_remote, &api_base).with_headers(hashmap!{
-                "Accept" => "application/vnd.github.v3+json".to_string(),
+                // Standard accept header is "application/vnd.github.v3+json".
+                // The "mockingbird-preview" allows us to use the timeline api.
+                // cf. https://developer.github.com/enterprise/2.13/v3/issues/timeline/
+                "Accept" => "application/vnd.github.mockingbird-preview".to_string(),
                 "Content-Type" => "application/json".to_string(),
                 "Authorization" => format!("Token {}", token),
             });
@@ -240,5 +252,41 @@ impl Session for GithubSession {
         self.client
             .post_void(&format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name), status)
             .map_err(|e| format!("Error creating status {}/{} {}: {}", owner, repo, ref_name, e).into())
+    }
+
+    fn approve_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        commit_hash: &str,
+        comment: Option<&str>,
+    ) -> Result<()> {
+        #[derive(Serialize)]
+        struct ReviewReq {
+            body: String,
+            event: String,
+            commit_id: String,
+        }
+
+        let body = ReviewReq {
+            body: comment.unwrap_or("").into(),
+            event: "APPROVE".into(),
+            // Require the commit hash here as well to make sure we avoid a race condition and are
+            // approving the right commit.
+            commit_id: commit_hash.into(),
+        };
+
+        self.client
+            .post_void(&format!("repos/{}/{}/pulls/{}/reviews", owner, repo, number), &body)
+            .map_err(|e| format!("Error approving PR {}/{} #{}: {}", owner, repo, number, e).into())
+    }
+
+    fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>> {
+        self.client.get(&format!("repos/{}/{}/issues/{}/timeline", owner, repo, number)).map_err(
+            |e| {
+                format!("Error getting timeline for PR: {}/{} #{}: {}", owner, repo, number, e).into()
+            },
+        )
     }
 }

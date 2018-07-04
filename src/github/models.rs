@@ -509,6 +509,72 @@ pub struct Status {
     pub creator: Option<User>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct TimelineEvent {
+    pub id: u32,
+    pub event: String,
+    pub dismissed_review: Option<DismissedReview>,
+    pub state: Option<String>,
+    pub user: Option<User>,
+    pub html_url: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DismissedReview {
+    pub state: String,
+    pub review_id: u32,
+    pub dismissal_message: Option<String>,
+    pub dismissal_commit_id: Option<String>,
+}
+
+impl TimelineEvent {
+    pub fn new(event: &str) -> TimelineEvent {
+        TimelineEvent {
+            id: 0,
+            event: event.to_string(),
+            dismissed_review: None,
+            state: None,
+            user: None,
+            html_url: None,
+        }
+    }
+
+    pub fn new_dismissed_review(review: DismissedReview) -> TimelineEvent {
+        let mut event = TimelineEvent::new("review_dismissed");
+        event.dismissed_review = Some(review);
+        event
+    }
+
+    pub fn new_review(state: &str, review_id: u32, user: User, url: &str) -> TimelineEvent {
+        let mut event = TimelineEvent::new("reviewed");
+        event.id = review_id;
+        event.state = Some(state.into());
+        event.user = Some(user);
+        event.html_url = Some(url.into());
+        event
+    }
+}
+
+impl DismissedReview {
+    pub fn by_commit(state: &str, commit_hash: &str, review_id: u32) -> DismissedReview {
+        DismissedReview {
+            review_id: review_id,
+            state: state.into(),
+            dismissal_commit_id: Some(commit_hash.into()),
+            dismissal_message: None,
+        }
+    }
+
+    pub fn by_user(state: &str, msg: &str) -> DismissedReview {
+        DismissedReview {
+            review_id: 0,
+            state: state.into(),
+            dismissal_commit_id: None,
+            dismissal_message: Some(msg.into()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

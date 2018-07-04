@@ -22,6 +22,8 @@ pub struct MockGithub {
     delete_branch_calls: Mutex<Vec<MockCall<()>>>,
     get_status_calls: Mutex<Vec<MockCall<Vec<Status>>>>,
     create_status_calls: Mutex<Vec<MockCall<()>>>,
+    approve_pull_request_calls: Mutex<Vec<MockCall<()>>>,
+    get_timeline_calls: Mutex<Vec<MockCall<Vec<TimelineEvent>>>>,
 }
 
 #[derive(Debug)]
@@ -58,6 +60,8 @@ impl MockGithub {
             delete_branch_calls: Mutex::new(vec![]),
             get_status_calls: Mutex::new(vec![]),
             create_status_calls: Mutex::new(vec![]),
+            approve_pull_request_calls: Mutex::new(vec![]),
+            get_timeline_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -104,6 +108,16 @@ impl Drop for MockGithub {
                 self.delete_branch_calls.lock().unwrap().len() == 0,
                 "Unmet delete_branch calls: {:?}",
                 *self.delete_branch_calls.lock().unwrap()
+            );
+            assert!(
+                self.approve_pull_request_calls.lock().unwrap().len() == 0,
+                "Unmet approve_pull_request calls: {:?}",
+                *self.approve_pull_request_calls.lock().unwrap()
+            );
+            assert!(
+                self.get_timeline_calls.lock().unwrap().len() == 0,
+                "Unmet get_timeline calls: {:?}",
+                *self.get_timeline_calls.lock().unwrap()
             );
         }
     }
@@ -283,6 +297,37 @@ impl Session for MockGithub {
 
         call.ret
     }
+
+    fn approve_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        commit_hash: &str,
+        comment: Option<&str>,
+    ) -> Result<()> {
+        let mut calls = self.approve_pull_request_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to approve_pull_request");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], number.to_string());
+        assert_eq!(call.args[3], commit_hash);
+        assert_eq!(call.args[4], comment.unwrap_or(""));
+
+        call.ret
+    }
+
+    fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>> {
+        let mut calls = self.get_timeline_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_timeline");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], number.to_string());
+
+        call.ret
+    }
 }
 
 impl MockGithub {
@@ -403,6 +448,34 @@ impl MockGithub {
                 ref_name,
                 &format!("{:?}", status),
             ],
+        ));
+    }
+
+    pub fn mock_approve_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        commit_hash: &str,
+        comment: Option<&str>,
+        ret: Result<()>,
+    ) {
+        self.approve_pull_request_calls.lock().unwrap().push(MockCall::new(
+            ret,
+            vec![
+                owner,
+                repo,
+                &number.to_string(),
+                commit_hash,
+                comment.unwrap_or(""),
+            ],
+        ));
+    }
+
+    pub fn mock_get_timeline(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<TimelineEvent>>) {
+        self.get_timeline_calls.lock().unwrap().push(MockCall::new(
+            ret,
+            vec![owner, repo, &number.to_string()],
         ));
     }
 }
