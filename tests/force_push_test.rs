@@ -346,6 +346,8 @@ fn test_force_push_identical_no_previous_approve_dismissal() {
     github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
     github.mock_get_timeline("some-user", "some-repo", 32, Ok(vec![]));
 
+    // Do not mock approve_pull_request: Should not re-approve
+
     force_push::comment_force_push(
         diffs,
         vec![],
@@ -389,6 +391,8 @@ fn test_force_push_identical_no_previous_approval() {
             ),
         ]),
     );
+
+    // Do not mock approve_pull_request: Should not re-approve
 
     force_push::comment_force_push(
         diffs,
@@ -477,26 +481,33 @@ fn test_force_push_identical_wrong_previous_approval() {
         Ok(()),
     );
 
-    github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
+    let before_hash = "abcdef0999999";
+    let after_hash = "1111abc9999999";
+
+    github.mock_get_statuses("some-user", "some-repo", before_hash, Ok(vec![]));
     github.mock_get_timeline(
         "some-user",
         "some-repo",
         32,
         Ok(vec![
+            github::TimelineEvent::new_review(
+                before_hash,
+                1234,
+                github::User::new("joe-reviewer"),
+                "http://the-review-url"
+            ),
+            github::TimelineEvent::new_dismissed_review(
+                github::DismissedReview::by_commit("approved", after_hash, 1234)
+            ),
+            // The latest dismissal is *not* by commit id, so don't reapprove
             github::TimelineEvent::new_dismissed_review(
                 github::DismissedReview::by_user("approved", "I don't like this")
             ),
         ]),
     );
 
-    force_push::comment_force_push(
-        diffs,
-        vec![],
-        &github,
-        "some-user",
-        "some-repo",
-        &pr,
-        "abcdef0999999",
-        "1111abc9999999",
-    ).unwrap();
+    // Do not mock approve_pull_request: Should not re-approve
+
+    force_push::comment_force_push(diffs, vec![], &github, "some-user", "some-repo", &pr, before_hash, after_hash)
+        .unwrap();
 }

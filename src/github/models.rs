@@ -553,6 +553,57 @@ impl TimelineEvent {
         event.html_url = Some(url.into());
         event
     }
+
+    pub fn is_review_dismissal(&self) -> bool {
+        self.event == "review_dismissed"
+    }
+
+    pub fn is_review_dismissal_for(&self, commit_hash: &str) -> bool {
+        if self.is_review_dismissal() {
+            if let Some(ref review) = self.dismissed_review {
+                if let Some(ref dismissal_commit_id) = review.dismissal_commit_id {
+                    return review.state == "approved" && dismissal_commit_id == commit_hash;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    pub fn dismissed_review_id(&self) -> Option<u32> {
+        match self.dismissed_review {
+            Some(ref r) => Some(r.review_id),
+            None => None,
+        }
+    }
+
+    pub fn is_review(&self) -> bool {
+        self.event == "reviewed"
+    }
+
+    pub fn is_review_for(&self, review_id: u32, commit_hash: &str) -> bool {
+        if self.is_review() {
+            if let Some(id) = self.id {
+                if let Some(ref commit_id) = self.commit_id {
+                    return id == review_id && commit_id == commit_hash;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    pub fn review_user_message(&self, review_id: u32) -> String {
+        if let Some(ref user) = self.user {
+            if let Some(ref url) = self.html_url {
+                format!("[{}]({})", user.login(), url)
+            } else {
+                format!("{} (review #{})", user.login(), review_id)
+            }
+        } else {
+            format!("Unknown user (review #{})", review_id)
+        }
+    }
 }
 
 impl DismissedReview {

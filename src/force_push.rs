@@ -108,30 +108,18 @@ pub fn comment_force_push(
 
         for event in timeline.iter().rev() {
             // Look for first dismissal
-            if !found_dismiss && event.event == "review_dismissed" {
-                if let Some(ref review) = event.dismissed_review {
-                    if review.state == "approved" && review.dismissal_commit_id == Some(after_hash.into()) {
-                        approval_review_id = Some(review.review_id);
-                    }
+            if !found_dismiss && event.is_review_dismissal() {
+                if event.is_review_dismissal_for(after_hash) {
+                    approval_review_id = event.dismissed_review_id();
                 }
                 found_dismiss = true;
+                continue;
             }
 
             // Look for the dismissed approval
-            if found_dismiss && event.event == "reviewed" {
-                if approval_review_id.is_some() && event.id == approval_review_id &&
-                    event.commit_id == Some(before_hash.into())
-                {
-                    let review_id = approval_review_id.unwrap();
-                    if let Some(ref user) = event.user {
-                        if let Some(ref url) = event.html_url {
-                            review_msg = format!("[{}]({})", user.login(), url);
-                        } else {
-                            review_msg = format!("{} (review #{})", user.login(), review_id);
-                        }
-                    } else {
-                        review_msg = format!("Unknown user (review #{})", review_id);
-                    }
+            if let Some(review_id) = approval_review_id {
+                if event.is_review_for(review_id, before_hash) {
+                    review_msg = event.review_user_message(review_id);
                     reapprove = true;
                     info!(
                         "Reapproving PR {}/{} #{} based on review #{:?}",
