@@ -509,6 +509,123 @@ pub struct Status {
     pub creator: Option<User>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct TimelineEvent {
+    pub id: Option<u32>,
+    pub event: String,
+    pub dismissed_review: Option<DismissedReview>,
+    pub commit_id: Option<String>,
+    pub user: Option<User>,
+    pub html_url: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DismissedReview {
+    pub state: String,
+    pub review_id: u32,
+    pub dismissal_message: Option<String>,
+    pub dismissal_commit_id: Option<String>,
+}
+
+impl TimelineEvent {
+    pub fn new(event: &str) -> TimelineEvent {
+        TimelineEvent {
+            id: None,
+            event: event.to_string(),
+            dismissed_review: None,
+            commit_id: None,
+            user: None,
+            html_url: None,
+        }
+    }
+
+    pub fn new_dismissed_review(review: DismissedReview) -> TimelineEvent {
+        let mut event = TimelineEvent::new("review_dismissed");
+        event.dismissed_review = Some(review);
+        event
+    }
+
+    pub fn new_review(commit_id: &str, review_id: u32, user: User, url: &str) -> TimelineEvent {
+        let mut event = TimelineEvent::new("reviewed");
+        event.id = Some(review_id);
+        event.commit_id = Some(commit_id.into());
+        event.user = Some(user);
+        event.html_url = Some(url.into());
+        event
+    }
+
+    pub fn is_review_dismissal(&self) -> bool {
+        self.event == "review_dismissed"
+    }
+
+    pub fn is_review_dismissal_for(&self, commit_hash: &str) -> bool {
+        if self.is_review_dismissal() {
+            if let Some(ref review) = self.dismissed_review {
+                if let Some(ref dismissal_commit_id) = review.dismissal_commit_id {
+                    return review.state == "approved" && dismissal_commit_id == commit_hash;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    pub fn dismissed_review_id(&self) -> Option<u32> {
+        match self.dismissed_review {
+            Some(ref r) => Some(r.review_id),
+            None => None,
+        }
+    }
+
+    pub fn is_review(&self) -> bool {
+        self.event == "reviewed"
+    }
+
+    pub fn is_review_for(&self, review_id: u32, commit_hash: &str) -> bool {
+        if self.is_review() {
+            if let Some(id) = self.id {
+                if let Some(ref commit_id) = self.commit_id {
+                    return id == review_id && commit_id == commit_hash;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    pub fn review_user_message(&self, review_id: u32) -> String {
+        if let Some(ref user) = self.user {
+            if let Some(ref url) = self.html_url {
+                format!("[{}]({})", user.login(), url)
+            } else {
+                format!("{} (review #{})", user.login(), review_id)
+            }
+        } else {
+            format!("Unknown user (review #{})", review_id)
+        }
+    }
+}
+
+impl DismissedReview {
+    pub fn by_commit(state: &str, commit_hash: &str, review_id: u32) -> DismissedReview {
+        DismissedReview {
+            review_id: review_id,
+            state: state.into(),
+            dismissal_commit_id: Some(commit_hash.into()),
+            dismissal_message: None,
+        }
+    }
+
+    pub fn by_user(state: &str, msg: &str) -> DismissedReview {
+        DismissedReview {
+            review_id: 0,
+            state: state.into(),
+            dismissal_commit_id: None,
+            dismissal_message: Some(msg.into()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

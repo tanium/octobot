@@ -22,11 +22,12 @@ fn test_force_push_identical() {
         "some-user",
         "some-repo",
         32,
-        "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase",
+        "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase.",
         Ok(()),
     );
 
     github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
+    github.mock_get_timeline("some-user", "some-repo", 32, Ok(vec![]));
 
     force_push::comment_force_push(
         diffs,
@@ -53,10 +54,11 @@ fn test_force_push_identical_with_statuses() {
         "some-user",
         "some-repo",
         32,
-        "Force-push detected: before: the-bef, after: the-aft: Identical diff post-rebase",
+        "Force-push detected: before: the-bef, after: the-aft: Identical diff post-rebase.",
         Ok(()),
     );
 
+    github.mock_get_timeline("some-user", "some-repo", 32, Ok(vec![]));
 
     let statuses = vec![
         github::Status {
@@ -147,7 +149,7 @@ fn test_force_push_different() {
         "some-user",
         "some-repo",
         32,
-        "Force-push detected: before: abcdef0, after: 1111abc: Diff changed post-rebase",
+        "Force-push detected: before: abcdef0, after: 1111abc: Diff changed post-rebase.",
         Ok(()),
     );
 
@@ -277,7 +279,7 @@ index 33667da..3503c28 100644
         "some-user",
         "some-repo",
         32,
-        "Force-push detected: before: abcdef0, after: 1111abc: Diff changed post-rebase\n\n\
+        "Force-push detected: before: abcdef0, after: 1111abc: Diff changed post-rebase.\n\n\
         Changed files:\n\
         * src/diffs.rs\n\
         * src/force_push.rs\n\
@@ -296,6 +298,7 @@ index 33667da..3503c28 100644
         "1111abc9999999",
     ).unwrap();
 }
+
 #[test]
 fn test_force_push_error() {
     let mut pr = github::PullRequest::new();
@@ -306,7 +309,7 @@ fn test_force_push_error() {
         "some-user",
         "some-repo",
         32,
-        "Force-push detected: before: abcdef0, after: 1111abc: Unable to calculate diff",
+        "Force-push detected: before: abcdef0, after: 1111abc: Unable to calculate diff.",
         Ok(()),
     );
 
@@ -320,4 +323,191 @@ fn test_force_push_error() {
         "abcdef0999999",
         "1111abc9999999",
     ).unwrap();
+}
+
+#[test]
+fn test_force_push_identical_no_previous_approve_dismissal() {
+    let mut pr = github::PullRequest::new();
+    pr.number = 32;
+    pr.head.ref_name = "the-pr-branch".into();
+
+    let diff = "this is a big diff\n\nIt has lots of lines,\n\nbut it is the same".to_string();
+    let diffs = Ok(DiffOfDiffs::new(&diff, &diff));
+
+    let github = MockGithub::new();
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
+        "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase.",
+        Ok(()),
+    );
+
+    github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
+    github.mock_get_timeline("some-user", "some-repo", 32, Ok(vec![]));
+
+    // Do not mock approve_pull_request: Should not re-approve
+
+    force_push::comment_force_push(
+        diffs,
+        vec![],
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        "abcdef0999999",
+        "1111abc9999999",
+    ).unwrap();
+}
+
+#[test]
+fn test_force_push_identical_no_previous_approval() {
+    let mut pr = github::PullRequest::new();
+    pr.number = 32;
+    pr.head.ref_name = "the-pr-branch".into();
+
+    let diff = "this is a big diff\n\nIt has lots of lines,\n\nbut it is the same".to_string();
+    let diffs = Ok(DiffOfDiffs::new(&diff, &diff));
+
+    let github = MockGithub::new();
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
+        "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase.",
+        Ok(()),
+    );
+
+    github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
+
+    // Claims to have dismissed a review, but no such review is in the timeline. Skip.
+    github.mock_get_timeline(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(vec![
+            github::TimelineEvent::new_dismissed_review(
+                github::DismissedReview::by_commit("approved", "abcdef0999999", 1234)
+            ),
+        ]),
+    );
+
+    // Do not mock approve_pull_request: Should not re-approve
+
+    force_push::comment_force_push(
+        diffs,
+        vec![],
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        "abcdef0999999",
+        "1111abc9999999",
+    ).unwrap();
+}
+
+#[test]
+fn test_force_push_identical_reapprove() {
+    let mut pr = github::PullRequest::new();
+    pr.number = 32;
+    pr.head.ref_name = "the-pr-branch".into();
+
+    let diff = "this is a big diff\n\nIt has lots of lines,\n\nbut it is the same".to_string();
+    let diffs = Ok(DiffOfDiffs::new(&diff, &diff));
+
+    let github = MockGithub::new();
+
+    let before_hash = "abcdef0999999";
+    let after_hash = "1111abc9999999";
+
+    github.mock_get_statuses("some-user", "some-repo", before_hash, Ok(vec![]));
+
+    // This timeline is valid for reapproval because the latest dismissal came from a code change
+    // with a commit hash that is the exact same as the `before_hash` for this force push.
+    github.mock_get_timeline(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(vec![
+            github::TimelineEvent::new_dismissed_review(
+                github::DismissedReview::by_user("approved", "I don't like this")
+            ),
+            github::TimelineEvent::new("some"),
+            github::TimelineEvent::new("other"),
+            github::TimelineEvent::new("event"),
+            github::TimelineEvent::new_review(
+                before_hash,
+                1234,
+                github::User::new("joe-reviewer"),
+                "http://the-review-url"
+            ),
+            github::TimelineEvent::new_dismissed_review(
+                github::DismissedReview::by_commit("approved", after_hash, 1234)
+            ),
+        ]),
+    );
+
+    github.mock_approve_pull_request(
+        "some-user",
+        "some-repo",
+        32,
+        after_hash,
+        Some(
+            "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase.\n\n\
+             Reapproved based on review by [joe-reviewer](http://the-review-url)",
+        ),
+        Ok(()),
+    );
+
+    force_push::comment_force_push(diffs, vec![], &github, "some-user", "some-repo", &pr, before_hash, after_hash)
+        .unwrap();
+}
+
+#[test]
+fn test_force_push_identical_wrong_previous_approval() {
+    let mut pr = github::PullRequest::new();
+    pr.number = 32;
+    pr.head.ref_name = "the-pr-branch".into();
+
+    let diff = "this is a big diff\n\nIt has lots of lines,\n\nbut it is the same".to_string();
+    let diffs = Ok(DiffOfDiffs::new(&diff, &diff));
+
+    let github = MockGithub::new();
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
+        "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase.",
+        Ok(()),
+    );
+
+    let before_hash = "abcdef0999999";
+    let after_hash = "1111abc9999999";
+
+    github.mock_get_statuses("some-user", "some-repo", before_hash, Ok(vec![]));
+    github.mock_get_timeline(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(vec![
+            github::TimelineEvent::new_review(
+                before_hash,
+                1234,
+                github::User::new("joe-reviewer"),
+                "http://the-review-url"
+            ),
+            github::TimelineEvent::new_dismissed_review(
+                github::DismissedReview::by_commit("approved", after_hash, 1234)
+            ),
+            // The latest dismissal is *not* by commit id, so don't reapprove
+            github::TimelineEvent::new_dismissed_review(
+                github::DismissedReview::by_user("approved", "I don't like this")
+            ),
+        ]),
+    );
+
+    // Do not mock approve_pull_request: Should not re-approve
+
+    force_push::comment_force_push(diffs, vec![], &github, "some-user", "some-repo", &pr, before_hash, after_hash)
+        .unwrap();
 }

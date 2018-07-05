@@ -32,10 +32,10 @@ pub fn comment_force_push(
     match diffs {
         Ok(ref diffs) => {
             if diffs.are_equal() {
-                comment += "Identical diff post-rebase";
+                comment += "Identical diff post-rebase.";
                 identical_diff = true;
             } else {
-                comment += "Diff changed post-rebase";
+                comment += "Diff changed post-rebase.";
                 let different_files = diffs.different_patch_files();
                 if different_files.len() > 0 {
                     comment += "\n\nChanged files:\n";
@@ -48,18 +48,23 @@ pub fn comment_force_push(
             }
         }
         Err(e) => {
-            comment += "Unable to calculate diff";
+            comment += "Unable to calculate diff.";
             identical_diff = false;
             error!("Error calculating force push diff: {}", e);
         }
     };
 
-    if let Err(e) = github.comment_pull_request(owner, repo, pull_request.number, &comment) {
-        error!("Error sending github PR comment: {}", e);
-    }
+    let mut reapprove = false;
 
     if identical_diff {
-        let statuses = github.get_statuses(owner, repo, before_hash)?;
+        // Avoid failing the whole function if this fails
+        let statuses = match github.get_statuses(owner, repo, before_hash) {
+            Ok(t) => t,
+            Err(e) => {
+                error!("Error fetching statuses for PR #{}: {}", pull_request.number, e);
+                vec![]
+            }
+        };
 
         // keep track of seen statuses to only track latest ones
         let mut seen = vec![];
@@ -86,6 +91,60 @@ pub fn comment_force_push(
                     }
                 }
             }
+        }
+
+        // Avoid failing the whole function if this fails
+        let timeline = match github.get_timeline(owner, repo, pull_request.number) {
+            Ok(t) => t,
+            Err(e) => {
+                error!("Error fetching timeline for PR #{}: {}", pull_request.number, e);
+                vec![]
+            }
+        };
+
+        let mut approval_review_id = None;
+        let mut found_dismiss = false;
+        let mut review_msg = String::new();
+
+        for event in timeline.iter().rev() {
+            // Look for first dismissal
+            if !found_dismiss && event.is_review_dismissal() {
+                if event.is_review_dismissal_for(after_hash) {
+                    approval_review_id = event.dismissed_review_id();
+                }
+                found_dismiss = true;
+                continue;
+            }
+
+            // Look for the dismissed approval
+            if let Some(review_id) = approval_review_id {
+                if event.is_review_for(review_id, before_hash) {
+                    review_msg = event.review_user_message(review_id);
+                    reapprove = true;
+                    info!(
+                        "Reapproving PR {}/{} #{} based on review #{:?}",
+                        owner,
+                        repo,
+                        pull_request.number,
+                        review_id,
+                    );
+                    break;
+                }
+            }
+        }
+
+        if reapprove {
+            let msg = format!("{}\n\nReapproved based on review by {}", comment, review_msg);
+            if let Err(e) = github.approve_pull_request(owner, repo, pull_request.number, after_hash, Some(&msg)) {
+                error!("Error reapproving pull request #{}: {}", pull_request.number, e);
+            }
+        }
+    }
+
+    // Only comment if not reapproved since reapproval already includes the "identical diff" comment.
+    if !reapprove {
+        if let Err(e) = github.comment_pull_request(owner, repo, pull_request.number, &comment) {
+            error!("Error sending github PR comment: {}", e);
         }
     }
 
