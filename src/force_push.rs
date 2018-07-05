@@ -121,21 +121,24 @@ pub fn comment_force_push(
 
             // Look for the dismissed approval
             if found_dismiss && event.event == "reviewed" {
-                if Some(event.id) == approval_review_id && event.state == Some("approved".into()) {
-                    if let Some(ref user) = event.user {
-                        if let Some(ref url) = event.html_url {
-                            review_msg = format!("[{}]({})", user.login(), url);
+                if let Some(review_id) = approval_review_id {
+                    if event.id == Some(review_id) && event.state == Some("approved".into()) {
+                        if let Some(ref user) = event.user {
+                            if let Some(ref url) = event.html_url {
+                                review_msg = format!("[{}]({})", user.login(), url);
+                            } else {
+                                review_msg = format!("{} (review #{})", user.login(), review_id);
+                            }
                         } else {
-                            review_msg = format!("{} (review #{})", user.login(), event.id);
+                            review_msg = format!("Unknown user (review #{})", review_id);
                         }
-                    } else {
-                        review_msg = format!("Unknown user (review #{})", event.id);
+                        reapprove = true;
+                        break;
                     }
-                    reapprove = true;
-                    break;
                 }
             }
         }
+
         if reapprove {
             let msg = format!("{}\n\nReapproved based on review by {}", comment, review_msg);
             if let Err(e) = github.approve_pull_request(owner, repo, pull_request.number, after_hash, Some(&msg)) {
