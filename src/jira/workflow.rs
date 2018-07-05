@@ -5,7 +5,7 @@ use version;
 
 use config::JiraConfig;
 use errors::*;
-use github::{Commit, CommitLike, PushCommit};
+use github::{Commit, CommitLike, PullRequest, PushCommit};
 use jira;
 use jira::Transition;
 
@@ -76,6 +76,7 @@ fn needs_transition(state: &Option<jira::Status>, target: &Vec<String>) -> bool 
 }
 
 pub fn submit_for_review(
+    pr: &PullRequest,
     commits: &Vec<Commit>,
     projects: &Vec<String>,
     jira: &jira::api::Session,
@@ -85,6 +86,16 @@ pub fn submit_for_review(
     let progress_states = config.progress_states();
 
     for key in get_fixed_jira_keys(commits, projects) {
+        // add comment
+        if let Err(e) = jira.comment_issue(
+            &key,
+            &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url),
+        )
+        {
+            error!("Error commenting on key [{}]: {}", key, e);
+            continue; // give up on transitioning if we can't comment.
+        }
+
         let issue_state = try_get_issue_state(&key, jira);
 
         if !needs_transition(&issue_state, &review_states) {
@@ -101,6 +112,20 @@ pub fn submit_for_review(
     }
 
     for key in get_referenced_jira_keys(commits, projects) {
+        // add comment
+        if let Err(e) = jira.comment_issue(
+            &key,
+            &format!(
+               "Referenced by review submitted for branch {}: {}",
+                pr.base.ref_name,
+                pr.html_url
+            ),
+        )
+        {
+            error!("Error commenting on key [{}]: {}", key, e);
+            continue; // give up on transitioning if we can't comment.
+        }
+
         let issue_state = try_get_issue_state(&key, jira);
 
         if !needs_transition(&issue_state, &progress_states) {

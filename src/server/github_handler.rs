@@ -419,6 +419,7 @@ impl GithubEventHandler {
                                 );
 
                                 jira::workflow::submit_for_review(
+                                    &pull_request,
                                     &commits,
                                     &jira_projects,
                                     jira_session.deref(),

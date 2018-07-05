@@ -37,6 +37,14 @@ fn new_test() -> JiraWorkflowTest {
     }
 }
 
+fn new_pr() -> github::PullRequest {
+    let mut pr = github::PullRequest::new();
+    pr.head.ref_name = "pr-branch".into();
+    pr.base.ref_name = "master".into();
+    pr.html_url = "http://the-pr".into();
+    pr
+}
+
 fn new_commit(msg: &str, hash: &str) -> github::Commit {
     let mut commit = github::Commit::new();
     commit.commit.message = msg.into();
@@ -85,8 +93,20 @@ fn new_transition_req(id: &str) -> TransitionRequest {
 #[test]
 fn test_submit_for_review() {
     let test = new_test();
+    let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_commit("Fix [SER-1] I fixed it. And also relates to [CLI-9999][OTHER-999]", "aabbccddee");
+
+    test.jira.mock_comment_issue(
+        "SER-1",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+    test.jira.mock_comment_issue(
+        "CLI-9999",
+        "Referenced by review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
 
     test.jira.mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
     test.jira.mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", None)));
@@ -101,7 +121,7 @@ fn test_submit_for_review() {
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&vec![commit], &projects, &test.jira, &test.config);
+    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config);
 }
 
 #[test]
@@ -188,8 +208,35 @@ fn test_resolve_issue_with_resolution() {
 #[test]
 fn test_transition_issues_only_if_necessary() {
     let test = new_test();
+    let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_commit("Fix [SER-1][SER-2][SER-3] I fixed it. And also relates to [CLI-9999][CLI-9998][OTHER-999]", "aabbccddee");
+
+    test.jira.mock_comment_issue(
+        "SER-1",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+    test.jira.mock_comment_issue(
+        "SER-2",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+    test.jira.mock_comment_issue(
+        "SER-3",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+    test.jira.mock_comment_issue(
+        "CLI-9998",
+        "Referenced by review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+    test.jira.mock_comment_issue(
+        "CLI-9999",
+        "Referenced by review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
 
     test.jira.mock_get_issue("SER-1", Ok(new_issue("SER-1", Some("reviewing1"))));
     test.jira.mock_get_issue("SER-2", Ok(new_issue("SER-2", Some("progress1"))));
@@ -209,7 +256,7 @@ fn test_transition_issues_only_if_necessary() {
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&vec![commit], &projects, &test.jira, &test.config);
+    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config);
 }
 
 #[test]
