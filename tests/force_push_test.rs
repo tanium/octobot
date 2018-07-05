@@ -413,7 +413,10 @@ fn test_force_push_identical_reapprove() {
 
     let github = MockGithub::new();
 
-    github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
+    let before_hash = "abcdef0999999";
+    let after_hash = "1111abc9999999";
+
+    github.mock_get_statuses("some-user", "some-repo", before_hash, Ok(vec![]));
 
     // This timeline is valid for reapproval because the latest dismissal came from a code change
     // with a commit hash that is the exact same as the `before_hash` for this force push.
@@ -429,13 +432,13 @@ fn test_force_push_identical_reapprove() {
             github::TimelineEvent::new("other"),
             github::TimelineEvent::new("event"),
             github::TimelineEvent::new_review(
-                "approved",
+                before_hash,
                 1234,
                 github::User::new("joe-reviewer"),
                 "http://the-review-url"
             ),
             github::TimelineEvent::new_dismissed_review(
-                github::DismissedReview::by_commit("approved", "abcdef0999999", 1234)
+                github::DismissedReview::by_commit("approved", after_hash, 1234)
             ),
         ]),
     );
@@ -444,7 +447,7 @@ fn test_force_push_identical_reapprove() {
         "some-user",
         "some-repo",
         32,
-        "1111abc9999999",
+        after_hash,
         Some(
             "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase.\n\n\
              Reapproved based on review by [joe-reviewer](http://the-review-url)",
@@ -452,16 +455,8 @@ fn test_force_push_identical_reapprove() {
         Ok(()),
     );
 
-    force_push::comment_force_push(
-        diffs,
-        vec![],
-        &github,
-        "some-user",
-        "some-repo",
-        &pr,
-        "abcdef0999999",
-        "1111abc9999999",
-    ).unwrap();
+    force_push::comment_force_push(diffs, vec![], &github, "some-user", "some-repo", &pr, before_hash, after_hash)
+        .unwrap();
 }
 
 #[test]

@@ -283,10 +283,25 @@ impl Session for GithubSession {
     }
 
     fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>> {
-        self.client.get(&format!("repos/{}/{}/issues/{}/timeline", owner, repo, number)).map_err(
-            |e| {
+        let mut events = vec![];
+        let mut page = 1;
+        loop {
+            let url = format!("repos/{}/{}/issues/{}/timeline?per_page=100&page={}", owner, repo, number, page);
+            let next_events: Vec<TimelineEvent> = match self.client.get(&url).map_err(|e| {
                 format!("Error getting timeline for PR: {}/{} #{}: {}", owner, repo, number, e).into()
-            },
-        )
+            }) {
+                Ok(r) => r,
+                Err(e) => return Err(e),
+            };
+
+            if next_events.is_empty() {
+                break;
+            }
+
+            events.extend(next_events.into_iter());
+            page += 1;
+        }
+
+        Ok(events)
     }
 }

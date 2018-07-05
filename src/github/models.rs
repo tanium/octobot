@@ -514,7 +514,7 @@ pub struct TimelineEvent {
     pub id: Option<u32>,
     pub event: String,
     pub dismissed_review: Option<DismissedReview>,
-    pub state: Option<String>,
+    pub commit_id: Option<String>,
     pub user: Option<User>,
     pub html_url: Option<String>,
 }
@@ -533,7 +533,7 @@ impl TimelineEvent {
             id: None,
             event: event.to_string(),
             dismissed_review: None,
-            state: None,
+            commit_id: None,
             user: None,
             html_url: None,
         }
@@ -545,10 +545,10 @@ impl TimelineEvent {
         event
     }
 
-    pub fn new_review(state: &str, review_id: u32, user: User, url: &str) -> TimelineEvent {
+    pub fn new_review(commit_id: &str, review_id: u32, user: User, url: &str) -> TimelineEvent {
         let mut event = TimelineEvent::new("reviewed");
         event.id = Some(review_id);
-        event.state = Some(state.into());
+        event.commit_id = Some(commit_id.into());
         event.user = Some(user);
         event.html_url = Some(url.into());
         event

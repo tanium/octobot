@@ -110,10 +110,8 @@ pub fn comment_force_push(
             // Look for first dismissal
             if !found_dismiss && event.event == "review_dismissed" {
                 if let Some(ref review) = event.dismissed_review {
-                    if let Some(ref prev_commit) = review.dismissal_commit_id {
-                        if prev_commit == before_hash && review.state == "approved" {
-                            approval_review_id = Some(review.review_id);
-                        }
+                    if review.state == "approved" && review.dismissal_commit_id == Some(after_hash.into()) {
+                        approval_review_id = Some(review.review_id);
                     }
                 }
                 found_dismiss = true;
@@ -121,20 +119,28 @@ pub fn comment_force_push(
 
             // Look for the dismissed approval
             if found_dismiss && event.event == "reviewed" {
-                if let Some(review_id) = approval_review_id {
-                    if event.id == Some(review_id) && event.state == Some("approved".into()) {
-                        if let Some(ref user) = event.user {
-                            if let Some(ref url) = event.html_url {
-                                review_msg = format!("[{}]({})", user.login(), url);
-                            } else {
-                                review_msg = format!("{} (review #{})", user.login(), review_id);
-                            }
+                if approval_review_id.is_some() && event.id == approval_review_id &&
+                    event.commit_id == Some(before_hash.into())
+                {
+                    let review_id = approval_review_id.unwrap();
+                    if let Some(ref user) = event.user {
+                        if let Some(ref url) = event.html_url {
+                            review_msg = format!("[{}]({})", user.login(), url);
                         } else {
-                            review_msg = format!("Unknown user (review #{})", review_id);
+                            review_msg = format!("{} (review #{})", user.login(), review_id);
                         }
-                        reapprove = true;
-                        break;
+                    } else {
+                        review_msg = format!("Unknown user (review #{})", review_id);
                     }
+                    reapprove = true;
+                    info!(
+                        "Reapproving PR {}/{} #{} based on review #{:?}",
+                        owner,
+                        repo,
+                        pull_request.number,
+                        review_id,
+                    );
+                    break;
                 }
             }
         }
