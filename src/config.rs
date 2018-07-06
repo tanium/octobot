@@ -51,7 +51,8 @@ pub struct AdminConfig {
 pub struct GithubConfig {
     pub webhook_secret: String,
     pub host: String,
-    pub api_token: String,
+    pub app_id: u32,
+    pub app_key_file: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -168,11 +169,22 @@ impl ConfigModel {
             github: GithubConfig {
                 webhook_secret: String::new(),
                 host: String::new(),
-                api_token: String::new(),
+                app_id: 0,
+                app_key_file: String::new(),
             },
             jira: None,
             ldap: None,
         }
+    }
+}
+
+impl GithubConfig {
+    pub fn app_key(&self) -> Result<Vec<u8>> {
+        let mut file_open = fs::File::open(&self.app_key_file)?;
+
+        let mut contents = vec![];
+        file_open.read_to_end(&mut contents)?;
+        Ok(contents)
     }
 }
 
@@ -270,7 +282,8 @@ clone_root_dir = "./repos"
 [github]
 webhook_secret = "abcd"
 host = "git.company.com"
-api_token = "some-tokens"
+app_id = 2
+app_key_file = "some-file.key"
 "#;
         let config = parse_string(config_str).unwrap();
 

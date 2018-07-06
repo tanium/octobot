@@ -116,7 +116,7 @@ pub fn submit_for_review(
         if let Err(e) = jira.comment_issue(
             &key,
             &format!(
-               "Referenced by review submitted for branch {}: {}",
+                "Referenced by review submitted for branch {}: {}",
                 pr.base.ref_name,
                 pr.html_url
             ),
@@ -345,7 +345,7 @@ fn try_get_issue_state(key: &str, jira: &jira::api::Session) -> Option<jira::Sta
         Err(e) => {
             error!("Error getting JIRA [{}] {}", key, e);
             None
-        },
+        }
     }
 }
 

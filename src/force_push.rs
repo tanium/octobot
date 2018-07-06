@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::sync::Arc;
 
 use threadpool::{self, ThreadPool};
@@ -10,6 +9,7 @@ use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
 use github::Commit;
+use github::api::GithubApp;
 use worker;
 
 pub fn comment_force_push(
@@ -195,7 +195,7 @@ pub struct ForcePushRequest {
 
 struct Runner {
     config: Arc<Config>,
-    github_session: Arc<github::api::Session>,
+    github_app: Arc<GithubApp>,
     clone_mgr: Arc<GitCloneManager>,
     thread_pool: ThreadPool,
 }
@@ -218,14 +218,14 @@ pub fn req(
 pub fn new_worker(
     max_concurrency: usize,
     config: Arc<Config>,
-    github_session: Arc<github::api::Session>,
+    github_app: Arc<GithubApp>,
     clone_mgr: Arc<GitCloneManager>,
 ) -> worker::Worker<ForcePushRequest> {
     worker::Worker::new(
         "force-push",
         Runner {
             config: config,
-            github_session: github_session,
+            github_app: github_app,
             clone_mgr: clone_mgr,
             thread_pool: threadpool::Builder::new()
                 .num_threads(max_concurrency)
@@ -237,16 +237,23 @@ pub fn new_worker(
 
 impl worker::Runner<ForcePushRequest> for Runner {
     fn handle(&self, req: ForcePushRequest) {
-        let github_session = self.github_session.clone();
+        let github_app = self.github_app.clone();
         let clone_mgr = self.clone_mgr.clone();
         let config = self.config.clone();
         let statuses = config.repos().force_push_reapply_statuses(&req.repo);
 
         // launch another thread to do the version calculation
         self.thread_pool.execute(move || {
-            let github = github_session.borrow();
+            let github = match github_app.new_session(&req.repo.owner.login(), &req.repo.name) {
+                Ok(g) => g,
+                Err(e) => {
+                    error!("Error getting new session: {}", e);
+                    return;
+                }
+            };
+
             let diffs = diff_force_push(
-                github,
+                &github,
                 &clone_mgr,
                 &req.repo.owner.login(),
                 &req.repo.name,
@@ -258,7 +265,7 @@ impl worker::Runner<ForcePushRequest> for Runner {
             let comment = comment_force_push(
                 diffs,
                 statuses,
-                github,
+                &github,
                 &req.repo.owner.login(),
                 &req.repo.name,
                 &req.pull_request,

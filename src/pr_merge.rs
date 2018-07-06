@@ -9,13 +9,13 @@ use errors::*;
 use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
-use github::api::Session;
+use github::api::{GithubApp, Session};
 use messenger;
 use slack::{SlackAttachmentBuilder, SlackRequest};
 use worker::{self, WorkSender};
 
 fn clone_and_merge_pull_request(
-    session: &Session,
+    github_app: &GithubApp,
     clone_mgr: &GitCloneManager,
     owner: &str,
     repo: &str,
@@ -23,11 +23,12 @@ fn clone_and_merge_pull_request(
     target_branch: &str,
 ) -> Result<github::PullRequest> {
 
+    let session = github_app.new_session(owner, repo)?;
     let held_clone_dir = clone_mgr.clone(owner, repo)?;
     let clone_dir = held_clone_dir.dir();
     let git = Git::new(session.github_host(), session.github_token(), clone_dir);
 
-    merge_pull_request(&git, session, owner, repo, pull_request, target_branch)
+    merge_pull_request(&git, &session, owner, repo, pull_request, target_branch)
 }
 
 pub fn merge_pull_request(
@@ -168,7 +169,7 @@ pub struct PRMergeRequest {
 
 struct Runner {
     config: Arc<Config>,
-    github_session: Arc<Session>,
+    github_app: Arc<GithubApp>,
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
     thread_pool: ThreadPool,
@@ -185,7 +186,7 @@ pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branc
 pub fn new_worker(
     max_concurrency: usize,
     config: Arc<Config>,
-    github_session: Arc<Session>,
+    github_app: Arc<GithubApp>,
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
 ) -> worker::Worker<PRMergeRequest> {
@@ -193,7 +194,7 @@ pub fn new_worker(
         "pr-merge",
         Runner {
             config: config,
-            github_session: github_session,
+            github_app: github_app,
             clone_mgr: clone_mgr.clone(),
             slack: slack,
             thread_pool: threadpool::Builder::new()
@@ -206,7 +207,7 @@ pub fn new_worker(
 
 impl worker::Runner<PRMergeRequest> for Runner {
     fn handle(&self, req: PRMergeRequest) {
-        let github_session = self.github_session.clone();
+        let github_app = self.github_app.clone();
         let clone_mgr = self.clone_mgr.clone();
         let config = self.config.clone();
 
@@ -215,7 +216,7 @@ impl worker::Runner<PRMergeRequest> for Runner {
         // launch another thread to do the merge
         self.thread_pool.execute(move || {
             let merge_result = clone_and_merge_pull_request(
-                github_session.borrow(),
+                github_app.borrow(),
                 &clone_mgr,
                 &req.repo.owner.login(),
                 &req.repo.name,

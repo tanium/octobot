@@ -15,7 +15,7 @@ use tokio_rustls;
 use config::Config;
 use errors::*;
 use github;
-use github::api::GithubSession;
+use github::api::GithubApp;
 use jira;
 use jira::api::JiraSession;
 use server::github_handler::GithubHandlerState;
@@ -42,11 +42,15 @@ pub fn start(config: Config) -> Result<()> {
     }));
     let core_remote = core_rx.recv().expect("recv core handle");
 
-    let github: Arc<github::api::Session> =
-        match GithubSession::new(core_remote.clone(), &config.github.host, &config.github.api_token) {
-            Ok(s) => Arc::new(s),
-            Err(e) => panic!("Error initiating github session: {}", e),
-        };
+    let github: Arc<github::api::GithubApp> = match GithubApp::new(
+        core_remote.clone(),
+        &config.github.host,
+        config.github.app_id,
+        &config.github.app_key()?,
+    ) {
+        Ok(s) => Arc::new(s),
+        Err(e) => panic!("Error initiating github session: {}", e),
+    };
 
     let jira: Option<Arc<jira::api::Session>>;
     if let Some(ref jira_config) = config.jira {
@@ -120,11 +124,7 @@ pub fn start(config: Config) -> Result<()> {
     };
 
     // run the main threads!
-    main_threads
-        .into_iter()
-        .map(|t| t.unwrap())
-        .map(|t| t.join().unwrap())
-        .for_each(drop);
+    main_threads.into_iter().map(|t| t.unwrap()).map(|t| t.join().unwrap()).for_each(drop);
 
     Ok(())
 }
