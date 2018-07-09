@@ -29,9 +29,13 @@ fn test_pr_merge_basic() {
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
     pr.base = github::BranchRef::new("master");
-    pr.assignees = vec![github::User::new("user1"), github::User::new("user2")];
+    pr.assignees = vec![github::User::new("user1"), github::User::new("user2"), github::User::new("the-pr-author")];
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
-    pr.reviews = Some(vec![github::Review::new("fantastic change", github::User::new("reviewer2"))]);
+    pr.reviews = Some(vec![
+        github::Review::new("fantastic change", github::User::new("reviewer2")),
+        github::Review::new("i like to comment on my own PRs", github::User::new("the-pr-author")),
+    ]);
+    pr.user = github::User::new("the-pr-author");
     let pr = pr;
 
     let mut new_pr = github::PullRequest::new();
