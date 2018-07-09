@@ -36,10 +36,6 @@ ENV USER=octobot
 ENV RUST_LOG=info
 
 ENV PATH=$PATH:$HOME/bin
-ENV GIT_AUTHOR_NAME octobot
-ENV GIT_AUTHOR_EMAIL octobot@tanium.com
-ENV GIT_COMMITTER_NAME $GIT_AUTHOR_NAME
-ENV GIT_COMMITTER_EMAIL $GIT_AUTHOR_EMAIL
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["octobot", "/data/config.toml"]

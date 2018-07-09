@@ -100,6 +100,16 @@ impl Git {
         Ok((title, body.join("\n")))
     }
 
+    pub fn get_commit_author(&self, commit_hash: &str) -> Result<(String, String)> {
+        let message = self.run(&["log", "-1", "--pretty=%an\n%ae", commit_hash])?;
+
+        let mut lines = message.lines();
+        let name: String = lines.next().unwrap_or("").into();
+        let email: String = lines.next().unwrap_or("").into();
+
+        Ok((name, email))
+    }
+
     fn do_run(&self, args: &[&str], stdin: Option<&str>) -> Result<String> {
         debug!("Running git with args: {:?}", args);
         let mut cmd = Command::new("git");

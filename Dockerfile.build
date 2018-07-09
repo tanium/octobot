@@ -37,11 +37,6 @@ RUN cargo build --release; exit 0
 ADD src /usr/src/app/src
 ADD tests /usr/src/app/tests
 
-ENV GIT_AUTHOR_NAME octobot
-ENV GIT_AUTHOR_EMAIL octobot@tanium.com
-ENV GIT_COMMITTER_NAME $GIT_AUTHOR_NAME
-ENV GIT_COMMITTER_EMAIL $GIT_AUTHOR_EMAIL
-
 RUN cargo build --release
 
 # have to run tests as a CMD so that it can add the right capabilities for tests
