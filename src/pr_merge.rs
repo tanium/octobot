@@ -108,7 +108,7 @@ pub fn cherry_pick(
 
     let (user, email) = git.get_commit_author(commit_hash)?;
     let email = format!("user.email={}", email);
-    let user = format!("user.user={}", user);
+    let user = format!("user.name={}", user);
     let user_opts = ["-c", &email, "-c", &user];
 
     // cherry-pick!
