@@ -101,7 +101,6 @@ impl Slack {
         }
 
         info!("Sending message to #{}", channel);
-
         self.client.spawn(self.client.post_void_async("", &slack_msg).then(|res| {
             match res {
                 Ok(_) => info!("Successfully sent slack message"),
@@ -136,7 +135,9 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
     }
 }
 
-pub fn new_worker(core_remote: Remote, webhook_url: &str) -> worker::Worker<SlackRequest> {
+pub type SlackWorker = worker::Worker<SlackRequest>;
+
+pub fn new_worker(core_remote: Remote, webhook_url: &str) -> SlackWorker {
     worker::Worker::new("slack", Runner { slack: Arc::new(Slack::new(core_remote, webhook_url)) })
 }
 

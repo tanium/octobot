@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use rusqlite::{Connection, Row, Statement};
 use rusqlite::types::FromSql;
 
-use errors::*;
 use db_migrations;
+use errors::*;
 
 #[derive(Clone)]
 pub struct Database {

@@ -12,6 +12,7 @@ use errors::*;
 use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
+use github::api::{GithubSessionFactory, Session};
 use jira;
 use messenger;
 use slack::{SlackAttachmentBuilder, SlackRequest};
@@ -24,7 +25,7 @@ pub fn comment_repo_version(
     version_script: &str,
     jira_config: &JiraConfig,
     jira: &jira::api::Session,
-    github: &github::api::Session,
+    github_app: &GithubSessionFactory,
     clone_mgr: &GitCloneManager,
     owner: &str,
     repo: &str,
@@ -34,6 +35,7 @@ pub fn comment_repo_version(
     jira_projects: &Vec<String>,
     jira_versions_enabled: bool,
 ) -> Result<()> {
+    let github = github_app.new_session(owner, repo)?;
     let held_clone_dir = clone_mgr.clone(owner, repo)?;
     let clone_dir = held_clone_dir.dir();
 
@@ -148,7 +150,7 @@ pub struct RepoVersionRequest {
 
 struct Runner {
     config: Arc<Config>,
-    github_session: Arc<github::api::Session>,
+    github_app: Arc<GithubSessionFactory>,
     jira_session: Option<Arc<jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
@@ -172,7 +174,7 @@ pub fn req(
 pub fn new_worker(
     max_concurrency: usize,
     config: Arc<Config>,
-    github_session: Arc<github::api::Session>,
+    github_app: Arc<GithubSessionFactory>,
     jira_session: Option<Arc<jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
@@ -181,7 +183,7 @@ pub fn new_worker(
         "repo-version",
         Runner {
             config: config,
-            github_session: github_session,
+            github_app: github_app,
             jira_session: jira_session,
             clone_mgr: clone_mgr,
             slack: slack,
@@ -195,7 +197,7 @@ pub fn new_worker(
 
 impl worker::Runner<RepoVersionRequest> for Runner {
     fn handle(&self, req: RepoVersionRequest) {
-        let github_session = self.github_session.clone();
+        let github_app = self.github_app.clone();
         let jira_session = self.jira_session.clone();
         let clone_mgr = self.clone_mgr.clone();
         let config = self.config.clone();
@@ -221,7 +223,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             &version_script,
                             jira_config,
                             jira,
-                            github_session.borrow(),
+                            github_app.borrow(),
                             &clone_mgr,
                             &req.repo.owner.login(),
                             &req.repo.name,

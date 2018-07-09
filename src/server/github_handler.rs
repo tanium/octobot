@@ -14,6 +14,7 @@ use force_push::{self, ForcePushRequest};
 use git_clone_manager::GitCloneManager;
 use github;
 use github::CommentLike;
+use github::api::Session;
 use jira;
 use messenger::{self, Messenger};
 use pr_merge::{self, PRMergeRequest};
@@ -26,9 +27,8 @@ use worker::{WorkSender, Worker};
 
 pub struct GithubHandlerState {
     pub config: Arc<Config>,
-    pub github_session: Arc<github::api::Session>,
+    pub github_app: Arc<github::api::GithubSessionFactory>,
     pub jira_session: Option<Arc<jira::api::Session>>,
-    git_clone_manager: Arc<GitCloneManager>,
     pr_merge_worker: Worker<PRMergeRequest>,
     repo_version_worker: Worker<RepoVersionRequest>,
     force_push_worker: Worker<ForcePushRequest>,
@@ -51,7 +51,6 @@ pub struct GithubEventHandler {
     pub pr_merge: WorkSender<PRMergeRequest>,
     pub repo_version: WorkSender<RepoVersionRequest>,
     pub force_push: WorkSender<ForcePushRequest>,
-    pub git_clone_manager: Arc<GitCloneManager>,
 }
 
 const MAX_CONCURRENT_MERGES: usize = 20;
@@ -62,25 +61,25 @@ const MAX_COMMITS_FOR_JIRA_CONSIDERATION: usize = 20;
 impl GithubHandlerState {
     pub fn new(
         config: Arc<Config>,
-        github_session: Arc<github::api::Session>,
+        github_app: Arc<github::api::GithubSessionFactory>,
         jira_session: Option<Arc<jira::api::Session>>,
         core_remote: Remote,
     ) -> GithubHandlerState {
 
-        let git_clone_manager = Arc::new(GitCloneManager::new(github_session.clone(), config.clone()));
+        let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
 
         let slack_worker = slack::new_worker(core_remote, &config.main.slack_webhook_url);
         let pr_merge_worker = pr_merge::new_worker(
             MAX_CONCURRENT_MERGES,
             config.clone(),
-            github_session.clone(),
+            github_app.clone(),
             git_clone_manager.clone(),
             slack_worker.new_sender(),
         );
         let repo_version_worker = repo_version::new_worker(
             MAX_CONCURRENT_VERSIONS,
             config.clone(),
-            github_session.clone(),
+            github_app.clone(),
             jira_session.clone(),
             git_clone_manager.clone(),
             slack_worker.new_sender(),
@@ -88,15 +87,14 @@ impl GithubHandlerState {
         let force_push_worker = force_push::new_worker(
             MAX_CONCURRENT_FORCE_PUSH,
             config.clone(),
-            github_session.clone(),
+            github_app.clone(),
             git_clone_manager.clone(),
         );
 
         GithubHandlerState {
             config: config.clone(),
-            github_session: github_session.clone(),
+            github_app: github_app.clone(),
             jira_session: jira_session.clone(),
-            git_clone_manager: git_clone_manager.clone(),
             pr_merge_worker: pr_merge_worker,
             repo_version_worker: repo_version_worker,
             force_push_worker: force_push_worker,
@@ -109,11 +107,11 @@ impl GithubHandlerState {
 impl GithubHandler {
     pub fn new(
         config: Arc<Config>,
-        github_session: Arc<github::api::Session>,
+        github_app: Arc<github::api::GithubSessionFactory>,
         jira_session: Option<Arc<jira::api::Session>>,
         core_remote: Remote,
     ) -> Box<GithubHandler> {
-        let state = GithubHandlerState::new(config, github_session, jira_session, core_remote);
+        let state = GithubHandlerState::new(config, github_app, jira_session, core_remote);
         GithubHandler::from_state(Arc::new(state))
     }
 
@@ -150,9 +148,8 @@ impl Handler for GithubHandler {
         };
 
         let headers = req.headers().clone();
-        let github_session = self.state.github_session.clone();
+        let github_app = self.state.github_app.clone();
         let config = self.state.config.clone();
-        let git_clone_manager = self.state.git_clone_manager.clone();
         let jira_session = self.state.jira_session.clone();
         let pr_merge = self.state.pr_merge_worker.new_sender();
         let repo_version = self.state.repo_version_worker.new_sender();
@@ -172,6 +169,22 @@ impl Handler for GithubHandler {
                     return Response::new().with_status(StatusCode::BadRequest).with_body(
                         format!("Error parsing JSON: {}", e),
                     );
+                }
+            };
+
+            let github_session = match github_app.new_session(&data.repository.owner.login(), &data.repository.name) {
+                // Note: this doesn't really need to be an Arc anymore...
+                Ok(g) => Arc::new(g),
+                Err(e) => {
+                    error!(
+                        "Error creating a new github session for {}/{}: {}",
+                        data.repository.owner.login(),
+                        &data.repository.name,
+                        e
+                    );
+                    return Response::new().with_status(StatusCode::BadRequest).with_body(format!(
+                        "Could not create github session"
+                    ));
                 }
             };
 
@@ -237,7 +250,6 @@ impl Handler for GithubHandler {
                 config: config.clone(),
                 messenger: messenger::new(config.clone(), slack),
                 github_session: github_session,
-                git_clone_manager: git_clone_manager,
                 jira_session: jira_session,
                 pr_merge: pr_merge,
                 repo_version: repo_version,
@@ -294,6 +306,10 @@ impl GithubEventHandler {
     }
 
     fn pull_request_commits(&self, pull_request: &github::PullRequestLike) -> Vec<github::Commit> {
+        if !pull_request.has_commits() {
+            return vec![];
+        }
+
         match self.github_session.get_pull_request_commits(
             &self.data.repository.owner.login(),
             &self.data.repository.name,
@@ -410,7 +426,12 @@ impl GithubEventHandler {
                                     "Too many commits on Pull Request #{}. Ignoring JIRAs.",
                                     pull_request.number
                                 );
-                                self.messenger.send_to_owner(&msg, &attachments, &pull_request.user, &self.data.repository);
+                                self.messenger.send_to_owner(
+                                    &msg,
+                                    &attachments,
+                                    &pull_request.user,
+                                    &self.data.repository,
+                                );
 
                             } else {
                                 let jira_projects = self.config.repos().jira_projects(
@@ -528,8 +549,8 @@ impl GithubEventHandler {
             return;
         }
 
-        if comment.user().login() == self.github_session.user().login() {
-            info!("Ignoring message from octobot ({}): {}", self.github_session.user().login(), comment.body());
+        if comment.user().login() == self.github_session.bot_name() {
+            info!("Ignoring message from octobot ({}): {}", self.github_session.bot_name(), comment.body());
             return;
         }
 

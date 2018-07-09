@@ -6,7 +6,6 @@ use octobot::github::*;
 use octobot::github::api::Session;
 
 pub struct MockGithub {
-    user: User,
     host: String,
     token: String,
 
@@ -45,7 +44,6 @@ impl<T> MockCall<T> {
 impl MockGithub {
     pub fn new() -> MockGithub {
         MockGithub {
-            user: User::new("octobot"),
             host: "the-github-host".to_string(),
             token: "the-github-token".to_string(),
 
@@ -131,8 +129,8 @@ impl Drop for MockGithub {
 }
 
 impl Session for MockGithub {
-    fn user(&self) -> &User {
-        &self.user
+    fn bot_name(&self) -> &str {
+        "octobot[bot]"
     }
 
     fn github_host(&self) -> &str {

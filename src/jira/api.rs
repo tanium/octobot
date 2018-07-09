@@ -95,9 +95,9 @@ impl JiraSession {
 
 impl Session for JiraSession {
     fn get_issue(&self, key: &str) -> Result<Issue> {
-        self.client
-            .get::<Issue>(&format!("/issue/{}", key))
-            .map_err(|e| Error::from(format!("Error creating getting issue [{}]: {}", key, e)))
+        self.client.get::<Issue>(&format!("/issue/{}", key)).map_err(|e| {
+            Error::from(format!("Error creating getting issue [{}]: {}", key, e))
+        })
     }
 
     fn get_transitions(&self, key: &str) -> Result<Vec<Transition>> {

@@ -15,7 +15,6 @@ use tempdir::TempDir;
 use octobot::config::{Config, JiraConfig};
 use octobot::db::Database;
 use octobot::force_push::ForcePushRequest;
-use octobot::git_clone_manager::GitCloneManager;
 use octobot::github::*;
 use octobot::github::api::Session;
 use octobot::jira;
@@ -171,8 +170,6 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     config.jira = jira;
     let config = Arc::new(config);
 
-    let git_clone_manager = Arc::new(GitCloneManager::new(github.clone(), config.clone()));
-
     let slack_sender = slack.new_sender();
 
     GithubHandlerTest {
@@ -191,7 +188,6 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             config: config.clone(),
             messenger: messenger::new(config.clone(), slack_sender),
             github_session: github.clone(),
-            git_clone_manager: git_clone_manager.clone(),
             jira_session: None,
             pr_merge: WorkSender::new(pr_merge_tx.clone()),
             repo_version: WorkSender::new(repo_version_tx.clone()),
@@ -355,7 +351,6 @@ fn test_issue_comment() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.github.mock_get_pull_request_commits("some-user", "some-repo", 5, Ok(some_commits()));
 
     let attach = vec![
         SlackAttachmentBuilder::new("I think this file should change, cc: @mentioned-participant")
@@ -369,7 +364,6 @@ fn test_issue_comment() {
         slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
         slack::req("@the.pr.owner", msg, attach.clone()),
         slack::req("@assign1", msg, attach.clone()),
-        slack::req("@bob.author", msg, attach.clone()),
         slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
@@ -490,7 +484,7 @@ fn test_pull_request_comments_ignore_octobot() {
         path: Some("src/main.rs".into()),
         body: Some("I think this file should change, cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
-        user: User::new("octobot"),
+        user: User::new("octobot[bot]"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
 

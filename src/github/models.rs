@@ -83,6 +83,12 @@ impl HookBody {
     }
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct App {
+    pub id: u32,
+    pub owner: User,
+    pub name: String,
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct User {
@@ -121,6 +127,7 @@ pub struct Repo {
     pub full_name: String,
     pub name: String,
     pub owner: User,
+    pub archived: Option<bool>,
 }
 
 impl Repo {
@@ -130,6 +137,7 @@ impl Repo {
             full_name: String::new(),
             name: String::new(),
             owner: User::new(""),
+            archived: Some(false),
         }
     }
 
@@ -151,7 +159,12 @@ impl Repo {
             full_name: format!("{}/{}", user, repo),
             name: repo.to_string(),
             owner: User::new(user),
+            archived: Some(false),
         })
+    }
+
+    pub fn archived(&self) -> bool {
+        self.archived.unwrap_or(false)
     }
 }
 
@@ -181,6 +194,7 @@ pub trait PullRequestLike {
     fn title(&self) -> &str;
     fn html_url(&self) -> &str;
     fn number(&self) -> u32;
+    fn has_commits(&self) -> bool;
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -268,6 +282,10 @@ impl<'a> PullRequestLike for &'a PullRequest {
     fn number(&self) -> u32 {
         self.number
     }
+
+    fn has_commits(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -298,6 +316,10 @@ impl<'a> PullRequestLike for &'a Issue {
 
     fn number(&self) -> u32 {
         self.number
+    }
+
+    fn has_commits(&self) -> bool {
+        false
     }
 }
 

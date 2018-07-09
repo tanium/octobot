@@ -3,9 +3,10 @@ use tokio_core::reactor::Remote;
 use errors::*;
 use github::models::*;
 use http_client::HTTPClient;
+use jwt;
 
 pub trait Session: Send + Sync {
-    fn user(&self) -> &User;
+    fn bot_name(&self) -> &str;
     fn github_host(&self) -> &str;
     fn github_token(&self) -> &str;
     fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest>;
@@ -65,22 +66,155 @@ pub trait Session: Send + Sync {
     fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>>;
 }
 
+
+pub trait GithubSessionFactory: Send + Sync {
+    fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession>;
+    fn get_token_org(&self, org: &str) -> Result<String>;
+    fn get_token_repo(&self, owner: &str, repo: &str) -> Result<String>;
+    fn bot_name(&self) -> String;
+}
+
+pub fn api_base(host: &str) -> String {
+    if host == "github.com" {
+        "https://api.github.com".to_string()
+    } else {
+        format!("https://{}/api/v3", host)
+    }
+}
+
+pub struct GithubApp {
+    core_remote: Remote,
+    host: String,
+    app_id: u32,
+    // DER formatted API private key
+    app_key: Vec<u8>,
+    app: Option<App>,
+}
+
+pub struct GithubOauthApp {
+    core_remote: Remote,
+    host: String,
+    api_token: String,
+    user: Option<User>,
+}
+
+impl GithubApp {
+    pub fn new(core_remote: Remote, host: &str, app_id: u32, app_key: &[u8]) -> Result<GithubApp> {
+        let mut github = GithubApp {
+            core_remote: core_remote,
+            host: host.into(),
+            app_id: app_id,
+            app_key: app_key.into(),
+            app: None,
+        };
+
+        github.app = Some(github.new_client().get("/app").map_err(|e| {
+            Error::from(format!("Error authenticating to github with token: {}", e))
+        })?);
+
+        info!("Logged in as GithubApp {}", github.bot_name());
+
+        Ok(github)
+    }
+
+    fn new_client(&self) -> HTTPClient {
+        let jwt_token = jwt::new_token(self.app_id, &self.app_key);
+        HTTPClient::new(self.core_remote.clone(), &api_base(&self.host)).with_headers(hashmap!{
+            "Accept" => "application/vnd.github.machine-man-preview+json".to_string(),
+            "Authorization" => format!("Bearer {}", jwt_token),
+        })
+    }
+
+    fn new_token(&self, installation_url: &str) -> Result<String> {
+        let client = self.new_client();
+
+        // All we care about for now is the installation id
+        #[derive(Deserialize)]
+        struct Installation {
+            id: u32,
+        }
+        #[derive(Deserialize)]
+        struct AccessToken {
+            token: String,
+        }
+
+        // Lookup the installation id for this org/repo
+        let installation: Installation = client.get(installation_url)?;
+        // Get a new access token for this id
+        let token: AccessToken =
+            client.post(&format!("/installations/{}/access_tokens", installation.id), &String::new())?;
+        Ok(token.token)
+
+    }
+}
+
+impl GithubSessionFactory for GithubApp {
+    fn bot_name(&self) -> String {
+        format!("{}[bot]", self.app.clone().map(|a| a.name).unwrap_or(String::new()))
+    }
+
+    fn get_token_org(&self, org: &str) -> Result<String> {
+        self.new_token(&format!("/orgs/{}/installation", org))
+    }
+
+    fn get_token_repo(&self, owner: &str, repo: &str) -> Result<String> {
+        self.new_token(&format!("/repos/{}/{}/installation", owner, repo))
+    }
+
+    fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession> {
+        GithubSession::new(self.core_remote.clone(), &self.host, &self.bot_name(), &self.get_token_repo(owner, repo)?)
+    }
+}
+
+impl GithubOauthApp {
+    pub fn new(core_remote: Remote, host: &str, api_token: &str) -> Result<GithubOauthApp> {
+        let mut github = GithubOauthApp {
+            core_remote: core_remote,
+            host: host.into(),
+            api_token: api_token.into(),
+            user: None,
+        };
+
+        github.user = Some(github.new_session("", "")?.client.get::<User>("/user").map_err(|e| {
+            Error::from(format!("Error authenticating to github with token: {}", e))
+        })?);
+
+        info!("Logged in as OAuth app {}", github.bot_name());
+
+        Ok(github)
+    }
+}
+
+impl GithubSessionFactory for GithubOauthApp {
+    fn bot_name(&self) -> String {
+        self.user.clone().map(|a| a.login().into()).unwrap_or(String::new())
+    }
+
+    fn get_token_org(&self, _org: &str) -> Result<String> {
+        Ok(self.api_token.clone())
+    }
+
+    fn get_token_repo(&self, _owner: &str, _repo: &str) -> Result<String> {
+        Ok(self.api_token.clone())
+    }
+
+    fn new_session(&self, _owner: &str, _repo: &str) -> Result<GithubSession> {
+        GithubSession::new(self.core_remote.clone(), &self.host, &self.bot_name(), &self.api_token)
+    }
+}
+
+
+
 pub struct GithubSession {
     client: HTTPClient,
     host: String,
     token: String,
-    user: User,
+    bot_name: String,
 }
 
 impl GithubSession {
-    pub fn new(core_remote: Remote, host: &str, token: &str) -> Result<GithubSession> {
-        let api_base = if host == "github.com" {
-            "https://api.github.com".to_string()
-        } else {
-            format!("https://{}/api/v3", host)
-        };
-
-        let client = HTTPClient::new(core_remote, &api_base).with_headers(hashmap!{
+    pub fn new(core_remote: Remote, host: &str, bot_name: &str, token: &str) -> Result<GithubSession> {
+        let client = HTTPClient::new(core_remote, &api_base(host)).with_headers(hashmap!{
                 // Standard accept header is "application/vnd.github.v3+json".
                 // The "mockingbird-preview" allows us to use the timeline api.
                 // cf. https://developer.github.com/enterprise/2.13/v3/issues/timeline/
@@ -89,14 +223,9 @@ impl GithubSession {
                 "Authorization" => format!("Token {}", token),
             });
 
-        // make sure we can auth as this user befor handing out session.
-        let user: User = client.get("/user").map_err(|e| {
-            Error::from(format!("Error authenticating to github with token: {}", e))
-        })?;
-
         Ok(GithubSession {
             client: client,
-            user: user,
+            bot_name: bot_name.to_string(),
             host: host.to_string(),
             token: token.to_string(),
         })
@@ -104,8 +233,8 @@ impl GithubSession {
 }
 
 impl Session for GithubSession {
-    fn user(&self) -> &User {
-        return &self.user;
+    fn bot_name(&self) -> &str {
+        &self.bot_name
     }
 
     fn github_host(&self) -> &str {

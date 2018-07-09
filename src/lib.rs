@@ -7,6 +7,7 @@ extern crate error_chain;
 extern crate futures;
 extern crate hyper;
 extern crate hyper_rustls;
+extern crate jsonwebtoken;
 extern crate ldap3;
 #[macro_use]
 extern crate maplit;
@@ -43,6 +44,7 @@ pub mod github;
 pub mod http_client;
 pub mod ldap_auth;
 pub mod jira;
+pub mod jwt;
 pub mod messenger;
 pub mod pr_merge;
 pub mod repos;
