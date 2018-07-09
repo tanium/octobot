@@ -67,6 +67,11 @@ fn test_pr_merge_basic() {
     let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0")
         .unwrap();
 
+    let (user, email) = git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
+
+    assert_eq!(user, git.user_name());
+    assert_eq!(email, git.user_email());
+
     assert_eq!(456, created_pr.number);
     assert_eq!("", git.run_git(&["diff", "master", "origin/my-feature-branch-1.0"]));
 }

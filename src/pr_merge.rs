@@ -103,18 +103,23 @@ pub fn cherry_pick(
 ) -> Result<(String, String, String)> {
     git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch))?;
 
+    let (user, email) = git.get_commit_author(commit_hash)?;
+    let email = format!("user.email={}", email);
+    let user = format!("user.user={}", user);
+    let user_opts = ["-c", &email, "-c", &user];
+
     // cherry-pick!
 
     let mut whitespace_mode = "";
-    if let Err(e) = do_cherry_pick(git, &commit_hash, &[]) {
+    if let Err(e) = do_cherry_pick(git, &commit_hash, &[], &user_opts) {
         info!("Could not cherry-pick normally. Ignoring changed whitespace. {}", e);
 
         whitespace_mode = "ignore-space-change";
-        if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode]) {
+        if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode], &user_opts) {
             info!("Could not cherry-pick with `-X {}`. Ignoring all whitespace. {}", whitespace_mode, e);
 
             whitespace_mode = "ignore-all-space";
-            if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode]) {
+            if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode], &user_opts) {
                 info!("Could not cherry-pick with `-X {}`: {}", whitespace_mode, e);
                 return Err(e);
             }
@@ -125,15 +130,20 @@ pub fn cherry_pick(
     let (title, body) = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch);
 
     // change commit message
-    git.run_with_stdin(&["commit", "--amend", "-F", "-"], &format!("{}\n\n{}", &title, &body))?;
+    let mut amend_args = vec![];
+    amend_args.extend(user_opts.iter());
+    amend_args.extend(["commit", "--amend", "-F", "-"].iter());
+    git.run_with_stdin(&amend_args, &format!("{}\n\n{}", &title, &body))?;
 
     Ok((title, body, whitespace_mode.into()))
 }
 
-fn do_cherry_pick(git: &Git, commit_hash: &str, opts: &[&str]) -> Result<String> {
+fn do_cherry_pick(git: &Git, commit_hash: &str, opts: &[&str], user_opts: &[&str]) -> Result<String> {
     git.run(&vec!["reset", "--hard"])?;
 
-    let mut args = vec!["-c", "merge.renameLimit=999999", "cherry-pick", "--allow-empty"];
+    let mut args = vec!["-c", "merge.renameLimit=999999"];
+    args.extend(user_opts.iter());
+    args.extend(vec!["cherry-pick", "--allow-empty"].iter());
 
     for i in 0..opts.len() {
         args.push(opts[i]);

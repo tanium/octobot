@@ -42,8 +42,20 @@ impl TempGit {
         test
     }
 
+    pub fn user_name(&self) -> &str {
+        "Test User"
+    }
+
+    pub fn user_email(&self) -> &str {
+        "testy@octobot.com"
+    }
+
     pub fn run_git(&self, args: &[&str]) -> String {
-        self.git.run(args).expect(&format!("Failed running git: `{:?}`", args))
+        let user = format!("user.name={}", self.user_name());
+        let email = format!("user.email={}", self.user_email());
+        let mut full_args = vec!["-c", &user, "-c", &email];
+        full_args.extend(args.iter());
+        self.git.run(&full_args).expect(&format!("Failed running git: `{:?}`", args))
     }
 
     pub fn reclone(&self) {
