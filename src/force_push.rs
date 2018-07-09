@@ -9,7 +9,7 @@ use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
 use github::Commit;
-use github::api::GithubApp;
+use github::api::GithubSessionFactory;
 use worker;
 
 pub fn comment_force_push(
@@ -195,7 +195,7 @@ pub struct ForcePushRequest {
 
 struct Runner {
     config: Arc<Config>,
-    github_app: Arc<GithubApp>,
+    github_app: Arc<GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
     thread_pool: ThreadPool,
 }
@@ -218,7 +218,7 @@ pub fn req(
 pub fn new_worker(
     max_concurrency: usize,
     config: Arc<Config>,
-    github_app: Arc<GithubApp>,
+    github_app: Arc<GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
 ) -> worker::Worker<ForcePushRequest> {
     worker::Worker::new(

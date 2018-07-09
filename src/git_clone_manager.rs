@@ -12,11 +12,11 @@ use github::api::Session;
 // clones git repos with given github session into a managed directory pool
 pub struct GitCloneManager {
     dir_pool: Arc<DirPool>,
-    github_app: Arc<github::api::GithubApp>,
+    github_app: Arc<github::api::GithubSessionFactory>,
 }
 
 impl GitCloneManager {
-    pub fn new(github_app: Arc<github::api::GithubApp>, config: Arc<Config>) -> GitCloneManager {
+    pub fn new(github_app: Arc<github::api::GithubSessionFactory>, config: Arc<Config>) -> GitCloneManager {
         let clone_root_dir = config.main.clone_root_dir.to_string();
 
         GitCloneManager {

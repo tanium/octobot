@@ -9,13 +9,13 @@ use errors::*;
 use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
-use github::api::{GithubApp, Session};
+use github::api::{GithubSessionFactory, Session};
 use messenger;
 use slack::{SlackAttachmentBuilder, SlackRequest};
 use worker::{self, WorkSender};
 
 fn clone_and_merge_pull_request(
-    github_app: &GithubApp,
+    github_app: &GithubSessionFactory,
     clone_mgr: &GitCloneManager,
     owner: &str,
     repo: &str,
@@ -169,7 +169,7 @@ pub struct PRMergeRequest {
 
 struct Runner {
     config: Arc<Config>,
-    github_app: Arc<GithubApp>,
+    github_app: Arc<GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
     thread_pool: ThreadPool,
@@ -186,7 +186,7 @@ pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branc
 pub fn new_worker(
     max_concurrency: usize,
     config: Arc<Config>,
-    github_app: Arc<GithubApp>,
+    github_app: Arc<GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
 ) -> worker::Worker<PRMergeRequest> {

@@ -27,7 +27,7 @@ use worker::{WorkSender, Worker};
 
 pub struct GithubHandlerState {
     pub config: Arc<Config>,
-    pub github_app: Arc<github::api::GithubApp>,
+    pub github_app: Arc<github::api::GithubSessionFactory>,
     pub jira_session: Option<Arc<jira::api::Session>>,
     pr_merge_worker: Worker<PRMergeRequest>,
     repo_version_worker: Worker<RepoVersionRequest>,
@@ -61,7 +61,7 @@ const MAX_COMMITS_FOR_JIRA_CONSIDERATION: usize = 20;
 impl GithubHandlerState {
     pub fn new(
         config: Arc<Config>,
-        github_app: Arc<github::api::GithubApp>,
+        github_app: Arc<github::api::GithubSessionFactory>,
         jira_session: Option<Arc<jira::api::Session>>,
         core_remote: Remote,
     ) -> GithubHandlerState {
@@ -107,7 +107,7 @@ impl GithubHandlerState {
 impl GithubHandler {
     pub fn new(
         config: Arc<Config>,
-        github_app: Arc<github::api::GithubApp>,
+        github_app: Arc<github::api::GithubSessionFactory>,
         jira_session: Option<Arc<jira::api::Session>>,
         core_remote: Remote,
     ) -> Box<GithubHandler> {

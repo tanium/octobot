@@ -12,7 +12,7 @@ use errors::*;
 use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
-use github::api::{GithubApp, Session};
+use github::api::{GithubSessionFactory, Session};
 use jira;
 use messenger;
 use slack::{SlackAttachmentBuilder, SlackRequest};
@@ -25,7 +25,7 @@ pub fn comment_repo_version(
     version_script: &str,
     jira_config: &JiraConfig,
     jira: &jira::api::Session,
-    github_app: &GithubApp,
+    github_app: &GithubSessionFactory,
     clone_mgr: &GitCloneManager,
     owner: &str,
     repo: &str,
@@ -150,7 +150,7 @@ pub struct RepoVersionRequest {
 
 struct Runner {
     config: Arc<Config>,
-    github_app: Arc<GithubApp>,
+    github_app: Arc<GithubSessionFactory>,
     jira_session: Option<Arc<jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
@@ -174,7 +174,7 @@ pub fn req(
 pub fn new_worker(
     max_concurrency: usize,
     config: Arc<Config>,
-    github_app: Arc<GithubApp>,
+    github_app: Arc<GithubSessionFactory>,
     jira_session: Option<Arc<jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
     slack: WorkSender<SlackRequest>,
