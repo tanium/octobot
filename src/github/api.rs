@@ -39,7 +39,15 @@ pub trait Session: Send + Sync {
         repo: &str,
         number: u32,
         assignees: Vec<String>,
-    ) -> Result<AssignResponse>;
+    ) -> Result<()>;
+
+    fn request_review(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        reviewers: Vec<String>,
+    ) -> Result<()>;
 
     fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()>;
     fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()>;
@@ -193,7 +201,7 @@ impl Session for GithubSession {
         repo: &str,
         number: u32,
         assignees: Vec<String>,
-    ) -> Result<AssignResponse> {
+    ) -> Result<()> {
         #[derive(Serialize)]
         struct AssignPR {
             assignees: Vec<String>,
@@ -202,8 +210,28 @@ impl Session for GithubSession {
         let body = AssignPR { assignees: assignees };
 
         self.client
-            .post(&format!("repos/{}/{}/issues/{}/assignees", owner, repo, number), &body)
+            .post_void(&format!("repos/{}/{}/issues/{}/assignees", owner, repo, number), &body)
             .map_err(|e| format!("Error assigning PR: {}/{} #{}: {}", owner, repo, number, e).into())
+    }
+
+    fn request_review(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        reviewers: Vec<String>,
+    ) -> Result<()>
+    {
+        #[derive(Serialize)]
+        struct ReviewPR {
+            reviewers: Vec<String>,
+        }
+
+        let body = ReviewPR{ reviewers: reviewers };
+
+        self.client
+            .post_void(&format!("repos/{}/{}/issues/{}/requested_reviewers", owner, repo, number), &body)
+            .map_err(|e| format!("Error requesting review for PR: {}/{} #{}: {}", owner, repo, number, e).into())
     }
 
     fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()> {
