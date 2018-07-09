@@ -226,6 +226,19 @@ impl PullRequest {
     pub fn is_wip(&self) -> bool {
         self.title.to_lowercase().starts_with("wip:")
     }
+
+    pub fn all_reviewers(&self) -> Vec<User> {
+        let mut reviewers = vec![];
+        if let Some(ref requested_reviewers) = self.requested_reviewers {
+            reviewers.extend(requested_reviewers.clone().into_iter());
+        }
+
+        if let Some(ref reviews) = self.reviews {
+            reviewers.extend(reviews.iter().map(|ref r| r.user.clone()));
+        }
+
+        reviewers
+    }
 }
 
 impl<'a> PullRequestLike for &'a PullRequest {
@@ -493,11 +506,6 @@ impl PushCommit {
             message: String::new(),
         }
     }
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct AssignResponse {
-    pub assignees: Vec<User>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

@@ -74,7 +74,14 @@ pub fn merge_pull_request(
     let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &target_branch)?;
 
     let assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
-    session.assign_pull_request(owner, repo, new_pr.number, assignees)?;
+    if !assignees.is_empty() {
+        session.assign_pull_request(owner, repo, new_pr.number, assignees)?;
+    }
+
+    let reviewers: Vec<String> = pull_request.all_reviewers().into_iter().map(|a| a.login().to_string()).collect();
+    if !reviewers.is_empty() {
+        session.request_review(owner, repo, new_pr.number, reviewers)?;
+    }
 
     if whitespace_mode.len() > 0 {
         let msg = format!("Cherry-pick required option `{}`. Please verify correctness.", whitespace_mode);

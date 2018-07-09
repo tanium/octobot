@@ -16,7 +16,8 @@ pub struct MockGithub {
     get_pr_labels_calls: Mutex<Vec<MockCall<Vec<Label>>>>,
     get_pr_commits_calls: Mutex<Vec<MockCall<Vec<Commit>>>>,
     get_pr_reviews_calls: Mutex<Vec<MockCall<Vec<Review>>>>,
-    assign_pr_calls: Mutex<Vec<MockCall<AssignResponse>>>,
+    assign_pr_calls: Mutex<Vec<MockCall<()>>>,
+    request_review_calls: Mutex<Vec<MockCall<()>>>,
     comment_pr_calls: Mutex<Vec<MockCall<()>>>,
     create_branch_calls: Mutex<Vec<MockCall<()>>>,
     delete_branch_calls: Mutex<Vec<MockCall<()>>>,
@@ -55,6 +56,7 @@ impl MockGithub {
             get_pr_commits_calls: Mutex::new(vec![]),
             get_pr_reviews_calls: Mutex::new(vec![]),
             assign_pr_calls: Mutex::new(vec![]),
+            request_review_calls: Mutex::new(vec![]),
             comment_pr_calls: Mutex::new(vec![]),
             create_branch_calls: Mutex::new(vec![]),
             delete_branch_calls: Mutex::new(vec![]),
@@ -93,6 +95,11 @@ impl Drop for MockGithub {
                 self.assign_pr_calls.lock().unwrap().len() == 0,
                 "Unmet assign_pull_request calls: {:?}",
                 *self.assign_pr_calls.lock().unwrap()
+            );
+            assert!(
+                self.request_review_calls.lock().unwrap().len() == 0,
+                "Unmet request_review calls: {:?}",
+                *self.request_review_calls.lock().unwrap()
             );
             assert!(
                 self.comment_pr_calls.lock().unwrap().len() == 0,
@@ -222,13 +229,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn assign_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-        assignees: Vec<String>,
-    ) -> Result<AssignResponse> {
+    fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<()> {
         let mut calls = self.assign_pr_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to assign_pull_request");
         let call = calls.remove(0);
@@ -236,6 +237,18 @@ impl Session for MockGithub {
         assert_eq!(call.args[1], repo);
         assert_eq!(call.args[2], number.to_string());
         assert_eq!(call.args[3], assignees.join(","));
+
+        call.ret
+    }
+
+    fn request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>) -> Result<()> {
+        let mut calls = self.request_review_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to request_review");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], number.to_string());
+        assert_eq!(call.args[3], reviewers.join(","));
 
         call.ret
     }
@@ -407,7 +420,7 @@ impl MockGithub {
         repo: &str,
         number: u32,
         assignees: Vec<String>,
-        ret: Result<AssignResponse>,
+        ret: Result<()>,
     ) {
         self.assign_pr_calls.lock().unwrap().push(MockCall::new(
             ret,
@@ -420,6 +433,17 @@ impl MockGithub {
         ));
     }
 
+    pub fn mock_request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>, ret: Result<()>) {
+        self.request_review_calls.lock().unwrap().push(MockCall::new(
+            ret,
+            vec![
+                owner,
+                repo,
+                &number.to_string(),
+                &reviewers.join(","),
+            ],
+        ));
+    }
     pub fn mock_create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str, ret: Result<()>) {
         self.create_branch_calls.lock().unwrap().push(MockCall::new(
             ret,

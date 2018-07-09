@@ -30,6 +30,8 @@ fn test_pr_merge_basic() {
     pr.head = github::BranchRef::new("my-feature-branch");
     pr.base = github::BranchRef::new("master");
     pr.assignees = vec![github::User::new("user1"), github::User::new("user2")];
+    pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
+    pr.reviews = Some(vec![github::Review::new("fantastic change", github::User::new("reviewer2"))]);
     let pr = pr;
 
     let mut new_pr = github::PullRequest::new();
@@ -51,7 +53,15 @@ fn test_pr_merge_basic() {
         "the-repo",
         456,
         vec!["user1".into(), "user2".into()],
-        Ok(github::AssignResponse { assignees: vec![] }),
+        Ok(()),
+    );
+
+    github.mock_request_review(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["reviewer1".into(), "reviewer2".into()],
+        Ok(()),
     );
 
     let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0")
@@ -136,7 +146,7 @@ if (true)    {
         "the-repo",
         456,
         vec!["user1".into(), "user2".into()],
-        Ok(github::AssignResponse { assignees: vec![] }),
+        Ok(()),
     );
 
     github.mock_comment_pull_request(
@@ -228,7 +238,7 @@ if (true) {
         "the-repo",
         456,
         vec!["user1".into(), "user2".into()],
-        Ok(github::AssignResponse { assignees: vec![] }),
+        Ok(()),
     );
 
     github.mock_comment_pull_request(
