@@ -230,7 +230,7 @@ impl Session for GithubSession {
         let body = ReviewPR{ reviewers: reviewers };
 
         self.client
-            .post_void(&format!("repos/{}/{}/issues/{}/requested_reviewers", owner, repo, number), &body)
+            .post_void(&format!("repos/{}/{}/pulls/{}/requested_reviewers", owner, repo, number), &body)
             .map_err(|e| format!("Error requesting review for PR: {}/{} #{}: {}", owner, repo, number, e).into())
     }
 
