@@ -444,6 +444,7 @@ impl MockGithub {
             ],
         ));
     }
+
     pub fn mock_create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str, ret: Result<()>) {
         self.create_branch_calls.lock().unwrap().push(MockCall::new(
             ret,
