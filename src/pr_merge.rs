@@ -74,12 +74,14 @@ pub fn merge_pull_request(
 
     let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &target_branch)?;
 
-    let assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
+    let mut assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
+    assignees.retain(|r| r != pull_request.user.login());
     if !assignees.is_empty() {
         session.assign_pull_request(owner, repo, new_pr.number, assignees)?;
     }
 
-    let reviewers: Vec<String> = pull_request.all_reviewers().into_iter().map(|a| a.login().to_string()).collect();
+    let mut reviewers: Vec<String> = pull_request.all_reviewers().into_iter().map(|a| a.login().to_string()).collect();
+    reviewers.retain(|r| r != pull_request.user.login());
     if !reviewers.is_empty() {
         session.request_review(owner, repo, new_pr.number, reviewers)?;
     }
