@@ -22,6 +22,14 @@ pub struct HTTPClient {
 
 struct InternalResp {
     data: hyper::Chunk,
+    headers: hyper::Headers,
+    status: hyper::StatusCode,
+}
+
+pub struct HTTPResponse<T> {
+    pub item: T,
+    pub headers: hyper::Headers,
+    pub status: hyper::StatusCode,
 }
 
 type InternalResponseResult = Result<InternalResp>;
@@ -48,10 +56,10 @@ impl HTTPClient {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        self.request_de::<T, ()>(Method::Get, path, None)
+        self.request_de::<T, ()>(Method::Get, path, None).map(|res| res.item)
     }
 
-    pub fn get_async<T>(&self, path: &str) -> FutureResult<T>
+    pub fn get_async<T>(&self, path: &str) -> FutureResult<HTTPResponse<T>>
     where
         T: DeserializeOwned + Send + 'static,
     {
@@ -62,10 +70,10 @@ impl HTTPClient {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        self.request_de::<T, U>(Method::Post, path, Some(body))
+        self.request_de::<T, U>(Method::Post, path, Some(body)).map(|res| res.item)
     }
 
-    pub fn post_async<T, U: Serialize>(&self, path: &str, body: &U) -> FutureResult<T>
+    pub fn post_async<T, U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<T>>
     where
         T: DeserializeOwned + Send + 'static,
     {
@@ -73,10 +81,10 @@ impl HTTPClient {
     }
 
     pub fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
-        self.request_void::<U>(Method::Post, path, Some(body))
+        self.request_void::<U>(Method::Post, path, Some(body)).map(|_| ())
     }
 
-    pub fn post_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResult<()> {
+    pub fn post_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<()>> {
         self.request_void_async::<U>(Method::Post, path, Some(body))
     }
 
@@ -84,10 +92,10 @@ impl HTTPClient {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        self.request_de::<T, U>(Method::Put, path, Some(body))
+        self.request_de::<T, U>(Method::Put, path, Some(body)).map(|res| res.item)
     }
 
-    pub fn put_async<T, U: Serialize>(&self, path: &str, body: &U) -> FutureResult<T>
+    pub fn put_async<T, U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<T>>
     where
         T: DeserializeOwned + Send + 'static,
     {
@@ -95,18 +103,18 @@ impl HTTPClient {
     }
 
     pub fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
-        self.request_void::<U>(Method::Put, path, Some(body))
+        self.request_void::<U>(Method::Put, path, Some(body)).map(|_| ())
     }
 
-    pub fn put_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResult<()> {
+    pub fn put_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<()>> {
         self.request_void_async::<U>(Method::Put, path, Some(body))
     }
 
     pub fn delete_void(&self, path: &str) -> Result<()> {
-        self.request_void::<()>(Method::Delete, path, None)
+        self.request_void::<()>(Method::Delete, path, None).map(|_| ())
     }
 
-    pub fn delete_void_async(&self, path: &str) -> FutureResult<()> {
+    pub fn delete_void_async(&self, path: &str) -> FutureResult<HTTPResponse<()>> {
         self.request_void_async::<()>(Method::Delete, path, None)
     }
 
@@ -119,7 +127,7 @@ impl HTTPClient {
         self.core_remote.spawn(move |_| fut);
     }
 
-    fn request_de<T, U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<T>
+    pub fn request_de<T, U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<HTTPResponse<T>>
     where
         T: DeserializeOwned + Send + 'static,
     {
@@ -128,13 +136,18 @@ impl HTTPClient {
         })
     }
 
-    fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<()> {
+    pub fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<HTTPResponse<()>> {
         self.request_void_async(method, path, body).wait().map_err(|e| {
             Error::from(format!("Error waiting for HTTP response: {}", e))
         })
     }
 
-    fn request_de_async<T, U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> FutureResult<T>
+    pub fn request_de_async<T, U: Serialize>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&U>,
+    ) -> FutureResult<HTTPResponse<T>>
     where
         T: DeserializeOwned + Send + 'static,
     {
@@ -143,20 +156,44 @@ impl HTTPClient {
                 .or_else(|_| Err("HTTP Request was cancelled".into()))
                 .and_then(|res| {
                     res.and_then(|res| {
-                        serde_json::from_slice::<T>(&res.data).map_err(|e| {
-                            format!("Error parsing response: {}\n---\n{}\n---", e, String::from_utf8_lossy(&res.data))
-                                .into()
-                        })
+                        serde_json::from_slice::<T>(&res.data)
+                            .map_err(|e| {
+                                format!(
+                                    "Error parsing response: {}\n---\n{}\n---",
+                                    e,
+                                    String::from_utf8_lossy(&res.data)
+                                ).into()
+                            })
+                            .map(|obj| {
+                                HTTPResponse {
+                                    item: obj,
+                                    headers: res.headers,
+                                    status: res.status,
+                                }
+                            })
                     })
                 }),
         )
     }
 
-    fn request_void_async<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> FutureResult<()> {
+    pub fn request_void_async<U: Serialize>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&U>,
+    ) -> FutureResult<HTTPResponse<()>> {
         Box::new(
             self.request_async(method, path, body)
                 .or_else(|_| Err("HTTP Request was cancelled".into()))
-                .and_then(|res| res.map(|_| ())),
+                .and_then(|res| {
+                    res.map(|r| {
+                        HTTPResponse {
+                            item: (),
+                            headers: r.headers,
+                            status: r.status,
+                        }
+                    })
+                }),
         )
     }
 
@@ -219,6 +256,7 @@ impl HTTPClient {
                 })
                 .and_then(|res| {
                     let status = res.status();
+                    let headers = res.headers().clone();
                     res.body()
                         .concat2()
                         .map_err(|e| {
@@ -236,7 +274,11 @@ impl HTTPClient {
                                     ).into(),
                                 ));
                             } else {
-                                send_future(Ok(InternalResp { data: buffer }));
+                                send_future(Ok(InternalResp {
+                                    data: buffer,
+                                    headers: headers,
+                                    status: status,
+                                }));
                             }
                         })
                 })
