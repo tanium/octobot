@@ -3,11 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use futures::Future;
 use futures::Stream;
-use hyper::StatusCode;
-use hyper::server::{Request, Response};
+use hyper::{Body, Request, StatusCode};
 use regex::Regex;
 use serde_json;
-use tokio_core::reactor::Remote;
 
 use config::Config;
 use force_push::{self, ForcePushRequest};
@@ -63,12 +61,11 @@ impl GithubHandlerState {
         config: Arc<Config>,
         github_app: Arc<github::api::GithubSessionFactory>,
         jira_session: Option<Arc<jira::api::Session>>,
-        core_remote: Remote,
     ) -> GithubHandlerState {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
 
-        let slack_worker = slack::new_worker(core_remote, &config.main.slack_webhook_url);
+        let slack_worker = slack::new_worker(&config.main.slack_webhook_url);
         let pr_merge_worker = pr_merge::new_worker(
             MAX_CONCURRENT_MERGES,
             config.clone(),
@@ -109,9 +106,8 @@ impl GithubHandler {
         config: Arc<Config>,
         github_app: Arc<github::api::GithubSessionFactory>,
         jira_session: Option<Arc<jira::api::Session>>,
-        core_remote: Remote,
     ) -> Box<GithubHandler> {
-        let state = GithubHandlerState::new(config, github_app, jira_session, core_remote);
+        let state = GithubHandlerState::new(config, github_app, jira_session);
         GithubHandler::from_state(Arc::new(state))
     }
 
@@ -121,31 +117,39 @@ impl GithubHandler {
 }
 
 impl Handler for GithubHandler {
-    fn handle(&self, req: Request) -> FutureResponse {
-        let event_id: String = match req.headers().get_raw("x-github-delivery") {
-            Some(ref h) if h.len() == 1 => String::from_utf8_lossy(&h[0]).into_owned(),
-            None | Some(..) => {
+    fn handle(&self, req: Request<Body>) -> FutureResponse {
+        let event_id;
+        {
+            let values = req.headers().get_all("x-github-delivery").iter().collect::<Vec<_>>();
+            if values.len() != 1 {
                 let msg = "Expected to find exactly one event id header";
                 error!("{}", msg);
-                return self.respond_with(StatusCode::BadRequest, &msg);
+                return self.respond(util::new_bad_req_resp(msg));
             }
-        };
+
+            event_id = String::from_utf8_lossy(values[0].as_bytes()).into_owned();
+        }
+
+        // make sure event id is valid
         {
             let mut recent_events = self.state.recent_events.lock().unwrap();
             if !util::check_unique_event(event_id.clone(), &mut *recent_events, 1000, 100) {
                 let msg = format!("Duplicate X-Github-Delivery header: {}", event_id);
                 error!("{}", msg);
-                return self.respond_with(StatusCode::BadRequest, &msg);
+                return self.respond(util::new_bad_req_resp(msg));
             }
         }
 
-        let event: String = match req.headers().get_raw("x-github-event") {
-            Some(ref h) if h.len() == 1 => String::from_utf8_lossy(&h[0]).into_owned(),
-            None | Some(..) => {
-                error!("Expected to find exactly one event header");
-                return self.respond_with(StatusCode::BadRequest, "Expected to find exactly one event header");
+        let event;
+        {
+            let values = req.headers().get_all("x-github-event").iter().collect::<Vec<_>>();
+            if values.len() != 1 {
+                let msg = "Expected to find exactly one event header";
+                error!("{}", msg);
+                return self.respond(util::new_bad_req_resp(msg));
             }
-        };
+            event = String::from_utf8_lossy(values[0].as_bytes()).into_owned();
+        }
 
         let headers = req.headers().clone();
         let github_app = self.state.github_app.clone();
@@ -156,19 +160,17 @@ impl Handler for GithubHandler {
         let force_push = self.state.force_push_worker.new_sender();
         let slack = self.state.slack_worker.new_sender();
 
-        Box::new(req.body().concat2().map(move |body| {
+        Box::new(req.into_body().concat2().map(move |body| {
             let verifier = GithubWebhookVerifier { secret: config.github.webhook_secret.clone() };
             if !verifier.is_req_valid(&headers, &body) {
-                return Response::new().with_status(StatusCode::Forbidden).with_body("Invalid signature");
+                return util::new_msg_resp(StatusCode::FORBIDDEN, "Invalid signature");
             }
 
             let mut data: github::HookBody = match serde_json::from_slice(&body) {
                 Ok(h) => h,
                 Err(e) => {
                     error!("Error parsing json: {}\n---\n{}\n---\n", e, String::from_utf8_lossy(&body));
-                    return Response::new().with_status(StatusCode::BadRequest).with_body(
-                        format!("Error parsing JSON: {}", e),
-                    );
+                    return util::new_bad_req_resp(format!("Error parsing JSON: {}", e));
                 }
             };
 
@@ -182,9 +184,7 @@ impl Handler for GithubHandler {
                         &data.repository.name,
                         e
                     );
-                    return Response::new().with_status(StatusCode::BadRequest).with_body(format!(
-                        "Could not create github session"
-                    ));
+                    return util::new_bad_req_resp("Could not create github session");
                 }
             };
 
@@ -243,12 +243,8 @@ impl Handler for GithubHandler {
             };
 
             match handler.handle_event() {
-                Some((status, resp)) => Response::new().with_status(status).with_body(resp),
-                None => {
-                    Response::new().with_status(StatusCode::Ok).with_body(
-                        format!("Unhandled event: {}", event),
-                    )
-                }
+                Some((status, resp)) => util::new_msg_resp(status, resp),
+                None => util::new_msg_resp(StatusCode::OK, format!("Unhandled event: {}", event)),
             }
         }))
     }
@@ -335,7 +331,7 @@ impl GithubEventHandler {
     }
 
     fn handle_ping(&self) -> EventResponse {
-        (StatusCode::Ok, "ping".into())
+        (StatusCode::OK, "ping".into())
     }
 
     fn handle_pr(&self) -> EventResponse {
@@ -451,7 +447,7 @@ impl GithubEventHandler {
             }
         }
 
-        (StatusCode::Ok, "pr".into())
+        (StatusCode::OK, "pr".into())
     }
 
     fn handle_pr_review_comment(&self) -> EventResponse {
@@ -464,7 +460,7 @@ impl GithubEventHandler {
             }
         }
 
-        (StatusCode::Ok, "pr_review_comment".into())
+        (StatusCode::OK, "pr_review_comment".into())
     }
 
     fn handle_pr_review(&self) -> EventResponse {
@@ -475,7 +471,7 @@ impl GithubEventHandler {
                     // just a comment. should just be handled by regular comment handler.
                     if review.state == "commented" {
                         self.do_pull_request_comment(&pull_request, &review);
-                        return (StatusCode::Ok, "pr_review [comment]".into());
+                        return (StatusCode::OK, "pr_review [comment]".into());
                     }
 
                     let action_msg;
@@ -492,7 +488,7 @@ impl GithubEventHandler {
                         color = "good";
 
                     } else {
-                        return (StatusCode::Ok, "pr_review [ignored]".into());
+                        return (StatusCode::OK, "pr_review [ignored]".into());
                     }
 
                     let msg = format!(
@@ -527,7 +523,7 @@ impl GithubEventHandler {
             }
         }
 
-        (StatusCode::Ok, "pr_review".into())
+        (StatusCode::OK, "pr_review".into())
     }
 
     fn do_pull_request_comment(&self, pull_request: &github::PullRequestLike, comment: &github::CommentLike) {
@@ -600,7 +596,7 @@ impl GithubEventHandler {
             }
         }
 
-        (StatusCode::Ok, "commit_comment".into())
+        (StatusCode::OK, "commit_comment".into())
     }
 
     fn handle_issue_comment(&self) -> EventResponse {
@@ -614,13 +610,13 @@ impl GithubEventHandler {
                 }
             }
         }
-        (StatusCode::Ok, "issue_comment".into())
+        (StatusCode::OK, "issue_comment".into())
     }
 
     fn handle_push(&self) -> EventResponse {
         if self.data.deleted() || self.data.created() {
             // ignore
-            return (StatusCode::Ok, "push [ignored]".into());
+            return (StatusCode::OK, "push [ignored]".into());
         }
         if self.data.ref_name().len() > 0 && self.data.after().len() > 0 && self.data.before().len() > 0 {
 
@@ -640,7 +636,7 @@ impl GithubEventHandler {
                     Ok(p) => p,
                     Err(e) => {
                         error!("Error looking up PR for '{}' ({}): {}", branch_name, self.data.after(), e);
-                        return (StatusCode::Ok, "push [no PR]".into());
+                        return (StatusCode::OK, "push [no PR]".into());
                     }
                 };
 
@@ -760,7 +756,7 @@ impl GithubEventHandler {
             }
         }
 
-        (StatusCode::Ok, "push".into())
+        (StatusCode::OK, "push".into())
     }
 
     fn merge_pull_request_all_labels(&self, pull_request: &github::PullRequest, release_branch_prefix: &str) {

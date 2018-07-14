@@ -4,11 +4,10 @@ extern crate time;
 extern crate thread_id;
 extern crate log;
 
+use std::io::Write;
+
 use octobot::config;
 use octobot::server;
-
-use env_logger::LogBuilder;
-use log::{LogLevelFilter, LogRecord};
 
 use octobot::errors::*;
 
@@ -45,14 +44,17 @@ fn run() -> Result<()> {
 
     let config = config::new(config_file.into()).chain_err(|| "Error parsing config")?;
 
-    server::main::start(config).chain_err(|| "Failed to start server")
+    server::main::start(config);
+
+    Ok(())
 }
 
 fn setup_logging() {
-    let formatter = |record: &LogRecord| {
+    let formatter = |buf: &mut env_logger::fmt::Formatter, record: &log::Record| {
         let t = time::now();
-        format!(
-            "[{},{:03}][{}:{}] - {} - {}",
+        write!(
+            buf,
+            "[{},{:03}][{}:{}] - {} - {}\n",
             time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
             t.tm_nsec / 1000_000,
             thread_id::get(),
@@ -62,8 +64,8 @@ fn setup_logging() {
         )
     };
 
-    let mut builder = LogBuilder::new();
-    builder.format(formatter).filter(None, LogLevelFilter::Info);
+    let mut builder = env_logger::Builder::new();
+    builder.format(formatter).filter(None, log::LevelFilter::Info);
 
     let is_info;
     if let Ok(ref env_log) = std::env::var("RUST_LOG") {
@@ -74,8 +76,8 @@ fn setup_logging() {
     }
 
     if is_info {
-        builder.filter(Some("rustls"), LogLevelFilter::Warn);
+        builder.filter(Some("rustls"), log::LevelFilter::Warn);
     }
 
-    builder.init().unwrap();
+    builder.init();
 }

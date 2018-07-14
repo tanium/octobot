@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use futures::{Future, future};
-use tokio_core::reactor::Remote;
 
 use http_client::HTTPClient;
 use util;
@@ -77,8 +76,8 @@ const TRIM_MESSAGES_AT: usize = 200;
 const TRIM_MESSAGES_TO: usize = 20;
 
 impl Slack {
-    pub fn new(core_remote: Remote, webhook_url: &str) -> Slack {
-        let client = HTTPClient::new(core_remote, webhook_url).with_headers(hashmap!{
+    pub fn new(webhook_url: &str) -> Slack {
+        let client = HTTPClient::new(webhook_url).with_headers(hashmap!{
                 "Content-Type" => "application/json".to_string(),
             });
 
@@ -137,8 +136,8 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
 
 pub type SlackWorker = worker::Worker<SlackRequest>;
 
-pub fn new_worker(core_remote: Remote, webhook_url: &str) -> SlackWorker {
-    worker::Worker::new("slack", Runner { slack: Arc::new(Slack::new(core_remote, webhook_url)) })
+pub fn new_worker(webhook_url: &str) -> SlackWorker {
+    worker::Worker::new("slack", Runner { slack: Arc::new(Slack::new(webhook_url)) })
 }
 
 impl worker::Runner<SlackRequest> for Runner {

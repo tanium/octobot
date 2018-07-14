@@ -2,11 +2,9 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use hyper::{Body, Request};
 use hyper::StatusCode;
-use hyper::header::ContentType;
-use hyper::server::{Request, Response};
 use serde_json;
-use tokio_core::reactor::Remote;
 
 use config::{Config, JiraConfig};
 use jira;
@@ -54,7 +52,7 @@ impl RepoAdmin {
 
 
 impl Handler for UserAdmin {
-    fn handle(&self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request<Body>) -> FutureResponse {
         match &self.op {
             &Op::List => self.get_all(req),
             &Op::Create => self.create(req),
@@ -65,7 +63,7 @@ impl Handler for UserAdmin {
 }
 
 impl UserAdmin {
-    fn get_all(&self, _: Request) -> FutureResponse {
+    fn get_all(&self, _: Request<Body>) -> FutureResponse {
         #[derive(Serialize)]
         struct UsersResp {
             users: Vec<UserInfo>,
@@ -86,51 +84,51 @@ impl UserAdmin {
                 String::new()
             }
         };
-        self.respond(Response::new().with_header(ContentType::json()).with_body(users))
+        self.respond(util::new_json_resp(users))
     }
 
-    fn create(&self, req: Request) -> FutureResponse {
+    fn create(&self, req: Request<Body>) -> FutureResponse {
         let config = self.config.clone();
         parse_json(req, move |user: UserInfo| {
             if let Err(e) = config.users_write().insert_info(&user) {
                 error!("{}", e);
-                return Response::new().with_status(StatusCode::InternalServerError);
+                return util::new_empty_error_resp();
             }
-            Response::new().with_status(StatusCode::Ok)
+            util::new_empty_resp(StatusCode::OK)
         })
     }
 
-    fn update(&self, req: Request) -> FutureResponse {
+    fn update(&self, req: Request<Body>) -> FutureResponse {
         let config = self.config.clone();
 
         parse_json(req, move |user: UserInfo| {
             if let Err(e) = config.users_write().update(&user) {
                 error!("{}", e);
-                return Response::new().with_status(StatusCode::InternalServerError);
+                return util::new_empty_error_resp();
             }
-            Response::new().with_status(StatusCode::Ok)
+            util::new_empty_resp(StatusCode::OK)
         })
     }
 
-    fn delete(&self, req: Request) -> FutureResponse {
+    fn delete(&self, req: Request<Body>) -> FutureResponse {
         let config = self.config.clone();
 
         let query = util::parse_query(req.uri().query());
 
         let user_id = match query.get("id").map(|id| id.parse::<i32>()) {
-            None | Some(Err(_)) => return self.respond_with(StatusCode::BadRequest, "No `id` param specified"),
+            None | Some(Err(_)) => return self.respond(util::new_bad_req_resp("No `id` param specified")),
             Some(Ok(id)) => id,
         };
 
         if let Err(e) = config.users_write().delete(user_id) {
             return self.respond_error(&format!("{}", e));
         }
-        self.respond_with(StatusCode::Ok, "")
+        self.respond_with(StatusCode::OK, "")
     }
 }
 
 impl Handler for RepoAdmin {
-    fn handle(&self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request<Body>) -> FutureResponse {
         match &self.op {
             &Op::List => self.get_all(req),
             &Op::Create => self.create(req),
@@ -141,7 +139,7 @@ impl Handler for RepoAdmin {
 }
 
 impl RepoAdmin {
-    fn get_all(&self, _: Request) -> FutureResponse {
+    fn get_all(&self, _: Request<Body>) -> FutureResponse {
         #[derive(Serialize)]
         struct ReposResp {
             repos: Vec<RepoInfo>,
@@ -162,60 +160,56 @@ impl RepoAdmin {
                 String::new()
             }
         };
-        self.respond(Response::new().with_header(ContentType::json()).with_body(repos))
+        self.respond(util::new_json_resp(repos))
     }
 
-    fn create(&self, req: Request) -> FutureResponse {
+    fn create(&self, req: Request<Body>) -> FutureResponse {
         let config = self.config.clone();
         parse_json(req, move |repo: RepoInfo| {
             if let Err(e) = config.repos_write().insert_info(&repo) {
                 error!("{}", e);
-                return Response::new().with_status(StatusCode::InternalServerError);
+                return util::new_empty_error_resp();
             }
-            Response::new().with_status(StatusCode::Ok)
+            util::new_empty_resp(StatusCode::OK)
         })
     }
 
-    fn update(&self, req: Request) -> FutureResponse {
+    fn update(&self, req: Request<Body>) -> FutureResponse {
         let config = self.config.clone();
 
         parse_json(req, move |repo: RepoInfo| {
             if let Err(e) = config.repos_write().update(&repo) {
                 error!("{}", e);
-                return Response::new().with_status(StatusCode::InternalServerError);
+                return util::new_empty_error_resp();
             }
-            Response::new().with_status(StatusCode::Ok)
+            util::new_empty_resp(StatusCode::OK)
         })
     }
 
-    fn delete(&self, req: Request) -> FutureResponse {
+    fn delete(&self, req: Request<Body>) -> FutureResponse {
         let config = self.config.clone();
 
         let query = util::parse_query(req.uri().query());
 
         let repo_id = match query.get("id").map(|id| id.parse::<i32>()) {
-            None | Some(Err(_)) => return self.respond_with(StatusCode::BadRequest, "No `id` param specified"),
+            None | Some(Err(_)) => return self.respond(util::new_bad_req_resp("No `id` param specified")),
             Some(Ok(id)) => id,
         };
 
         if let Err(e) = config.repos_write().delete(repo_id) {
             return self.respond_error(&format!("{}", e));
         }
-        self.respond_with(StatusCode::Ok, "")
+        self.respond_with(StatusCode::OK, "")
     }
 }
 
 pub struct MergeVersions {
     config: Arc<Config>,
-    core_remote: Remote,
 }
 
 impl MergeVersions {
-    pub fn new(config: Arc<Config>, core_remote: Remote) -> Box<MergeVersions> {
-        Box::new(MergeVersions {
-            config: config,
-            core_remote: core_remote,
-        })
+    pub fn new(config: Arc<Config>) -> Box<MergeVersions> {
+        Box::new(MergeVersions { config: config })
     }
 }
 
@@ -235,14 +229,13 @@ struct MergeVersionsResp {
 }
 
 impl Handler for MergeVersions {
-    fn handle(&self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request<Body>) -> FutureResponse {
         let config = self.config.clone();
-        let core_remote = self.core_remote.clone();
         parse_json(req, move |merge_req: MergeVersionsReq| {
             // make a copy of the jira config so we can modify the auth
             let mut jira_config: JiraConfig = match config.jira {
                 Some(ref j) => j.clone(),
-                None => return Response::new().with_status(StatusCode::BadRequest).with_body("No JIRA config"),
+                None => return util::new_bad_req_resp("No JIRA config"),
             };
 
             if !merge_req.dry_run {
@@ -250,20 +243,13 @@ impl Handler for MergeVersions {
                 jira_config.password = merge_req.admin_pass.unwrap_or(String::new());
 
                 if jira_config.username.is_empty() || jira_config.password.is_empty() {
-                    return Response::new().with_status(StatusCode::BadRequest).with_body(
-                        "JIRA auth required for non dry-run",
-                    );
+                    return util::new_bad_req_resp("JIRA auth required for non dry-run");
                 }
             }
 
-            let jira_sess = match jira::api::JiraSession::new(core_remote, &jira_config) {
+            let jira_sess = match jira::api::JiraSession::new(&jira_config) {
                 Ok(j) => j,
-                Err(e) => {
-                    return Response::new().with_status(StatusCode::BadRequest).with_body(format!(
-                        "Error creating JIRA session: {}",
-                        e
-                    ))
-                }
+                Err(e) => return util::new_bad_req_resp(format!("Error creating JIRA session: {}", e)),
             };
 
             let dry_run_mode = if merge_req.dry_run {
@@ -281,10 +267,7 @@ impl Handler for MergeVersions {
                 Ok(v) => v,
                 Err(e) => {
                     error!("Error merging pending versions: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                        "Error merging pending versions: {}",
-                        e
-                    ));
+                    return util::new_error_resp(format!("Error merging pending versions: {}", e));
                 }
             };
 
@@ -303,14 +286,11 @@ impl Handler for MergeVersions {
                 Ok(r) => r,
                 Err(e) => {
                     error!("Error serializing versions: {}", e);
-                    return Response::new().with_status(StatusCode::InternalServerError).with_body(format!(
-                        "Error serializing pending versions: {}",
-                        e
-                    ));
+                    return util::new_error_resp(format!("Error serializing pending versions: {}", e));
                 }
             };
 
-            Response::new().with_header(ContentType::json()).with_body(resp_json)
+            util::new_json_resp(resp_json)
         })
     }
 }

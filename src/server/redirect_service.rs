@@ -1,9 +1,13 @@
 use futures::future::{self, FutureResult};
-use hyper;
+use http::header::{HeaderMap, HeaderValue};
+use hyper::{self, Body, Request, Response};
 use hyper::{StatusCode, Uri};
-use hyper::header::{Host, Location};
-use hyper::server::{Request, Response, Service};
+use hyper::header::{HOST, LOCATION};
+use hyper::service::{NewService, Service};
 
+use util;
+
+#[derive(Clone)]
 pub struct RedirectService {
     https_port: u16,
 }
@@ -13,14 +17,16 @@ impl RedirectService {
         RedirectService { https_port: https_port }
     }
 
-    fn rewrite_uri(&self, uri: Uri, host_header: Option<&Host>) -> String {
+    fn rewrite_uri(&self, uri: Uri, host_header: Option<Uri>) -> String {
         let mut new_url = String::from("https://");
         if let Some(host) = uri.host() {
             new_url += host;
             self.maybe_add_port(&mut new_url, uri.port())
-        } else if let Some(host) = host_header {
-            new_url += host.hostname();
-            self.maybe_add_port(&mut new_url, host.port());
+        } else if let Some(host_header) = host_header {
+            if let Some(host) = host_header.host() {
+                new_url += host;
+                self.maybe_add_port(&mut new_url, host_header.port());
+            }
         }
         new_url += uri.path();
         if let Some(q) = uri.query() {
@@ -38,19 +44,47 @@ impl RedirectService {
     }
 }
 
-impl Service for RedirectService {
-    type Request = Request;
-    type Response = Response;
+impl NewService for RedirectService {
+    type ReqBody = Body;
+    type ResBody = Body;
     type Error = hyper::Error;
-    type Future = FutureResult<Response, hyper::Error>;
+    type Service = RedirectService;
+    type Future = future::FutureResult<RedirectService, hyper::Error>;
+    type InitError = hyper::Error;
 
-    fn call(&self, req: Request) -> Self::Future {
-        let new_uri = self.rewrite_uri(req.uri().clone(), req.headers().get::<Host>());
-        debug!("Redirecting request to {}", new_uri);
-        future::ok(Response::new().with_status(StatusCode::MovedPermanently).with_header(
-            Location::new(new_uri),
-        ))
+    fn new_service(&self) -> Self::Future {
+        future::ok(self.clone())
     }
+}
+
+impl Service for RedirectService {
+    type ReqBody = Body;
+    type ResBody = Body;
+    type Error = hyper::Error;
+    type Future = FutureResult<Response<Body>, hyper::Error>;
+
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
+        let host_header = get_host_header(&req.headers());
+
+        let new_uri_str = self.rewrite_uri(req.uri().clone(), host_header);
+        let new_uri = match HeaderValue::from_str(&new_uri_str) {
+            Err(e) => {
+                error!("Invalid Location header '{}': {}", new_uri_str, e);
+                return future::ok(util::new_empty_resp(StatusCode::INTERNAL_SERVER_ERROR));
+            }
+            Ok(uri) => uri,
+        };
+
+        debug!("Redirecting request to {}", new_uri_str);
+        let mut resp = util::new_empty_resp(StatusCode::MOVED_PERMANENTLY);
+        resp.headers_mut().insert(LOCATION, new_uri);
+
+        future::ok(resp)
+    }
+}
+
+fn get_host_header(headers: &HeaderMap) -> Option<Uri> {
+    headers.get(HOST).and_then(|h| h.to_str().ok()).and_then(|h| h.parse::<Uri>().ok())
 }
 
 #[cfg(test)]
@@ -58,18 +92,16 @@ mod tests {
     use super::*;
     use std::str::FromStr;
 
-    use hyper::header::Headers;
-
     #[test]
     fn test_rewrite_uri_uri_host_primary() {
         let service = RedirectService::new(99);
         let uri = Uri::from_str("http://host.foo.com/path/to/thing?param=value&param2=value2").unwrap();
-        let mut headers = Headers::new();
-        headers.set(Host::new("other.com", None));
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, "other.com".parse().unwrap());
 
         assert_eq!(
             "https://host.foo.com/path/to/thing?param=value&param2=value2",
-            service.rewrite_uri(uri, headers.get::<Host>())
+            service.rewrite_uri(uri, get_host_header(&headers))
         );
     }
 
@@ -77,12 +109,12 @@ mod tests {
     fn test_rewrite_uri_header_host_secondary() {
         let service = RedirectService::new(99);
         let uri = Uri::from_str("/path/to/thing?param=value&param2=value2").unwrap();
-        let mut headers = Headers::new();
-        headers.set(Host::new("other.com", None));
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, "other.com".parse().unwrap());
 
         assert_eq!(
             "https://other.com/path/to/thing?param=value&param2=value2",
-            service.rewrite_uri(uri, headers.get::<Host>())
+            service.rewrite_uri(uri, get_host_header(&headers))
         );
     }
 
@@ -90,12 +122,12 @@ mod tests {
     fn test_rewrite_uri_includes_port_if_uri_has_port() {
         let service = RedirectService::new(99);
         let uri = Uri::from_str("http://host.foo.com:20/path/to/thing?param=value&param2=value2").unwrap();
-        let mut headers = Headers::new();
-        headers.set(Host::new("other.com", None));
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, "other.com".parse().unwrap());
 
         assert_eq!(
             "https://host.foo.com:99/path/to/thing?param=value&param2=value2",
-            service.rewrite_uri(uri, headers.get::<Host>())
+            service.rewrite_uri(uri, get_host_header(&headers))
         );
     }
 
@@ -103,12 +135,12 @@ mod tests {
     fn test_rewrite_uri_includes_port_if_header_has_port() {
         let service = RedirectService::new(99);
         let uri = Uri::from_str("/path/to/thing?param=value&param2=value2").unwrap();
-        let mut headers = Headers::new();
-        headers.set(Host::new("other.com", Some(20)));
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, "other.com:20".parse().unwrap());
 
         assert_eq!(
             "https://other.com:99/path/to/thing?param=value&param2=value2",
-            service.rewrite_uri(uri, headers.get::<Host>())
+            service.rewrite_uri(uri, get_host_header(&headers))
         );
     }
 }

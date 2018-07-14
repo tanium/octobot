@@ -2,18 +2,16 @@ use std::fs;
 use std::io;
 use std::io::Seek;
 use std::net::SocketAddr;
-use std::sync::{Arc, mpsc};
-use std::thread;
+use std::sync::Arc;
 
-use hyper::server::Http;
+use futures::{Future, Stream, future};
+use hyper::server::Server;
 use rustls;
 use rustls::internal::pemfile;
-use tokio_core::reactor::Core;
-use tokio_proto;
-use tokio_rustls;
+use tokio;
+use tokio_rustls::ServerConfigExt;
 
 use config::Config;
-use errors::*;
 use github;
 use jira;
 use jira::api::JiraSession;
@@ -22,40 +20,32 @@ use server::octobot_service::OctobotService;
 use server::redirect_service::RedirectService;
 use server::sessions::Sessions;
 
-pub fn start(config: Config) -> Result<()> {
+pub fn start(config: Config) {
+    tokio::run(future::lazy(move || {
+        run_server(config);
+        future::ok(())
+    }));
+}
+
+fn run_server(config: Config) {
     let config = Arc::new(config);
 
-    let num_http_threads = config.main.num_http_threads.unwrap_or(20);
-
-    let mut main_threads = vec![];
-
-    let (core_tx, core_rx) = mpsc::channel();
-    main_threads.push(thread::Builder::new().name("octobot-core".to_string()).spawn(move || {
-        let mut core = Core::new().expect("core");
-
-        core_tx.send(core.remote()).expect("send core handle");
-
-        loop {
-            core.turn(None);
-        }
-    }));
-    let core_remote = core_rx.recv().expect("recv core handle");
+    // TODO(mhauck): not sure where to put this or whether it actually helped...
+    // let num_http_threads = config.main.num_http_threads.unwrap_or(20);
 
     let github: Arc<github::api::GithubSessionFactory>;
 
     if config.github.app_id.is_some() {
         github = match github::api::GithubApp::new(
-            core_remote.clone(),
             &config.github.host,
             config.github.app_id.expect("expected an app_id"),
-            &config.github.app_key()?,
+            &config.github.app_key().expect("expected an app_key"),
         ) {
             Ok(s) => Arc::new(s),
             Err(e) => panic!("Error initiating github session: {}", e),
         };
     } else {
         github = match github::api::GithubOauthApp::new(
-            core_remote.clone(),
             &config.github.host,
             &config.github.api_token.as_ref().expect("expected an api_token"),
         ) {
@@ -66,7 +56,7 @@ pub fn start(config: Config) -> Result<()> {
 
     let jira: Option<Arc<jira::api::Session>>;
     if let Some(ref jira_config) = config.jira {
-        jira = match JiraSession::new(core_remote.clone(), &jira_config) {
+        jira = match JiraSession::new(&jira_config) {
             Ok(s) => Some(Arc::new(s)),
             Err(e) => panic!("Error initiating jira session: {}", e),
         };
@@ -84,61 +74,64 @@ pub fn start(config: Config) -> Result<()> {
         None => "0.0.0.0:3001".parse().unwrap(),
     };
 
-    let tls;
+    let tls_cfg;
     if let Some(ref cert_file) = config.main.ssl_cert_file {
         if let Some(ref key_file) = config.main.ssl_key_file {
             let key = load_private_key(key_file);
             let certs = load_certs(cert_file);
 
-            let mut the_cfg = rustls::ServerConfig::new();
+            let mut the_cfg = rustls::ServerConfig::new(rustls::NoClientAuth::new());
             the_cfg.set_single_cert(certs, key);
 
-            tls = Some(Arc::new(the_cfg));
+            tls_cfg = Some(Arc::new(the_cfg));
         } else {
             warn!("Warning: No SSL configured");
-            tls = None;
+            tls_cfg = None;
         }
     } else {
         warn!("Warning: No SSL configured");
-        tls = None;
+        tls_cfg = None;
     }
 
     let ui_sessions = Arc::new(Sessions::new());
-    let github_handler_state =
-        Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone(), core_remote.clone()));
+    let github_handler_state = Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone()));
 
-    let main_service = move || {
-        Ok(OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone(), core_remote.clone()))
-    };
-    match tls {
-        Some(tls) => {
-            main_threads.push(thread::Builder::new().name("https-main".to_string()).spawn(move || {
-                let mut server =
-                    tokio_proto::TcpServer::new(tokio_rustls::proto::Server::new(Http::new(), tls), https_addr.clone());
-                server.threads(num_http_threads);
-                info!("Listening (HTTPS) on {}", https_addr);
-                server.serve(main_service);
-            }));
-            main_threads.push(thread::Builder::new().name("http-main".to_string()).spawn(move || {
-                let server = Http::new().bind(&http_addr, move || Ok(RedirectService::new(https_addr.port()))).unwrap();
-                info!("Listening (HTTP Redirect) on {}", http_addr);
-                server.run().unwrap();
-            }));
+    let main_service = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone());
+    let redirect_service = RedirectService::new(https_addr.port());
+
+    if let Some(tls_cfg) = tls_cfg {
+        // setup main service on https
+        {
+            let tcp = tokio::net::TcpListener::bind(&https_addr).unwrap();
+            let tls = tcp.incoming()
+                .and_then(move |s| tls_cfg.accept_async(s))
+                .then(|r| match r {
+                    Ok(x) => Ok::<_, io::Error>(Some(x)),
+                    Err(_e) => Err(_e),
+                })
+                .filter_map(|x| x);
+            let server = Server::builder(tls).serve(main_service).map_err(|e| error!("server error: {}", e));
+            info!("Listening (HTTPS) on {}", https_addr);
+            tokio::spawn(server);
         }
-        None => {
-            main_threads.push(thread::Builder::new().name("http-main".to_string()).spawn(move || {
-                let mut server = tokio_proto::TcpServer::new(Http::new(), http_addr.clone());
-                server.threads(num_http_threads);
-                info!("Listening (HTTP) on {}", http_addr);
-                server.serve(main_service);
-            }));
+        // setup http redirect
+        {
+            let server = Server::bind(&http_addr).serve(redirect_service).map_err(
+                |e| error!("server error: {}", e),
+            );
+            info!("Listening (HTTP Redirect) on {}", http_addr);
+            tokio::spawn(server);
         }
-    };
-
-    // run the main threads!
-    main_threads.into_iter().map(|t| t.unwrap()).map(|t| t.join().unwrap()).for_each(drop);
-
-    Ok(())
+    } else {
+        // setup main service on http
+        {
+            let server = Server::bind(&http_addr).serve(main_service).map(|_| ()).map_err(
+                |e| error!("server error: {}", e),
+            );
+            info!("Listening (HTTP) on {}", http_addr);
+            tokio::spawn(server);
+        }
+    }
 }
 
 fn load_certs(filename: &str) -> Vec<rustls::Certificate> {

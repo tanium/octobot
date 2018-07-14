@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use hyper::StatusCode;
-use hyper::header::ContentType;
-use hyper::server::{Request, Response};
+use hyper::{Body, Request, Response, StatusCode};
 use ring::{digest, pbkdf2};
 use rustc_serialize::hex::{FromHex, ToHex};
 
@@ -10,6 +8,7 @@ use config::Config;
 use ldap_auth;
 use server::http::{Filter, FilterResult, FutureResponse, Handler, parse_json};
 use server::sessions::Sessions;
+use util;
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
@@ -84,15 +83,12 @@ struct LoginRequest {
     password: String,
 }
 
-fn get_session(req: &Request) -> Option<String> {
-    match req.headers().get_raw("session") {
-        Some(ref h) if h.len() == 1 => Some(String::from_utf8_lossy(&h[0]).into_owned()),
-        None | Some(..) => None,
-    }
+fn get_session(req: &Request<Body>) -> Option<String> {
+    req.headers().get("session").map(|h| String::from_utf8_lossy(h.as_bytes()).into_owned())
 }
 
 impl Handler for LoginHandler {
-    fn handle(&self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request<Body>) -> FutureResponse {
         let config = self.config.clone();
         let sessions = self.sessions.clone();
 
@@ -129,40 +125,40 @@ impl Handler for LoginHandler {
                     "session": sess_id,
                 });
 
-                Response::new().with_header(ContentType::json()).with_body(json.to_string())
+                util::new_json_resp(json.to_string())
             } else {
-                Response::new().with_status(StatusCode::Unauthorized)
+                util::new_empty_resp(StatusCode::UNAUTHORIZED)
             }
         })
     }
 }
 
 
-fn invalid_session() -> Response {
-    Response::new().with_status(StatusCode::Forbidden).with_body("Invalid session")
+fn invalid_session() -> Response<Body> {
+    util::new_msg_resp(StatusCode::FORBIDDEN, "Invalid session")
 }
 
 impl Handler for LogoutHandler {
-    fn handle(&self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request<Body>) -> FutureResponse {
         let sess: String = match get_session(&req) {
             Some(s) => s.to_string(),
             None => return self.respond(invalid_session()),
         };
 
         self.sessions.remove_session(&sess);
-        self.respond(Response::new().with_header(ContentType::json()).with_body("{}"))
+        self.respond(util::new_json_resp("{}".into()))
     }
 }
 
 impl Handler for SessionCheckHandler {
-    fn handle(&self, req: Request) -> FutureResponse {
+    fn handle(&self, req: Request<Body>) -> FutureResponse {
         let sess: String = match get_session(&req) {
             Some(s) => s.to_string(),
             None => return self.respond(invalid_session()),
         };
 
         if self.sessions.is_valid_session(&sess) {
-            self.respond_with(StatusCode::Ok, "")
+            self.respond_with(StatusCode::OK, "")
         } else {
             self.respond(invalid_session())
         }
@@ -170,7 +166,7 @@ impl Handler for SessionCheckHandler {
 }
 
 impl Filter for LoginSessionFilter {
-    fn filter(&self, req: &Request) -> FilterResult {
+    fn filter(&self, req: &Request<Body>) -> FilterResult {
         let sess: String = match get_session(&req) {
             Some(s) => s.to_string(),
             None => return FilterResult::Halt(invalid_session()),
