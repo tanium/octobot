@@ -400,9 +400,16 @@ impl Session for GithubSession {
     }
 
     fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>> {
-        self.client
-            .get(&format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name))
-            .map_err(|e| format!("Error getting statuses {}/{} {}: {}", owner, repo, ref_name, e).into())
+        #[derive(Deserialize)]
+        struct CombinedStatus {
+            statuses: Vec<Status>
+        }
+
+        let status: Result<CombinedStatus> = self.client
+            .get(&format!("repos/{}/{}/commits/{}/status", owner, repo, ref_name))
+            .map_err(|e| format!("Error getting statuses {}/{} {}: {}", owner, repo, ref_name, e).into());
+
+        status.map(|s| s.statuses)
     }
 
     fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<()> {
