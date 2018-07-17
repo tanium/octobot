@@ -151,10 +151,11 @@ impl HTTPClient {
     where
         T: DeserializeOwned + Send + 'static,
     {
+        let path = path.to_string();
         Box::new(
-            self.request_async(method, path, body)
+            self.request_async(method, &path, body)
                 .or_else(|_| Err("HTTP Request was cancelled".into()))
-                .and_then(|res| {
+                .and_then(move |res| {
                     res.and_then(|res| {
                         if res.status.is_redirection() {
                             warn!(
