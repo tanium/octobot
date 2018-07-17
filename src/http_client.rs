@@ -156,6 +156,15 @@ impl HTTPClient {
                 .or_else(|_| Err("HTTP Request was cancelled".into()))
                 .and_then(|res| {
                     res.and_then(|res| {
+                        if res.status.is_redirection() {
+                            warn!(
+                                "Received redirection when expected to receive data to deserialize. \
+                                 Request: {}; Headers: {}",
+                                path,
+                                res.headers
+                            );
+                        }
+
                         serde_json::from_slice::<T>(&res.data)
                             .map_err(|e| {
                                 format!(
@@ -264,7 +273,7 @@ impl HTTPClient {
                         })
                         .map(move |buffer| {
                             debug!("Response: HTTP {}\n---\n{}\n---", status, String::from_utf8_lossy(&buffer));
-                            if !status.is_success() {
+                            if !status.is_success() && !status.is_redirection() {
                                 send_future(Err(
                                     format!(
                                         "Failed request to {}: HTTP {}\n---\n{}\n---",
