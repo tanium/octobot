@@ -240,7 +240,7 @@ impl Session for GithubSession {
             });
         let mut pull_request = pull_request?;
 
-        // Alwyas fetch PR's reviewers. Users get removed from requested_reviewers after they submit their review. :cry:
+        // Always fetch PR's reviewers. Users get removed from requested_reviewers after they submit their review. :cry:
         if pull_request.reviews.is_none() {
             match self.get_pull_request_reviews(owner, repo, number) {
                 Ok(r) => pull_request.reviews = Some(r),
