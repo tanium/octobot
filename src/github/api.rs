@@ -34,21 +34,9 @@ pub trait Session: Send + Sync {
 
     fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>>;
 
-    fn assign_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-        assignees: Vec<String>,
-    ) -> Result<()>;
+    fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<()>;
 
-    fn request_review(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-        reviewers: Vec<String>,
-    ) -> Result<()>;
+    fn request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>) -> Result<()>;
 
     fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()>;
     fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()>;
@@ -246,9 +234,21 @@ impl Session for GithubSession {
     }
 
     fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
-        self.client.get(&format!("repos/{}/{}/pulls/{}", owner, repo, number)).map_err(|e| {
-            format!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e).into()
-        })
+        let pull_request: Result<PullRequest> =
+            self.client.get(&format!("repos/{}/{}/pulls/{}", owner, repo, number)).map_err(|e| {
+                format!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e).into()
+            });
+        let mut pull_request = pull_request?;
+
+        // Alwyas fetch PR's reviewers. Users get removed from requested_reviewers after they submit their review. :cry:
+        if pull_request.reviews.is_none() {
+            match self.get_pull_request_reviews(owner, repo, number) {
+                Ok(r) => pull_request.reviews = Some(r),
+                Err(e) => error!("Error refetching pull request reviews: {}", e),
+            };
+        }
+
+        Ok(pull_request)
     }
 
     fn get_pull_requests(
@@ -258,7 +258,7 @@ impl Session for GithubSession {
         state: Option<&str>,
         head: Option<&str>,
     ) -> Result<Vec<PullRequest>> {
-        self.client
+        let pull_requests: Result<Vec<PullRequest>> = self.client
             .get::<Vec<PullRequest>>(
                 &format!("repos/{}/{}/pulls?state={}&head={}", owner, repo, state.unwrap_or(""), head.unwrap_or("")),
             )
@@ -271,7 +271,19 @@ impl Session for GithubSession {
                         true
                     })
                     .collect::<Vec<_>>()
-            })
+            });
+        let mut pull_requests = pull_requests?;
+
+        for pull_request in &mut pull_requests {
+            if pull_request.reviews.is_none() {
+                match self.get_pull_request_reviews(owner, repo, pull_request.number) {
+                    Ok(r) => pull_request.reviews = Some(r),
+                    Err(e) => error!("Error refetching pull request reviews: {}", e),
+                };
+            }
+        }
+
+        Ok(pull_requests)
     }
 
     fn create_pull_request(
@@ -324,13 +336,7 @@ impl Session for GithubSession {
         )
     }
 
-    fn assign_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-        assignees: Vec<String>,
-    ) -> Result<()> {
+    fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<()> {
         #[derive(Serialize)]
         struct AssignPR {
             assignees: Vec<String>,
@@ -343,20 +349,13 @@ impl Session for GithubSession {
             .map_err(|e| format!("Error assigning PR: {}/{} #{}: {}", owner, repo, number, e).into())
     }
 
-    fn request_review(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u32,
-        reviewers: Vec<String>,
-    ) -> Result<()>
-    {
+    fn request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>) -> Result<()> {
         #[derive(Serialize)]
         struct ReviewPR {
             reviewers: Vec<String>,
         }
 
-        let body = ReviewPR{ reviewers: reviewers };
+        let body = ReviewPR { reviewers: reviewers };
 
         self.client
             .post_void(&format!("repos/{}/{}/pulls/{}/requested_reviewers", owner, repo, number), &body)
@@ -402,12 +401,13 @@ impl Session for GithubSession {
     fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>> {
         #[derive(Deserialize)]
         struct CombinedStatus {
-            statuses: Vec<Status>
+            statuses: Vec<Status>,
         }
 
-        let status: Result<CombinedStatus> = self.client
-            .get(&format!("repos/{}/{}/commits/{}/status", owner, repo, ref_name))
-            .map_err(|e| format!("Error getting statuses {}/{} {}: {}", owner, repo, ref_name, e).into());
+        let status: Result<CombinedStatus> =
+            self.client
+                .get(&format!("repos/{}/{}/commits/{}/status", owner, repo, ref_name))
+                .map_err(|e| format!("Error getting statuses {}/{} {}: {}", owner, repo, ref_name, e).into());
 
         status.map(|s| s.statuses)
     }
