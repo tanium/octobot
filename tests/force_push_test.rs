@@ -67,6 +67,7 @@ fn test_force_push_identical_with_statuses() {
             context: Some("ci/build".into()),
             description: Some("the desc".into()),
             creator: None,
+            updated_at: None,
         },
         github::Status {
             state: "failure".into(),
@@ -74,6 +75,7 @@ fn test_force_push_identical_with_statuses() {
             context: Some("checks/cla".into()),
             description: None,
             creator: None,
+            updated_at: None,
         },
         github::Status {
             state: "error".into(),
@@ -81,6 +83,7 @@ fn test_force_push_identical_with_statuses() {
             context: Some("checks/cla".into()), // duplicate context -- should be ignored
             description: None,
             creator: None,
+            updated_at: None,
         },
         github::Status {
             state: "pending".into(),
@@ -88,6 +91,7 @@ fn test_force_push_identical_with_statuses() {
             context: Some("something/else".into()),
             description: None,
             creator: None,
+            updated_at: None,
         },
     ];
 
@@ -99,6 +103,7 @@ fn test_force_push_identical_with_statuses() {
         context: Some("ci/build".into()),
         description: Some("the desc (reapplied by octobot)".into()),
         creator: None,
+        updated_at: None,
     };
     let new_status2 = github::Status {
         state: "failure".into(),
@@ -106,6 +111,7 @@ fn test_force_push_identical_with_statuses() {
         context: Some("checks/cla".into()),
         description: Some("(reapplied by octobot)".into()),
         creator: None,
+        updated_at: None,
     };
 
 
