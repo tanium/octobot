@@ -214,7 +214,7 @@ impl Handler for GithubHandler {
             // refetch PR if present to get requested reviewers: they don't come on each webhook :cry:
             let mut changed_pr = None;
             if let Some(ref pull_request) = data.pull_request {
-                if pull_request.requested_reviewers.is_none() {
+                if pull_request.requested_reviewers.is_none() || pull_request.reviews.is_none() {
                     match github_session.get_pull_request(
                         &data.repository.owner.login(),
                         &data.repository.name,
