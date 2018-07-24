@@ -537,6 +537,7 @@ pub struct Status {
     pub context: Option<String>,
     pub description: Option<String>,
     pub creator: Option<User>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
