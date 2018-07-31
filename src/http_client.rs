@@ -136,6 +136,17 @@ impl HTTPClient {
         })
     }
 
+    pub fn request_raw<U: Serialize>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&U>,
+    ) -> Result<HTTPResponse<Vec<u8>>> {
+        self.request_raw_async(method, path, body).wait().map_err(|e| {
+            Error::from(format!("Error waiting for HTTP response: {}", e))
+        })
+    }
+
     pub fn request_void<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<HTTPResponse<()>> {
         self.request_void_async(method, path, body).wait().map_err(|e| {
             Error::from(format!("Error waiting for HTTP response: {}", e))
@@ -199,6 +210,27 @@ impl HTTPClient {
                     res.map(|r| {
                         HTTPResponse {
                             item: (),
+                            headers: r.headers,
+                            status: r.status,
+                        }
+                    })
+                }),
+        )
+    }
+
+    pub fn request_raw_async<U: Serialize>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&U>,
+    ) -> FutureResult<HTTPResponse<Vec<u8>>> {
+        Box::new(
+            self.request_async(method, path, body)
+                .or_else(|_| Err("HTTP Request was cancelled".into()))
+                .and_then(|res| {
+                    res.map(|r| {
+                        HTTPResponse {
+                            item: r.data.to_vec(),
                             headers: r.headers,
                             status: r.status,
                         }
