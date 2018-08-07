@@ -1,4 +1,4 @@
-use hyper::header::Headers;
+use hyper::HeaderMap;
 use ring::{digest, hmac};
 use rustc_serialize::hex::FromHex;
 
@@ -7,15 +7,15 @@ pub struct GithubWebhookVerifier {
 }
 
 impl GithubWebhookVerifier {
-    pub fn is_req_valid(&self, headers: &Headers, data: &[u8]) -> bool {
-        let sig_header: String = match headers.get_raw("x-hub-signature") {
-            Some(ref h) if h.len() == 1 => String::from_utf8_lossy(&h[0]).into_owned(),
-            None | Some(..) => {
-                error!("Expected to find exactly one signature header");
-                return false;
-            }
-        };
+    pub fn is_req_valid(&self, headers: &HeaderMap, data: &[u8]) -> bool {
+        let values = headers.get_all("x-hub-signature").iter().collect::<Vec<_>>();
 
+        if values.len() != 1 {
+            error!("Expected to find exactly one signature header");
+            return false;
+        }
+
+        let sig_header = String::from_utf8_lossy(values[0].as_bytes()).into_owned();
         return self.is_valid(data, &sig_header);
     }
 

@@ -64,7 +64,7 @@ fn new_push_commit(msg: &str, hash: &str) -> github::PushCommit {
 fn new_issue(key: &str, status: Option<&str>) -> Issue {
     Issue {
         key: key.into(),
-        status: status.map(|s| Status { name: s.to_string() })
+        status: status.map(|s| Status { name: s.to_string() }),
     }
 }
 
@@ -210,7 +210,10 @@ fn test_transition_issues_only_if_necessary() {
     let test = new_test();
     let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
-    let commit = new_commit("Fix [SER-1][SER-2][SER-3] I fixed it. And also relates to [CLI-9999][CLI-9998][OTHER-999]", "aabbccddee");
+    let commit = new_commit(
+        "Fix [SER-1][SER-2][SER-3] I fixed it. And also relates to [CLI-9999][CLI-9998][OTHER-999]",
+        "aabbccddee",
+    );
 
     test.jira.mock_comment_issue(
         "SER-1",

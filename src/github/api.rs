@@ -1,5 +1,3 @@
-use tokio_core::reactor::Remote;
-
 use errors::*;
 use github::models::*;
 use http_client::HTTPClient;
@@ -71,7 +69,6 @@ pub fn api_base(host: &str) -> String {
 }
 
 pub struct GithubApp {
-    core_remote: Remote,
     host: String,
     app_id: u32,
     // DER formatted API private key
@@ -80,16 +77,14 @@ pub struct GithubApp {
 }
 
 pub struct GithubOauthApp {
-    core_remote: Remote,
     host: String,
     api_token: String,
     user: Option<User>,
 }
 
 impl GithubApp {
-    pub fn new(core_remote: Remote, host: &str, app_id: u32, app_key: &[u8]) -> Result<GithubApp> {
+    pub fn new(host: &str, app_id: u32, app_key: &[u8]) -> Result<GithubApp> {
         let mut github = GithubApp {
-            core_remote: core_remote,
             host: host.into(),
             app_id: app_id,
             app_key: app_key.into(),
@@ -107,7 +102,7 @@ impl GithubApp {
 
     fn new_client(&self) -> HTTPClient {
         let jwt_token = jwt::new_token(self.app_id, &self.app_key);
-        HTTPClient::new(self.core_remote.clone(), &api_base(&self.host)).with_headers(hashmap!{
+        HTTPClient::new(&api_base(&self.host)).with_headers(hashmap!{
             "Accept" => "application/vnd.github.machine-man-preview+json".to_string(),
             "Authorization" => format!("Bearer {}", jwt_token),
         })
@@ -150,14 +145,13 @@ impl GithubSessionFactory for GithubApp {
     }
 
     fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession> {
-        GithubSession::new(self.core_remote.clone(), &self.host, &self.bot_name(), &self.get_token_repo(owner, repo)?)
+        GithubSession::new(&self.host, &self.bot_name(), &self.get_token_repo(owner, repo)?)
     }
 }
 
 impl GithubOauthApp {
-    pub fn new(core_remote: Remote, host: &str, api_token: &str) -> Result<GithubOauthApp> {
+    pub fn new(host: &str, api_token: &str) -> Result<GithubOauthApp> {
         let mut github = GithubOauthApp {
-            core_remote: core_remote,
             host: host.into(),
             api_token: api_token.into(),
             user: None,
@@ -187,7 +181,7 @@ impl GithubSessionFactory for GithubOauthApp {
     }
 
     fn new_session(&self, _owner: &str, _repo: &str) -> Result<GithubSession> {
-        GithubSession::new(self.core_remote.clone(), &self.host, &self.bot_name(), &self.api_token)
+        GithubSession::new(&self.host, &self.bot_name(), &self.api_token)
     }
 }
 
@@ -201,8 +195,8 @@ pub struct GithubSession {
 }
 
 impl GithubSession {
-    pub fn new(core_remote: Remote, host: &str, bot_name: &str, token: &str) -> Result<GithubSession> {
-        let client = HTTPClient::new(core_remote, &api_base(host)).with_headers(hashmap!{
+    pub fn new(host: &str, bot_name: &str, token: &str) -> Result<GithubSession> {
+        let client = HTTPClient::new(&api_base(host)).with_headers(hashmap!{
                 // Standard accept header is "application/vnd.github.v3+json".
                 // The "mockingbird-preview" allows us to use the timeline api.
                 // cf. https://developer.github.com/enterprise/2.13/v3/issues/timeline/

@@ -3,7 +3,6 @@ use http_client::HTTPClient;
 use regex::Regex;
 use serde_json;
 use std::collections::HashMap;
-use tokio_core::reactor::Remote;
 use url::percent_encoding::{DEFAULT_ENCODE_SET, utf8_percent_encode};
 
 use config::JiraConfig;
@@ -57,12 +56,12 @@ fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String> {
 }
 
 impl JiraSession {
-    pub fn new(core_remote: Remote, config: &JiraConfig) -> Result<JiraSession> {
+    pub fn new(config: &JiraConfig) -> Result<JiraSession> {
         let jira_base = config.base_url();
         let api_base = format!("{}/rest/api/2", jira_base);
 
         let auth = base64::encode(format!("{}:{}", config.username, config.password).as_bytes());
-        let client = HTTPClient::new(core_remote, &api_base).with_headers(hashmap!{
+        let client = HTTPClient::new(&api_base).with_headers(hashmap!{
                 "Accept" => "application/json".to_string(),
                 "Content-Type" => "application/json".to_string(),
                 "Authorization" => format!("Basic {}", auth),

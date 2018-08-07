@@ -2,8 +2,8 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
-use hyper::header::ContentType;
-use hyper::server::{Request, Response};
+use hyper::{Body, Request, Response};
+use hyper::header::CONTENT_TYPE;
 
 use server::http::{FutureResponse, Handler};
 
@@ -43,7 +43,10 @@ impl HtmlHandler {
 }
 
 impl Handler for HtmlHandler {
-    fn handle(&self, _: Request) -> FutureResponse {
-        self.respond(Response::new().with_header(ContentType::html()).with_body(self.contents()))
+    fn handle(&self, _: Request<Body>) -> FutureResponse {
+        let mut resp = Response::new(Body::from(self.contents()));
+        resp.headers_mut().insert(CONTENT_TYPE, "text/html".parse().unwrap());
+
+        self.respond(resp)
     }
 }

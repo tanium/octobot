@@ -5,6 +5,7 @@ extern crate base64;
 #[macro_use]
 extern crate error_chain;
 extern crate futures;
+extern crate http;
 extern crate hyper;
 extern crate hyper_rustls;
 extern crate jsonwebtoken;
@@ -19,11 +20,11 @@ extern crate serde;
 #[macro_use]
 extern crate serde_json;
 extern crate threadpool;
+extern crate tokio;
 extern crate tokio_core;
 extern crate toml;
 extern crate unidiff;
 extern crate url;
-extern crate tokio_proto;
 extern crate tokio_rustls;
 extern crate time;
 extern crate rusqlite;

@@ -203,9 +203,7 @@ fn test_get_commit_desc() {
     git.run_git(&["commit", "--amend", "-m", "I have a subject\n\nAnd I have a body"]);
     assert_eq!(("I have a subject".into(), "And I have a body".into()), git.git.get_commit_desc("HEAD").unwrap());
 
-    git.run_git(
-        &["commit", "--amend", "-m", "I have a subject\nAnd I forgot to skip a line"],
-    );
+    git.run_git(&["commit", "--amend", "-m", "I have a subject\nAnd I forgot to skip a line"]);
     assert_eq!(
         ("I have a subject".into(), "And I forgot to skip a line".into()),
         git.git.get_commit_desc("HEAD").unwrap()

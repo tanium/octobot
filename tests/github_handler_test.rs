@@ -270,7 +270,7 @@ fn test_ping() {
     test.handler.event = "ping".to_string();
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "ping".into()), resp);
+    assert_eq!((StatusCode::OK, "ping".into()), resp);
 }
 
 #[test]
@@ -299,7 +299,7 @@ fn test_commit_comment_with_path() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "commit_comment".into()), resp);
+    assert_eq!((StatusCode::OK, "commit_comment".into()), resp);
 }
 
 #[test]
@@ -328,7 +328,7 @@ fn test_commit_comment_no_path() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "commit_comment".into()), resp);
+    assert_eq!((StatusCode::OK, "commit_comment".into()), resp);
 }
 
 #[test]
@@ -368,7 +368,7 @@ fn test_issue_comment() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "issue_comment".into()), resp);
+    assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
 }
 
 #[test]
@@ -409,7 +409,7 @@ fn test_pull_request_comment() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr_review_comment".into()), resp);
+    assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
 }
 
 #[test]
@@ -449,7 +449,7 @@ fn test_pull_request_review_commented() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr_review [comment]".into()), resp);
+    assert_eq!((StatusCode::OK, "pr_review [comment]".into()), resp);
 }
 
 #[test]
@@ -470,7 +470,7 @@ fn test_pull_request_comments_ignore_empty_messages() {
     test.slack.expect(vec![]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr_review_comment".into()), resp);
+    assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
 }
 
 #[test]
@@ -491,7 +491,7 @@ fn test_pull_request_comments_ignore_octobot() {
     test.slack.expect(vec![]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr_review_comment".into()), resp);
+    assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
 }
 
 #[test]
@@ -532,7 +532,7 @@ fn test_pull_request_review_approved() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr_review".into()), resp);
+    assert_eq!((StatusCode::OK, "pr_review".into()), resp);
 }
 
 #[test]
@@ -572,7 +572,7 @@ fn test_pull_request_review_changes_requested() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr_review".into()), resp);
+    assert_eq!((StatusCode::OK, "pr_review".into()), resp);
 }
 
 #[test]
@@ -606,7 +606,7 @@ fn test_pull_request_opened() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -640,7 +640,7 @@ fn test_pull_request_closed() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -674,7 +674,7 @@ fn test_pull_request_reopened() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -712,7 +712,7 @@ fn test_pull_request_assigned() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -746,7 +746,7 @@ fn test_pull_request_unassigned() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -784,7 +784,7 @@ fn test_pull_request_review_requested() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 
@@ -821,7 +821,7 @@ fn test_pull_request_review_no_username() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -835,7 +835,7 @@ fn test_pull_request_other() {
     // should not do anything!
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 
@@ -853,7 +853,7 @@ fn test_pull_request_labeled_not_merged() {
     // labeled but not merged --> noop
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -903,7 +903,7 @@ fn test_pull_request_merged_error_getting_labels() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -942,7 +942,7 @@ fn test_pull_request_merged_no_labels() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -996,7 +996,7 @@ fn test_pull_request_merged_backport_labels() {
     );
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 
     expect_thread.join().unwrap();
 }
@@ -1067,7 +1067,7 @@ fn test_pull_request_merged_backport_labels_custom_pattern() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 
     expect_thread.join().unwrap();
 }
@@ -1087,7 +1087,7 @@ fn test_pull_request_merged_retroactively_labeled() {
     let expect_thread = test.expect_will_merge_branches(vec!["release/7.123".into()]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 
     expect_thread.join().unwrap();
 }
@@ -1107,7 +1107,7 @@ fn test_pull_request_merged_master_branch() {
     let expect_thread = test.expect_will_merge_branches(vec!["master".into()]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 
     expect_thread.join().unwrap();
 }
@@ -1127,7 +1127,7 @@ fn test_pull_request_merged_develop_branch() {
     let expect_thread = test.expect_will_merge_branches(vec!["develop".into()]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 
     expect_thread.join().unwrap();
 }
@@ -1149,7 +1149,7 @@ fn test_push_no_pr() {
     );
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
 #[test]
@@ -1244,7 +1244,7 @@ fn test_push_with_pr() {
     ]);
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
 #[test]
@@ -1293,7 +1293,7 @@ fn test_push_force_notify() {
     let expect_thread = test.expect_will_force_push_notify("abcdef0000", "1111abcdef");
 
     let resp = test.handler.handle_event().expect("handled event");
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 
     expect_thread.join().expect("expect-thread finished");
 }
@@ -1331,7 +1331,7 @@ fn test_push_force_notify_wip() {
     let expect_thread = test.expect_will_not_force_push_notify();
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 
     expect_thread.join().unwrap();
 }
@@ -1385,7 +1385,7 @@ fn test_push_force_notify_ignored() {
     let expect_thread = test.expect_will_not_force_push_notify();
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 
     expect_thread.join().unwrap();
 }
@@ -1500,7 +1500,7 @@ fn test_jira_pull_request_opened() {
     }
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -1546,7 +1546,7 @@ fn test_jira_pull_request_opened_too_many_commits() {
     // do not set jira expectations
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "pr".into()), resp);
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 #[test]
@@ -1567,7 +1567,7 @@ fn test_jira_push_master() {
     }
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
 #[test]
@@ -1588,7 +1588,7 @@ fn test_jira_push_develop() {
     }
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
 #[test]
@@ -1609,7 +1609,7 @@ fn test_jira_push_release() {
     }
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
 #[test]
@@ -1633,7 +1633,7 @@ fn test_jira_push_other_branch() {
     // no jira mocks: will fail if called
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
 
@@ -1654,7 +1654,7 @@ fn test_jira_disabled() {
     // no jira mocks: will fail if called
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
 #[test]
@@ -1682,7 +1682,7 @@ fn test_jira_push_triggers_version_script() {
     let expect_thread = test.expect_will_run_version_script("master", "1111abcdef");
 
     let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::Ok, "push".into()), resp);
+    assert_eq!((StatusCode::OK, "push".into()), resp);
 
     expect_thread.join().unwrap()
 }

@@ -2,33 +2,34 @@ use futures::Stream;
 use futures::future::Future;
 use futures::sync::oneshot;
 use hyper;
-use hyper::{Method, Request};
-use hyper::header::UserAgent;
+use hyper::{Body, Request};
+use hyper::header::USER_AGENT;
 use hyper_rustls::HttpsConnector;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use serde_json;
 use std::collections::HashMap;
-use tokio_core::reactor::Remote;
+use tokio;
 
 use errors;
 use errors::*;
 
+pub use hyper::Method;
+
 pub struct HTTPClient {
     api_base: String,
     headers: HashMap<&'static str, String>,
-    core_remote: Remote,
 }
 
 struct InternalResp {
     data: hyper::Chunk,
-    headers: hyper::Headers,
+    headers: hyper::HeaderMap,
     status: hyper::StatusCode,
 }
 
 pub struct HTTPResponse<T> {
     pub item: T,
-    pub headers: hyper::Headers,
+    pub headers: hyper::HeaderMap,
     pub status: hyper::StatusCode,
 }
 
@@ -38,11 +39,10 @@ type FutureInternalResponse = oneshot::Receiver<InternalResponseResult>;
 pub type FutureResult<T> = Box<Future<Item = T, Error = errors::Error> + Send + 'static>;
 
 impl HTTPClient {
-    pub fn new(core_remote: Remote, api_base: &str) -> HTTPClient {
+    pub fn new(api_base: &str) -> HTTPClient {
         HTTPClient {
             api_base: api_base.into(),
             headers: HashMap::new(),
-            core_remote: core_remote,
         }
     }
 
@@ -56,66 +56,66 @@ impl HTTPClient {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        self.request_de::<T, ()>(Method::Get, path, None).map(|res| res.item)
+        self.request_de::<T, ()>(Method::GET, path, None).map(|res| res.item)
     }
 
     pub fn get_async<T>(&self, path: &str) -> FutureResult<HTTPResponse<T>>
     where
         T: DeserializeOwned + Send + 'static,
     {
-        self.request_de_async::<T, ()>(Method::Get, path, None)
+        self.request_de_async::<T, ()>(Method::GET, path, None)
     }
 
     pub fn post<T, U: Serialize>(&self, path: &str, body: &U) -> Result<T>
     where
         T: DeserializeOwned + Send + 'static,
     {
-        self.request_de::<T, U>(Method::Post, path, Some(body)).map(|res| res.item)
+        self.request_de::<T, U>(Method::POST, path, Some(body)).map(|res| res.item)
     }
 
     pub fn post_async<T, U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<T>>
     where
         T: DeserializeOwned + Send + 'static,
     {
-        self.request_de_async::<T, U>(Method::Post, path, Some(body))
+        self.request_de_async::<T, U>(Method::POST, path, Some(body))
     }
 
     pub fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
-        self.request_void::<U>(Method::Post, path, Some(body)).map(|_| ())
+        self.request_void::<U>(Method::POST, path, Some(body)).map(|_| ())
     }
 
     pub fn post_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<()>> {
-        self.request_void_async::<U>(Method::Post, path, Some(body))
+        self.request_void_async::<U>(Method::POST, path, Some(body))
     }
 
     pub fn put<T, U: Serialize>(&self, path: &str, body: &U) -> Result<T>
     where
         T: DeserializeOwned + Send + 'static,
     {
-        self.request_de::<T, U>(Method::Put, path, Some(body)).map(|res| res.item)
+        self.request_de::<T, U>(Method::PUT, path, Some(body)).map(|res| res.item)
     }
 
     pub fn put_async<T, U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<T>>
     where
         T: DeserializeOwned + Send + 'static,
     {
-        self.request_de_async::<T, U>(Method::Put, path, Some(body))
+        self.request_de_async::<T, U>(Method::PUT, path, Some(body))
     }
 
     pub fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
-        self.request_void::<U>(Method::Put, path, Some(body)).map(|_| ())
+        self.request_void::<U>(Method::PUT, path, Some(body)).map(|_| ())
     }
 
     pub fn put_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<()>> {
-        self.request_void_async::<U>(Method::Put, path, Some(body))
+        self.request_void_async::<U>(Method::PUT, path, Some(body))
     }
 
     pub fn delete_void(&self, path: &str) -> Result<()> {
-        self.request_void::<()>(Method::Delete, path, None).map(|_| ())
+        self.request_void::<()>(Method::DELETE, path, None).map(|_| ())
     }
 
     pub fn delete_void_async(&self, path: &str) -> FutureResult<HTTPResponse<()>> {
-        self.request_void_async::<()>(Method::Delete, path, None)
+        self.request_void_async::<()>(Method::DELETE, path, None)
     }
 
     // `spawn` is necesary for driving futures returned by async methods and any combinations
@@ -124,7 +124,7 @@ impl HTTPClient {
     where
         F: Future<Item = (), Error = ()> + Send + 'static,
     {
-        self.core_remote.spawn(move |_| fut);
+        tokio::spawn(fut);
     }
 
     pub fn request_de<T, U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<HTTPResponse<T>>
@@ -171,7 +171,7 @@ impl HTTPClient {
                         if res.status.is_redirection() {
                             warn!(
                                 "Received redirection when expected to receive data to deserialize. \
-                                 Request: {}; Headers: {}",
+                                 Request: {}; Headers: {:?}",
                                 path,
                                 res.headers
                             );
@@ -266,31 +266,48 @@ impl HTTPClient {
 
         let headers = self.headers.clone();
 
-        let mut req = Request::new(method, url);
-        req.headers_mut().set(UserAgent::new("octobot"));
+        let mut req = Request::builder();
+        req.method(method).uri(url).header(USER_AGENT, "octobot");
 
         for (k, v) in &headers {
-            req.headers_mut().set_raw(k.clone(), v.clone());
+            match v.parse::<hyper::header::HeaderValue>() {
+                Ok(v) => {
+                    req.header(k.clone(), v);
+                }
+                Err(e) => {
+                    error!("Skipping invalid header: {} => {}: {}", k, v, e);
+                }
+
+            }
         }
 
-        if let Some(body) = body {
-            let body_json = match serde_json::to_string(&body) {
-                Ok(j) => j,
-                Err(e) => {
-                    send_future(Err(format!("Error json-encoding body: {}", e).into()));
-                    return rx;
+        let req = match body {
+            Some(body) => {
+                match serde_json::to_string(&body) {
+                    Ok(j) => req.body(Body::from(j)),
+                    Err(e) => {
+                        send_future(Err(format!("Error json-encoding body: {}", e).into()));
+                        return rx;
+                    }
                 }
-            };
-            req.set_body(body_json)
-        }
+            }
+            None => req.body(Body::empty()),
+        };
+        let req = match req {
+            Ok(r) => r,
+            Err(e) => {
+                send_future(Err(format!("Error building HTTP request: {}", e).into()));
+                return rx;
+            }
+        };
+
 
         let path = path.to_string();
 
-        self.core_remote.spawn(move |handle| {
-            // TODO: I wonder if these objects are expensive to create and we should be sharing them across requests?
-            let https = HttpsConnector::new(4, &handle);
-            let client = hyper::Client::configure().connector(https).build(&handle);
+        // TODO: I wonder if these objects are expensive to create and we should be sharing them across requests?
+        let client = hyper::Client::builder().build(HttpsConnector::new(4));
 
+        tokio::spawn(
             client
                 .request(req)
                 .map_err(|e| {
@@ -299,7 +316,7 @@ impl HTTPClient {
                 .and_then(|res| {
                     let status = res.status();
                     let headers = res.headers().clone();
-                    res.body()
+                    res.into_body()
                         .concat2()
                         .map_err(|e| {
                             error!("Error in HTTP request: {}", e);
@@ -323,8 +340,8 @@ impl HTTPClient {
                                 }));
                             }
                         })
-                })
-        });
+                }),
+        );
 
         rx
     }
