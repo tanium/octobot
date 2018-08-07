@@ -4,7 +4,7 @@ use std::io::Seek;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use futures::{Future, Stream, future};
+use futures::{Future, Stream};
 use hyper::server::Server;
 use rustls;
 use rustls::internal::pemfile;
@@ -15,23 +15,21 @@ use config::Config;
 use github;
 use jira;
 use jira::api::JiraSession;
+use runtime;
 use server::github_handler::GithubHandlerState;
 use server::octobot_service::OctobotService;
 use server::redirect_service::RedirectService;
 use server::sessions::Sessions;
 
 pub fn start(config: Config) {
-    tokio::run(future::lazy(move || {
-        run_server(config);
-        future::ok(())
-    }));
+    let num_http_threads = config.main.num_http_threads.unwrap_or(20);
+
+    runtime::run(num_http_threads, move || run_server(config));
 }
 
 fn run_server(config: Config) {
     let config = Arc::new(config);
 
-    // TODO(mhauck): not sure where to put this or whether it actually helped...
-    // let num_http_threads = config.main.num_http_threads.unwrap_or(20);
 
     let github: Arc<github::api::GithubSessionFactory>;
 
