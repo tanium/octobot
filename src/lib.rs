@@ -50,6 +50,7 @@ pub mod messenger;
 pub mod pr_merge;
 pub mod repos;
 pub mod repo_version;
+pub mod runtime;
 pub mod server;
 pub mod slack;
 pub mod users;
