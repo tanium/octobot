@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use threadpool::{self, ThreadPool};
-
 use config::Config;
 use diffs::DiffOfDiffs;
 use errors::*;
@@ -185,7 +183,7 @@ pub fn diff_force_push(
     Ok(DiffOfDiffs::new(&before_diff, &after_diff))
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ForcePushRequest {
     pub repo: github::Repo,
     pub pull_request: github::PullRequest,
@@ -197,7 +195,6 @@ struct Runner {
     config: Arc<Config>,
     github_app: Arc<GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
-    thread_pool: ThreadPool,
 }
 
 
@@ -215,66 +212,52 @@ pub fn req(
     }
 }
 
-pub fn new_worker(
-    max_concurrency: usize,
+pub fn new_runner(
     config: Arc<Config>,
     github_app: Arc<GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
-) -> worker::Worker<ForcePushRequest> {
-    worker::Worker::new(
-        "force-push",
-        Runner {
-            config: config,
-            github_app: github_app,
-            clone_mgr: clone_mgr,
-            thread_pool: threadpool::Builder::new()
-                .num_threads(max_concurrency)
-                .thread_name("force-push".to_string())
-                .build(),
-        },
-    )
+) -> Arc<worker::Runner<ForcePushRequest>> {
+    Arc::new(Runner {
+        config: config,
+        github_app: github_app,
+        clone_mgr: clone_mgr,
+    })
 }
 
 impl worker::Runner<ForcePushRequest> for Runner {
     fn handle(&self, req: ForcePushRequest) {
-        let github_app = self.github_app.clone();
-        let clone_mgr = self.clone_mgr.clone();
-        let config = self.config.clone();
-        let statuses = config.repos().force_push_reapply_statuses(&req.repo);
+        let statuses = self.config.repos().force_push_reapply_statuses(&req.repo);
 
-        // launch another thread to do the version calculation
-        self.thread_pool.execute(move || {
-            let github = match github_app.new_session(&req.repo.owner.login(), &req.repo.name) {
-                Ok(g) => g,
-                Err(e) => {
-                    error!("Error getting new session: {}", e);
-                    return;
-                }
-            };
-
-            let diffs = diff_force_push(
-                &github,
-                &clone_mgr,
-                &req.repo.owner.login(),
-                &req.repo.name,
-                &req.pull_request,
-                &req.before_hash,
-                &req.after_hash,
-            );
-
-            let comment = comment_force_push(
-                diffs,
-                statuses,
-                &github,
-                &req.repo.owner.login(),
-                &req.repo.name,
-                &req.pull_request,
-                &req.before_hash,
-                &req.after_hash,
-            );
-            if let Err(e) = comment {
-                error!("Error diffing force push: {}", e);
+        let github = match self.github_app.new_session(&req.repo.owner.login(), &req.repo.name) {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Error getting new session: {}", e);
+                return;
             }
-        });
+        };
+
+        let diffs = diff_force_push(
+            &github,
+            &self.clone_mgr,
+            &req.repo.owner.login(),
+            &req.repo.name,
+            &req.pull_request,
+            &req.before_hash,
+            &req.after_hash,
+        );
+
+        let comment = comment_force_push(
+            diffs,
+            statuses,
+            &github,
+            &req.repo.owner.login(),
+            &req.repo.name,
+            &req.pull_request,
+            &req.before_hash,
+            &req.after_hash,
+        );
+        if let Err(e) = comment {
+            error!("Error diffing force push: {}", e);
+        }
     }
 }

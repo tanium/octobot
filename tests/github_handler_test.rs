@@ -5,31 +5,27 @@ extern crate tempdir;
 mod mocks;
 
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, channel};
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
 use hyper::StatusCode;
 use tempdir::TempDir;
 
 use octobot::config::{Config, JiraConfig};
 use octobot::db::Database;
-use octobot::force_push::ForcePushRequest;
+use octobot::force_push::{self, ForcePushRequest};
 use octobot::github::*;
 use octobot::github::api::Session;
 use octobot::jira;
 use octobot::messenger;
-use octobot::pr_merge::PRMergeRequest;
-use octobot::repo_version::RepoVersionRequest;
+use octobot::pr_merge::{self, PRMergeRequest};
+use octobot::repo_version::{self, RepoVersionRequest};
 use octobot::repos;
 use octobot::server::github_handler::GithubEventHandler;
 use octobot::slack::{self, SlackAttachmentBuilder};
-use octobot::util;
-use octobot::worker::{WorkMessage, WorkSender};
 
 use mocks::mock_github::MockGithub;
 use mocks::mock_jira::MockJira;
 use mocks::mock_slack::MockSlack;
+use mocks::mock_worker::LockedMockWorker;
 
 // this message gets appended only to review channel messages, not to slackbots
 const REPO_MSG: &'static str = "(<http://the-github-host/some-user/some-repo|some-user/some-repo>)";
@@ -45,87 +41,31 @@ struct GithubHandlerTest {
     jira: Option<Arc<MockJira>>,
     _temp_dir: TempDir,
     config: Arc<Config>,
-    pr_merge_rx: Option<Receiver<WorkMessage<PRMergeRequest>>>,
-    repo_version_rx: Option<Receiver<WorkMessage<RepoVersionRequest>>>,
-    force_push_rx: Option<Receiver<WorkMessage<ForcePushRequest>>>,
+    pr_merge: LockedMockWorker<PRMergeRequest>,
+    repo_version: LockedMockWorker<RepoVersionRequest>,
+    force_push: LockedMockWorker<ForcePushRequest>,
 }
 
 impl GithubHandlerTest {
-    fn expect_will_merge_branches(&mut self, branches: Vec<String>) -> JoinHandle<()> {
-        let timeout = Duration::from_millis(300);
-        let rx = self.pr_merge_rx.take().unwrap();
-        thread::spawn(move || {
-            for branch in branches {
-                let msg = util::recv_timeout(&rx, timeout).expect(
-                    &format!("expected to recv msg for branch: {}", branch),
-                );
-                match msg {
-                    WorkMessage::WorkItem(req) => {
-                        assert_eq!(branch, req.target_branch);
-                    }
-                    _ => {
-                        panic!("Unexpected messages: {:?}", msg);
-                    }
-                };
-            }
+    fn expect_will_merge_branches(&mut self, branches: Vec<String>) {
+        let repo = &self.handler.data.repository;
+        let pr = &self.handler.data.pull_request.as_ref().unwrap();
 
-            let last_message = util::recv_timeout(&rx, timeout);
-            assert!(last_message.is_err());
-        })
+        for branch in branches {
+            self.pr_merge.expect_req(pr_merge::req(repo, pr, &branch));
+        }
     }
 
-    fn expect_will_force_push_notify(&mut self, before_hash: &'static str, after_hash: &'static str) -> JoinHandle<()> {
-        let timeout = Duration::from_millis(300);
-        let rx = self.force_push_rx.take().expect("force-push message");
-        thread::spawn(move || {
-            let msg = util::recv_timeout(&rx, timeout).expect(&format!(
-                "expected to recv force-push for {} -> {}",
-                before_hash,
-                after_hash
-            ));
-            match msg {
-                WorkMessage::WorkItem(req) => {
-                    assert_eq!(before_hash, req.before_hash);
-                    assert_eq!(after_hash, req.after_hash);
-                }
-                _ => {
-                    panic!("Unexpected messages: {:?}", msg);
-                }
-            };
+    fn expect_will_force_push_notify(&mut self, pr: &PullRequest, before_hash: &str, after_hash: &str) {
+        let repo = &self.handler.data.repository;
 
-            let last_message = util::recv_timeout(&rx, timeout);
-            assert!(last_message.is_err());
-        })
+        self.force_push.expect_req(force_push::req(repo, pr, before_hash, after_hash));
     }
 
-    fn expect_will_not_force_push_notify(&mut self) -> JoinHandle<()> {
-        let timeout = Duration::from_millis(300);
-        let rx = self.force_push_rx.take().expect("force-push message");
-        thread::spawn(move || {
-            let last_message = util::recv_timeout(&rx, timeout);
-            assert!(last_message.is_err());
-        })
-    }
+    fn expect_will_run_version_script(&mut self, branch: &str, commit_hash: &str, commits: &Vec<PushCommit>) {
+        let repo = &self.handler.data.repository;
 
-    fn expect_will_run_version_script(&mut self, branch: &'static str, commit_hash: &'static str) -> JoinHandle<()> {
-        // Note: no expectations are set on mock_jira since we have stubbed out the background worker thread
-        let timeout = Duration::from_millis(300);
-        let rx = self.repo_version_rx.take().unwrap();
-        thread::spawn(move || {
-            let msg = util::recv_timeout(&rx, timeout).expect(&format!("expected to recv version script msg"));
-            match msg {
-                WorkMessage::WorkItem(req) => {
-                    assert_eq!(branch, req.branch);
-                    assert_eq!(commit_hash, req.commit_hash);
-                }
-                _ => {
-                    panic!("Unexpected messages: {:?}", msg);
-                }
-            };
-
-            let last_message = util::recv_timeout(&rx, timeout);
-            assert!(last_message.is_err());
-        })
+        self.repo_version.expect_req(repo_version::req(repo, branch, commit_hash, commits));
     }
 }
 
@@ -136,9 +76,9 @@ fn new_test() -> GithubHandlerTest {
 fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     let github = Arc::new(MockGithub::new());
     let slack = MockSlack::new(vec![]);
-    let (pr_merge_tx, pr_merge_rx) = channel();
-    let (repo_version_tx, repo_version_rx) = channel();
-    let (force_push_tx, force_push_rx) = channel();
+    let pr_merge = LockedMockWorker::new("pr-merge");
+    let repo_version = LockedMockWorker::new("repo-version");
+    let force_push = LockedMockWorker::new("force-push");
 
     let temp_dir = TempDir::new("github_handler_test.rs").unwrap();
     let db_file = temp_dir.path().join("db.sqlite3");
@@ -171,6 +111,9 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     let config = Arc::new(config);
 
     let slack_sender = slack.new_sender();
+    let pr_merge_sender = pr_merge.new_sender();
+    let repo_version_sender = repo_version.new_sender();
+    let force_push_sender = force_push.new_sender();
 
     GithubHandlerTest {
         github: github.clone(),
@@ -178,9 +121,9 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
         jira: None,
         _temp_dir: temp_dir,
         config: config.clone(),
-        pr_merge_rx: Some(pr_merge_rx),
-        repo_version_rx: Some(repo_version_rx),
-        force_push_rx: Some(force_push_rx),
+        pr_merge: pr_merge,
+        repo_version: repo_version,
+        force_push: force_push,
         handler: GithubEventHandler {
             event: "ping".to_string(),
             data: data,
@@ -189,9 +132,9 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             messenger: messenger::new(config.clone(), slack_sender),
             github_session: github.clone(),
             jira_session: None,
-            pr_merge: WorkSender::new(pr_merge_tx.clone()),
-            repo_version: WorkSender::new(repo_version_tx.clone()),
-            force_push: WorkSender::new(force_push_tx.clone()),
+            pr_merge: pr_merge_sender,
+            repo_version: repo_version_sender,
+            force_push: force_push_sender,
         },
     }
 }
@@ -991,14 +934,12 @@ fn test_pull_request_merged_backport_labels() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    let expect_thread = test.expect_will_merge_branches(
+    test.expect_will_merge_branches(
         vec!["release/1.0".into(), "release/2.0".into(), "release/other-thing".into()],
     );
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
-
-    expect_thread.join().unwrap();
 }
 
 #[test]
@@ -1060,7 +1001,7 @@ fn test_pull_request_merged_backport_labels_custom_pattern() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    let expect_thread = test.expect_will_merge_branches(vec![
+    test.expect_will_merge_branches(vec![
         "the-other-prefix-1.0".into(),
         "the-other-prefix-2.0".into(),
         "the-other-prefix-other-thing".into(),
@@ -1068,8 +1009,6 @@ fn test_pull_request_merged_backport_labels_custom_pattern() {
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
-
-    expect_thread.join().unwrap();
 }
 
 #[test]
@@ -1084,12 +1023,10 @@ fn test_pull_request_merged_retroactively_labeled() {
     test.handler.data.label = Some(Label::new("backport-7.123"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    let expect_thread = test.expect_will_merge_branches(vec!["release/7.123".into()]);
+    test.expect_will_merge_branches(vec!["release/7.123".into()]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
-
-    expect_thread.join().unwrap();
 }
 
 #[test]
@@ -1104,12 +1041,10 @@ fn test_pull_request_merged_master_branch() {
     test.handler.data.label = Some(Label::new("backport-master"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    let expect_thread = test.expect_will_merge_branches(vec!["master".into()]);
+    test.expect_will_merge_branches(vec!["master".into()]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
-
-    expect_thread.join().unwrap();
 }
 
 #[test]
@@ -1124,12 +1059,10 @@ fn test_pull_request_merged_develop_branch() {
     test.handler.data.label = Some(Label::new("backport-develop"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    let expect_thread = test.expect_will_merge_branches(vec!["develop".into()]);
+    test.expect_will_merge_branches(vec!["develop".into()]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
-
-    expect_thread.join().unwrap();
 }
 
 #[test]
@@ -1265,7 +1198,7 @@ fn test_push_force_notify() {
         "some-repo",
         Some("open".into()),
         None,
-        Ok(vec![pr]),
+        Ok(vec![pr.clone()]),
     );
     test.github.mock_get_pull_request_commits(
         "some-user",
@@ -1289,13 +1222,10 @@ fn test_push_force_notify() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    // Setup background thread to validate force-push msg
-    let expect_thread = test.expect_will_force_push_notify("abcdef0000", "1111abcdef");
+    test.expect_will_force_push_notify(&pr, "abcdef0000", "1111abcdef");
 
     let resp = test.handler.handle_event().expect("handled event");
     assert_eq!((StatusCode::OK, "push".into()), resp);
-
-    expect_thread.join().expect("expect-thread finished");
 }
 
 #[test]
@@ -1325,15 +1255,10 @@ fn test_push_force_notify_wip() {
         Ok(some_commits()),
     );
 
-    // Note: not slack expectations here. It should not notify slack for WIP PRs.
-
-    // Setup background thread to validate force-push msg
-    let expect_thread = test.expect_will_not_force_push_notify();
+    // Note: no expectations here.
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
-
-    expect_thread.join().unwrap();
 }
 
 #[test]
@@ -1381,13 +1306,10 @@ fn test_push_force_notify_ignored() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    // Setup background thread to validate force-push msg
-    let expect_thread = test.expect_will_not_force_push_notify();
+    // Note: no expectations here.
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
-
-    expect_thread.join().unwrap();
 }
 
 fn new_issue(key: &str) -> jira::Issue {
@@ -1676,13 +1598,11 @@ fn test_jira_push_triggers_version_script() {
     test.handler.data.ref_name = Some("refs/heads/master".into());
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
-    test.handler.data.commits = Some(some_jira_push_commits());
+    let commits = some_jira_push_commits();
+    test.handler.data.commits = Some(commits.clone());
 
-    // Setup background thread to validate version msg
-    let expect_thread = test.expect_will_run_version_script("master", "1111abcdef");
+    test.expect_will_run_version_script("master", "1111abcdef", &commits);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
-
-    expect_thread.join().unwrap()
 }

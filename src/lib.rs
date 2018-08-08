@@ -19,7 +19,6 @@ extern crate rustls;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
-extern crate threadpool;
 extern crate tokio;
 extern crate tokio_core;
 extern crate toml;

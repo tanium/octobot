@@ -1,79 +1,37 @@
-use std::sync::Mutex;
-use std::sync::mpsc::{SendError, Sender, channel};
-use std::thread::{self, JoinHandle};
+use std::sync::{Arc, Mutex};
 
-#[derive(Debug)]
-pub enum WorkMessage<T> {
-    Stop,
-    WorkItem(T),
+use futures::future;
+use tokio;
+
+pub trait Worker<T: Send + 'static>: Send + Sync {
+    fn send(&self, req: T);
 }
 
-pub struct Worker<T: Send + 'static> {
-    sender: Mutex<Sender<WorkMessage<T>>>,
-    thread: Option<JoinHandle<()>>,
-}
-
-#[derive(Clone)]
-pub struct WorkSender<T: Send + 'static> {
-    sender: Sender<WorkMessage<T>>,
-}
-
-pub trait Runner<T: Send + 'static>: Send {
+pub trait Runner<T: Send + 'static>: Send + Sync {
     fn handle(&self, req: T);
 }
 
-impl<T: Send + 'static> WorkSender<T> {
-    pub fn new(sender: Sender<WorkMessage<T>>) -> WorkSender<T> {
-        WorkSender { sender: sender }
-    }
+pub struct TokioWorker<T: Send + Sync + 'static> {
+    runner: Arc<Runner<T>>,
+    runtime: Arc<Mutex<tokio::runtime::Runtime>>,
+}
 
-    pub fn send(&self, msg: T) -> Result<(), SendError<WorkMessage<T>>> {
-        self.sender.send(WorkMessage::WorkItem(msg))
-    }
-
-    pub fn stop(&mut self) -> Result<(), SendError<WorkMessage<T>>> {
-        self.sender.send(WorkMessage::Stop)
+impl<T: Send + Sync + 'static> TokioWorker<T> {
+    pub fn new(runtime: Arc<Mutex<tokio::runtime::Runtime>>, runner: Arc<Runner<T>>) -> Arc<Worker<T>> {
+        Arc::new(TokioWorker {
+            runner: runner,
+            runtime: runtime,
+        })
     }
 }
 
-impl<T: Send + 'static> Drop for Worker<T> {
-    fn drop(&mut self) {
-        let mut sender = self.new_sender();
-        match sender.stop() {
-            Ok(_) => {
-                match self.thread.take().unwrap().join() {
-                    Ok(_) => (),
-                    Err(e) => error!("Error shutting down worker: {:?}", e),
-                }
-            }
-            Err(e) => error!("Error sending stop message: {}", e),
-        }
+impl<T: Send + Sync + 'static> Worker<T> for TokioWorker<T> {
+    fn send(&self, req: T) -> () {
+        let runner = self.runner.clone();
+        self.runtime.lock().unwrap().spawn(future::lazy(move || {
+            runner.handle(req);
+            future::ok(())
+        }));
     }
 }
 
-impl<T: Send + 'static> Worker<T> {
-    pub fn new<R: Runner<T> + 'static>(name: &str, handler: R) -> Worker<T> {
-        let (tx, rx) = channel();
-
-        Worker {
-            sender: Mutex::new(tx),
-            thread: Some(
-                thread::Builder::new()
-                    .name(name.to_string() + "-runner")
-                    .spawn(move || loop {
-                        match rx.recv() {
-                            Ok(WorkMessage::Stop) => break,
-                            Ok(WorkMessage::WorkItem(req)) => handler.handle(req),
-                            Err(e) => error!("Error receiving message: {}", e),
-                        };
-                    })
-                    .unwrap(),
-            ),
-        }
-    }
-
-    pub fn new_sender(&self) -> WorkSender<T> {
-        let sender = self.sender.lock().unwrap();
-        WorkSender { sender: sender.clone() }
-    }
-}

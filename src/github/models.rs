@@ -3,7 +3,7 @@ use url::Url;
 use errors::*;
 
 // An incomplete container for all the kinds of events that we care about.
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct HookBody {
     pub repository: Repo,
     pub sender: User,
@@ -83,7 +83,7 @@ impl HookBody {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct App {
     pub id: u32,
     pub owner: User,
@@ -121,7 +121,7 @@ impl PartialEq for User {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Repo {
     pub html_url: String,
     pub full_name: String,
@@ -168,7 +168,7 @@ impl Repo {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct BranchRef {
     #[serde(rename = "ref")]
     pub ref_name: String,
@@ -197,7 +197,7 @@ pub trait PullRequestLike {
     fn has_commits(&self) -> bool;
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct PullRequest {
     pub title: String,
     pub body: Option<String>,
@@ -288,7 +288,7 @@ impl<'a> PullRequestLike for &'a PullRequest {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Issue {
     pub number: u32,
     pub html_url: String,
@@ -323,7 +323,7 @@ impl<'a> PullRequestLike for &'a Issue {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Label {
     pub name: String,
 }
@@ -342,7 +342,7 @@ pub trait CommentLike {
 }
 
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Review {
     pub state: String,
     pub body: Option<String>,
@@ -379,7 +379,7 @@ impl<'a> CommentLike for &'a Review {
 }
 
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Comment {
     pub commit_id: Option<String>,
     pub path: Option<String>,
@@ -413,7 +413,7 @@ pub trait CommitLike {
 
 // the 'Commit' objects that come from a push event have a different format from
 // the api that lists commits for a PR
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct PushCommit {
     pub id: String,
     pub tree_id: String,
@@ -421,7 +421,7 @@ pub struct PushCommit {
     pub url: String,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Commit {
     pub sha: String,
     pub html_url: String,
@@ -429,7 +429,7 @@ pub struct Commit {
     pub author: Option<User>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct CommitDetails {
     pub message: String,
 }
@@ -530,7 +530,7 @@ impl PushCommit {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Status {
     pub state: String,
     pub target_url: Option<String>,
@@ -540,7 +540,7 @@ pub struct Status {
     pub updated_at: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct TimelineEvent {
     pub id: Option<u32>,
     pub event: String,
@@ -550,7 +550,7 @@ pub struct TimelineEvent {
     pub html_url: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct DismissedReview {
     pub state: String,
     pub review_id: u32,

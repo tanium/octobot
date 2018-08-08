@@ -6,6 +6,7 @@ use futures::Stream;
 use hyper::{Body, Request, StatusCode};
 use regex::Regex;
 use serde_json;
+use tokio;
 
 use config::Config;
 use force_push::{self, ForcePushRequest};
@@ -17,20 +18,22 @@ use jira;
 use messenger::{self, Messenger};
 use pr_merge::{self, PRMergeRequest};
 use repo_version::{self, RepoVersionRequest};
+use runtime;
 use server::github_verify::GithubWebhookVerifier;
 use server::http::{FutureResponse, Handler};
 use slack::{self, SlackAttachmentBuilder, SlackRequest};
 use util;
-use worker::{WorkSender, Worker};
+use worker::{Worker, TokioWorker};
 
 pub struct GithubHandlerState {
     pub config: Arc<Config>,
     pub github_app: Arc<github::api::GithubSessionFactory>,
     pub jira_session: Option<Arc<jira::api::Session>>,
-    pr_merge_worker: Worker<PRMergeRequest>,
-    repo_version_worker: Worker<RepoVersionRequest>,
-    force_push_worker: Worker<ForcePushRequest>,
-    slack_worker: Worker<SlackRequest>,
+    _runtime: Arc<Mutex<tokio::runtime::Runtime>>,
+    pr_merge_worker: Arc<Worker<PRMergeRequest>>,
+    repo_version_worker: Arc<Worker<RepoVersionRequest>>,
+    force_push_worker: Arc<Worker<ForcePushRequest>>,
+    slack_worker: Arc<Worker<SlackRequest>>,
     recent_events: Mutex<Vec<String>>,
 }
 
@@ -46,14 +49,12 @@ pub struct GithubEventHandler {
     pub action: String,
     pub github_session: Arc<github::api::Session>,
     pub jira_session: Option<Arc<jira::api::Session>>,
-    pub pr_merge: WorkSender<PRMergeRequest>,
-    pub repo_version: WorkSender<RepoVersionRequest>,
-    pub force_push: WorkSender<ForcePushRequest>,
+    pub pr_merge: Arc<Worker<PRMergeRequest>>,
+    pub repo_version: Arc<Worker<RepoVersionRequest>>,
+    pub force_push: Arc<Worker<ForcePushRequest>>,
 }
 
-const MAX_CONCURRENT_MERGES: usize = 20;
-const MAX_CONCURRENT_VERSIONS: usize = 20;
-const MAX_CONCURRENT_FORCE_PUSH: usize = 20;
+const MAX_CONCURRENT_JOBS: usize = 20;
 const MAX_COMMITS_FOR_JIRA_CONSIDERATION: usize = 20;
 
 impl GithubHandlerState {
@@ -65,33 +66,33 @@ impl GithubHandlerState {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
 
-        let slack_worker = slack::new_worker(&config.main.slack_webhook_url);
-        let pr_merge_worker = pr_merge::new_worker(
-            MAX_CONCURRENT_MERGES,
+        let runtime = Arc::new(Mutex::new(runtime::new(MAX_CONCURRENT_JOBS, "jobs")));
+
+        let slack_worker = TokioWorker::new(runtime.clone(), slack::new_runner(&config.main.slack_webhook_url));
+        let pr_merge_worker = TokioWorker::new(runtime.clone(), pr_merge::new_runner(
             config.clone(),
             github_app.clone(),
             git_clone_manager.clone(),
-            slack_worker.new_sender(),
-        );
-        let repo_version_worker = repo_version::new_worker(
-            MAX_CONCURRENT_VERSIONS,
+            slack_worker.clone(),
+        ));
+        let repo_version_worker = TokioWorker::new(runtime.clone(), repo_version::new_runner(
             config.clone(),
             github_app.clone(),
             jira_session.clone(),
             git_clone_manager.clone(),
-            slack_worker.new_sender(),
-        );
-        let force_push_worker = force_push::new_worker(
-            MAX_CONCURRENT_FORCE_PUSH,
+            slack_worker.clone(),
+        ));
+        let force_push_worker = TokioWorker::new(runtime.clone(), force_push::new_runner(
             config.clone(),
             github_app.clone(),
             git_clone_manager.clone(),
-        );
+        ));
 
         GithubHandlerState {
             config: config.clone(),
             github_app: github_app.clone(),
             jira_session: jira_session.clone(),
+            _runtime: runtime,
             pr_merge_worker: pr_merge_worker,
             repo_version_worker: repo_version_worker,
             force_push_worker: force_push_worker,
@@ -155,10 +156,10 @@ impl Handler for GithubHandler {
         let github_app = self.state.github_app.clone();
         let config = self.state.config.clone();
         let jira_session = self.state.jira_session.clone();
-        let pr_merge = self.state.pr_merge_worker.new_sender();
-        let repo_version = self.state.repo_version_worker.new_sender();
-        let force_push = self.state.force_push_worker.new_sender();
-        let slack = self.state.slack_worker.new_sender();
+        let pr_merge = self.state.pr_merge_worker.clone();
+        let repo_version = self.state.repo_version_worker.clone();
+        let force_push = self.state.force_push_worker.clone();
+        let slack = self.state.slack_worker.clone();
 
         Box::new(req.into_body().concat2().map(move |body| {
             let verifier = GithubWebhookVerifier { secret: config.github.webhook_secret.clone() };
@@ -707,9 +708,7 @@ impl GithubEventHandler {
                                 self.data.before(),
                                 self.data.after(),
                             );
-                            if let Err(e) = self.force_push.send(msg) {
-                                error!("Error sending force push message: {}", e);
-                            }
+                            self.force_push.send(msg);
                         }
                     }
                 }
@@ -731,12 +730,8 @@ impl GithubEventHandler {
                                             self.data.after(),
                                             commits,
                                         );
-                                        if let Err(e) = self.repo_version.send(msg) {
-                                            error!("Error sending version request message: {}", e);
-                                            false
-                                        } else {
-                                            true
-                                        }
+                                        self.repo_version.send(msg);
+                                        true
                                     }
                                     None => false,
                                 };
@@ -808,8 +803,6 @@ impl GithubEventHandler {
         };
 
         let req = pr_merge::req(&self.data.repository, pull_request, &target_branch);
-        if let Err(e) = self.pr_merge.send(req) {
-            error!("Error sending merge request message: {}", e)
-        }
+        self.pr_merge.send(req);
     }
 }
