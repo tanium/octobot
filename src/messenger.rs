@@ -4,7 +4,7 @@ use config::Config;
 use github;
 use slack::{self, SlackAttachment, SlackRequest};
 use util;
-use worker::WorkSender;
+use worker::Worker;
 
 pub trait Messenger {
     fn send_to_all(
@@ -31,12 +31,12 @@ pub trait Messenger {
 
 struct SlackMessenger {
     pub config: Arc<Config>,
-    pub slack: WorkSender<SlackRequest>,
+    pub slack: Arc<Worker<SlackRequest>>,
 }
 
-pub fn new(config: Arc<Config>, slack: WorkSender<SlackRequest>) -> Box<Messenger> {
+pub fn new(config: Arc<Config>, slack: Arc<Worker<SlackRequest>>) -> Box<Messenger> {
     Box::new(SlackMessenger {
-        slack: slack,
+        slack: slack.clone(),
         config: config.clone(),
     })
 }
@@ -86,9 +86,7 @@ impl Messenger for SlackMessenger {
 
 impl SlackMessenger {
     fn send_to_slack(&self, channel: &str, msg: &str, attachments: &Vec<SlackAttachment>) {
-        if let Err(e) = self.slack.send(slack::req(channel, msg, attachments.clone())) {
-            error!("Error sending to slack worker: {}", e);
-        }
+        self.slack.send(slack::req(channel, msg, attachments.clone()));
     }
 
     fn send_to_slackbots(&self, users: Vec<github::User>, msg: &str, attachments: &Vec<SlackAttachment>) {

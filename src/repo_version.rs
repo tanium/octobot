@@ -5,8 +5,6 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
-use threadpool::{self, ThreadPool};
-
 use config::{Config, JiraConfig};
 use errors::*;
 use git::Git;
@@ -16,7 +14,7 @@ use github::api::{GithubSessionFactory, Session};
 use jira;
 use messenger;
 use slack::{SlackAttachmentBuilder, SlackRequest};
-use worker::{self, WorkSender};
+use worker;
 
 #[cfg(target_os = "linux")]
 use docker;
@@ -140,7 +138,7 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct RepoVersionRequest {
     pub repo: github::Repo,
     pub branch: String,
@@ -153,8 +151,7 @@ struct Runner {
     github_app: Arc<GithubSessionFactory>,
     jira_session: Option<Arc<jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
-    slack: WorkSender<SlackRequest>,
-    thread_pool: ThreadPool,
+    slack: Arc<worker::Worker<SlackRequest>>,
 }
 
 pub fn req(
@@ -171,93 +168,76 @@ pub fn req(
     }
 }
 
-pub fn new_worker(
-    max_concurrency: usize,
+pub fn new_runner(
     config: Arc<Config>,
     github_app: Arc<GithubSessionFactory>,
     jira_session: Option<Arc<jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
-    slack: WorkSender<SlackRequest>,
-) -> worker::Worker<RepoVersionRequest> {
-    worker::Worker::new(
-        "repo-version",
-        Runner {
-            config: config,
-            github_app: github_app,
-            jira_session: jira_session,
-            clone_mgr: clone_mgr,
-            slack: slack,
-            thread_pool: threadpool::Builder::new()
-                .num_threads(max_concurrency)
-                .thread_name("repo-version".to_string())
-                .build(),
-        },
-    )
+    slack: Arc<worker::Worker<SlackRequest>>,
+) -> Arc<worker::Runner<RepoVersionRequest>> {
+    Arc::new(Runner {
+        config: config,
+        github_app: github_app,
+        jira_session: jira_session,
+        clone_mgr: clone_mgr,
+        slack: slack,
+    })
 }
 
 impl worker::Runner<RepoVersionRequest> for Runner {
     fn handle(&self, req: RepoVersionRequest) {
-        let github_app = self.github_app.clone();
-        let jira_session = self.jira_session.clone();
-        let clone_mgr = self.clone_mgr.clone();
-        let config = self.config.clone();
-        let slack = self.slack.clone();
+        let version_script;
+        let jira_projects;
+        let jira_versions_enabled;
+        {
+            let repos_lock = self.config.repos();
+            version_script = repos_lock.version_script(&req.repo, &req.branch);
+            jira_projects = repos_lock.jira_projects(&req.repo, &req.branch);
+            jira_versions_enabled = repos_lock.jira_versions_enabled(&req.repo, &req.branch);
+        }
 
-        // launch another thread to do the version calculation
-        self.thread_pool.execute(move || {
-            let version_script;
-            let jira_projects;
-            let jira_versions_enabled;
-            {
-                let repos_lock = config.repos();
-                version_script = repos_lock.version_script(&req.repo, &req.branch);
-                jira_projects = repos_lock.jira_projects(&req.repo, &req.branch);
-                jira_versions_enabled = repos_lock.jira_versions_enabled(&req.repo, &req.branch);
-            }
+        if let Some(version_script) = version_script {
+            if let Some(ref jira_session) = self.jira_session {
+                if let Some(ref jira_config) = self.config.jira {
+                    let jira = jira_session.borrow();
+                    if let Err(e) = comment_repo_version(
+                        &version_script,
+                        jira_config,
+                        jira,
+                        self.github_app.borrow(),
+                        self.clone_mgr.borrow(),
+                        &req.repo.owner.login(),
+                        &req.repo.name,
+                        &req.branch,
+                        &req.commit_hash,
+                        &req.commits,
+                        &jira_projects,
+                        jira_versions_enabled,
+                    )
+                    {
+                        error!("Error running version script {}: {}", version_script, e);
+                        let messenger = messenger::new(self.config.clone(), self.slack.clone());
 
-            if let Some(version_script) = version_script {
-                if let Some(ref jira_session) = jira_session {
-                    if let Some(ref jira_config) = config.jira {
-                        let jira = jira_session.borrow();
-                        if let Err(e) = comment_repo_version(
-                            &version_script,
-                            jira_config,
-                            jira,
-                            github_app.borrow(),
-                            &clone_mgr,
-                            &req.repo.owner.login(),
-                            &req.repo.name,
+                        let attach = SlackAttachmentBuilder::new(&format!("{}", e))
+                            .title(version_script.clone())
+                            .color("danger")
+                            .build();
+
+                        messenger.send_to_channel("Error running version script", &vec![attach], &req.repo);
+
+                        // resolve the issue with no version
+                        jira::workflow::resolve_issue(
                             &req.branch,
-                            &req.commit_hash,
+                            None,
                             &req.commits,
                             &jira_projects,
-                            jira_versions_enabled,
-                        )
-                        {
-                            error!("Error running version script {}: {}", version_script, e);
-                            let messenger = messenger::new(config.clone(), slack);
-
-                            let attach = SlackAttachmentBuilder::new(&format!("{}", e))
-                                .title(version_script.clone())
-                                .color("danger")
-                                .build();
-
-                            messenger.send_to_channel("Error running version script", &vec![attach], &req.repo);
-
-                            // resolve the issue with no version
-                            jira::workflow::resolve_issue(
-                                &req.branch,
-                                None,
-                                &req.commits,
-                                &jira_projects,
-                                jira,
-                                jira_config,
-                            );
-                        }
+                            jira,
+                            jira_config,
+                        );
                     }
                 }
             }
-        });
+        }
     }
 }
 
