@@ -105,7 +105,10 @@ fn run_server(config: Config) {
                 .and_then(move |s| tls_cfg.accept_async(s))
                 .then(|r| match r {
                     Ok(x) => Ok::<_, io::Error>(Some(x)),
-                    Err(_e) => Err(_e),
+                    Err(e) => {
+                        error!("tls error: {}", e);
+                        Ok::<_, io::Error>(None)
+                    }
                 })
                 .filter_map(|x| x);
             let server = Server::builder(tls).serve(main_service).map_err(|e| error!("server error: {}", e));
