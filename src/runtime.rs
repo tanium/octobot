@@ -2,10 +2,10 @@ use std;
 
 use futures::{Future, future};
 use tokio;
-use tokio::executor::thread_pool;
+use tokio_threadpool;
 
 pub fn new(num_threads: usize, name: &str) -> tokio::runtime::Runtime {
-    let mut threadpool = thread_pool::Builder::new();
+    let mut threadpool = tokio_threadpool::Builder::new();
     threadpool.name_prefix(format!("{}-", name)).pool_size(num_threads);
 
     tokio::runtime::Builder::new().threadpool_builder(threadpool).build().unwrap()

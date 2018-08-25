@@ -79,7 +79,7 @@ fn run_server(config: Config) {
             let certs = load_certs(cert_file);
 
             let mut the_cfg = rustls::ServerConfig::new(rustls::NoClientAuth::new());
-            the_cfg.set_single_cert(certs, key);
+            the_cfg.set_single_cert(certs, key).expect("failed to set ssl cert");
 
             tls_cfg = Some(Arc::new(the_cfg));
         } else {
