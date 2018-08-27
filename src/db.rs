@@ -40,7 +40,7 @@ impl Database {
 }
 
 pub struct Columns {
-    cols: HashMap<String, i32>,
+    cols: HashMap<String, usize>,
 }
 
 impl Columns {
@@ -56,7 +56,7 @@ impl Columns {
         Ok(Columns { cols: cols })
     }
 
-    pub fn get_index(&self, col: &str) -> Result<i32> {
+    pub fn get_index(&self, col: &str) -> Result<usize> {
         self.cols.get(col).map(|i| i.clone()).ok_or(
             Error::from(format!("Invalid columnL '{}'", col)),
         )

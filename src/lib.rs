@@ -20,11 +20,11 @@ extern crate serde;
 #[macro_use]
 extern crate serde_json;
 extern crate tokio;
-extern crate tokio_core;
+extern crate tokio_rustls;
+extern crate tokio_threadpool;
 extern crate toml;
 extern crate unidiff;
 extern crate url;
-extern crate tokio_rustls;
 extern crate time;
 extern crate rusqlite;
 
