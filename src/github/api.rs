@@ -252,29 +252,46 @@ impl Session for GithubSession {
         state: Option<&str>,
         head: Option<&str>,
     ) -> Result<Vec<PullRequest>> {
-        let pull_requests: Result<Vec<PullRequest>> = self.client
-            .get::<Vec<PullRequest>>(
-                &format!("repos/{}/{}/pulls?state={}&head={}", owner, repo, state.unwrap_or(""), head.unwrap_or("")),
-            )
-            .map_err(|e| format!("Error looking up PRs: {}/{}: {}", owner, repo, e).into())
-            .map(|prs| {
-                prs.into_iter()
-                    .filter(|p| if let Some(head) = head {
-                        p.head.ref_name == head || p.head.sha == head
-                    } else {
-                        true
-                    })
-                    .collect::<Vec<_>>()
-            });
-        let mut pull_requests = pull_requests?;
+        let mut pull_requests = vec![];
+        let mut page = 1;
 
-        for pull_request in &mut pull_requests {
-            if pull_request.reviews.is_none() {
+        loop {
+            let mut next_prs: Vec<PullRequest> = match self.client
+                .get::<Vec<PullRequest>>(&format!(
+                    "repos/{}/{}/pulls?state={}&head={}&per_page=100&page={}",
+                    owner,
+                    repo,
+                    state.unwrap_or(""),
+                    head.unwrap_or(""),
+                    page
+                ))
+                .map_err(|e| format!("Error looking up PRs: {}/{}: {}", owner, repo, e).into())
+                .map(|prs| {
+                    prs.into_iter()
+                        .filter(|p| if let Some(head) = head {
+                            p.head.ref_name == head || p.head.sha == head
+                        } else {
+                            true
+                        })
+                        .collect::<Vec<_>>()
+                }) {
+                Ok(r) => r,
+                Err(e) => return Err(e),
+            };
+
+            if next_prs.is_empty() {
+                break;
+            }
+
+            next_prs.iter_mut().for_each(|pull_request| if pull_request.reviews.is_none() {
                 match self.get_pull_request_reviews(owner, repo, pull_request.number) {
                     Ok(r) => pull_request.reviews = Some(r),
                     Err(e) => error!("Error refetching pull request reviews: {}", e),
                 };
-            }
+            });
+
+            pull_requests.extend(next_prs.into_iter());
+            page += 1;
         }
 
         Ok(pull_requests)
