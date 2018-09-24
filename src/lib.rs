@@ -9,9 +9,9 @@ extern crate http;
 extern crate hyper;
 extern crate hyper_rustls;
 extern crate jsonwebtoken;
-extern crate ldap3;
 #[macro_use]
 extern crate maplit;
+extern crate openldap;
 extern crate regex;
 extern crate ring;
 extern crate rustc_serialize;
@@ -65,6 +65,7 @@ pub mod errors {
             Io(::std::io::Error);
             Url(::url::ParseError);
             DB(::rusqlite::Error);
+            LDAP(::openldap::errors::LDAPError);
         }
     }
 }
