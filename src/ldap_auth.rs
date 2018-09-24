@@ -10,7 +10,6 @@ use errors::*;
 
 pub struct LDAPEntry {
     pub dn: String,
-    _attrs: HashMap<String, Vec<String>>,
 }
 
 fn new_ldap(url: &str) -> Result<RustLDAP> {
@@ -126,21 +125,14 @@ pub fn search(config: &LdapConfig, extra_filter: Option<&str>, max_results: i32)
 
     let entries = resp?.into_iter()
         .filter_map(|attrs| {
-            let dn = attrs
-                .get("dn")
-                .unwrap_or(&vec![])
-                .iter()
-                .next()
-                .map(|s| s.to_string())
-                .unwrap_or(String::new());
+            let dn = attrs.get("dn").unwrap_or(&vec![]).iter().next().map(|s| s.to_string()).unwrap_or(
+                String::new(),
+            );
             if dn.is_empty() {
                 warn!("Found entry with empty DN! Skipping.");
                 None
             } else {
-                Some(LDAPEntry {
-                    dn: dn,
-                    _attrs: attrs,
-                })
+                Some(LDAPEntry { dn: dn })
             }
         })
         .collect::<Vec<LDAPEntry>>();
