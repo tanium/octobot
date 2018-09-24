@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::ptr;
 
 use openldap::{self, LDAPResponse, RustLDAP};
