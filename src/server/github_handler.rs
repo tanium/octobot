@@ -235,7 +235,7 @@ impl Handler for GithubHandler {
                 data: data,
                 action: action,
                 config: config.clone(),
-                messenger: messenger::new(config.clone(), slack),
+                messenger: Box::new(messenger::new(config.clone(), slack)),
                 github_session: github_session,
                 jira_session: jira_session,
                 pr_merge: pr_merge,

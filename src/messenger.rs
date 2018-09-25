@@ -34,11 +34,11 @@ struct SlackMessenger {
     pub slack: Arc<Worker<SlackRequest>>,
 }
 
-pub fn new(config: Arc<Config>, slack: Arc<Worker<SlackRequest>>) -> Box<Messenger> {
-    Box::new(SlackMessenger {
+pub fn new(config: Arc<Config>, slack: Arc<Worker<SlackRequest>>) -> impl Messenger {
+    SlackMessenger {
         slack: slack.clone(),
         config: config.clone(),
-    })
+    }
 }
 
 impl Messenger for SlackMessenger {

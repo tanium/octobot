@@ -129,7 +129,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             data: data,
             action: "".to_string(),
             config: config.clone(),
-            messenger: messenger::new(config.clone(), slack_sender),
+            messenger: Box::new(messenger::new(config.clone(), slack_sender)),
             github_session: github.clone(),
             jira_session: None,
             pr_merge: pr_merge_sender,

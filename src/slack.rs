@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use futures::{Future, future};
+use tokio;
 
 use http_client::HTTPClient;
 use util;
@@ -100,7 +101,7 @@ impl Slack {
         }
 
         info!("Sending message to #{}", channel);
-        self.client.spawn(self.client.post_void_async("", &slack_msg).then(|res| {
+        tokio::spawn(self.client.post_void_async("", &slack_msg).then(|res| {
             match res {
                 Ok(_) => info!("Successfully sent slack message"),
                 Err(e) => error!("Error sending slack message: {}", e),
