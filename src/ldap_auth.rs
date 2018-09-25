@@ -1,21 +1,46 @@
-use std::io;
+use std::ptr;
 
-use ldap3::{LdapConn, Scope, SearchEntry, ldap_escape, parse_filter};
+use openldap::{self, LDAPResponse, RustLDAP};
+
+use regex::Regex;
 
 use config::LdapConfig;
+use errors::*;
 
-pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> io::Result<bool> {
+pub struct LDAPEntry {
+    pub dn: String,
+}
+
+fn new_ldap(url: &str) -> Result<RustLDAP> {
+    let ldap = RustLDAP::new(url)?;
+
+    ldap.set_option(
+        openldap::codes::options::LDAP_OPT_PROTOCOL_VERSION,
+        &openldap::codes::versions::LDAP_VERSION3,
+    );
+
+    ldap.set_option(
+        openldap::codes::options::LDAP_OPT_X_TLS_REQUIRE_CERT,
+        &openldap::codes::options::LDAP_OPT_X_TLS_DEMAND,
+    );
+
+    Ok(ldap)
+}
+
+pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> Result<bool> {
     if user.is_empty() {
         info!("Cannot authenticate without username");
         return Ok(false);
     }
 
-    let user_safe = ldap_escape(user);
-    let user_filters = config
-        .userid_attributes
-        .iter()
-        .map(|a| format!("({}={})", a, user_safe.as_ref()))
-        .collect::<Vec<_>>();
+    // in the absence of `ldap_escape` from ldap3, just whitelist acceptable characters
+    let re = Regex::new(r"([^A-Za-z0-9\.\-_@])").unwrap();
+    for cap in re.captures_iter(user) {
+        info!("Invalid username character in username: '{}', '{}'", &cap[1], user);
+        return Ok(false);
+    }
+
+    let user_filters = config.userid_attributes.iter().map(|a| format!("({}={})", a, user)).collect::<Vec<_>>();
 
     let user_filter;
     if user_filters.len() == 0 {
@@ -46,25 +71,25 @@ pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> io::Result<bool> {
     }
 
     // now try to bind as the user
-    let ldap = LdapConn::new(&config.url)?;
+    let ldap = new_ldap(&config.url)?;
     let res = ldap.simple_bind(&user_dn, &pass)?;
-    if res.rc == 0 {
-        ldap.unbind()?;
+    if res == 0 {
         Ok(true)
-    } else if res.rc == 49 {
+    } else if res == 49 {
         // Avoid error messages for invalid creds
         Ok(false)
     } else {
-        // should actually return an err
-        res.success()?;
+        info!("LDAP auth failed with error code {}", res);
         Ok(false)
     }
-
 }
 
-pub fn search(config: &LdapConfig, extra_filter: Option<&str>, max_results: u32) -> io::Result<Vec<SearchEntry>> {
-    let ldap = LdapConn::new(&config.url)?;
-    ldap.simple_bind(&config.bind_user, &config.bind_pass)?.success()?;
+pub fn search(config: &LdapConfig, extra_filter: Option<&str>, max_results: i32) -> Result<Vec<LDAPEntry>> {
+    let ldap = new_ldap(&config.url)?;
+    let bind_res = ldap.simple_bind(&config.bind_user, &config.bind_pass)?;
+    if bind_res != 0 {
+        return Err(format!("LDAP service account bind failed with error code {}", bind_res).into());
+    }
 
     let mut search_filters: Vec<String> = vec![];
     if let Some(f) = extra_filter {
@@ -84,39 +109,32 @@ pub fn search(config: &LdapConfig, extra_filter: Option<&str>, max_results: u32)
         search_filter = format!("(&{})", search_filters.join(""));
     }
 
-    // `search` will panic prior to this commit:
-    // https://github.com/inejge/ldap3/commit/25b99eea70e51d9a994d9c144191d5213da188bc
-    if parse_filter(&search_filter).is_err() {
-        return Err(io::Error::new(io::ErrorKind::Other, format!("Invalid search filter: {}", search_filter)));
-    }
 
-    let mut result = ldap.streaming_search(&config.base_dn, Scope::Subtree, &search_filter, vec!["*"])?;
-    let mut results_found = 0;
+    let resp: Result<LDAPResponse> = ldap.ldap_search(
+        &config.base_dn,
+        openldap::codes::scopes::LDAP_SCOPE_SUB,
+        Some(&search_filter),
+        None, // attrs
+        false, // attrsonly
+        None, // server controls
+        None, // client controls
+        ptr::null_mut(), // timeout
+        max_results,
+    ).map_err(|e| format!("Error on LDAP search: {}", e).into());
 
-    let mut entries: Vec<SearchEntry> = vec![];
-
-    loop {
-        match result.next() {
-            Ok(Some(entry)) => {
-                if results_found >= max_results {
-                    result.abandon()?;
-                    break;
-                }
-                entries.push(SearchEntry::construct(entry));
-                results_found += 1;
+    let entries = resp?.into_iter()
+        .filter_map(|attrs| {
+            let dn = attrs.get("dn").unwrap_or(&vec![]).iter().next().map(|s| s.to_string()).unwrap_or(
+                String::new(),
+            );
+            if dn.is_empty() {
+                warn!("Found entry with empty DN! Skipping.");
+                None
+            } else {
+                Some(LDAPEntry { dn: dn })
             }
-            Ok(None) => break,
-            Err(e) => {
-                error!("Error searching LDAP: {}", e);
-                result.abandon()?;
-            }
-        };
-    }
-
-    result.result()?.success()?;
-
-    // disconnect as the bind user
-    ldap.unbind()?;
+        })
+        .collect::<Vec<LDAPEntry>>();
 
     Ok(entries)
 }

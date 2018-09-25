@@ -12,6 +12,7 @@ RUN apt-get update \
      python \
      openssl \
      libsqlite3-0 \
+     libldap2-dev \
   && rm -fr /var/lib/apt/lists/
 
 RUN groupadd -r octobot
