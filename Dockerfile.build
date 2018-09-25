@@ -15,6 +15,7 @@ RUN apt-get update \
      gosu \
      python \
      libsqlite3-0 \
+     libldap2-dev \
   && rm -fr /var/lib/apt/lists/
 
 ENV PATH $PATH:/root/.cargo/bin
