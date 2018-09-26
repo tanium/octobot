@@ -9,7 +9,7 @@ use git::Git;
 use git_clone_manager::GitCloneManager;
 use github;
 use github::api::{GithubSessionFactory, Session};
-use messenger;
+use messenger::{self, Messenger};
 use slack::{SlackAttachmentBuilder, SlackRequest};
 use worker;
 

@@ -36,8 +36,6 @@ pub struct HTTPResponse<T> {
 type InternalResponseResult = Result<InternalResp>;
 type FutureInternalResponse = oneshot::Receiver<InternalResponseResult>;
 
-pub type FutureResult<T> = Box<Future<Item = T, Error = errors::Error> + Send + 'static>;
-
 impl HTTPClient {
     pub fn new(api_base: &str) -> HTTPClient {
         HTTPClient {
@@ -59,7 +57,7 @@ impl HTTPClient {
         self.request_de::<T, ()>(Method::GET, path, None).map(|res| res.item)
     }
 
-    pub fn get_async<T>(&self, path: &str) -> FutureResult<HTTPResponse<T>>
+    pub fn get_async<T>(&self, path: &str) -> impl Future<Item = HTTPResponse<T>, Error = errors::Error>
     where
         T: DeserializeOwned + Send + 'static,
     {
@@ -73,7 +71,11 @@ impl HTTPClient {
         self.request_de::<T, U>(Method::POST, path, Some(body)).map(|res| res.item)
     }
 
-    pub fn post_async<T, U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<T>>
+    pub fn post_async<T, U: Serialize>(
+        &self,
+        path: &str,
+        body: &U,
+    ) -> impl Future<Item = HTTPResponse<T>, Error = errors::Error>
     where
         T: DeserializeOwned + Send + 'static,
     {
@@ -84,7 +86,11 @@ impl HTTPClient {
         self.request_void::<U>(Method::POST, path, Some(body)).map(|_| ())
     }
 
-    pub fn post_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<()>> {
+    pub fn post_void_async<U: Serialize>(
+        &self,
+        path: &str,
+        body: &U,
+    ) -> impl Future<Item = HTTPResponse<()>, Error = errors::Error> {
         self.request_void_async::<U>(Method::POST, path, Some(body))
     }
 
@@ -95,7 +101,11 @@ impl HTTPClient {
         self.request_de::<T, U>(Method::PUT, path, Some(body)).map(|res| res.item)
     }
 
-    pub fn put_async<T, U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<T>>
+    pub fn put_async<T, U: Serialize>(
+        &self,
+        path: &str,
+        body: &U,
+    ) -> impl Future<Item = HTTPResponse<T>, Error = errors::Error>
     where
         T: DeserializeOwned + Send + 'static,
     {
@@ -106,7 +116,11 @@ impl HTTPClient {
         self.request_void::<U>(Method::PUT, path, Some(body)).map(|_| ())
     }
 
-    pub fn put_void_async<U: Serialize>(&self, path: &str, body: &U) -> FutureResult<HTTPResponse<()>> {
+    pub fn put_void_async<U: Serialize>(
+        &self,
+        path: &str,
+        body: &U,
+    ) -> impl Future<Item = HTTPResponse<()>, Error = errors::Error> {
         self.request_void_async::<U>(Method::PUT, path, Some(body))
     }
 
@@ -114,17 +128,8 @@ impl HTTPClient {
         self.request_void::<()>(Method::DELETE, path, None).map(|_| ())
     }
 
-    pub fn delete_void_async(&self, path: &str) -> FutureResult<HTTPResponse<()>> {
+    pub fn delete_void_async(&self, path: &str) -> impl Future<Item = HTTPResponse<()>, Error = errors::Error> {
         self.request_void_async::<()>(Method::DELETE, path, None)
-    }
-
-    // `spawn` is necesary for driving futures returned by async methods and any combinations
-    // applied on top of them w/o needing to `wait` on the result
-    pub fn spawn<F>(&self, fut: F)
-    where
-        F: Future<Item = (), Error = ()> + Send + 'static,
-    {
-        tokio::spawn(fut);
     }
 
     pub fn request_de<T, U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> Result<HTTPResponse<T>>
@@ -158,43 +163,38 @@ impl HTTPClient {
         method: Method,
         path: &str,
         body: Option<&U>,
-    ) -> FutureResult<HTTPResponse<T>>
+    ) -> impl Future<Item = HTTPResponse<T>, Error = errors::Error>
     where
         T: DeserializeOwned + Send + 'static,
     {
         let path = path.to_string();
-        Box::new(
-            self.request_async(method, &path, body)
-                .or_else(|_| Err("HTTP Request was cancelled".into()))
-                .and_then(move |res| {
-                    res.and_then(|res| {
-                        if res.status.is_redirection() {
-                            warn!(
-                                "Received redirection when expected to receive data to deserialize. \
+        self.request_async(method, &path, body)
+            .or_else(|_| Err("HTTP Request was cancelled".into()))
+            .and_then(move |res| {
+                res.and_then(|res| {
+                    if res.status.is_redirection() {
+                        warn!(
+                            "Received redirection when expected to receive data to deserialize. \
                                  Request: {}; Headers: {:?}",
-                                path,
-                                res.headers
-                            );
-                        }
+                            path,
+                            res.headers
+                        );
+                    }
 
-                        serde_json::from_slice::<T>(&res.data)
-                            .map_err(|e| {
-                                format!(
-                                    "Error parsing response: {}\n---\n{}\n---",
-                                    e,
-                                    String::from_utf8_lossy(&res.data)
-                                ).into()
-                            })
-                            .map(|obj| {
-                                HTTPResponse {
-                                    item: obj,
-                                    headers: res.headers,
-                                    status: res.status,
-                                }
-                            })
-                    })
-                }),
-        )
+                    serde_json::from_slice::<T>(&res.data)
+                        .map_err(|e| {
+                            format!("Error parsing response: {}\n---\n{}\n---", e, String::from_utf8_lossy(&res.data))
+                                .into()
+                        })
+                        .map(|obj| {
+                            HTTPResponse {
+                                item: obj,
+                                headers: res.headers,
+                                status: res.status,
+                            }
+                        })
+                })
+            })
     }
 
     pub fn request_void_async<U: Serialize>(
@@ -202,20 +202,18 @@ impl HTTPClient {
         method: Method,
         path: &str,
         body: Option<&U>,
-    ) -> FutureResult<HTTPResponse<()>> {
-        Box::new(
-            self.request_async(method, path, body)
-                .or_else(|_| Err("HTTP Request was cancelled".into()))
-                .and_then(|res| {
-                    res.map(|r| {
-                        HTTPResponse {
-                            item: (),
-                            headers: r.headers,
-                            status: r.status,
-                        }
-                    })
-                }),
-        )
+    ) -> impl Future<Item = HTTPResponse<()>, Error = errors::Error> {
+        self.request_async(method, path, body)
+            .or_else(|_| Err("HTTP Request was cancelled".into()))
+            .and_then(|res| {
+                res.map(|r| {
+                    HTTPResponse {
+                        item: (),
+                        headers: r.headers,
+                        status: r.status,
+                    }
+                })
+            })
     }
 
     pub fn request_raw_async<U: Serialize>(
@@ -223,20 +221,18 @@ impl HTTPClient {
         method: Method,
         path: &str,
         body: Option<&U>,
-    ) -> FutureResult<HTTPResponse<Vec<u8>>> {
-        Box::new(
-            self.request_async(method, path, body)
-                .or_else(|_| Err("HTTP Request was cancelled".into()))
-                .and_then(|res| {
-                    res.map(|r| {
-                        HTTPResponse {
-                            item: r.data.to_vec(),
-                            headers: r.headers,
-                            status: r.status,
-                        }
-                    })
-                }),
-        )
+    ) -> impl Future<Item = HTTPResponse<Vec<u8>>, Error = errors::Error> {
+        self.request_async(method, path, body)
+            .or_else(|_| Err("HTTP Request was cancelled".into()))
+            .and_then(|res| {
+                res.map(|r| {
+                    HTTPResponse {
+                        item: r.data.to_vec(),
+                        headers: r.headers,
+                        status: r.status,
+                    }
+                })
+            })
     }
 
     fn request_async<U: Serialize>(&self, method: Method, path: &str, body: Option<&U>) -> FutureInternalResponse {

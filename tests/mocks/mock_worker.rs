@@ -71,11 +71,7 @@ impl<T: PartialEq + Debug + Send + Sync + 'static> Worker<T> for MockWorker<T> {
 impl<T: PartialEq + Debug + Send + Sync + 'static> Drop for MockWorker<T> {
     fn drop(&mut self) {
         if !thread::panicking() {
-            assert!(
-                self.reqs.lock().unwrap().len() == 0,
-                "Unmet requests: {:?}",
-                *self.reqs.lock().unwrap()
-            );
+            assert!(self.reqs.lock().unwrap().len() == 0, "Unmet requests: {:?}", *self.reqs.lock().unwrap());
         }
     }
 }

@@ -10,7 +10,7 @@ use tempdir::TempDir;
 use octobot::config::Config;
 use octobot::db::Database;
 use octobot::github;
-use octobot::messenger;
+use octobot::messenger::{self, Messenger};
 use octobot::slack;
 
 use mocks::mock_slack::MockSlack;
