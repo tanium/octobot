@@ -8,7 +8,7 @@ worst nightmare: remaining un-reviewed.
 
 Octobot isn't content to stop there, it also wants to help merge pull requests
 to release branches for you. All you have to do is label pull requests with
-"backport-1.0" (for example) and he will auto-cherry-pick this PR after it is
+"backport-1.0" (for example) and it will auto-cherry-pick this PR after it is
 merged to "release/1.0" and open up a new PR for you.
 
 Yet still more, octobot also wants to help improve JIRA issue tracking.
