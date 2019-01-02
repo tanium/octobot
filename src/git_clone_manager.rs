@@ -43,6 +43,7 @@ impl GitCloneManager {
         if clone_dir.join(".git").exists() {
             info!("Reusing cloned repo https://{}/{}/{} in {:?}", session.github_host(), owner, repo, clone_dir);
             // prune local tags deleted from remotes: important to avoid stale/bad version tags
+            git.run(&["remote", "set-url", "origin", &url])?;
             git.run(&["fetch", "--prune", "origin", "+refs/tags/*:refs/tags/*"])?;
         } else {
             info!("Cloning https://{}/{}/{} into {:?}", session.github_host(), owner, repo, clone_dir);
