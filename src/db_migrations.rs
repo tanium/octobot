@@ -38,7 +38,7 @@ const MIGRATIONS: [&'static str; 2] = [
 
 fn current_version(conn: &Connection) -> Result<Option<i32>> {
     let mut version: Option<i32> = None;
-    conn.query_row("SELECT current_version from __version", &[], |row| { version = Some(row.get(0)); })
+    conn.query_row("SELECT current_version from __version", rusqlite::NO_PARAMS, |row| { version = Some(row.get(0)); })
         .map_err(|_| Error::from("Could not get current version"))?;
 
     Ok(version)
@@ -49,7 +49,7 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         Ok(v) => v,
         Err(_) => {
             // versions table probably doesn't exist.
-            conn.execute(CREATE_VERSIONS, &[]).map_err(|e| {
+            conn.execute(CREATE_VERSIONS, rusqlite::NO_PARAMS).map_err(|e| {
                 Error::from(format!("Error creating versions table: {}", e))
             })?;
             None

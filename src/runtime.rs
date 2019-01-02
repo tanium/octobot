@@ -1,14 +1,14 @@
 use std;
 
-use futures::{Future, future};
+use futures::{future, Future};
 use tokio;
-use tokio_threadpool;
 
 pub fn new(num_threads: usize, name: &str) -> tokio::runtime::Runtime {
-    let mut threadpool = tokio_threadpool::Builder::new();
-    threadpool.name_prefix(format!("{}-", name)).pool_size(num_threads);
-
-    tokio::runtime::Builder::new().threadpool_builder(threadpool).build().unwrap()
+    tokio::runtime::Builder::new()
+        .name_prefix(format!("{}-", name))
+        .blocking_threads(num_threads)
+        .build()
+        .unwrap()
 }
 
 pub fn run<F>(num_threads: usize, func: F) -> ()
