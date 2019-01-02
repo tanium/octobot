@@ -29,7 +29,12 @@ impl GitCloneManager {
         let session = self.github_app.new_session(owner, repo)?;
 
         let held_clone_dir = self.dir_pool.take_directory(session.github_host(), owner, repo);
-        self.clone_repo(&session, owner, repo, &held_clone_dir.dir())?;
+        if let Err(e) = self.clone_repo(&session, owner, repo, &held_clone_dir.dir()) {
+            let err_str = format!("{}", e);
+            let err_str = err_str.replace(session.github_token(), "******");
+            return Err(err_str.into());
+        }
+
 
         Ok(held_clone_dir)
     }
