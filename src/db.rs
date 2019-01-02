@@ -27,7 +27,7 @@ impl Database {
 
     fn migrate(&mut self) -> Result<()> {
         let mut conn = self.connect()?;
-        conn.query_row("PRAGMA journal_mode=WAL", &[], |row| {
+        conn.query_row("PRAGMA journal_mode=WAL", rusqlite::NO_PARAMS, |row| {
             let res: String = row.get(0);
             if res.trim() != "wal" {
                 error!("Error setting WAL mode. Result: {}", res);
