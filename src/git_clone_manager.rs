@@ -35,18 +35,33 @@ impl GitCloneManager {
     }
 
     fn clone_repo(&self, session: &github::api::Session, owner: &str, repo: &str, clone_dir: &PathBuf) -> Result<()> {
-        let url =
-            format!("https://x-access-token:{}@{}/{}/{}", session.github_token(), session.github_host(), owner, repo);
+        let url = format!(
+            "https://x-access-token@{}/{}/{}",
+            session.github_host(),
+            owner,
+            repo
+        );
 
         let git = Git::new(session.github_host(), session.github_token(), clone_dir);
 
         if clone_dir.join(".git").exists() {
-            info!("Reusing cloned repo https://{}/{}/{} in {:?}", session.github_host(), owner, repo, clone_dir);
+            info!(
+                "Reusing cloned repo https://{}/{}/{} in {:?}",
+                session.github_host(),
+                owner,
+                repo,
+                clone_dir
+            );
             // prune local tags deleted from remotes: important to avoid stale/bad version tags
-            git.run(&["remote", "set-url", "origin", &url])?;
             git.run(&["fetch", "--prune", "origin", "+refs/tags/*:refs/tags/*"])?;
         } else {
-            info!("Cloning https://{}/{}/{} into {:?}", session.github_host(), owner, repo, clone_dir);
+            info!(
+                "Cloning https://{}/{}/{} into {:?}",
+                session.github_host(),
+                owner,
+                repo,
+                clone_dir
+            );
             if let Err(e) = fs::create_dir_all(&clone_dir) {
                 return Err(format!("Error creating clone directory '{:?}': {}", clone_dir, e).into());
             }
