@@ -5,6 +5,7 @@ use serde::ser::Serialize;
 use errors::*;
 
 pub use reqwest::header::HeaderMap;
+pub use reqwest::header;
 
 pub struct HTTPClient {
     pub api_base: String,
