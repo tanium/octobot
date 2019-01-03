@@ -52,7 +52,6 @@ pub trait Session: Send + Sync {
     fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>>;
 }
 
-
 pub trait GithubSessionFactory: Send + Sync {
     fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession>;
     fn get_token_org(&self, org: &str) -> Result<String>;
@@ -91,25 +90,36 @@ impl GithubApp {
             app: None,
         };
 
-        github.app = Some(github.new_client().get("/app").map_err(|e| {
-            Error::from(format!("Error authenticating to github with token: {}", e))
-        })?);
+        github.app = Some(
+            github
+                .new_client()?
+                .get("/app")
+                .map_err(|e| Error::from(format!("Error authenticating to github with token: {}", e)))?,
+        );
 
         info!("Logged in as GithubApp {}", github.bot_name());
 
         Ok(github)
     }
 
-    fn new_client(&self) -> HTTPClient {
+    fn new_client(&self) -> Result<HTTPClient> {
         let jwt_token = jwt::new_token(self.app_id, &self.app_key);
-        HTTPClient::new(&api_base(&self.host)).with_headers(hashmap!{
-            "Accept" => "application/vnd.github.machine-man-preview+json".to_string(),
-            "Authorization" => format!("Bearer {}", jwt_token),
-        })
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::ACCEPT,
+            "application/vnd.github.machine-man-preview+json".parse().unwrap(),
+        );
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", jwt_token).parse().unwrap(),
+        );
+
+        HTTPClient::new_with_headers(&api_base(&self.host), headers)
     }
 
     fn new_token(&self, installation_url: &str) -> Result<String> {
-        let client = self.new_client();
+        let client = self.new_client()?;
 
         // All we care about for now is the installation id
         #[derive(Deserialize)]
@@ -124,10 +134,11 @@ impl GithubApp {
         // Lookup the installation id for this org/repo
         let installation: Installation = client.get(installation_url)?;
         // Get a new access token for this id
-        let token: AccessToken =
-            client.post(&format!("/installations/{}/access_tokens", installation.id), &String::new())?;
+        let token: AccessToken = client.post(
+            &format!("/installations/{}/access_tokens", installation.id),
+            &String::new(),
+        )?;
         Ok(token.token)
-
     }
 }
 
@@ -157,9 +168,13 @@ impl GithubOauthApp {
             user: None,
         };
 
-        github.user = Some(github.new_session("", "")?.client.get::<User>("/user").map_err(|e| {
-            Error::from(format!("Error authenticating to github with token: {}", e))
-        })?);
+        github.user = Some(
+            github
+                .new_session("", "")?
+                .client
+                .get::<User>("/user")
+                .map_err(|e| Error::from(format!("Error authenticating to github with token: {}", e)))?,
+        );
 
         info!("Logged in as OAuth app {}", github.bot_name());
 
@@ -185,8 +200,6 @@ impl GithubSessionFactory for GithubOauthApp {
     }
 }
 
-
-
 pub struct GithubSession {
     client: HTTPClient,
     host: String,
@@ -196,14 +209,21 @@ pub struct GithubSession {
 
 impl GithubSession {
     pub fn new(host: &str, bot_name: &str, token: &str) -> Result<GithubSession> {
-        let client = HTTPClient::new(&api_base(host)).with_headers(hashmap!{
-                // Standard accept header is "application/vnd.github.v3+json".
-                // The "mockingbird-preview" allows us to use the timeline api.
-                // cf. https://developer.github.com/enterprise/2.13/v3/issues/timeline/
-                "Accept" => "application/vnd.github.mockingbird-preview".to_string(),
-                "Content-Type" => "application/json".to_string(),
-                "Authorization" => format!("Token {}", token),
-            });
+        let mut headers = reqwest::header::HeaderMap::new();
+
+        // Standard accept header is "application/vnd.github.v3+json".
+        // The "mockingbird-preview" allows us to use the timeline api.
+        // cf. https://developer.github.com/enterprise/2.13/v3/issues/timeline/
+        headers.insert(
+            reqwest::header::ACCEPT,
+            "application/vnd.github.mockingbird-preview".parse().unwrap(),
+        );
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            format!("Token {}", token).parse().unwrap(),
+        );
+
+        let client = HTTPClient::new_with_headers(&api_base(host), headers)?;
 
         Ok(GithubSession {
             client: client,
@@ -228,10 +248,10 @@ impl Session for GithubSession {
     }
 
     fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
-        let pull_request: Result<PullRequest> =
-            self.client.get(&format!("repos/{}/{}/pulls/{}", owner, repo, number)).map_err(|e| {
-                format!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e).into()
-            });
+        let pull_request: Result<PullRequest> = self
+            .client
+            .get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
+            .map_err(|e| format!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e).into());
         let mut pull_request = pull_request?;
 
         // Always fetch PR's reviewers. Users get removed from requested_reviewers after they submit their review. :cry:
@@ -256,7 +276,8 @@ impl Session for GithubSession {
         let mut page = 1;
 
         loop {
-            let mut next_prs: Vec<PullRequest> = match self.client
+            let mut next_prs: Vec<PullRequest> = match self
+                .client
                 .get::<Vec<PullRequest>>(&format!(
                     "repos/{}/{}/pulls?state={}&head={}&per_page=100&page={}",
                     owner,
@@ -268,10 +289,12 @@ impl Session for GithubSession {
                 .map_err(|e| format!("Error looking up PRs: {}/{}: {}", owner, repo, e).into())
                 .map(|prs| {
                     prs.into_iter()
-                        .filter(|p| if let Some(head) = head {
-                            p.head.ref_name == head || p.head.sha == head
-                        } else {
-                            true
+                        .filter(|p| {
+                            if let Some(head) = head {
+                                p.head.ref_name == head || p.head.sha == head
+                            } else {
+                                true
+                            }
                         })
                         .collect::<Vec<_>>()
                 }) {
@@ -283,11 +306,13 @@ impl Session for GithubSession {
                 break;
             }
 
-            next_prs.iter_mut().for_each(|pull_request| if pull_request.reviews.is_none() {
-                match self.get_pull_request_reviews(owner, repo, pull_request.number) {
-                    Ok(r) => pull_request.reviews = Some(r),
-                    Err(e) => error!("Error refetching pull request reviews: {}", e),
-                };
+            next_prs.iter_mut().for_each(|pull_request| {
+                if pull_request.reviews.is_none() {
+                    match self.get_pull_request_reviews(owner, repo, pull_request.number) {
+                        Ok(r) => pull_request.reviews = Some(r),
+                        Err(e) => error!("Error refetching pull request reviews: {}", e),
+                    };
+                }
             });
 
             pull_requests.extend(next_prs.into_iter());
@@ -324,27 +349,21 @@ impl Session for GithubSession {
     }
 
     fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>> {
-        self.client.get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number)).map_err(
-            |e| {
-                format!("error looking up pr labels: {}/{} #{}: {}", owner, repo, number, e).into()
-            },
-        )
+        self.client
+            .get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number))
+            .map_err(|e| format!("error looking up pr labels: {}/{} #{}: {}", owner, repo, number, e).into())
     }
 
     fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>> {
-        self.client.get(&format!("repos/{}/{}/pulls/{}/commits", owner, repo, number)).map_err(
-            |e| {
-                format!("Error looking up PR commits: {}/{} #{}: {}", owner, repo, number, e).into()
-            },
-        )
+        self.client
+            .get(&format!("repos/{}/{}/pulls/{}/commits", owner, repo, number))
+            .map_err(|e| format!("Error looking up PR commits: {}/{} #{}: {}", owner, repo, number, e).into())
     }
 
     fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>> {
-        self.client.get(&format!("repos/{}/{}/pulls/{}/reviews", owner, repo, number)).map_err(
-            |e| {
-                format!("Error looking up PR reviews: {}/{} #{}: {}", owner, repo, number, e).into()
-            },
-        )
+        self.client
+            .get(&format!("repos/{}/{}/pulls/{}/reviews", owner, repo, number))
+            .map_err(|e| format!("Error looking up PR reviews: {}/{} #{}: {}", owner, repo, number, e).into())
     }
 
     fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<()> {
@@ -369,7 +388,10 @@ impl Session for GithubSession {
         let body = ReviewPR { reviewers: reviewers };
 
         self.client
-            .post_void(&format!("repos/{}/{}/pulls/{}/requested_reviewers", owner, repo, number), &body)
+            .post_void(
+                &format!("repos/{}/{}/pulls/{}/requested_reviewers", owner, repo, number),
+                &body,
+            )
             .map_err(|e| format!("Error requesting review for PR: {}/{} #{}: {}", owner, repo, number, e).into())
     }
 
@@ -378,7 +400,9 @@ impl Session for GithubSession {
         struct CommentPR {
             body: String,
         }
-        let body = CommentPR { body: comment.to_string() };
+        let body = CommentPR {
+            body: comment.to_string(),
+        };
 
         self.client
             .post_void(&format!("repos/{}/{}/issues/{}/comments", owner, repo, number), &body)
@@ -398,9 +422,15 @@ impl Session for GithubSession {
             sha: sha.into(),
         };
 
-        self.client.post_void(&format!("repos/{}/{}/git/refs", owner, repo), &body).map_err(|e| {
-            format!("Error creating branch {}/{} {}, {}: {}", owner, repo, branch_name, sha, e).into()
-        })
+        self.client
+            .post_void(&format!("repos/{}/{}/git/refs", owner, repo), &body)
+            .map_err(|e| {
+                format!(
+                    "Error creating branch {}/{} {}, {}: {}",
+                    owner, repo, branch_name, sha, e
+                )
+                .into()
+            })
     }
 
     fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()> {
@@ -415,17 +445,20 @@ impl Session for GithubSession {
             statuses: Vec<Status>,
         }
 
-        let status: Result<CombinedStatus> =
-            self.client
-                .get(&format!("repos/{}/{}/commits/{}/status", owner, repo, ref_name))
-                .map_err(|e| format!("Error getting statuses {}/{} {}: {}", owner, repo, ref_name, e).into());
+        let status: Result<CombinedStatus> = self
+            .client
+            .get(&format!("repos/{}/{}/commits/{}/status", owner, repo, ref_name))
+            .map_err(|e| format!("Error getting statuses {}/{} {}: {}", owner, repo, ref_name, e).into());
 
         status.map(|s| s.statuses)
     }
 
     fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<()> {
         self.client
-            .post_void(&format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name), status)
+            .post_void(
+                &format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name),
+                status,
+            )
             .map_err(|e| format!("Error creating status {}/{} {}: {}", owner, repo, ref_name, e).into())
     }
 
@@ -461,10 +494,15 @@ impl Session for GithubSession {
         let mut events = vec![];
         let mut page = 1;
         loop {
-            let url = format!("repos/{}/{}/issues/{}/timeline?per_page=100&page={}", owner, repo, number, page);
-            let next_events: Vec<TimelineEvent> = match self.client.get(&url).map_err(|e| {
-                format!("Error getting timeline for PR: {}/{} #{}: {}", owner, repo, number, e).into()
-            }) {
+            let url = format!(
+                "repos/{}/{}/issues/{}/timeline?per_page=100&page={}",
+                owner, repo, number, page
+            );
+            let next_events: Vec<TimelineEvent> = match self
+                .client
+                .get(&url)
+                .map_err(|e| format!("Error getting timeline for PR: {}/{} #{}: {}", owner, repo, number, e).into())
+            {
                 Ok(r) => r,
                 Err(e) => return Err(e),
             };

@@ -9,8 +9,6 @@ extern crate http;
 extern crate hyper;
 extern crate hyper_rustls;
 extern crate jsonwebtoken;
-#[macro_use]
-extern crate maplit;
 extern crate openldap;
 extern crate regex;
 extern crate ring;
@@ -27,11 +25,16 @@ extern crate unidiff;
 extern crate url;
 extern crate time;
 extern crate rusqlite;
+extern crate reqwest;
 
 #[macro_use]
 extern crate log;
 #[macro_use]
 extern crate serde_derive;
+
+#[cfg(test)]
+#[macro_use]
+extern crate maplit;
 
 pub mod config;
 pub mod db;
@@ -66,6 +69,7 @@ pub mod errors {
             Url(::url::ParseError);
             DB(::rusqlite::Error);
             LDAP(::openldap::errors::LDAPError);
+            Reqwest(::reqwest::Error);
         }
     }
 }

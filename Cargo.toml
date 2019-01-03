@@ -63,6 +63,14 @@ tokio-threadpool = "0.1.6"
 git = "https://github.com/matthauck/jsonwebtoken"
 rev = "94917bfe2ccf33853a1d57094138f9e9d42c5a86"
 
+[dependencies.reqwest]
+# Note: use explicit git revision for rustls support
+# version = "0.9.5"
+git = "https://github.com/seanmonstar/reqwest"
+rev = "3877e8729c416cbfd4bda95b60a1e83587cf4b4e"
+features = ["rustls-tls"]
+default-features = false
+
 [dev-dependencies]
 tempdir = "0.3.7"
 

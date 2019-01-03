@@ -61,11 +61,15 @@ impl JiraSession {
         let api_base = format!("{}/rest/api/2", jira_base);
 
         let auth = base64::encode(format!("{}:{}", config.username, config.password).as_bytes());
-        let client = HTTPClient::new(&api_base).with_headers(hashmap!{
-                "Accept" => "application/json".to_string(),
-                "Content-Type" => "application/json".to_string(),
-                "Authorization" => format!("Basic {}", auth),
-            });
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            format!("Basic {}", auth).parse().unwrap(),
+        );
+
+        let client = HTTPClient::new_with_headers(&api_base, headers)?;
 
         let auth_resp = client.get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base)).chain_err(
             || "Error authenticating to JIRA",
