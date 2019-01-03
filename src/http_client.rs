@@ -12,15 +12,23 @@ pub struct HTTPClient {
 }
 
 impl HTTPClient {
-    pub fn new(api_base: &str) -> HTTPClient {
-        HTTPClient {
+    pub fn new(api_base: &str) -> Result<HTTPClient> {
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::RedirectPolicy::none())
+            .build()?;
+
+        Ok(HTTPClient {
             api_base: api_base.into(),
-            client: reqwest::Client::new(),
-        }
+            client: client,
+        })
     }
 
     pub fn new_with_headers(api_base: &str, headers: HeaderMap) -> Result<HTTPClient> {
-        let client = reqwest::Client::builder().default_headers(headers).build()?;
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::RedirectPolicy::none())
+            .default_headers(headers)
+            .build()?;
+
         Ok(HTTPClient {
             api_base: api_base.into(),
             client: client,
@@ -46,6 +54,7 @@ impl HTTPClient {
         self.client
             .get(&self.make_url(path))
             .send()
+            .and_then(|r| r.error_for_status())
             .and_then(|mut r| r.json::<T>())
             .map_err(|e| format!("{}", e).into())
     }
@@ -58,6 +67,7 @@ impl HTTPClient {
             .post(&self.make_url(path))
             .json(body)
             .send()
+            .and_then(|r| r.error_for_status())
             .and_then(|mut r| r.json::<T>())
             .map_err(|e| format!("{}", e).into())
     }
@@ -67,6 +77,7 @@ impl HTTPClient {
             .post(&self.make_url(path))
             .json(body)
             .send()
+            .and_then(|r| r.error_for_status())
             .and_then(|_| Ok(()))
             .map_err(|e| format!("{}", e).into())
     }
@@ -79,6 +90,7 @@ impl HTTPClient {
             .put(&self.make_url(path))
             .json(body)
             .send()
+            .and_then(|r| r.error_for_status())
             .and_then(|mut r| r.json::<T>())
             .map_err(|e| format!("{}", e).into())
     }
@@ -88,6 +100,7 @@ impl HTTPClient {
             .put(&self.make_url(path))
             .json(body)
             .send()
+            .and_then(|r| r.error_for_status())
             .and_then(|_| Ok(()))
             .map_err(|e| format!("{}", e).into())
     }
@@ -96,6 +109,7 @@ impl HTTPClient {
         self.client
             .delete(&self.make_url(path))
             .send()
+            .and_then(|r| r.error_for_status())
             .and_then(|_| Ok(()))
             .map_err(|e| format!("{}", e).into())
     }
