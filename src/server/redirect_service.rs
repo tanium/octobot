@@ -21,11 +21,11 @@ impl RedirectService {
         let mut new_url = String::from("https://");
         if let Some(host) = uri.host() {
             new_url += host;
-            self.maybe_add_port(&mut new_url, uri.port())
+            self.maybe_add_port(&mut new_url, uri.port_part())
         } else if let Some(host_header) = host_header {
             if let Some(host) = host_header.host() {
                 new_url += host;
-                self.maybe_add_port(&mut new_url, host_header.port());
+                self.maybe_add_port(&mut new_url, host_header.port_part());
             }
         }
         new_url += uri.path();
@@ -36,7 +36,7 @@ impl RedirectService {
         new_url
     }
 
-    fn maybe_add_port(&self, new_url: &mut String, req_port: Option<u16>) {
+    fn maybe_add_port(&self, new_url: &mut String, req_port: Option<http::uri::Port<&str>>) {
         // if port was specified, then not using docker or otherwise to remap ports --> substitute explicit port
         if req_port.is_some() {
             new_url.push_str(&format!(":{}", self.https_port));

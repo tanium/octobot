@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use futures::{Future, future};
+use futures::{future, Future};
+use reqwest;
 use tokio;
 
-use http_client::HTTPClient;
 use util;
 use worker;
 
@@ -32,7 +32,9 @@ pub struct SlackAttachmentBuilder {
 
 impl SlackAttachmentBuilder {
     pub fn new(text: &str) -> SlackAttachmentBuilder {
-        SlackAttachmentBuilder { attachment: SlackAttachment::new(text) }
+        SlackAttachmentBuilder {
+            attachment: SlackAttachment::new(text),
+        }
     }
 
     pub fn text<S: Into<String>>(&mut self, value: S) -> &mut SlackAttachmentBuilder {
@@ -59,7 +61,6 @@ impl SlackAttachmentBuilder {
     }
 }
 
-
 #[derive(Serialize, Clone, PartialEq)]
 struct SlackMessage {
     text: String,
@@ -69,7 +70,8 @@ struct SlackMessage {
 
 // the main object for sending messages to slack
 struct Slack {
-    client: HTTPClient,
+    client: reqwest::async::Client,
+    webhook_url: String,
     recent_messages: Mutex<Vec<SlackMessage>>,
 }
 
@@ -78,12 +80,9 @@ const TRIM_MESSAGES_TO: usize = 20;
 
 impl Slack {
     pub fn new(webhook_url: &str) -> Slack {
-        let client = HTTPClient::new(webhook_url).with_headers(hashmap!{
-                "Content-Type" => "application/json".to_string(),
-            });
-
         Slack {
-            client: client,
+            client: reqwest::async::Client::new(),
+            webhook_url: webhook_url.into(),
             recent_messages: Mutex::new(Vec::new()),
         }
     }
@@ -101,7 +100,7 @@ impl Slack {
         }
 
         info!("Sending message to #{}", channel);
-        tokio::spawn(self.client.post_void_async("", &slack_msg).then(|res| {
+        tokio::spawn(self.client.post(&self.webhook_url).json(&slack_msg).send().then(|res| {
             match res {
                 Ok(_) => info!("Successfully sent slack message"),
                 Err(e) => error!("Error sending slack message: {}", e),
@@ -136,7 +135,9 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
 }
 
 pub fn new_runner(webhook_url: &str) -> Arc<worker::Runner<SlackRequest>> {
-    Arc::new(Runner { slack: Arc::new(Slack::new(webhook_url)) })
+    Arc::new(Runner {
+        slack: Arc::new(Slack::new(webhook_url)),
+    })
 }
 
 impl worker::Runner<SlackRequest> for Runner {
