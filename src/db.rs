@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use rusqlite::{Connection, Row, Statement};
 use rusqlite::types::FromSql;
+use rusqlite::{Connection, Row, Statement};
 
 use db_migrations;
 use errors::*;
@@ -13,27 +13,28 @@ pub struct Database {
 
 impl Database {
     pub fn new(db_file: &str) -> Result<Database> {
-        let mut db = Database { db_file: db_file.to_string() };
+        let mut db = Database {
+            db_file: db_file.to_string(),
+        };
 
         db.migrate()?;
         Ok(db)
     }
 
     pub fn connect(&self) -> Result<Connection> {
-        Connection::open(&self.db_file).map_err(|e| {
-            Error::from(format!("Error opening database {}: {}", self.db_file, e))
-        })
+        Connection::open(&self.db_file)
+            .map_err(|e| Error::from(format!("Error opening database {}: {}", self.db_file, e)))
     }
 
     fn migrate(&mut self) -> Result<()> {
         let mut conn = self.connect()?;
-        conn.query_row("PRAGMA journal_mode=WAL", rusqlite::NO_PARAMS, |row| {
-            let res: String = row.get(0);
-            if res.trim() != "wal" {
-                error!("Error setting WAL mode. Result: {}", res);
-            }
-        }).map_err(|e| Error::from(format!("Error turning on WAL mode: {}", e)))?;
+        let mode: String = conn
+            .query_row("PRAGMA journal_mode=WAL", rusqlite::NO_PARAMS, |row| row.get(0))
+            .map_err(|e| Error::from(format!("Error turning on WAL mode: {}", e)))?;
 
+        if mode.trim() != "wal" {
+            error!("Error setting WAL mode. Result: {}", mode);
+        }
 
         db_migrations::migrate(&mut conn)
     }
@@ -57,19 +58,18 @@ impl Columns {
     }
 
     pub fn get_index(&self, col: &str) -> Result<usize> {
-        self.cols.get(col).map(|i| i.clone()).ok_or(
-            Error::from(format!("Invalid columnL '{}'", col)),
-        )
+        self.cols
+            .get(col)
+            .map(|i| i.clone())
+            .ok_or(Error::from(format!("Invalid columnL '{}'", col)))
     }
 
     pub fn get<T: FromSql>(&self, row: &Row, col: &str) -> Result<T> {
         let index = self.get_index(col)?;
-        row.get_checked(index).map_err(
-            |e| Error::from(format!("Error getting column {}: {}", col, e)),
-        )
+        row.get(index)
+            .map_err(|e| Error::from(format!("Error getting column {}: {}", col, e)))
     }
 }
-
 
 pub fn from_string_vec(val: &Vec<String>) -> String {
     val.join(",")
@@ -88,7 +88,11 @@ pub fn to_bool(val: i32) -> bool {
 }
 
 pub fn to_tinyint(val: bool) -> i8 {
-    if val { 1 } else { 0 }
+    if val {
+        1
+    } else {
+        0
+    }
 }
 
 #[cfg(test)]
@@ -106,8 +110,14 @@ mod tests {
     #[test]
     fn test_vecs() {
         assert_eq!("hello,world", from_string_vec(&vec!["hello".into(), "world".into()]));
-        assert_eq!(vec!["hello".to_string(), "world".to_string()], to_string_vec("hello,world".into()));
-        assert_eq!(vec!["hello".to_string(), "world".to_string()], to_string_vec("  hello ,  world  ".into()));
+        assert_eq!(
+            vec!["hello".to_string(), "world".to_string()],
+            to_string_vec("hello,world".into())
+        );
+        assert_eq!(
+            vec!["hello".to_string(), "world".to_string()],
+            to_string_vec("  hello ,  world  ".into())
+        );
     }
 
     #[test]
