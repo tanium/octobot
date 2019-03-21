@@ -1,4 +1,5 @@
 use rusqlite::Row;
+use rusqlite::types::ToSql;
 
 use db::{self, Database};
 use errors::*;
@@ -100,11 +101,11 @@ impl RepoConfig {
             &[
                 &repo.repo,
                 &repo.channel,
-                &db::to_tinyint(repo.force_push_notify),
+                &db::to_tinyint(repo.force_push_notify) as &ToSql,
                 &db::from_string_vec(&repo.force_push_reapply_statuses),
                 &db::from_string_vec(&repo.branches),
                 &db::from_string_vec(&repo.jira_projects),
-                &db::to_tinyint(repo.jira_versions_enabled),
+                &db::to_tinyint(repo.jira_versions_enabled) as &ToSql,
                 &repo.version_script,
                 &repo.release_branch_prefix,
             ],
@@ -134,11 +135,11 @@ impl RepoConfig {
             &[
                 &repo.repo,
                 &repo.channel,
-                &db::to_tinyint(repo.force_push_notify),
+                &db::to_tinyint(repo.force_push_notify) as &ToSql,
                 &db::from_string_vec(&repo.force_push_reapply_statuses),
                 &db::from_string_vec(&repo.branches),
                 &db::from_string_vec(&repo.jira_projects),
-                &db::to_tinyint(repo.jira_versions_enabled),
+                &db::to_tinyint(repo.jira_versions_enabled) as &ToSql,
                 &repo.version_script,
                 &repo.release_branch_prefix,
                 &repo.id.unwrap(),
@@ -202,7 +203,7 @@ impl RepoConfig {
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare("SELECT * FROM repos ORDER BY repo")?;
         let cols = db::Columns::from_stmt(&stmt)?;
-        let mut rows = stmt.query(&[])?;
+        let mut rows = stmt.query(rusqlite::NO_PARAMS)?;
 
         let mut repos = vec![];
         while let Some(row) = rows.next() {

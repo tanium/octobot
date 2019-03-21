@@ -1,3 +1,5 @@
+use rusqlite::types::ToSql;
+
 use db::{self, Database};
 use errors::*;
 
@@ -38,7 +40,7 @@ impl UserConfig {
         let conn = self.db.connect()?;
         conn.execute(
             "INSERT INTO users (github_name, slack_name, mute_direct_messages) VALUES (?1, ?2, ?3)",
-            &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages)],
+            &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages) as &ToSql],
         ).map_err(|e| Error::from(format!("Error inserting user {}: {}", user.github, e)))?;
 
         Ok(())
@@ -48,7 +50,7 @@ impl UserConfig {
         let conn = self.db.connect()?;
         conn.execute(
             "UPDATE users set github_name = ?1, slack_name = ?2, mute_direct_messages = ?3 where id = ?4",
-            &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages), &user.id],
+            &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages) as &ToSql, &user.id],
         ).map_err(|e| Error::from(format!("Error updating user {}: {}", user.github, e)))?;
 
         Ok(())
@@ -80,7 +82,7 @@ impl UserConfig {
         let mut stmt = conn.prepare(
             "SELECT id, slack_name, github_name, mute_direct_messages FROM users ORDER BY github_name",
         )?;
-        let found = stmt.query_map(&[], |row| {
+        let found = stmt.query_map(rusqlite::NO_PARAMS, |row| {
             UserInfo {
                 id: row.get(0),
                 slack: row.get(1),

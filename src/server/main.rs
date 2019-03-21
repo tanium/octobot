@@ -9,7 +9,7 @@ use hyper::server::Server;
 use rustls;
 use rustls::internal::pemfile;
 use tokio;
-use tokio_rustls::ServerConfigExt;
+use tokio_rustls::TlsAcceptor;
 
 use config::Config;
 use github;
@@ -81,7 +81,7 @@ fn run_server(config: Config) {
             let mut the_cfg = rustls::ServerConfig::new(rustls::NoClientAuth::new());
             the_cfg.set_single_cert(certs, key).expect("failed to set ssl cert");
 
-            tls_cfg = Some(Arc::new(the_cfg));
+            tls_cfg = Some(TlsAcceptor::from(Arc::new(the_cfg)));
         } else {
             warn!("Warning: No SSL configured");
             tls_cfg = None;
@@ -102,7 +102,7 @@ fn run_server(config: Config) {
         {
             let tcp = tokio::net::TcpListener::bind(&https_addr).unwrap();
             let tls = tcp.incoming()
-                .and_then(move |s| tls_cfg.accept_async(s))
+                .and_then(move |s| tls_cfg.accept(s))
                 .then(|r| match r {
                     Ok(x) => Ok::<_, io::Error>(Some(x)),
                     Err(e) => {
