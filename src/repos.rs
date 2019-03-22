@@ -109,14 +109,14 @@ impl RepoConfig {
                 &repo.version_script,
                 &repo.release_branch_prefix,
             ],
-        ).map_err(|e| Error::from(format!("Error inserting repo {}: {}", repo.repo, e)))?;
+        ).map_err(|e| format_err!("Error inserting repo {}: {}", repo.repo, e))?;
 
         Ok(())
     }
 
     pub fn update(&mut self, repo: &RepoInfo) -> Result<()> {
         if repo.id.is_none() {
-            return Err("Repo does not have an id: cannot update.".into());
+            return Err(format_err!("Repo does not have an id: cannot update."));
         }
 
         let conn = self.db.connect()?;
@@ -144,7 +144,7 @@ impl RepoConfig {
                 &repo.release_branch_prefix,
                 &repo.id.unwrap(),
             ],
-        ).map_err(|e| Error::from(format!("Error updating repo {}: {}", repo.repo, e)))?;
+        ).map_err(|e| format_err!("Error updating repo {}: {}", repo.repo, e))?;
 
         Ok(())
     }
@@ -152,7 +152,7 @@ impl RepoConfig {
     pub fn delete(&mut self, id: i32) -> Result<()> {
         let conn = self.db.connect()?;
         conn.execute("DELETE from repos where id = ?1", &[&id]).map_err(|e| {
-            Error::from(format!("Error deleting repo {}: {}", id, e))
+            format_err!("Error deleting repo {}: {}", id, e)
         })?;
 
         Ok(())

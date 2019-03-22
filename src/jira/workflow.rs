@@ -252,7 +252,7 @@ pub fn merge_pending_versions(
 ) -> Result<HashMap<String, Vec<version::Version>>> {
     let target_version = match version::Version::parse(version) {
         Some(v) => v,
-        None => return Err(format!("Invalid target version: {}", version).into()),
+        None => return Err(format_err!("Invalid target version: {}", version)),
     };
 
     let real_versions = jira.get_versions(project)?;
@@ -275,7 +275,7 @@ pub fn merge_pending_versions(
     }
 
     if all_relevant_versions.is_empty() {
-        return Err(format!("No relevant pending versions for version {}", version).into());
+        return Err(format_err!("No relevant pending versions for version {}", version));
     }
 
     // create the target version for this project

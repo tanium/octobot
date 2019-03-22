@@ -1,4 +1,6 @@
 extern crate octobot;
+#[macro_use]
+extern crate failure;
 
 mod mocks;
 
@@ -320,7 +322,7 @@ fn test_force_push_error() {
     );
 
     force_push::comment_force_push(
-        Err("Ahh!!".into()),
+        Err(format_err!("Ahh!!")),
         vec![],
         &github,
         "some-user",

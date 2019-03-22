@@ -145,10 +145,10 @@ impl Repo {
         let url = Url::parse(html_url)?;
         let segments: Vec<&str> = match url.path_segments() {
             Some(s) => s.filter(|p| p.len() > 0).collect(),
-            None => return Err("No path segments in URL".into()),
+            None => return Err(format_err!("No path segments in URL")),
         };
         if segments.len() != 2 {
-            return Err("Expectd only two path segments!".into());
+            return Err(format_err!("Expectd only two path segments!"));
         }
 
         let user = segments[0];

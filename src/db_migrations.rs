@@ -41,7 +41,7 @@ fn current_version(conn: &Connection) -> Result<Option<i32>> {
         version = row.get(0).ok();
         Ok(())
     })
-    .map_err(|_| Error::from("Could not get current version"))?;
+    .map_err(|_| format_err!("Could not get current version"))?;
 
     Ok(version)
 }
@@ -52,7 +52,7 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         Err(_) => {
             // versions table probably doesn't exist.
             conn.execute(CREATE_VERSIONS, rusqlite::NO_PARAMS)
-                .map_err(|e| Error::from(format!("Error creating versions table: {}", e)))?;
+                .map_err(|e| format_err!("Error creating versions table: {}", e))?;
             None
         }
     };
@@ -67,14 +67,14 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         let next_version_unsigned: usize = next_version as usize;
 
         tx.execute_batch(MIGRATIONS[next_version_unsigned])
-            .map_err(|e| Error::from(format!("Error running migrations: {}", e)))?;
+            .map_err(|e| format_err!("Error running migrations: {}", e))?;
 
         if next_version == 0 {
             tx.execute("INSERT INTO __version VALUES (?1)", &[&next_version])
         } else {
             tx.execute("UPDATE __version set current_version = ?1", &[&next_version])
         }
-        .map_err(|e| Error::from(format!("Error updating version: {}", e)))?;
+        .map_err(|e| format_err!("Error updating version: {}", e))?;
 
         tx.commit()?;
 

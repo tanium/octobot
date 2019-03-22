@@ -56,7 +56,7 @@ impl HTTPClient {
             .send()
             .and_then(|r| r.error_for_status())
             .and_then(|mut r| r.json::<T>())
-            .map_err(|e| format!("{}", e).into())
+            .map_err(|e| format_err!("{}", e))
     }
 
     pub fn post<T, U: Serialize>(&self, path: &str, body: &U) -> Result<T>
@@ -69,7 +69,7 @@ impl HTTPClient {
             .send()
             .and_then(|r| r.error_for_status())
             .and_then(|mut r| r.json::<T>())
-            .map_err(|e| format!("{}", e).into())
+            .map_err(|e| format_err!("{}", e))
     }
 
     pub fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
@@ -79,7 +79,7 @@ impl HTTPClient {
             .send()
             .and_then(|r| r.error_for_status())
             .and_then(|_| Ok(()))
-            .map_err(|e| format!("{}", e).into())
+            .map_err(|e| format_err!("{}", e))
     }
 
     pub fn put<T, U: Serialize>(&self, path: &str, body: &U) -> Result<T>
@@ -92,7 +92,7 @@ impl HTTPClient {
             .send()
             .and_then(|r| r.error_for_status())
             .and_then(|mut r| r.json::<T>())
-            .map_err(|e| format!("{}", e).into())
+            .map_err(|e| format_err!("{}", e))
     }
 
     pub fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
@@ -102,7 +102,7 @@ impl HTTPClient {
             .send()
             .and_then(|r| r.error_for_status())
             .and_then(|_| Ok(()))
-            .map_err(|e| format!("{}", e).into())
+            .map_err(|e| format_err!("{}", e))
     }
 
     pub fn delete_void(&self, path: &str) -> Result<()> {
@@ -111,6 +111,6 @@ impl HTTPClient {
             .send()
             .and_then(|r| r.error_for_status())
             .and_then(|_| Ok(()))
-            .map_err(|e| format!("{}", e).into())
+            .map_err(|e| format_err!("{}", e))
     }
 }

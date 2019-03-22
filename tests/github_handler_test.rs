@@ -1,6 +1,8 @@
 extern crate hyper;
 extern crate octobot;
 extern crate tempdir;
+#[macro_use]
+extern crate failure;
 
 mod mocks;
 
@@ -820,7 +822,7 @@ fn test_pull_request_merged_error_getting_labels() {
         "some-user",
         "some-repo",
         32,
-        Err("whooops.".into()),
+        Err(format_err!("whooops.")),
     );
 
     let msg1 = "Pull Request merged";

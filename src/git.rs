@@ -127,19 +127,19 @@ impl Git {
             .env("OCTOBOT_PASS", &self.token);
 
         let mut child = cmd.spawn().map_err(
-            |e| Error::from(format!("Error starting git (args: {:?}): {}", args, e)),
+            |e| format_err!("Error starting git (args: {:?}): {}", args, e),
         )?;
 
         if let Some(ref stdin) = stdin {
             if let Some(ref mut child_stdin) = child.stdin {
                 child_stdin.write_all(stdin.as_bytes()).map_err(|e| {
-                    Error::from(format!("Error writing to stdin: {}", e))
+                    format_err!("Error writing to stdin: {}", e)
                 })?;
             }
         }
 
         let result = child.wait_with_output().map_err(|e| {
-            Error::from(format!("Error running git (args: {:?}): {}", args, e))
+            format_err!("Error running git (args: {:?}): {}", args, e)
         })?;
 
         let mut output = String::new();
@@ -152,12 +152,12 @@ impl Git {
                 output += String::from_utf8_lossy(&result.stderr).as_ref();
             }
             Err(
-                format!(
+                format_err!(
                     "Error running git (exit code {}, args: {:?}):\n{}",
                     result.status.code().unwrap_or(-1),
                     args,
                     output
-                ).into(),
+                ),
             )
         } else {
             Ok(output.trim().to_string())

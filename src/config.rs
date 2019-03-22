@@ -121,7 +121,7 @@ impl Config {
         };
 
         let serialized = toml::to_string(&model).map_err(
-            |e| Error::from(format!("Error serializing config: {}", e)),
+            |e| format_err!("Error serializing config: {}", e)
         )?;
 
         let tmp_file = config_file.to_string() + ".tmp";
@@ -247,10 +247,10 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
     match config_file.file_name() {
         Some(name) => {
             if name == db_file_name {
-                return Err("Must provide toml config file".into());
+                return Err(format_err!("Must provide toml config file"));
             }
         }
-        None => return Err("Provided config file has no file name".into()),
+        None => return Err(format_err!("Provided config file has no file name")),
     };
 
     let mut db_file = config_file.clone();
@@ -267,7 +267,7 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
 
 fn parse_string(config_contents: &str) -> Result<ConfigModel> {
     toml::from_str::<ConfigModel>(config_contents).map_err(|e| {
-        Error::from(format!("Error parsing config: {}", e))
+        format_err!("Error parsing config: {}", e)
     })
 }
 

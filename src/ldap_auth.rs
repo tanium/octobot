@@ -88,7 +88,7 @@ pub fn search(config: &LdapConfig, extra_filter: Option<&str>, max_results: i32)
     let ldap = new_ldap(&config.url)?;
     let bind_res = ldap.simple_bind(&config.bind_user, &config.bind_pass)?;
     if bind_res != 0 {
-        return Err(format!("LDAP service account bind failed with error code {}", bind_res).into());
+        return Err(format_err!("LDAP service account bind failed with error code {}", bind_res));
     }
 
     let mut search_filters: Vec<String> = vec![];
@@ -120,7 +120,7 @@ pub fn search(config: &LdapConfig, extra_filter: Option<&str>, max_results: i32)
         None, // client controls
         ptr::null_mut(), // timeout
         max_results,
-    ).map_err(|e| format!("Error on LDAP search: {}", e).into());
+    ).map_err(|e| format_err!("Error on LDAP search: {}", e));
 
     let entries = resp?.into_iter()
         .filter_map(|attrs| {

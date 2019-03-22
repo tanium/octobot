@@ -41,7 +41,7 @@ impl UserConfig {
         conn.execute(
             "INSERT INTO users (github_name, slack_name, mute_direct_messages) VALUES (?1, ?2, ?3)",
             &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages) as &ToSql],
-        ).map_err(|e| Error::from(format!("Error inserting user {}: {}", user.github, e)))?;
+        ).map_err(|e| format_err!("Error inserting user {}: {}", user.github, e))?;
 
         Ok(())
     }
@@ -51,7 +51,7 @@ impl UserConfig {
         conn.execute(
             "UPDATE users set github_name = ?1, slack_name = ?2, mute_direct_messages = ?3 where id = ?4",
             &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages) as &ToSql, &user.id],
-        ).map_err(|e| Error::from(format!("Error updating user {}: {}", user.github, e)))?;
+        ).map_err(|e| format_err!("Error updating user {}: {}", user.github, e))?;
 
         Ok(())
     }
@@ -59,7 +59,7 @@ impl UserConfig {
     pub fn delete(&mut self, user_id: i32) -> Result<()> {
         let conn = self.db.connect()?;
         conn.execute("DELETE from users where id = ?1", &[&user_id]).map_err(|e| {
-            Error::from(format!("Error deleting user {}: {}", user_id, e))
+            format_err!("Error deleting user {}: {}", user_id, e)
         })?;
 
         Ok(())

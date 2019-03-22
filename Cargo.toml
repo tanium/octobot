@@ -31,7 +31,7 @@ path = "src/migrate-db.rs"
 [dependencies]
 base64 = "0.10.1"
 env_logger = "0.6.1"
-error-chain = "0.12.0"
+failure = "0.1.5"
 futures = "0.1.25"
 http = "0.1.16"
 hyper = "0.12.25"

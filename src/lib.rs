@@ -1,9 +1,6 @@
-// `error_chain!` can recurse deeply
-#![recursion_limit = "1024"]
-
 extern crate base64;
 #[macro_use]
-extern crate error_chain;
+extern crate failure;
 extern crate futures;
 extern crate http;
 extern crate hyper;
@@ -61,17 +58,8 @@ pub mod version;
 pub mod worker;
 
 pub mod errors {
-    // Create the Error, ErrorKind, ResultExt, and Result types
-    error_chain!{
-        foreign_links {
-            Fmt(::std::fmt::Error);
-            Io(::std::io::Error);
-            Url(::url::ParseError);
-            DB(::rusqlite::Error);
-            LDAP(::openldap::errors::LDAPError);
-            Reqwest(::reqwest::Error);
-        }
-    }
+    pub type Error = failure::Error;
+    pub type Result<T> = std::result::Result<T, failure::Error>;
 }
 
 mod db_migrations;

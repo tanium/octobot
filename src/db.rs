@@ -23,14 +23,14 @@ impl Database {
 
     pub fn connect(&self) -> Result<Connection> {
         Connection::open(&self.db_file)
-            .map_err(|e| Error::from(format!("Error opening database {}: {}", self.db_file, e)))
+            .map_err(|e| format_err!("Error opening database {}: {}", self.db_file, e))
     }
 
     fn migrate(&mut self) -> Result<()> {
         let mut conn = self.connect()?;
         let mode: String = conn
             .query_row("PRAGMA journal_mode=WAL", rusqlite::NO_PARAMS, |row| row.get(0))
-            .map_err(|e| Error::from(format!("Error turning on WAL mode: {}", e)))?;
+            .map_err(|e| format_err!("Error turning on WAL mode: {}", e))?;
 
         if mode.trim() != "wal" {
             error!("Error setting WAL mode. Result: {}", mode);
@@ -61,13 +61,13 @@ impl Columns {
         self.cols
             .get(col)
             .map(|i| i.clone())
-            .ok_or(Error::from(format!("Invalid columnL '{}'", col)))
+            .ok_or(format_err!("Invalid columnL '{}'", col))
     }
 
     pub fn get<T: FromSql>(&self, row: &Row, col: &str) -> Result<T> {
         let index = self.get_index(col)?;
         row.get(index)
-            .map_err(|e| Error::from(format!("Error getting column {}: {}", col, e)))
+            .map_err(|e| format_err!("Error getting column {}: {}", col, e))
     }
 }
 

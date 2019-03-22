@@ -109,12 +109,12 @@ pub fn recv_timeout<T>(rx: &Receiver<T>, timeout: std::time::Duration) -> Result
                         thread::sleep(sleep_time);
                     }
                     None => {
-                        return Err("Timed out waiting".into());
+                        return Err(format_err!("Timed out waiting"));
                     }
                 }
             }
             Err(mpsc::TryRecvError::Disconnected) => {
-                return Err("Channel disconnected!".into());
+                return Err(format_err!("Channel disconnected!"));
             }
         };
     }
