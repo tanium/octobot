@@ -39,14 +39,14 @@ pub fn merge_pull_request(
     target_branch: &str,
 ) -> Result<github::PullRequest> {
     if !pull_request.is_merged() {
-        return Err(format!("Pull Request #{} is not yet merged.", pull_request.number).into());
+        return Err(format_err!("Pull Request #{} is not yet merged.", pull_request.number));
     }
 
     let merge_commit_sha;
     if let Some(ref sha) = pull_request.merge_commit_sha {
         merge_commit_sha = sha;
     } else {
-        return Err(format!("Pull Request #{} has no merge commit.", pull_request.number).into());
+        return Err(format_err!("Pull Request #{} has no merge commit.", pull_request.number));
     }
 
     // strip everything before last slash
@@ -57,7 +57,7 @@ pub fn merge_pull_request(
     // make sure there isn't already such a branch
     let current_remotes = git.run(&["ls-remote", "--heads"])?;
     if current_remotes.contains(&format!("refs/heads/{}", pr_branch_name)) {
-        return Err(format!("PR branch already exists on origin: '{}'", pr_branch_name).into());
+        return Err(format_err!("PR branch already exists on origin: '{}'", pr_branch_name));
     }
 
     let (title, body, whitespace_mode) = cherry_pick(

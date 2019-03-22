@@ -97,10 +97,10 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
         .stdout(Stdio::piped());
 
     let child = cmd.spawn().map_err(|e| {
-        Error::from(format!("Error starting version script (script: {}): {}", version_script, e))
+        format_err!("Error starting version script (script: {}): {}", version_script, e)
     })?;
     let result = child.wait_with_output().map_err(|e| {
-        Error::from(format!("Error running version script (script: {}): {}", version_script, e))
+        format_err!("Error running version script (script: {}): {}", version_script, e)
     })?;
 
     let mut output = String::new();
@@ -125,12 +125,12 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
     if !result.status.success() {
         output += &stderr;
         Err(
-            format!(
+            format_err!(
                 "Error running version script (exit code {}; script: {}):\n{}",
                 result.status.code().unwrap_or(-1),
                 version_script,
                 output
-            ).into(),
+            ),
         )
     } else {
 

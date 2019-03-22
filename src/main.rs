@@ -3,6 +3,8 @@ extern crate octobot;
 extern crate time;
 extern crate thread_id;
 extern crate log;
+#[macro_use]
+extern crate failure;
 
 use std::io::Write;
 
@@ -19,15 +21,13 @@ fn main() {
 
         writeln!(stderr, "error: {}", e).expect(errmsg);
 
-        for e in e.iter().skip(1) {
-            writeln!(stderr, "caused by: {}", e).expect(errmsg);
+        for cause in e.iter_causes() {
+            writeln!(stderr, "{}: {}", cause.name().unwrap_or("Error"), cause).expect(errmsg);
         }
 
         // The backtrace is not always generated. Try to run this example
         // with `RUST_BACKTRACE=1`.
-        if let Some(backtrace) = e.backtrace() {
-            writeln!(stderr, "backtrace: {:?}", backtrace).expect(errmsg);
-        }
+        writeln!(stderr, "backtrace: {:?}", e.backtrace()).expect(errmsg);
 
         ::std::process::exit(1);
     }
@@ -35,14 +35,14 @@ fn main() {
 
 fn run() -> Result<()> {
     if std::env::args().len() < 2 {
-        return Err("Usage: octobot <config-file>".into());
+        return Err(format_err!("Usage: octobot <config-file>"));
     }
 
     let config_file = std::env::args().nth(1).unwrap();
 
     setup_logging();
 
-    let config = config::new(config_file.into()).chain_err(|| "Error parsing config")?;
+    let config = config::new(config_file.into()).map_err(|e| format_err!("Error parsing config: {}", e))?;
 
     server::main::start(config);
 

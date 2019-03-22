@@ -63,7 +63,7 @@ impl GitCloneManager {
                 clone_dir
             );
             if let Err(e) = fs::create_dir_all(&clone_dir) {
-                return Err(format!("Error creating clone directory '{:?}': {}", clone_dir, e).into());
+                return Err(format_err!("Error creating clone directory '{:?}': {}", clone_dir, e));
             }
             git.run(&["clone", &url, "."])?;
         }

@@ -48,10 +48,10 @@ struct AuthResp {
 
 fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String> {
     fields.iter().find(|f| field == f.id || field == f.name).map(|f| f.id.clone()).ok_or(
-        format!(
+        format_err!(
             "Error: Invalid JIRA field: {}",
             field
-        ).into(),
+        ),
     )
 }
 
@@ -71,8 +71,8 @@ impl JiraSession {
 
         let client = HTTPClient::new_with_headers(&api_base, headers)?;
 
-        let auth_resp = client.get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base)).chain_err(
-            || "Error authenticating to JIRA",
+        let auth_resp = client.get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base)).map_err(
+            |e| format_err!("Error authenticating to JIRA: {}", e),
         )?;
         info!("Logged into JIRA as {}", auth_resp.name);
 
@@ -99,7 +99,7 @@ impl JiraSession {
 impl Session for JiraSession {
     fn get_issue(&self, key: &str) -> Result<Issue> {
         self.client.get::<Issue>(&format!("/issue/{}", key)).map_err(|e| {
-            Error::from(format!("Error creating getting issue [{}]: {}", key, e))
+            format_err!("Error creating getting issue [{}]: {}", key, e)
         })
     }
 
@@ -110,13 +110,13 @@ impl Session for JiraSession {
         }
         let resp = self.client
             .get::<TransitionsResp>(&format!("/issue/{}/transitions?expand=transitions.fields", key))
-            .map_err(|e| Error::from(format!("Error creating getting transitions for [{}]: {}", key, e)))?;
+            .map_err(|e| format_err!("Error creating getting transitions for [{}]: {}", key, e))?;
         Ok(resp.transitions)
     }
 
     fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<()> {
         self.client.post_void(&format!("/issue/{}/transitions", key), &req).map_err(|e| {
-            format!("Error transitioning [{}]: {}", key, e).into()
+            format_err!("Error transitioning [{}]: {}", key, e)
         })
     }
 
@@ -129,7 +129,7 @@ impl Session for JiraSession {
         let req = CommentReq { body: comment.to_string() };
         self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req).map_err(
             |e| {
-                format!("Error commenting on [{}]: {}", key, e).into()
+                format_err!("Error commenting on [{}]: {}", key, e)
             },
         )
     }
@@ -146,13 +146,13 @@ impl Session for JiraSession {
             project: proj.into(),
         };
         self.client.post_void("/version", &req).map_err(|e| {
-            format!("Error adding version {} to project {}: {}", version, proj, e).into()
+            format_err!("Error adding version {} to project {}: {}", version, proj, e)
         })
     }
 
     fn get_versions(&self, proj: &str) -> Result<Vec<Version>> {
         self.client.get::<Vec<Version>>(&format!("/project/{}/versions", proj)).map_err(|e| {
-            format!("Error getting versions for project {}: {}", proj, e).into()
+            format_err!("Error getting versions for project {}: {}", proj, e)
         })
     }
 
@@ -165,7 +165,7 @@ impl Session for JiraSession {
         });
 
         self.client.put_void(&format!("/issue/{}", key), &req).map_err(|e| {
-            format!("Error adding fix-version {} to [{}]: {}", version, key, e).into()
+            format_err!("Error adding fix-version {} to [{}]: {}", version, key, e)
         })
     }
 
@@ -184,7 +184,7 @@ impl Session for JiraSession {
         };
 
         self.client.post_void(&format!("/version/{}/move", version.id), &req).map_err(|e| {
-            format!("Error reordering version {}: {}", version.name, e).into()
+            format_err!("Error reordering version {}: {}", version.name, e)
         })
     }
 
@@ -194,7 +194,7 @@ impl Session for JiraSession {
 
             let version_parsed = match version::Version::parse(version) {
                 Some(v) => v,
-                None => return Err(format!("Unable to parse version: {}", version).into()),
+                None => return Err(format_err!("Unable to parse version: {}", version)),
             };
 
             let mut pending_versions = parse_pending_version_field(&issue["fields"][field]);
@@ -212,7 +212,7 @@ impl Session for JiraSession {
             });
 
             self.client.put_void(&format!("/issue/{}", key), &req).map_err(|e| {
-                Error::from(format!("Error adding pending version {} to [{}]: {}", version, key, e))
+                format_err!("Error adding pending version {} to [{}]: {}", version, key, e)
             })?;
         }
         Ok(())
@@ -238,7 +238,7 @@ impl Session for JiraSession {
             });
 
             self.client.put_void(&format!("/issue/{}", key), &req).map_err(|e| {
-                Error::from(format!("Error removing pending versions {:?} from [{}]: {}", versions, key, e))
+                format_err!("Error removing pending versions {:?} from [{}]: {}", versions, key, e)
             })?;
         }
         Ok(())
@@ -254,9 +254,7 @@ impl Session for JiraSession {
                             &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, DEFAULT_ENCODE_SET)),
                         )
                         .map_err(|e| {
-                            Error::from(
-                                format!("Error finding pending pending versions for project {}: {}", project, e),
-                            )
+                            format_err!("Error finding pending pending versions for project {}: {}", project, e)
                         })?;
 
                 return Ok(parse_pending_versions(&search, &field_id));

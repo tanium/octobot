@@ -1,4 +1,7 @@
 extern crate octobot;
+
+#[macro_use]
+extern crate failure;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -46,8 +49,8 @@ fn main() {
 
         writeln!(stderr, "error: {}", e).expect(errmsg);
 
-        for e in e.iter().skip(1) {
-            writeln!(stderr, "caused by: {}", e).expect(errmsg);
+        for cause in e.iter_causes() {
+            writeln!(stderr, "{}: {}", cause.name().unwrap_or("Error"), cause).expect(errmsg);
         }
 
         ::std::process::exit(1);
@@ -56,7 +59,7 @@ fn main() {
 
 fn run() -> Result<()> {
     if std::env::args().len() < 4 {
-        return Err("Usage: migrate-db <db-file> <users.json> <repos.json>".into());
+        return Err(format_err!("Usage: migrate-db <db-file> <users.json> <repos.json>"))
     }
 
     let db_file = std::env::args().nth(1).unwrap();
@@ -111,5 +114,5 @@ fn load_config<T: DeserializeOwned>(file: &str) -> Result<T> {
     let mut f = std::fs::File::open(file)?;
     let mut contents = String::new();
     f.read_to_string(&mut contents)?;
-    serde_json::from_str(&contents).map_err(|_| Error::from("Error parsing json"))
+    serde_json::from_str(&contents).map_err(|_| format_err!("Error parsing json"))
 }
