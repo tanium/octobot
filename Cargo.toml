@@ -31,6 +31,7 @@ path = "src/migrate-db.rs"
 [dependencies]
 base64 = "0.10.1"
 env_logger = "0.6.1"
+failure = "0.1.5"
 futures = "0.1.25"
 http = "0.1.16"
 hyper = "0.12.25"
@@ -57,7 +58,6 @@ toml = "0.5.0"
 unidiff = "0.3.1"
 url = "1.7.2"
 tokio-threadpool = "0.1.12"
-failure = "0.1.5"
 
 [dependencies.jsonwebtoken]
 git = "https://github.com/matthauck/jsonwebtoken"
