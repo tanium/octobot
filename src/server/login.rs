@@ -6,17 +6,26 @@ use rustc_serialize::hex::{FromHex, ToHex};
 
 use config::Config;
 use ldap_auth;
-use server::http::{Filter, FilterResult, FutureResponse, Handler, parse_json};
+use server::http::{parse_json, Filter, FilterResult, FutureResponse, Handler};
 use server::sessions::Sessions;
 use util;
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
-const PBKDF2_ITERATIONS: u32 = 20_000;
+
+fn pbdkf2_iterations() -> std::num::NonZeroU32 {
+    std::num::NonZeroU32::new(100_000).unwrap()
+}
 
 pub fn store_password(pass: &str, salt: &str) -> String {
     let mut pass_hash = [0u8; CREDENTIAL_LEN];
-    pbkdf2::derive(DIGEST_ALG, PBKDF2_ITERATIONS, salt.as_bytes(), pass.as_bytes(), &mut pass_hash);
+    pbkdf2::derive(
+        DIGEST_ALG,
+        pbdkf2_iterations(),
+        salt.as_bytes(),
+        pass.as_bytes(),
+        &mut pass_hash,
+    );
 
     pass_hash.to_hex()
 }
@@ -29,8 +38,14 @@ pub fn verify_password(pass: &str, salt: &str, pass_hash: &str) -> bool {
             return false;
         }
     };
-    pbkdf2::verify(DIGEST_ALG, PBKDF2_ITERATIONS, salt.as_bytes(), pass.as_bytes(), &pass_hash)
-        .is_ok()
+    pbkdf2::verify(
+        DIGEST_ALG,
+        pbdkf2_iterations(),
+        salt.as_bytes(),
+        pass.as_bytes(),
+        &pass_hash,
+    )
+    .is_ok()
 }
 
 pub struct LoginHandler {
@@ -84,7 +99,9 @@ struct LoginRequest {
 }
 
 fn get_session(req: &Request<Body>) -> Option<String> {
-    req.headers().get("session").map(|h| String::from_utf8_lossy(h.as_bytes()).into_owned())
+    req.headers()
+        .get("session")
+        .map(|h| String::from_utf8_lossy(h.as_bytes()).into_owned())
 }
 
 impl Handler for LoginHandler {
@@ -132,7 +149,6 @@ impl Handler for LoginHandler {
         })
     }
 }
-
 
 fn invalid_session() -> Response<Body> {
     util::new_msg_resp(StatusCode::FORBIDDEN, "Invalid session")

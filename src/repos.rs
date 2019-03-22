@@ -206,8 +206,7 @@ impl RepoConfig {
         let mut rows = stmt.query(rusqlite::NO_PARAMS)?;
 
         let mut repos = vec![];
-        while let Some(row) = rows.next() {
-            let row = row?;
+        while let Ok(Some(row)) = rows.next() {
             repos.push(self.map_row(&row, &cols)?);
         }
 
@@ -231,8 +230,7 @@ impl RepoConfig {
         let mut rows = stmt.query_named(&[(":full", &repo.full_name), (":org", &repo.owner.login())])?;
 
         let mut repos = Vec::new();
-        while let Some(row) = rows.next() {
-            let row = row?;
+        while let Ok(Some(row)) = rows.next() {
             repos.push(self.map_row(&row, &cols)?);
         }
 

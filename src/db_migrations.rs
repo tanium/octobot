@@ -32,14 +32,16 @@ const MIGRATIONS: [&'static str; 2] = [
       PRIMARY KEY( id )
     );
     "#,
-
     r#"alter table users add column mute_direct_messages tinyint not null default 0"#,
 ];
 
 fn current_version(conn: &Connection) -> Result<Option<i32>> {
     let mut version: Option<i32> = None;
-    conn.query_row("SELECT current_version from __version", rusqlite::NO_PARAMS, |row| { version = Some(row.get(0)); })
-        .map_err(|_| Error::from("Could not get current version"))?;
+    conn.query_row("SELECT current_version from __version", rusqlite::NO_PARAMS, |row| {
+        version = row.get(0).ok();
+        Ok(())
+    })
+    .map_err(|_| Error::from("Could not get current version"))?;
 
     Ok(version)
 }
@@ -49,9 +51,8 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         Ok(v) => v,
         Err(_) => {
             // versions table probably doesn't exist.
-            conn.execute(CREATE_VERSIONS, rusqlite::NO_PARAMS).map_err(|e| {
-                Error::from(format!("Error creating versions table: {}", e))
-            })?;
+            conn.execute(CREATE_VERSIONS, rusqlite::NO_PARAMS)
+                .map_err(|e| Error::from(format!("Error creating versions table: {}", e)))?;
             None
         }
     };
@@ -65,15 +66,15 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
 
         let next_version_unsigned: usize = next_version as usize;
 
-        tx.execute_batch(MIGRATIONS[next_version_unsigned]).map_err(|e| {
-            Error::from(format!("Error running migrations: {}", e))
-        })?;
+        tx.execute_batch(MIGRATIONS[next_version_unsigned])
+            .map_err(|e| Error::from(format!("Error running migrations: {}", e)))?;
 
         if next_version == 0 {
             tx.execute("INSERT INTO __version VALUES (?1)", &[&next_version])
         } else {
             tx.execute("UPDATE __version set current_version = ?1", &[&next_version])
-        }.map_err(|e| Error::from(format!("Error updating version: {}", e)))?;
+        }
+        .map_err(|e| Error::from(format!("Error updating version: {}", e)))?;
 
         tx.commit()?;
 

@@ -64,12 +64,11 @@ fn setup_logging() {
         )
     };
 
-    let mut builder = env_logger::Builder::new();
+    let mut builder = env_logger::Builder::from_default_env();
     builder.format(formatter).filter(None, log::LevelFilter::Info);
 
     let is_info;
     if let Ok(ref env_log) = std::env::var("RUST_LOG") {
-        builder.parse(env_log);
         is_info = env_log.is_empty() || env_log.to_lowercase() == "info";
     } else {
         is_info = true;

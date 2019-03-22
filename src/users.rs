@@ -83,12 +83,12 @@ impl UserConfig {
             "SELECT id, slack_name, github_name, mute_direct_messages FROM users ORDER BY github_name",
         )?;
         let found = stmt.query_map(rusqlite::NO_PARAMS, |row| {
-            UserInfo {
-                id: row.get(0),
-                slack: row.get(1),
-                github: row.get(2),
-                mute_direct_messages: db::to_bool(row.get(3)),
-            }
+            Ok(UserInfo {
+                id: row.get(0)?,
+                slack: row.get(1)?,
+                github: row.get(2)?,
+                mute_direct_messages: db::to_bool(row.get(3)?),
+            })
         })?;
 
         let mut users = vec![];
@@ -116,12 +116,12 @@ impl UserConfig {
             "SELECT id, slack_name, mute_direct_messages FROM users where github_name = ?1",
         )?;
         let found = stmt.query_map(&[&github_name], |row| {
-            UserInfo {
-                id: row.get(0),
-                slack: row.get(1),
+            Ok(UserInfo {
+                id: row.get(0)?,
+                slack: row.get(1)?,
                 github: github_name.clone(),
-                mute_direct_messages: db::to_bool(row.get(2)),
-            }
+                mute_direct_messages: db::to_bool(row.get(2)?),
+            })
         })?;
 
         // kinda ugly....
