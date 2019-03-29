@@ -64,7 +64,7 @@ pub fn comment_repo_version(
 // seem like a good idea to allow generic code execution without any containerization.
 #[cfg(not(target_os = "linux"))]
 fn run_script(_: &str, _: &Path) -> Result<String> {
-    return Err("Version scripts only supported when running Linux.".into());
+    return Err(format_err!("Version scripts only supported when running Linux."));
 }
 
 #[cfg(target_os = "linux")]
