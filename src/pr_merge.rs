@@ -164,7 +164,13 @@ fn make_merge_desc(
 ) -> (String, String) {
     // grab original title and strip out the PR number at the end
     let pr_regex = Regex::new(r"(\s*\(#\d+\))+$").unwrap();
+    let prev_merge_regex = Regex::new(r"^([^:]+->[^:]+: )+").unwrap();
+
+    // strip out PR from title
     let orig_title = pr_regex.replace(&orig_desc.0, "");
+    // strip out previous merge title prefixes
+    let orig_title = prev_merge_regex.replace(&orig_title, "");
+
     // strip out 'release' from the prefix to keep titles shorter
     let release_branch_regex = Regex::new(r"^release/").unwrap();
     let title = format!("{}->{}: {}", orig_base_branch, release_branch_regex.replace(target_branch, ""), orig_title);
@@ -286,6 +292,34 @@ mod tests {
     fn test_make_merge_desc_no_release_branch() {
         let desc = make_merge_desc(
             (String::from("Yay, I made a change (#99)"), String::from("")),
+            "abcdef",
+            99,
+            "other_branch",
+            "source_branch",
+        );
+
+        assert_eq!(desc.0, "source_branch->other_branch: Yay, I made a change");
+        assert_eq!(desc.1, "(cherry-picked from abcdef, PR #99)");
+    }
+
+    #[test]
+    fn test_make_merge_desc_multi1() {
+        let desc = make_merge_desc(
+            (String::from("prev_branch->source_branch: Yay, I made a change (#99)"), String::from("")),
+            "abcdef",
+            99,
+            "other_branch",
+            "source_branch",
+        );
+
+        assert_eq!(desc.0, "source_branch->other_branch: Yay, I made a change");
+        assert_eq!(desc.1, "(cherry-picked from abcdef, PR #99)");
+    }
+
+    #[test]
+    fn test_make_merge_desc_multi2() {
+        let desc = make_merge_desc(
+            (String::from("more_branches->prev_branch: prev_branch->source_branch: Yay, I made a change (#99)"), String::from("")),
             "abcdef",
             99,
             "other_branch",
