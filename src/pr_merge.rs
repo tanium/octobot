@@ -327,9 +327,9 @@ mod tests {
             (String::from("Yay, I made a change (#99)"), String::from("")),
             "abcdef",
             99,
-            "other_branch",
-            "release/source_branch",
-            "release/",
+            "release-other_branch",
+            "release-source_branch",
+            "release-",
         );
 
         assert_eq!(desc.0, "source_branch->other_branch: Yay, I made a change");
