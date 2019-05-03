@@ -623,8 +623,17 @@ impl GithubEventHandler {
 
             let branch_name = self.data.ref_name().replace("refs/heads/", "");
 
+            let release_branch_prefix = self.config.repos().release_branch_prefix(
+                &self.data.repository,
+                &branch_name
+            );
+            let next_branch_suffix = self.config.repos().next_branch_suffix(&self.data.repository);
+
             let is_main_branch = branch_name == "master" || branch_name == "develop" ||
-                branch_name.starts_with("release");
+                branch_name.starts_with(&release_branch_prefix);
+
+            let is_next_branch = branch_name.starts_with(&release_branch_prefix) &&
+                branch_name.ends_with(&next_branch_suffix);
 
             // only lookup PRs for non-main branches
             if !is_main_branch {
@@ -715,7 +724,7 @@ impl GithubEventHandler {
             }
 
             // Mark JIRAs as merged
-            if is_main_branch {
+            if is_main_branch && !is_next_branch {
                 if let Some(ref jira_config) = self.config.jira {
                     if let Some(ref jira_session) = self.jira_session {
                         if let Some(ref commits) = self.data.commits {
