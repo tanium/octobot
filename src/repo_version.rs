@@ -73,7 +73,7 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
     let mut cmd = Command::new("firejail");
     cmd.arg("--quiet")
         .arg("--private=.")
-        .arg("--private-etc=hostname alternatives")
+        .arg("--private-etc=hostname,alternatives,firejail")
         .arg("--net=none")
         .arg("--private-tmp")
         .arg("--private-dev");
@@ -82,9 +82,6 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
         // Otherwise we get "Warning: an existing sandbox was detected"
         // https://github.com/netblue30/firejail/issues/189
         cmd.arg("--force");
-    } else {
-        // couldn't get overlayfs to work inside docker
-        cmd.arg("--overlay-tmpfs");
     }
 
     cmd.arg("-c")
@@ -319,13 +316,5 @@ mod tests {
             !dir.path().join("muahaha.txt").exists(),
             "version scripts should not be able to create files outside its directory"
         );
-
-        if !docker::in_docker() {
-            assert!(script_file.exists(), "version scripts should not be able to delete files inside its directory");
-            assert!(
-                !sub_dir.join("muahaha.txt").exists(),
-                "version scripts should not be able to create files inside its directory"
-            );
-        }
     }
 }
