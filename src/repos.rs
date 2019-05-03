@@ -28,6 +28,9 @@ pub struct RepoInfo {
     // Used for backporting. Defaults to "release/"
     #[serde(default)]
     pub release_branch_prefix: String,
+    // Used for skipping versioning on postponed release branches. Defaults to "-next"
+    #[serde(default)]
+    pub next_branch_suffix: String,
 }
 
 #[derive(Clone)]
@@ -48,6 +51,7 @@ impl RepoInfo {
             jira_versions_enabled: false,
             version_script: String::new(),
             release_branch_prefix: String::new(),
+            next_branch_suffix: String::new(),
         }
     }
 
@@ -80,6 +84,12 @@ impl RepoInfo {
         info.release_branch_prefix = value;
         info
     }
+
+    pub fn with_next_branch_suffix(self, value: String) -> RepoInfo {
+        let mut info = self;
+        info.next_branch_suffix = value;
+        info
+    }
 }
 
 impl RepoConfig {
@@ -96,8 +106,8 @@ impl RepoConfig {
         conn.execute(
             r#"INSERT INTO repos (repo, channel, force_push_notify, force_push_reapply_statuses,
                                   branches, jira_projects, jira_versions_enabled, version_script,
-                                  release_branch_prefix)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
+                                  release_branch_prefix, next_branch_suffix)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
             &[
                 &repo.repo,
                 &repo.channel,
@@ -108,6 +118,7 @@ impl RepoConfig {
                 &db::to_tinyint(repo.jira_versions_enabled) as &ToSql,
                 &repo.version_script,
                 &repo.release_branch_prefix,
+                &repo.next_branch_suffix,
             ],
         ).map_err(|e| format_err!("Error inserting repo {}: {}", repo.repo, e))?;
 
@@ -130,8 +141,9 @@ impl RepoConfig {
                     jira_projects = ?6,
                     jira_versions_enabled = ?7,
                     version_script = ?8,
-                    release_branch_prefix = ?9
-               WHERE id = ?10"#,
+                    release_branch_prefix = ?9,
+                    next_branch_suffix = ?10
+               WHERE id = ?11"#,
             &[
                 &repo.repo,
                 &repo.channel,
@@ -142,6 +154,7 @@ impl RepoConfig {
                 &db::to_tinyint(repo.jira_versions_enabled) as &ToSql,
                 &repo.version_script,
                 &repo.release_branch_prefix,
+                &repo.next_branch_suffix,
                 &repo.id.unwrap(),
             ],
         ).map_err(|e| format_err!("Error updating repo {}: {}", repo.repo, e))?;
@@ -193,6 +206,15 @@ impl RepoConfig {
     pub fn release_branch_prefix(&self, repo: &github::Repo, branch: &str) -> String {
         let default = "release/".to_string();
         match self.lookup_info(repo, Some(branch)).map(|r| r.release_branch_prefix) {
+            None => default,
+            Some(ref p) if p.is_empty() => default,
+            Some(p) => p,
+        }
+    }
+
+    pub fn next_branch_suffix(&self, repo: &github::Repo) -> String {
+        let default = "-next".to_string();
+        match self.lookup_info(repo, None).map(|r| r.next_branch_suffix) {
             None => default,
             Some(ref p) if p.is_empty() => default,
             Some(p) => p,
@@ -270,6 +292,7 @@ impl RepoConfig {
             jira_versions_enabled: db::to_bool(cols.get(row, "jira_versions_enabled")?),
             version_script: cols.get(row, "version_script")?,
             release_branch_prefix: cols.get(row, "release_branch_prefix")?,
+            next_branch_suffix: cols.get(row, "next_branch_suffix")?,
         })
     }
 }

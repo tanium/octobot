@@ -97,6 +97,7 @@ fn run() -> Result<()> {
                 jira_versions_enabled: info.jira_versions_enabled.unwrap_or(false),
                 version_script: info.version_script.clone().unwrap_or(String::new()),
                 release_branch_prefix: info.release_branch_prefix.clone().unwrap_or(String::new()),
+                next_branch_suffix: String::new(),
             };
 
             if let Err(e) = repos_db.insert_info(&repo) {
