@@ -54,7 +54,7 @@ impl GithubHandlerTest {
         let pr = &self.handler.data.pull_request.as_ref().unwrap();
 
         for branch in branches {
-            self.pr_merge.expect_req(pr_merge::req(repo, pr, &branch));
+            self.pr_merge.expect_req(pr_merge::req(repo, pr, &branch, "release/"));
         }
     }
 
