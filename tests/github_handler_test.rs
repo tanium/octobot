@@ -49,12 +49,12 @@ struct GithubHandlerTest {
 }
 
 impl GithubHandlerTest {
-    fn expect_will_merge_branches(&mut self, branches: Vec<String>) {
+    fn expect_will_merge_branches(&mut self, release_branch_prefix: &str, branches: Vec<String>) {
         let repo = &self.handler.data.repository;
         let pr = &self.handler.data.pull_request.as_ref().unwrap();
 
         for branch in branches {
-            self.pr_merge.expect_req(pr_merge::req(repo, pr, &branch, "release/"));
+            self.pr_merge.expect_req(pr_merge::req(repo, pr, &branch, release_branch_prefix));
         }
     }
 
@@ -937,6 +937,7 @@ fn test_pull_request_merged_backport_labels() {
     ]);
 
     test.expect_will_merge_branches(
+        "release/",
         vec!["release/1.0".into(), "release/2.0".into(), "release/other-thing".into()],
     );
 
@@ -1003,7 +1004,7 @@ fn test_pull_request_merged_backport_labels_custom_pattern() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    test.expect_will_merge_branches(vec![
+    test.expect_will_merge_branches("the-other-prefix-", vec![
         "the-other-prefix-1.0".into(),
         "the-other-prefix-2.0".into(),
         "the-other-prefix-other-thing".into(),
@@ -1025,7 +1026,7 @@ fn test_pull_request_merged_retroactively_labeled() {
     test.handler.data.label = Some(Label::new("backport-7.123"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.expect_will_merge_branches(vec!["release/7.123".into()]);
+    test.expect_will_merge_branches("release/", vec!["release/7.123".into()]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1043,7 +1044,7 @@ fn test_pull_request_merged_master_branch() {
     test.handler.data.label = Some(Label::new("backport-master"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.expect_will_merge_branches(vec!["master".into()]);
+    test.expect_will_merge_branches("release/", vec!["master".into()]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1061,7 +1062,7 @@ fn test_pull_request_merged_develop_branch() {
     test.handler.data.label = Some(Label::new("backport-develop"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.expect_will_merge_branches(vec!["develop".into()]);
+    test.expect_will_merge_branches("release/", vec!["develop".into()]);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
