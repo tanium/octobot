@@ -68,7 +68,7 @@ fn test_pr_merge_basic() {
         Ok(()),
     );
 
-    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0")
+    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0", "release/")
         .unwrap();
 
     let (user, email) = git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
@@ -166,7 +166,7 @@ if (true)    {
         Ok(()),
     );
 
-    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0")
+    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0", "release/")
         .unwrap();
 
     assert_eq!(456, created_pr.number);
@@ -258,7 +258,7 @@ if (true) {
         Ok(()),
     );
 
-    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0")
+    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0", "release/")
         .unwrap();
 
     assert_eq!(456, created_pr.number);

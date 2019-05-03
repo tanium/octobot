@@ -20,6 +20,7 @@ fn clone_and_merge_pull_request(
     repo: &str,
     pull_request: &github::PullRequest,
     target_branch: &str,
+    release_branch_prefix: &str,
 ) -> Result<github::PullRequest> {
 
     let session = github_app.new_session(owner, repo)?;
@@ -27,7 +28,7 @@ fn clone_and_merge_pull_request(
     let clone_dir = held_clone_dir.dir();
     let git = Git::new(session.github_host(), session.github_token(), clone_dir);
 
-    merge_pull_request(&git, &session, owner, repo, pull_request, target_branch)
+    merge_pull_request(&git, &session, owner, repo, pull_request, target_branch, release_branch_prefix)
 }
 
 pub fn merge_pull_request(
@@ -37,6 +38,7 @@ pub fn merge_pull_request(
     repo: &str,
     pull_request: &github::PullRequest,
     target_branch: &str,
+    release_branch_prefix: &str,
 ) -> Result<github::PullRequest> {
     if !pull_request.is_merged() {
         return Err(format_err!("Pull Request #{} is not yet merged.", pull_request.number));
@@ -67,6 +69,7 @@ pub fn merge_pull_request(
         pull_request.number,
         &target_branch,
         &pull_request.base.ref_name,
+        release_branch_prefix,
     )?;
 
     git.run(&["push", "origin", &format!("HEAD:{}", pr_branch_name)])?;
@@ -102,6 +105,7 @@ pub fn cherry_pick(
     pr_number: u32,
     target_branch: &str,
     orig_base_branch: &str,
+    release_branch_prefix: &str,
 ) -> Result<(String, String, String)> {
     git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch))?;
 
@@ -129,7 +133,7 @@ pub fn cherry_pick(
     }
 
     let desc = git.get_commit_desc(commit_hash)?;
-    let (title, body) = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch);
+    let (title, body) = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch, release_branch_prefix);
 
     // change commit message
     let mut amend_args = vec![];
@@ -161,6 +165,7 @@ fn make_merge_desc(
     pr_number: u32,
     target_branch: &str,
     orig_base_branch: &str,
+    release_branch_prefix: &str,
 ) -> (String, String) {
     // grab original title and strip out the PR number at the end
     let pr_regex = Regex::new(r"(\s*\(#\d+\))+$").unwrap();
@@ -172,8 +177,16 @@ fn make_merge_desc(
     let orig_title = prev_merge_regex.replace(&orig_title, "");
 
     // strip out 'release' from the prefix to keep titles shorter
-    let release_branch_regex = Regex::new(r"^release/").unwrap();
-    let title = format!("{}->{}: {}", orig_base_branch, release_branch_regex.replace(target_branch, ""), orig_title);
+    let mut target_branch = target_branch.to_owned();
+    if target_branch.starts_with(release_branch_prefix) {
+        target_branch = target_branch.replacen(release_branch_prefix, "", 1);
+    }
+    let mut orig_base_branch = orig_base_branch.to_owned();
+    if orig_base_branch.starts_with(release_branch_prefix) {
+        orig_base_branch = orig_base_branch.replacen(release_branch_prefix, "", 1);
+    }
+
+    let title = format!("{}->{}: {}", orig_base_branch, target_branch, orig_title);
     let mut body = orig_desc.1;
 
     if body.len() != 0 {
@@ -189,6 +202,7 @@ pub struct PRMergeRequest {
     pub repo: github::Repo,
     pub pull_request: github::PullRequest,
     pub target_branch: String,
+    pub release_branch_prefix: String,
 }
 
 struct Runner {
@@ -198,11 +212,12 @@ struct Runner {
     slack: Arc<worker::Worker<SlackRequest>>,
 }
 
-pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str) -> PRMergeRequest {
+pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str, release_branch_prefix: &str) -> PRMergeRequest {
     PRMergeRequest {
         repo: repo.clone(),
         pull_request: pull_request.clone(),
         target_branch: target_branch.to_string(),
+        release_branch_prefix: release_branch_prefix.to_string(),
     }
 }
 
@@ -229,6 +244,7 @@ impl worker::Runner<PRMergeRequest> for Runner {
             &req.repo.name,
             &req.pull_request,
             &req.target_branch,
+            &req.release_branch_prefix,
         );
 
         if let Err(e) = merge_result {
@@ -268,6 +284,7 @@ mod tests {
             99,
             "release/target_branch",
             "source_branch",
+            "release/",
         );
 
         assert_eq!(desc.0, "source_branch->target_branch: Yay, I made a change");
@@ -280,8 +297,9 @@ mod tests {
             (String::from("Yay, I made a change (#99)"), String::from("")),
             "abcdef",
             99,
-            "release/target_branch",
+            "the-release-target_branch",
             "source_branch",
+            "the-release-",
         );
 
         assert_eq!(desc.0, "source_branch->target_branch: Yay, I made a change");
@@ -296,6 +314,22 @@ mod tests {
             99,
             "other_branch",
             "source_branch",
+            "release/",
+        );
+
+        assert_eq!(desc.0, "source_branch->other_branch: Yay, I made a change");
+        assert_eq!(desc.1, "(cherry-picked from abcdef, PR #99)");
+    }
+
+    #[test]
+    fn test_make_merge_desc_from_release_branch() {
+        let desc = make_merge_desc(
+            (String::from("Yay, I made a change (#99)"), String::from("")),
+            "abcdef",
+            99,
+            "release-other_branch",
+            "release-source_branch",
+            "release-",
         );
 
         assert_eq!(desc.0, "source_branch->other_branch: Yay, I made a change");
@@ -310,6 +344,7 @@ mod tests {
             99,
             "other_branch",
             "source_branch",
+            "release/",
         );
 
         assert_eq!(desc.0, "source_branch->other_branch: Yay, I made a change");
@@ -324,6 +359,7 @@ mod tests {
             99,
             "other_branch",
             "source_branch",
+            "release/",
         );
 
         assert_eq!(desc.0, "source_branch->other_branch: Yay, I made a change");

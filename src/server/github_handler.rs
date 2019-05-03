@@ -811,7 +811,7 @@ impl GithubEventHandler {
             release_branch_prefix.to_string() + &backport
         };
 
-        let req = pr_merge::req(&self.data.repository, pull_request, &target_branch);
+        let req = pr_merge::req(&self.data.repository, pull_request, &target_branch, release_branch_prefix);
         self.pr_merge.send(req);
     }
 }
