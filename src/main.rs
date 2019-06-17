@@ -15,7 +15,6 @@ use octobot::errors::*;
 
 fn main() {
     if let Err(ref e) = run() {
-        use std::io::Write;
         let stderr = &mut ::std::io::stderr();
         let errmsg = "Error writing to stderr";
 
