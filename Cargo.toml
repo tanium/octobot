@@ -65,8 +65,6 @@ rev = "f4c2ab6a380bb85e931a5586cc6ca9fd8dda3ace"
 
 [dependencies.reqwest]
 version = "0.9.12"
-features = ["rustls-tls"]
-default-features = false
 
 [dev-dependencies]
 tempdir = "0.3.7"
