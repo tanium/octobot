@@ -382,7 +382,7 @@ impl GithubEventHandler {
                         .build(),
                 ];
 
-                if !pull_request.is_wip() {
+                if !pull_request.is_draft() {
                     let msg = format!("Pull Request {}", verb);
 
                     if notify_channel_only {
@@ -682,7 +682,7 @@ impl GithubEventHandler {
                     );
 
                     for pull_request in &prs {
-                        if pull_request.is_wip() {
+                        if pull_request.is_draft() {
                             info!("Skipping WIP PR #{}", pull_request.number);
                             continue;
                         }

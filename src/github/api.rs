@@ -106,9 +106,13 @@ impl GithubApp {
         let jwt_token = jwt::new_token(self.app_id, &self.app_key);
 
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
+        headers.append(
             reqwest::header::ACCEPT,
             "application/vnd.github.machine-man-preview+json".parse().unwrap(),
+        );
+        headers.append(
+            reqwest::header::ACCEPT,
+            "application/vnd.github.shadow-cat-preview+json".parse().unwrap(),
         );
         headers.insert(
             reqwest::header::AUTHORIZATION,
@@ -214,9 +218,13 @@ impl GithubSession {
         // Standard accept header is "application/vnd.github.v3+json".
         // The "mockingbird-preview" allows us to use the timeline api.
         // cf. https://developer.github.com/enterprise/2.13/v3/issues/timeline/
-        headers.insert(
+        headers.append(
             reqwest::header::ACCEPT,
             "application/vnd.github.mockingbird-preview".parse().unwrap(),
+        );
+        headers.append(
+            reqwest::header::ACCEPT,
+            "application/vnd.github.shadow-cat-preview+json".parse().unwrap(),
         );
         headers.insert(
             reqwest::header::AUTHORIZATION,

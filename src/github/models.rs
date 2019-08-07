@@ -212,6 +212,7 @@ pub struct PullRequest {
     pub base: BranchRef,
     pub requested_reviewers: Option<Vec<User>>,
     pub reviews: Option<Vec<Review>>,
+    pub draft: Option<bool>,
 }
 
 impl PullRequest {
@@ -230,6 +231,7 @@ impl PullRequest {
             reviews: None,
             head: BranchRef::new(""),
             base: BranchRef::new(""),
+            draft: None,
         }
     }
 
@@ -237,8 +239,8 @@ impl PullRequest {
         self.merged.unwrap_or(false)
     }
 
-    pub fn is_wip(&self) -> bool {
-        self.title.to_lowercase().starts_with("wip:")
+    pub fn is_draft(&self) -> bool {
+        self.draft.unwrap_or(false) || self.title.to_lowercase().starts_with("wip:")
     }
 
     pub fn all_reviewers(&self) -> Vec<User> {
@@ -807,20 +809,27 @@ mod tests {
     }
 
     #[test]
-    fn test_pr_is_wip() {
+    fn test_pr_is_draft() {
         let mut pr = PullRequest::new();
-        assert!(!pr.is_wip());
+        assert!(!pr.is_draft());
 
         pr.title = "WIP: doing some stuff".into();
-        assert!(pr.is_wip());
+        assert!(pr.is_draft());
 
         pr.title = "wip: doing some stuff".into();
-        assert!(pr.is_wip());
+        assert!(pr.is_draft());
 
         pr.title = "WIPWIPWIP: doing some stuff".into();
-        assert!(!pr.is_wip());
+        assert!(!pr.is_draft());
 
         pr.title = "Wip: why would you even think about doing it this way?".into();
-        assert!(pr.is_wip());
+        assert!(pr.is_draft());
+
+        pr.title = "Doing some stuff".into();
+        assert!(!pr.is_draft());
+        pr.draft = Some(false);
+        assert!(!pr.is_draft());
+        pr.draft = Some(true);
+        assert!(pr.is_draft());
     }
 }
