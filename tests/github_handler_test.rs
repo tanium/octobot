@@ -187,6 +187,7 @@ fn some_pr() -> Option<PullRequest> {
             user: User::new("some-user"),
             repo: the_repo(),
         },
+        draft: None,
     })
 }
 
