@@ -110,10 +110,6 @@ impl GithubApp {
             reqwest::header::ACCEPT,
             "application/vnd.github.machine-man-preview+json".parse().unwrap(),
         );
-        headers.append(
-            reqwest::header::ACCEPT,
-            "application/vnd.github.shadow-cat-preview+json".parse().unwrap(),
-        );
         headers.insert(
             reqwest::header::AUTHORIZATION,
             format!("Bearer {}", jwt_token).parse().unwrap(),
