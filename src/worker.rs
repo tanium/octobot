@@ -12,12 +12,12 @@ pub trait Runner<T: Send + 'static>: Send + Sync {
 }
 
 pub struct TokioWorker<T: Send + Sync + 'static> {
-    runner: Arc<Runner<T>>,
+    runner: Arc<dyn Runner<T>>,
     runtime: Arc<Mutex<tokio::runtime::Runtime>>,
 }
 
 impl<T: Send + Sync + 'static> TokioWorker<T> {
-    pub fn new(runtime: Arc<Mutex<tokio::runtime::Runtime>>, runner: Arc<Runner<T>>) -> Arc<Worker<T>> {
+    pub fn new(runtime: Arc<Mutex<tokio::runtime::Runtime>>, runner: Arc<dyn Runner<T>>) -> Arc<dyn Worker<T>> {
         Arc::new(TokioWorker {
             runner: runner,
             runtime: runtime,

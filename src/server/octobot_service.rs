@@ -79,7 +79,7 @@ impl Service for OctobotService {
 }
 
 impl OctobotService {
-    fn route(&self, req: &Request<Body>) -> Box<Handler> {
+    fn route(&self, req: &Request<Body>) -> Box<dyn Handler> {
         // API routes
         if req.uri().path().starts_with("/api") {
             let filter = LoginSessionFilter::new(self.ui_sessions.clone());

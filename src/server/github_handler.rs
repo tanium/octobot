@@ -27,13 +27,13 @@ use worker::{Worker, TokioWorker};
 
 pub struct GithubHandlerState {
     pub config: Arc<Config>,
-    pub github_app: Arc<github::api::GithubSessionFactory>,
-    pub jira_session: Option<Arc<jira::api::Session>>,
+    pub github_app: Arc<dyn github::api::GithubSessionFactory>,
+    pub jira_session: Option<Arc<dyn jira::api::Session>>,
     _runtime: Arc<Mutex<tokio::runtime::Runtime>>,
-    pr_merge_worker: Arc<Worker<PRMergeRequest>>,
-    repo_version_worker: Arc<Worker<RepoVersionRequest>>,
-    force_push_worker: Arc<Worker<ForcePushRequest>>,
-    slack_worker: Arc<Worker<SlackRequest>>,
+    pr_merge_worker: Arc<dyn Worker<PRMergeRequest>>,
+    repo_version_worker: Arc<dyn Worker<RepoVersionRequest>>,
+    force_push_worker: Arc<dyn Worker<ForcePushRequest>>,
+    slack_worker: Arc<dyn Worker<SlackRequest>>,
     recent_events: Mutex<Vec<String>>,
 }
 
@@ -42,16 +42,16 @@ pub struct GithubHandler {
 }
 
 pub struct GithubEventHandler {
-    pub messenger: Box<Messenger>,
+    pub messenger: Box<dyn Messenger>,
     pub config: Arc<Config>,
     pub event: String,
     pub data: github::HookBody,
     pub action: String,
-    pub github_session: Arc<github::api::Session>,
-    pub jira_session: Option<Arc<jira::api::Session>>,
-    pub pr_merge: Arc<Worker<PRMergeRequest>>,
-    pub repo_version: Arc<Worker<RepoVersionRequest>>,
-    pub force_push: Arc<Worker<ForcePushRequest>>,
+    pub github_session: Arc<dyn github::api::Session>,
+    pub jira_session: Option<Arc<dyn jira::api::Session>>,
+    pub pr_merge: Arc<dyn Worker<PRMergeRequest>>,
+    pub repo_version: Arc<dyn Worker<RepoVersionRequest>>,
+    pub force_push: Arc<dyn Worker<ForcePushRequest>>,
 }
 
 const MAX_CONCURRENT_JOBS: usize = 20;
@@ -60,8 +60,8 @@ const MAX_COMMITS_FOR_JIRA_CONSIDERATION: usize = 20;
 impl GithubHandlerState {
     pub fn new(
         config: Arc<Config>,
-        github_app: Arc<github::api::GithubSessionFactory>,
-        jira_session: Option<Arc<jira::api::Session>>,
+        github_app: Arc<dyn github::api::GithubSessionFactory>,
+        jira_session: Option<Arc<dyn jira::api::Session>>,
     ) -> GithubHandlerState {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
@@ -105,8 +105,8 @@ impl GithubHandlerState {
 impl GithubHandler {
     pub fn new(
         config: Arc<Config>,
-        github_app: Arc<github::api::GithubSessionFactory>,
-        jira_session: Option<Arc<jira::api::Session>>,
+        github_app: Arc<dyn github::api::GithubSessionFactory>,
+        jira_session: Option<Arc<dyn jira::api::Session>>,
     ) -> Box<GithubHandler> {
         let state = GithubHandlerState::new(config, github_app, jira_session);
         GithubHandler::from_state(Arc::new(state))
@@ -288,7 +288,7 @@ impl GithubEventHandler {
         users.iter().map(|u| self.slack_user_name(u)).collect()
     }
 
-    fn pull_request_commits(&self, pull_request: &github::PullRequestLike) -> Vec<github::Commit> {
+    fn pull_request_commits(&self, pull_request: &dyn github::PullRequestLike) -> Vec<github::Commit> {
         if !pull_request.has_commits() {
             return vec![];
         }
@@ -306,13 +306,13 @@ impl GithubEventHandler {
         }
     }
 
-    fn all_participants(&self, pull_request: &github::PullRequestLike) -> Vec<github::User> {
+    fn all_participants(&self, pull_request: &dyn github::PullRequestLike) -> Vec<github::User> {
         self.all_participants_with_commits(pull_request, &self.pull_request_commits(pull_request))
     }
 
     fn all_participants_with_commits(
         &self,
-        pull_request: &github::PullRequestLike,
+        pull_request: &dyn github::PullRequestLike,
         pr_commits: &Vec<github::Commit>,
     ) -> Vec<github::User> {
         // start with the assignees
@@ -527,7 +527,7 @@ impl GithubEventHandler {
         (StatusCode::OK, "pr_review".into())
     }
 
-    fn do_pull_request_comment(&self, pull_request: &github::PullRequestLike, comment: &github::CommentLike) {
+    fn do_pull_request_comment(&self, pull_request: &dyn github::PullRequestLike, comment: &dyn github::CommentLike) {
         if comment.body().trim().len() == 0 {
             return;
         }

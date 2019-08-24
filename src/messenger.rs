@@ -31,10 +31,10 @@ pub trait Messenger {
 
 struct SlackMessenger {
     pub config: Arc<Config>,
-    pub slack: Arc<Worker<SlackRequest>>,
+    pub slack: Arc<dyn Worker<SlackRequest>>,
 }
 
-pub fn new(config: Arc<Config>, slack: Arc<Worker<SlackRequest>>) -> impl Messenger {
+pub fn new(config: Arc<Config>, slack: Arc<dyn Worker<SlackRequest>>) -> impl Messenger {
     SlackMessenger {
         slack: slack.clone(),
         config: config.clone(),

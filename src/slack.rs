@@ -134,7 +134,7 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
     }
 }
 
-pub fn new_runner(webhook_url: &str) -> Arc<worker::Runner<SlackRequest>> {
+pub fn new_runner(webhook_url: &str) -> Arc<dyn worker::Runner<SlackRequest>> {
     Arc::new(Runner {
         slack: Arc::new(Slack::new(webhook_url)),
     })

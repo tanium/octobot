@@ -503,7 +503,7 @@ impl Commit {
         }
     }
 
-    pub fn short_hash(commit: &CommitLike) -> &str {
+    pub fn short_hash(commit: &dyn CommitLike) -> &str {
         Commit::short_hash_str(commit.sha())
     }
 
@@ -511,11 +511,11 @@ impl Commit {
         if hash.len() < 7 { hash } else { &hash[0..7] }
     }
 
-    pub fn title(commit: &CommitLike) -> String {
+    pub fn title(commit: &dyn CommitLike) -> String {
         commit.message().lines().next().unwrap_or("").into()
     }
 
-    pub fn body(commit: &CommitLike) -> String {
+    pub fn body(commit: &dyn CommitLike) -> String {
         let lines: Vec<&str> = commit.message().lines().skip(1).skip_while(|ref l| l.trim().len() == 0).collect();
         lines.join("\n")
     }

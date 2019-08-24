@@ -22,8 +22,8 @@ use docker;
 pub fn comment_repo_version(
     version_script: &str,
     jira_config: &JiraConfig,
-    jira: &jira::api::Session,
-    github_app: &GithubSessionFactory,
+    jira: &dyn jira::api::Session,
+    github_app: &dyn GithubSessionFactory,
     clone_mgr: &GitCloneManager,
     owner: &str,
     repo: &str,
@@ -145,10 +145,10 @@ pub struct RepoVersionRequest {
 
 struct Runner {
     config: Arc<Config>,
-    github_app: Arc<GithubSessionFactory>,
-    jira_session: Option<Arc<jira::api::Session>>,
+    github_app: Arc<dyn GithubSessionFactory>,
+    jira_session: Option<Arc<dyn jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
-    slack: Arc<worker::Worker<SlackRequest>>,
+    slack: Arc<dyn worker::Worker<SlackRequest>>,
 }
 
 pub fn req(
@@ -167,11 +167,11 @@ pub fn req(
 
 pub fn new_runner(
     config: Arc<Config>,
-    github_app: Arc<GithubSessionFactory>,
-    jira_session: Option<Arc<jira::api::Session>>,
+    github_app: Arc<dyn GithubSessionFactory>,
+    jira_session: Option<Arc<dyn jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
-    slack: Arc<worker::Worker<SlackRequest>>,
-) -> Arc<worker::Runner<RepoVersionRequest>> {
+    slack: Arc<dyn worker::Worker<SlackRequest>>,
+) -> Arc<dyn worker::Runner<RepoVersionRequest>> {
     Arc::new(Runner {
         config: config,
         github_app: github_app,

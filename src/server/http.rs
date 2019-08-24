@@ -6,7 +6,7 @@ use serde_json;
 
 use util;
 
-pub type FutureResponse = Box<Future<Item = Response<Body>, Error = hyper::Error> + Send>;
+pub type FutureResponse = Box<dyn Future<Item = Response<Body>, Error = hyper::Error> + Send>;
 
 pub trait Handler {
     fn handle(&self, req: Request<Body>) -> FutureResponse;
@@ -35,14 +35,14 @@ pub enum FilterResult {
 }
 
 pub struct FilteredHandler {
-    filter: Box<Filter>,
-    handler: Box<Handler>,
+    filter: Box<dyn Filter>,
+    handler: Box<dyn Handler>,
 }
 
 pub struct NotFoundHandler;
 
 impl FilteredHandler {
-    pub fn new(filter: Box<Filter>, handler: Box<Handler>) -> Box<FilteredHandler> {
+    pub fn new(filter: Box<dyn Filter>, handler: Box<dyn Handler>) -> Box<FilteredHandler> {
         Box::new(FilteredHandler {
             filter: filter,
             handler: handler,

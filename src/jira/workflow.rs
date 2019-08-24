@@ -79,7 +79,7 @@ pub fn submit_for_review(
     pr: &PullRequest,
     commits: &Vec<Commit>,
     projects: &Vec<String>,
-    jira: &jira::api::Session,
+    jira: &dyn jira::api::Session,
     config: &JiraConfig,
 ) {
     let review_states = config.review_states();
@@ -142,7 +142,7 @@ pub fn resolve_issue(
     version: Option<&str>,
     commits: &Vec<PushCommit>,
     projects: &Vec<String>,
-    jira: &jira::api::Session,
+    jira: &dyn jira::api::Session,
     config: &JiraConfig,
 ) {
     for commit in commits {
@@ -222,7 +222,7 @@ pub fn add_pending_version(
     maybe_version: Option<&str>,
     commits: &Vec<PushCommit>,
     projects: &Vec<String>,
-    jira: &jira::api::Session,
+    jira: &dyn jira::api::Session,
 ) {
     if let Some(version) = maybe_version {
         for key in get_all_jira_keys(commits, projects) {
@@ -247,7 +247,7 @@ pub enum DryRunMode {
 pub fn merge_pending_versions(
     version: &str,
     project: &str,
-    jira: &jira::api::Session,
+    jira: &dyn jira::api::Session,
     mode: DryRunMode,
 ) -> Result<HashMap<String, Vec<version::Version>>> {
     let target_version = match version::Version::parse(version) {
@@ -339,7 +339,7 @@ fn find_relevant_versions(
         .collect::<Vec<_>>()
 }
 
-fn try_get_issue_state(key: &str, jira: &jira::api::Session) -> Option<jira::Status> {
+fn try_get_issue_state(key: &str, jira: &dyn jira::api::Session) -> Option<jira::Status> {
     match jira.get_issue(key) {
         Ok(issue) => issue.status,
         Err(e) => {
@@ -349,7 +349,7 @@ fn try_get_issue_state(key: &str, jira: &jira::api::Session) -> Option<jira::Sta
     }
 }
 
-fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {
+fn try_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Session) {
     match find_transition(&key, to, jira) {
         Ok(Some(transition)) => {
             let req = transition.new_request();
@@ -364,7 +364,7 @@ fn try_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) {
     };
 }
 
-fn find_transition(key: &str, to: &Vec<String>, jira: &jira::api::Session) -> Result<Option<Transition>> {
+fn find_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Session) -> Result<Option<Transition>> {
     let transitions = jira.get_transitions(&key)?;
 
     Ok(pick_transition(to, &transitions))
@@ -382,7 +382,7 @@ fn pick_transition(to: &Vec<String>, choices: &Vec<Transition>) -> Option<Transi
     None
 }
 
-pub fn sort_versions(project: &str, jira: &jira::api::Session) -> Result<()> {
+pub fn sort_versions(project: &str, jira: &dyn jira::api::Session) -> Result<()> {
     let mut versions = jira.get_versions(project)?;
 
     versions.sort_by(|a, b| {
