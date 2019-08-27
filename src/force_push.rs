@@ -13,7 +13,7 @@ use worker;
 pub fn comment_force_push(
     diffs: Result<DiffOfDiffs>,
     reapply_statuses: Vec<String>,
-    github: &github::api::Session,
+    github: &dyn github::api::Session,
     owner: &str,
     repo: &str,
     pull_request: &github::PullRequest,
@@ -150,7 +150,7 @@ pub fn comment_force_push(
 }
 
 pub fn diff_force_push(
-    github: &github::api::Session,
+    github: &dyn github::api::Session,
     clone_mgr: &GitCloneManager,
     owner: &str,
     repo: &str,
@@ -193,7 +193,7 @@ pub struct ForcePushRequest {
 
 struct Runner {
     config: Arc<Config>,
-    github_app: Arc<GithubSessionFactory>,
+    github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
 }
 
@@ -214,9 +214,9 @@ pub fn req(
 
 pub fn new_runner(
     config: Arc<Config>,
-    github_app: Arc<GithubSessionFactory>,
+    github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
-) -> Arc<worker::Runner<ForcePushRequest>> {
+) -> Arc<dyn worker::Runner<ForcePushRequest>> {
     Arc::new(Runner {
         config: config,
         github_app: github_app,

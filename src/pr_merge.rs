@@ -14,7 +14,7 @@ use slack::{SlackAttachmentBuilder, SlackRequest};
 use worker;
 
 fn clone_and_merge_pull_request(
-    github_app: &GithubSessionFactory,
+    github_app: &dyn GithubSessionFactory,
     clone_mgr: &GitCloneManager,
     owner: &str,
     repo: &str,
@@ -33,7 +33,7 @@ fn clone_and_merge_pull_request(
 
 pub fn merge_pull_request(
     git: &Git,
-    session: &Session,
+    session: &dyn Session,
     owner: &str,
     repo: &str,
     pull_request: &github::PullRequest,
@@ -207,9 +207,9 @@ pub struct PRMergeRequest {
 
 struct Runner {
     config: Arc<Config>,
-    github_app: Arc<GithubSessionFactory>,
+    github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
-    slack: Arc<worker::Worker<SlackRequest>>,
+    slack: Arc<dyn worker::Worker<SlackRequest>>,
 }
 
 pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str, release_branch_prefix: &str) -> PRMergeRequest {
@@ -223,10 +223,10 @@ pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branc
 
 pub fn new_runner(
     config: Arc<Config>,
-    github_app: Arc<GithubSessionFactory>,
+    github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
-    slack: Arc<worker::Worker<SlackRequest>>,
-) -> Arc<worker::Runner<PRMergeRequest>> {
+    slack: Arc<dyn worker::Worker<SlackRequest>>,
+) -> Arc<dyn worker::Runner<PRMergeRequest>> {
     Arc::new(Runner {
         config: config,
         github_app: github_app,

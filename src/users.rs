@@ -40,7 +40,7 @@ impl UserConfig {
         let conn = self.db.connect()?;
         conn.execute(
             "INSERT INTO users (github_name, slack_name, mute_direct_messages) VALUES (?1, ?2, ?3)",
-            &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages) as &ToSql],
+            &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages) as &dyn ToSql],
         ).map_err(|e| format_err!("Error inserting user {}: {}", user.github, e))?;
 
         Ok(())
@@ -50,7 +50,7 @@ impl UserConfig {
         let conn = self.db.connect()?;
         conn.execute(
             "UPDATE users set github_name = ?1, slack_name = ?2, mute_direct_messages = ?3 where id = ?4",
-            &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages) as &ToSql, &user.id],
+            &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages) as &dyn ToSql, &user.id],
         ).map_err(|e| format_err!("Error updating user {}: {}", user.github, e))?;
 
         Ok(())

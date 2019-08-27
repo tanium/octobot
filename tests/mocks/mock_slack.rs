@@ -20,7 +20,7 @@ impl MockSlack {
         }
     }
 
-    pub fn new_sender(&self) -> Arc<Worker<SlackRequest>> {
+    pub fn new_sender(&self) -> Arc<dyn Worker<SlackRequest>> {
         self.worker.new_sender()
     }
 }

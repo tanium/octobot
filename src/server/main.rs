@@ -31,7 +31,7 @@ fn run_server(config: Config) {
     let config = Arc::new(config);
 
 
-    let github: Arc<github::api::GithubSessionFactory>;
+    let github: Arc<dyn github::api::GithubSessionFactory>;
 
     if config.github.app_id.is_some() {
         github = match github::api::GithubApp::new(
@@ -52,7 +52,7 @@ fn run_server(config: Config) {
         };
     }
 
-    let jira: Option<Arc<jira::api::Session>>;
+    let jira: Option<Arc<dyn jira::api::Session>>;
     if let Some(ref jira_config) = config.jira {
         jira = match JiraSession::new(&jira_config) {
             Ok(s) => Some(Arc::new(s)),
