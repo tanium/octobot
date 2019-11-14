@@ -1,6 +1,3 @@
-extern crate octobot;
-extern crate tempdir;
-
 mod git_helper;
 
 use git_helper::temp_git::TempGit;

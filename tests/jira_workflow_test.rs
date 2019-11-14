@@ -1,8 +1,6 @@
-extern crate octobot;
-#[macro_use]
-extern crate maplit;
-
 mod mocks;
+
+use maplit::hashmap;
 
 use octobot::config::JiraConfig;
 use octobot::github;

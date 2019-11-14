@@ -1,3 +1,4 @@
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Issue {

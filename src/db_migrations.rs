@@ -1,6 +1,8 @@
+use failure::format_err;
+use log::info;
 use rusqlite::Connection;
 
-use errors::*;
+use crate::errors::*;
 
 const CREATE_VERSIONS: &'static str = r#"
 create table __version ( current_version integer primary key )
@@ -87,9 +89,7 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    extern crate tempdir;
-
-    use self::tempdir::TempDir;
+    use tempdir::TempDir;
     use super::*;
 
     #[test]

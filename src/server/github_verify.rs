@@ -1,4 +1,5 @@
 use hyper::HeaderMap;
+use log::{debug, error};
 use ring::{digest, hmac};
 use rustc_serialize::hex::FromHex;
 

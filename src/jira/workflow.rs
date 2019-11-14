@@ -1,13 +1,16 @@
-use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use version;
 
-use config::JiraConfig;
-use errors::*;
-use github::{Commit, CommitLike, PullRequest, PushCommit};
-use jira;
-use jira::Transition;
+use log::{error, info};
+use failure::format_err;
+use regex::Regex;
+
+use crate::config::JiraConfig;
+use crate::errors::*;
+use crate::github::{Commit, CommitLike, PullRequest, PushCommit};
+use crate::jira;
+use crate::jira::Transition;
+use crate::version;
 
 fn get_jira_keys(strings: Vec<String>, projects: &Vec<String>) -> Vec<String> {
     let re = Regex::new(r"\b([A-Z0-9]+-[0-9]+)\b").unwrap();

@@ -4,16 +4,17 @@ use futures::future::{self, Future};
 use hyper::{self, Body, Method, Request};
 use hyper::service::{NewService, Service};
 use time;
+use log::{debug, error, info};
 
-use config::Config;
-use server::admin;
-use server::admin::{Op, RepoAdmin, UserAdmin};
-use server::github_handler::{GithubHandler, GithubHandlerState};
-use server::html_handler::HtmlHandler;
-use server::http::{FilteredHandler, FutureResponse, Handler, NotFoundHandler};
-use server::login::{LoginHandler, LoginSessionFilter, LogoutHandler, SessionCheckHandler};
-use server::sessions::Sessions;
-use util;
+use crate::config::Config;
+use crate::server::admin;
+use crate::server::admin::{Op, RepoAdmin, UserAdmin};
+use crate::server::github_handler::{GithubHandler, GithubHandlerState};
+use crate::server::html_handler::HtmlHandler;
+use crate::server::http::{FilteredHandler, FutureResponse, Handler, NotFoundHandler};
+use crate::server::login::{LoginHandler, LoginSessionFilter, LogoutHandler, SessionCheckHandler};
+use crate::server::sessions::Sessions;
+use crate::util;
 
 #[derive(Clone)]
 pub struct OctobotService {

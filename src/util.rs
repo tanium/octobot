@@ -1,11 +1,12 @@
-use std;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
-use errors::*;
+use failure::format_err;
 use hyper::{self, Body, Response, StatusCode};
 use time;
+
+use crate::errors::*;
 
 fn escape_for_slack(str: &str) -> String {
     str.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -158,6 +159,7 @@ pub fn new_bad_req_resp<S: Into<String>>(msg: S) -> Response<Body> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use maplit::hashmap;
 
     #[test]
     fn test_make_link() {

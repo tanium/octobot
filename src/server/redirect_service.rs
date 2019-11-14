@@ -4,8 +4,9 @@ use hyper::{self, Body, Request, Response};
 use hyper::{StatusCode, Uri};
 use hyper::header::{HOST, LOCATION};
 use hyper::service::{NewService, Service};
+use log::{debug, error};
 
-use util;
+use crate::util;
 
 #[derive(Clone)]
 pub struct RedirectService {

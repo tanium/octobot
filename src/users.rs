@@ -1,7 +1,10 @@
+use failure::format_err;
+use log::error;
 use rusqlite::types::ToSql;
+use serde_derive::{Deserialize, Serialize};
 
-use db::{self, Database};
-use errors::*;
+use crate::db::{self, Database};
+use crate::errors::*;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct UserInfo {
@@ -142,9 +145,7 @@ pub fn mention(username: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    extern crate tempdir;
-
-    use self::tempdir::TempDir;
+    use tempdir::TempDir;
     use super::*;
 
     fn new_test() -> (UserConfig, TempDir) {

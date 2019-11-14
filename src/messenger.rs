@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use config::Config;
-use github;
-use slack::{self, SlackAttachment, SlackRequest};
-use util;
-use worker::Worker;
+use crate::config::Config;
+use crate::github;
+use crate::slack::{self, SlackAttachment, SlackRequest};
+use crate::util;
+use crate::worker::Worker;
 
 pub trait Messenger {
     fn send_to_all(

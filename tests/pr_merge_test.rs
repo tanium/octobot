@@ -1,6 +1,3 @@
-extern crate octobot;
-extern crate tempdir;
-
 mod git_helper;
 mod mocks;
 

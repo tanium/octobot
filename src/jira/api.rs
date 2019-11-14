@@ -1,14 +1,19 @@
+use std::collections::HashMap;
+
 use base64;
-use http_client::HTTPClient;
+use failure::format_err;
+use log::{debug, info};
 use regex::Regex;
 use serde_json;
-use std::collections::HashMap;
+use serde_json::json;
+use serde_derive::{Deserialize, Serialize};
 use url::percent_encoding::{DEFAULT_ENCODE_SET, utf8_percent_encode};
 
-use config::JiraConfig;
-use errors::*;
-use jira::models::*;
-use version;
+use crate::config::JiraConfig;
+use crate::errors::*;
+use crate::http_client::HTTPClient;
+use crate::jira::models::*;
+use crate::version;
 
 pub trait Session: Send + Sync {
     fn get_issue(&self, key: &str) -> Result<Issue>;
@@ -292,6 +297,7 @@ fn parse_pending_versions(search: &serde_json::Value, field_id: &str) -> HashMap
 #[cfg(test)]
 mod tests {
     use super::*;
+    use maplit::hashmap;
 
     #[test]
     fn test_parse_pending_versions() {

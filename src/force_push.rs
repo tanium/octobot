@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use config::Config;
-use diffs::DiffOfDiffs;
-use errors::*;
-use git::Git;
-use git_clone_manager::GitCloneManager;
-use github;
-use github::Commit;
-use github::api::GithubSessionFactory;
-use worker;
+use log::{error, info};
+
+use crate::config::Config;
+use crate::diffs::DiffOfDiffs;
+use crate::errors::*;
+use crate::git::Git;
+use crate::git_clone_manager::GitCloneManager;
+use crate::github;
+use crate::github::Commit;
+use crate::github::api::GithubSessionFactory;
+use crate::worker;
 
 pub fn comment_force_push(
     diffs: Result<DiffOfDiffs>,

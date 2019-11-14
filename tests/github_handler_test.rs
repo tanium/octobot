@@ -1,13 +1,8 @@
-extern crate hyper;
-extern crate octobot;
-extern crate tempdir;
-#[macro_use]
-extern crate failure;
-
 mod mocks;
 
 use std::sync::Arc;
 
+use failure::format_err;
 use hyper::StatusCode;
 use tempdir::TempDir;
 

@@ -1,9 +1,12 @@
+use failure::format_err;
+use log::error;
 use rusqlite::Row;
 use rusqlite::types::ToSql;
+use serde_derive::{Deserialize, Serialize};
 
-use db::{self, Database};
-use errors::*;
-use github;
+use crate::db::{self, Database};
+use crate::errors::*;
+use crate::github;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RepoInfo {
@@ -299,9 +302,7 @@ impl RepoConfig {
 
 #[cfg(test)]
 mod tests {
-    extern crate tempdir;
-
-    use self::tempdir::TempDir;
+    use tempdir::TempDir;
     use super::*;
     use github;
 

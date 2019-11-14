@@ -1,16 +1,9 @@
-extern crate octobot;
-
-#[macro_use]
-extern crate failure;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-
 use std::collections::HashMap;
 use std::io::Read;
 
+use failure::format_err;
 use serde::de::DeserializeOwned;
+use serde_derive::{Deserialize, Serialize};
 
 use octobot::db;
 use octobot::errors::*;

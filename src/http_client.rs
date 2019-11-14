@@ -1,8 +1,9 @@
+use failure::format_err;
 use reqwest;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
-use errors::*;
+use crate::errors::*;
 
 pub use reqwest::header::HeaderMap;
 

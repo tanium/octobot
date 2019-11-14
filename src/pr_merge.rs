@@ -1,17 +1,19 @@
 use std::borrow::Borrow;
 use std::sync::Arc;
 
+use failure::format_err;
+use log::{error, info};
 use regex::Regex;
 
-use config::Config;
-use errors::*;
-use git::Git;
-use git_clone_manager::GitCloneManager;
-use github;
-use github::api::{GithubSessionFactory, Session};
-use messenger::{self, Messenger};
-use slack::{SlackAttachmentBuilder, SlackRequest};
-use worker;
+use crate::config::Config;
+use crate::errors::*;
+use crate::git::Git;
+use crate::git_clone_manager::GitCloneManager;
+use crate::github;
+use crate::github::api::{GithubSessionFactory, Session};
+use crate::messenger::{self, Messenger};
+use crate::slack::{SlackAttachmentBuilder, SlackRequest};
+use crate::worker;
 
 fn clone_and_merge_pull_request(
     github_app: &dyn GithubSessionFactory,

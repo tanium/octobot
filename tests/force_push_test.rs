@@ -1,8 +1,6 @@
-extern crate octobot;
-#[macro_use]
-extern crate failure;
-
 mod mocks;
+
+use failure::format_err;
 
 use mocks::mock_github::MockGithub;
 

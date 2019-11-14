@@ -5,7 +5,7 @@ use std::io::Read;
 use hyper::{Body, Request, Response};
 use hyper::header::CONTENT_TYPE;
 
-use server::http::{FutureResponse, Handler};
+use crate::server::http::{FutureResponse, Handler};
 
 fn is_dev_mode() -> bool {
     env::var("DEVMODE").is_ok()

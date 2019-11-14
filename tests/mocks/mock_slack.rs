@@ -3,7 +3,7 @@ use std::sync::Arc;
 use octobot::slack::SlackRequest;
 use octobot::worker::Worker;
 
-use mocks::mock_worker::LockedMockWorker;
+use crate::mocks::mock_worker::LockedMockWorker;
 
 pub struct MockSlack {
     worker: LockedMockWorker<SlackRequest>,

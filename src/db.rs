@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
+use failure::format_err;
+use log::error;
 use rusqlite::types::FromSql;
 use rusqlite::{Connection, Row, Statement};
 
-use db_migrations;
-use errors::*;
+use crate::db_migrations;
+use crate::errors::*;
 
 #[derive(Clone)]
 pub struct Database {

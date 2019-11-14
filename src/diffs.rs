@@ -1,4 +1,6 @@
 use std::cmp::max;
+
+use log::debug;
 use unidiff::{Hunk, Line, PatchSet, PatchedFile};
 
 #[derive(Debug)]
@@ -164,16 +166,16 @@ diff --git a/src/lib.rs b/src/lib.rs
 index 4442a2c..007a2cf 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -11,6 +11,7 @@ extern crate serde;
- extern crate serde_json;
- extern crate threadpool;
- extern crate toml;
-+extern crate unidiff;
- extern crate url;
+@@ -11,6 +11,7 @@ use serde;
+ use serde_json;
+ use threadpool;
+ use toml;
++use unidiff;
+ use url;
 
- #[macro_use]
-@@ -19,6 +20,7 @@ extern crate log;
- extern crate serde_derive;
+
+@@ -19,6 +20,7 @@ use log;
+ use serde_derive;
 
  pub mod config;
 +pub mod diffs;
@@ -203,16 +205,16 @@ diff --git a/src/lib.rs b/src/lib.rs
 index 4442a2c..007a2cf 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -1,6 +1,7 @@ extern crate serde;
- extern crate serde_json;
- extern crate threadpool;
- extern crate toml;
-+extern crate unidiff;
- extern crate url;
+@@ -1,6 +1,7 @@ use serde;
+ use serde_json;
+ use threadpool;
+ use toml;
++use unidiff;
+ use url;
 
- #[macro_use]
-@@ -119,6 +120,7 @@ extern crate log;
- extern crate serde_derive;
+
+@@ -119,6 +120,7 @@ use log;
+ use serde_derive;
 
  pub mod config;
 +pub mod diffs;
@@ -242,16 +244,16 @@ diff --git a/src/lib.rs b/src/lib.rs
 index 4442a2c..007a2cf 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -11,6 +11,7 @@ extern crate serde;
- extern crate serde_json;
- extern crate threadpool;
- extern crate toml;
-+extern crate unidiff;
- extern crate url;
+@@ -11,6 +11,7 @@ use serde;
+ use serde_json;
+ use threadpool;
+ use toml;
++use unidiff;
+ use url;
 
- #[macro_use]
-@@ -19,6 +20,7 @@ extern crate log;
- extern crate serde_derive;
+
+@@ -19,6 +20,7 @@ use log;
+ use serde_derive;
 
  pub mod config;
 +pub mod diffs;
@@ -276,16 +278,16 @@ diff --git a/src/lib.rs b/src/lib.rs
 index 4442a2c..007a2cf 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -1,6 +1,7 @@ extern crate serde;
- extern crate serde_json;
- extern crate threadpool;
- extern crate toml;
-+extern crate unidiff;
- extern crate url;
+@@ -1,6 +1,7 @@ use serde;
+ use serde_json;
+ use threadpool;
+ use toml;
++use unidiff;
+ use url;
 
- #[macro_use]
-@@ -119,6 +120,7 @@ extern crate log;
- extern crate serde_derive;
+
+@@ -119,6 +120,7 @@ use log;
+ use serde_derive;
 
  pub mod ** OTHER_THING_HERE **;
 +pub mod diffs;
@@ -296,16 +298,16 @@ diff --git a/src/fake.rs b/src/fake.rs
 index 4442a2c..007a2cf 100644
 --- a/src/fake.rs
 +++ b/src/fake.rs
-@@ -1,6 +1,7 @@ extern crate serde;
- extern crate serde_json;
- extern crate threadpool;
- extern crate toml;
-+extern crate unidiff;
- extern crate url;
+@@ -1,6 +1,7 @@ use serde;
+ use serde_json;
+ use threadpool;
+ use toml;
++use unidiff;
+ use url;
 
- #[macro_use]
-@@ -119,6 +120,7 @@ extern crate log;
- extern crate serde_derive;
+
+@@ -119,6 +120,7 @@ use log;
+ use serde_derive;
 
  pub mod ** OTHER_THING_HERE **;
 +pub mod diffs;
