@@ -6,6 +6,8 @@ use std::sync::Arc;
 use std::process::{Command, Stdio};
 
 use log::error;
+#[cfg(target_os = "linux")]
+use log::debug;
 use failure::format_err;
 
 use crate::config::{Config, JiraConfig};
