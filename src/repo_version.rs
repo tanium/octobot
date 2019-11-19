@@ -5,19 +5,24 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
-use config::{Config, JiraConfig};
-use errors::*;
-use git::Git;
-use git_clone_manager::GitCloneManager;
-use github;
-use github::api::{GithubSessionFactory, Session};
-use jira;
-use messenger::{self, Messenger};
-use slack::{SlackAttachmentBuilder, SlackRequest};
-use worker;
+use log::error;
+#[cfg(target_os = "linux")]
+use log::debug;
+use failure::format_err;
+
+use crate::config::{Config, JiraConfig};
+use crate::errors::*;
+use crate::git::Git;
+use crate::git_clone_manager::GitCloneManager;
+use crate::github;
+use crate::github::api::{GithubSessionFactory, Session};
+use crate::jira;
+use crate::messenger::{self, Messenger};
+use crate::slack::{SlackAttachmentBuilder, SlackRequest};
+use crate::worker;
 
 #[cfg(target_os = "linux")]
-use docker;
+use crate::docker;
 
 pub fn comment_repo_version(
     version_script: &str,
@@ -245,8 +250,7 @@ mod tests {
     use std::fs;
     use std::io::Write;
 
-    extern crate tempdir;
-    use self::tempdir::TempDir;
+    use tempdir::TempDir;
 
     #[test]
     fn test_run_script() {

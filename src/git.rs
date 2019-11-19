@@ -3,7 +3,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use errors::*;
+use log::debug;
+use failure::format_err;
+
+use crate::errors::*;
 
 pub struct Git {
     pub host: String,

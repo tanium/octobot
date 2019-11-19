@@ -1,16 +1,9 @@
-extern crate env_logger;
-extern crate octobot;
-extern crate time;
-extern crate thread_id;
-extern crate log;
-#[macro_use]
-extern crate failure;
-
 use std::io::Write;
+
+use failure::format_err;
 
 use octobot::config;
 use octobot::server;
-
 use octobot::errors::*;
 
 fn main() {

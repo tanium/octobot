@@ -1,11 +1,12 @@
 use std::ptr;
 
+use log::{debug, info, warn};
+use failure::format_err;
 use openldap::{self, LDAPResponse, RustLDAP};
-
 use regex::Regex;
 
-use config::LdapConfig;
-use errors::*;
+use crate::config::LdapConfig;
+use crate::errors::*;
 
 pub struct LDAPEntry {
     pub dn: String,

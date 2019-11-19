@@ -2,10 +2,12 @@ use std::sync::{Arc, Mutex};
 
 use futures::{future, Future};
 use reqwest;
+use serde_derive::Serialize;
 use tokio;
+use log::{error, info};
 
-use util;
-use worker;
+use crate::util;
+use crate::worker;
 
 #[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct SlackAttachment {
@@ -70,7 +72,7 @@ struct SlackMessage {
 
 // the main object for sending messages to slack
 struct Slack {
-    client: reqwest::async::Client,
+    client: reqwest::r#async::Client,
     webhook_url: String,
     recent_messages: Mutex<Vec<SlackMessage>>,
 }
@@ -81,7 +83,7 @@ const TRIM_MESSAGES_TO: usize = 20;
 impl Slack {
     pub fn new(webhook_url: &str) -> Slack {
         Slack {
-            client: reqwest::async::Client::new(),
+            client: reqwest::r#async::Client::new(),
             webhook_url: webhook_url.into(),
             recent_messages: Mutex::new(Vec::new()),
         }

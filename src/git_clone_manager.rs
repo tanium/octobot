@@ -2,12 +2,15 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use config::Config;
-use dir_pool::{DirPool, HeldDir};
-use errors::*;
-use git::Git;
-use github;
-use github::api::Session;
+use log::info;
+use failure::format_err;
+
+use crate::config::Config;
+use crate::dir_pool::{DirPool, HeldDir};
+use crate::errors::*;
+use crate::git::Git;
+use crate::github;
+use crate::github::api::Session;
 
 // clones git repos with given github session into a managed directory pool
 pub struct GitCloneManager {

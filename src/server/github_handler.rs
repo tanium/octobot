@@ -4,26 +4,27 @@ use std::sync::{Arc, Mutex};
 use futures::Future;
 use futures::Stream;
 use hyper::{Body, Request, StatusCode};
+use log::{info, error};
 use regex::Regex;
 use serde_json;
 use tokio;
 
-use config::Config;
-use force_push::{self, ForcePushRequest};
-use git_clone_manager::GitCloneManager;
-use github;
-use github::CommentLike;
-use github::api::Session;
-use jira;
-use messenger::{self, Messenger};
-use pr_merge::{self, PRMergeRequest};
-use repo_version::{self, RepoVersionRequest};
-use runtime;
-use server::github_verify::GithubWebhookVerifier;
-use server::http::{FutureResponse, Handler};
-use slack::{self, SlackAttachmentBuilder, SlackRequest};
-use util;
-use worker::{Worker, TokioWorker};
+use crate::config::Config;
+use crate::force_push::{self, ForcePushRequest};
+use crate::git_clone_manager::GitCloneManager;
+use crate::github;
+use crate::github::api::Session;
+use crate::github::CommentLike;
+use crate::jira;
+use crate::messenger::{self, Messenger};
+use crate::pr_merge::{self, PRMergeRequest};
+use crate::repo_version::{self, RepoVersionRequest};
+use crate::runtime;
+use crate::server::github_verify::GithubWebhookVerifier;
+use crate::server::http::{FutureResponse, Handler};
+use crate::slack::{self, SlackAttachmentBuilder, SlackRequest};
+use crate::util;
+use crate::worker::{Worker, TokioWorker};
 
 pub struct GithubHandlerState {
     pub config: Arc<Config>,

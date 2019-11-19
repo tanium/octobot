@@ -2,12 +2,15 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use failure::format_err;
+use serde_derive::{Deserialize, Serialize};
 use toml;
 
-use db::Database;
-use errors::*;
-use repos;
-use users;
+use crate::db::Database;
+use crate::errors::*;
+use crate::repos;
+use crate::users;
 
 pub struct Config {
     pub main: MainConfig,

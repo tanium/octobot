@@ -1,38 +1,3 @@
-extern crate base64;
-#[macro_use]
-extern crate failure;
-extern crate futures;
-extern crate http;
-extern crate hyper;
-extern crate hyper_rustls;
-extern crate jsonwebtoken;
-extern crate openldap;
-extern crate regex;
-extern crate ring;
-extern crate rustc_serialize;
-extern crate rustls;
-extern crate serde;
-#[macro_use]
-extern crate serde_json;
-extern crate tokio;
-extern crate tokio_rustls;
-extern crate tokio_threadpool;
-extern crate toml;
-extern crate unidiff;
-extern crate url;
-extern crate time;
-extern crate rusqlite;
-extern crate reqwest;
-
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate serde_derive;
-
-#[cfg(test)]
-#[macro_use]
-extern crate maplit;
-
 pub mod config;
 pub mod db;
 pub mod diffs;

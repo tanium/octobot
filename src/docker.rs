@@ -1,4 +1,3 @@
-use std;
 use std::io::Read;
 
 pub fn in_docker() -> bool {
