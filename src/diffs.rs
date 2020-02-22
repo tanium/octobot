@@ -325,4 +325,19 @@ index 4442a2c..007a2cf 100644
         assert_eq!("src/lib.rs", diff_files[0].path());
         assert_eq!("src/fake.rs", diff_files[1].path());
     }
+
+    #[test]
+    fn test_diff_crash() {
+        let diff0 = r#"diff --git a/foo b/foo
+index 06c9b9d..5007551 100644
+--- a/foo
++++ b/foo
+@@ -1 +1 @@
+-one
++two
+"#;
+
+        let diffs = DiffOfDiffs::new(&diff0, &diff0);
+        assert_eq!(true, diffs.are_equal());
+    }
 }
