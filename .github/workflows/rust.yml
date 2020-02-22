@@ -11,6 +11,9 @@ jobs:
     - name: Checkout sources
       uses: actions/checkout@v1
 
+    - name: Install packages
+      run: sudo apt-get install libsqlite3-0 libldap2-dev
+
     - name: Install stable toolchain
       uses: actions-rs/toolchain@v1
       with:
