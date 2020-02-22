@@ -11,8 +11,11 @@ jobs:
     - name: Checkout sources
       uses: actions/checkout@v1
 
-    - name: Install packages
+    - name: Install build packages
       run: sudo apt-get install libsqlite3-dev libldap2-dev
+
+    - name: Install test packages
+      run: sudo apt-get install python firejail
 
     - name: Install stable toolchain
       uses: actions-rs/toolchain@v1
