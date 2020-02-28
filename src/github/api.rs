@@ -222,10 +222,6 @@ impl GithubSession {
             reqwest::header::ACCEPT,
             "application/vnd.github.mockingbird-preview".parse().unwrap(),
         );
-        headers.append(
-            reqwest::header::ACCEPT,
-            "application/vnd.github.shadow-cat-preview+json".parse().unwrap(),
-        );
         headers.insert(
             reqwest::header::AUTHORIZATION,
             format!("Token {}", token).parse().unwrap(),
