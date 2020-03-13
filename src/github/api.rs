@@ -215,12 +215,18 @@ impl GithubSession {
     pub fn new(host: &str, bot_name: &str, token: &str) -> Result<GithubSession> {
         let mut headers = reqwest::header::HeaderMap::new();
 
-        // Standard accept header is "application/vnd.github.v3+json".
-        // The "mockingbird-preview" allows us to use the timeline api.
-        // cf. https://developer.github.com/enterprise/2.13/v3/issues/timeline/
+        let accept_headers = vec![
+            // standard header
+            "application/vnd.github.v3+json",
+            // timeline api
+            "application/vnd.github.mockingbird-preview",
+            // draft PRs
+            "application/vnd.github.shadow-cat-preview+json",
+        ].join(",");
+
         headers.append(
             reqwest::header::ACCEPT,
-            "application/vnd.github.mockingbird-preview".parse().unwrap(),
+            accept_headers.as_str().parse().unwrap(),
         );
         headers.insert(
             reqwest::header::AUTHORIZATION,
