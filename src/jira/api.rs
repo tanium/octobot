@@ -130,7 +130,8 @@ impl Session for JiraSession {
     fn comment_issue(&self, key: &str, comment: &str) -> Result<()> {
         #[derive(Serialize)]
         struct VisibilityReq {
-            r#type: String,
+            #[serde(rename = "type")]
+            type_name: String,
             value: String,
         }
         
@@ -140,23 +141,17 @@ impl Session for JiraSession {
             visibility: Option<VisibilityReq>,
         }
 
-        let req = match &self.restrict_comment_visibility_to_role {
-            Some(x) => {
-                CommentReq { 
-                    body: comment.to_string(),
-                    visibility: Some(VisibilityReq {
-                        r#type: "role".to_string(),
-                        value: x.clone(),
-                    })
-                }
-            }
-            None => {
-                CommentReq { 
-                    body: comment.to_string(),
-                    visibility: None
-                }
-            }
+        let mut req = CommentReq { 
+            body: comment.to_string(),
+            visibility: None,
         };
+
+        if let Some(r) = &self.restrict_comment_visibility_to_role {
+            req.visibility = Some(VisibilityReq { 
+                type_name: "role".to_string(),
+                value: r.clone(),
+            })
+        }
 
         self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req).map_err(
             |e| {

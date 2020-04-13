@@ -147,6 +147,7 @@ fn new_test_with_jira() -> GithubHandlerTest {
         fixed_resolutions: Some(vec![":boom:".into()]),
         fix_versions_field: Some("the-versions".into()),
         pending_versions_field: Some("the-pending-versions".into()),
+        restrict_comment_visibility_to_role: None,
     });
     let mut test = new_test_with(jira);
 
