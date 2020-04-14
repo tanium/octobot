@@ -134,23 +134,31 @@ impl Session for JiraSession {
             type_name: String,
             value: String,
         }
-        
+
         #[derive(Serialize)]
         struct CommentReq {
             body: String,
             visibility: Option<VisibilityReq>,
         }
 
-        let mut req = CommentReq { 
+        let mut req = CommentReq {
             body: comment.to_string(),
             visibility: None,
         };
 
         if let Some(r) = &self.restrict_comment_visibility_to_role {
-            req.visibility = Some(VisibilityReq { 
+            req.visibility = Some(VisibilityReq {
                 type_name: "role".to_string(),
                 value: r.clone(),
             })
+
+            let result = self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req)
+            if result.is_ok() {
+                return Ok(());
+            }
+
+            req.visibility = None;
+            // Fall-through to making the request without the visibility restriction
         }
 
         self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req).map_err(
