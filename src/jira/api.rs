@@ -150,9 +150,9 @@ impl Session for JiraSession {
             req.visibility = Some(VisibilityReq {
                 type_name: "role".to_string(),
                 value: r.clone(),
-            })
+            });
 
-            let result = self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req)
+            let result = self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req);
             if result.is_ok() {
                 return Ok(());
             }
