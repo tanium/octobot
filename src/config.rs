@@ -77,6 +77,8 @@ pub struct JiraConfig {
     pub fix_versions_field: Option<String>,
     // the field name for where the pending build versions go. expected to be a plain text field
     pub pending_versions_field: Option<String>,
+    // optional name of role to restrict octobot comment visibility. (e.g. "Developers")
+    pub restrict_comment_visibility_to_role: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

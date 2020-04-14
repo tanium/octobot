@@ -27,6 +27,7 @@ fn new_test() -> JiraWorkflowTest {
         fixed_resolutions: Some(vec!["it-is-fixed".into()]),
         fix_versions_field: Some("the-versions".into()),
         pending_versions_field: Some("the-pending-versions".into()),
+        restrict_comment_visibility_to_role: None,
     };
 
     JiraWorkflowTest {

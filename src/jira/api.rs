@@ -44,6 +44,7 @@ pub struct JiraSession {
     fix_versions_field: String,
     pending_versions_field: Option<String>,
     pending_versions_field_id: Option<String>,
+    restrict_comment_visibility_to_role: Option<String>
 }
 
 #[derive(Deserialize)]
@@ -97,6 +98,7 @@ impl JiraSession {
             fix_versions_field: fix_versions_field,
             pending_versions_field: config.pending_versions_field.clone(),
             pending_versions_field_id: pending_versions_field_id,
+            restrict_comment_visibility_to_role: config.restrict_comment_visibility_to_role.clone(),
         })
     }
 }
@@ -127,11 +129,38 @@ impl Session for JiraSession {
 
     fn comment_issue(&self, key: &str, comment: &str) -> Result<()> {
         #[derive(Serialize)]
-        struct CommentReq {
-            body: String,
+        struct VisibilityReq {
+            #[serde(rename = "type")]
+            type_name: String,
+            value: String,
         }
 
-        let req = CommentReq { body: comment.to_string() };
+        #[derive(Serialize)]
+        struct CommentReq {
+            body: String,
+            visibility: Option<VisibilityReq>,
+        }
+
+        let mut req = CommentReq {
+            body: comment.to_string(),
+            visibility: None,
+        };
+
+        if let Some(r) = &self.restrict_comment_visibility_to_role {
+            req.visibility = Some(VisibilityReq {
+                type_name: "role".to_string(),
+                value: r.clone(),
+            });
+
+            let result = self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req);
+            if result.is_ok() {
+                return Ok(());
+            }
+
+            req.visibility = None;
+            // Fall-through to making the request without the visibility restriction
+        }
+
         self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req).map_err(
             |e| {
                 format_err!("Error commenting on [{}]: {}", key, e)
