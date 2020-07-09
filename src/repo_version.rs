@@ -5,6 +5,7 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
+use log;
 use log::error;
 #[cfg(target_os = "linux")]
 use log::debug;
@@ -98,6 +99,8 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
         .stderr(Stdio::piped())
         .stdout(Stdio::piped());
 
+    log::info!("Running version script {:?} from {:?}", version_script, clone_dir);
+
     let child = cmd.spawn().map_err(|e| {
         format_err!("Error starting version script (script: {}): {}", version_script, e)
     })?;
@@ -124,19 +127,26 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
         debug!("Version script stderr: \n---\n{}\n---", stderr);
     }
 
-    if !result.status.success() {
-        output += &stderr;
+    let output = output.trim().to_string();
+
+    // Note: there are some firejail failure conditions that do not trigger a non-zero exit code.
+    // To catch these, and in the general case, we treat an empty version as an error.
+    if !result.status.success() || output.is_empty() {
         Err(
             format_err!(
-                "Error running version script (exit code {}; script: {}):\n{}",
+                "Error running version script (exit code {}; script: {}):\n{}\n{}",
                 result.status.code().unwrap_or(-1),
                 version_script,
-                output
+                output,
+                stderr
             ),
         )
     } else {
+        if !stderr.is_empty()  {
+            log::info!("Version script succeeded, but printed to stderr: {}", stderr);
+        }
 
-        Ok(output.trim().to_string())
+        Ok(output)
     }
 }
 
@@ -266,6 +276,46 @@ mod tests {
         }
 
         assert_eq!("1.2.3.4", run_script("bash version.sh", &sub_dir).unwrap());
+    }
+
+    #[test]
+    fn test_run_script_failure() {
+        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+
+        let sub_dir = dir.path().join("subdir");
+        fs::create_dir(&sub_dir).expect("create subdir");
+
+        let script_file = sub_dir.join("version.sh");
+        {
+            let mut file = fs::File::create(&script_file).expect("create file");
+            file.write_all(b"echo out-err; echo err-err >&2; exit 1").expect("write file");
+        }
+
+        let err = format!("{}", run_script("bash version.sh", &sub_dir).unwrap_err());
+        assert!(err.contains("Error running version script"), err);
+        assert!(err.contains("out-err"), err);
+        assert!(err.contains("err-err"), err);
+    }
+
+    #[test]
+    fn test_run_script_failure_firejail_error() {
+        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+
+        let sub_dir = dir.path().join("subdir");
+        fs::create_dir(&sub_dir).expect("create subdir");
+
+        let script_file = sub_dir.join("version.sh");
+        {
+            let mut file = fs::File::create(&script_file).expect("create file");
+            // Note: this fails because --private-dev.
+            file.write_all(b"read -r v < <(echo 1.2.3.4); echo $v").expect("write file");
+        }
+
+        let err = format!("{}", run_script("bash version.sh", &sub_dir).unwrap_err());
+        assert!(err.contains("Error running version script"), err);
+        // Full error message: version.sh: line 1: /dev/fd/62: No such file or directory
+        assert!(err.contains("version.sh: line 1: /dev/fd/"), err);
+        assert!(err.contains("No such file or directory"), err);
     }
 
     #[test]
