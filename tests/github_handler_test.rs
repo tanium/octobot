@@ -1066,6 +1066,24 @@ fn test_pull_request_merged_develop_branch() {
 }
 
 #[test]
+fn test_pull_request_merged_main_branch() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "labeled".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.merged = Some(true);
+    }
+    test.handler.data.label = Some(Label::new("backport-main"));
+    test.handler.data.sender = User::new("the-pr-merger");
+
+    test.expect_will_merge_branches("release/", vec!["main".into()]);
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+}
+
+#[test]
 fn test_push_no_pr() {
     let mut test = new_test();
     test.handler.event = "push".into();
