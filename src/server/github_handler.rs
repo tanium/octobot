@@ -630,7 +630,7 @@ impl GithubEventHandler {
             );
             let next_branch_suffix = self.config.repos().next_branch_suffix(&self.data.repository);
 
-            let is_main_branch = branch_name == "master" || branch_name == "develop" ||
+            let is_main_branch = branch_name == "master" || branch_name == "develop" || branch_name == "main" ||
                 branch_name.starts_with(&release_branch_prefix);
 
             let is_next_branch = branch_name.starts_with(&release_branch_prefix) &&
@@ -806,7 +806,7 @@ impl GithubEventHandler {
             Some(c) => c[1].to_string(),
             None => return,
         };
-        let target_branch = if backport == "master" || backport == "develop" {
+        let target_branch = if backport == "master" || backport == "develop" || backport == "main" {
             backport
         } else {
             release_branch_prefix.to_string() + &backport
