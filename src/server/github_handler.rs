@@ -433,6 +433,17 @@ impl GithubEventHandler {
                             }
                         }
                     }
+
+                    // Mark if no JIRA references
+                    if let Some(ref commits) = self.data.commits {
+                        let branch_name = self.data.ref_name().replace("refs/heads/", "");
+                        jira::check_jira_refs(
+                            &pull_request,
+                            commits,
+                            &self.config.repos().jira_projects(&self.data.repository, &branch_name),
+                            self.github_session.deref(),
+                        );
+                    }
                 }
             }
 
