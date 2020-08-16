@@ -206,6 +206,23 @@ fn some_commits() -> Vec<Commit> {
 
 }
 
+fn expect_jira_ref_fail(git: &MockGithub) {
+    expect_jira_ref_fail_pr(git, some_pr().as_ref().unwrap())
+}
+
+fn expect_jira_ref_fail_pr(git: &MockGithub, pr: &PullRequest) {
+    git.mock_create_check_run(&pr, &CheckRun::new("jira", &pr, None).completed(Conclusion::Failure), Ok(1));
+}
+
+fn expect_jira_ref_pass(git: &MockGithub) {
+    expect_jira_ref_pass_pr(git, some_pr().as_ref().unwrap())
+}
+
+fn expect_jira_ref_pass_pr(git: &MockGithub, pr: &PullRequest) {
+    git.mock_create_check_run(&pr, &CheckRun::new("jira", &pr, None).completed(Conclusion::Success), Ok(1));
+}
+
+
 #[test]
 fn test_ping() {
     let mut test = new_test();
@@ -530,6 +547,8 @@ fn test_pull_request_opened() {
         32,
         Ok(some_commits()),
     );
+
+    expect_jira_ref_fail(&test.github);
 
     let attach = vec![
         SlackAttachmentBuilder::new("")
@@ -1139,8 +1158,8 @@ fn test_push_with_pr() {
     pr2.requested_reviewers = None;
 
     // no jira references here: should fail
-    test.github.mock_create_check_run(&pr1, &CheckRun::new("jira", &pr1, None).completed(Conclusion::Failure), Ok(1));
-    test.github.mock_create_check_run(&pr2, &CheckRun::new("jira", &pr2, None).completed(Conclusion::Failure), Ok(1));
+    expect_jira_ref_fail_pr(&test.github, &pr1);
+    expect_jira_ref_fail_pr(&test.github, &pr2);
 
     test.github.mock_get_pull_request_commits(
         "some-user",
@@ -1427,6 +1446,8 @@ fn test_jira_pull_request_opened() {
         ),
     ]);
 
+    expect_jira_ref_pass(&test.github);
+
     if let Some(ref jira) = test.jira {
         jira.mock_comment_issue(
             "SER-1",
@@ -1461,6 +1482,8 @@ fn test_jira_pull_request_opened_too_many_commits() {
         32,
         Ok(many_jira_commits()),
     );
+
+    expect_jira_ref_pass(&test.github);
 
     let attach = vec![
         SlackAttachmentBuilder::new("")
