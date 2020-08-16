@@ -2,13 +2,13 @@ use log;
 
 use crate::errors::*;
 use crate::jira;
-use crate::github;
+use crate::github::{self, CommitLike};
 
 const JIRA_REF_CONTEXT: &'static str = "jira";
 
-pub fn check_jira_refs(
+pub fn check_jira_refs<T: CommitLike>(
     pull_request: &github::PullRequest,
-    commits: &Vec<github::PushCommit>,
+    commits: &Vec<T>,
     projects: &Vec<String>,
     github: &dyn github::api::Session) {
 
@@ -28,9 +28,9 @@ pub fn check_jira_refs(
     }
 }
 
-fn do_check_jira_refs(
+fn do_check_jira_refs<T: CommitLike>(
     pull_request: &github::PullRequest,
-    commits: &Vec<github::PushCommit>,
+    commits: &Vec<T>,
     projects: &Vec<String>,
     github: &dyn github::api::Session) -> Result<()> {
 
@@ -40,9 +40,9 @@ fn do_check_jira_refs(
 
         let msg: String;
         if projects.len() == 1 {
-            msg = format!("Expected a JIRA reference for the project: {}", projects[0]);
+            msg = format!("Expected a JIRA reference in a commit message for the project {}", projects[0]);
         } else {
-            msg = format!("Expected a JIRA reference for at least one of the following projects: {}", projects.join(", "))
+            msg = format!("Expected a JIRA reference in a commit message for at least one of the following projects: {}", projects.join(", "))
         }
         run.output = Some(github::CheckOutput::new("Missing JIRA reference", &msg));
     } else {
