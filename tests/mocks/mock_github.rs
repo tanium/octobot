@@ -562,5 +562,5 @@ impl MockGithub {
 }
 
 fn format_check_run(run: &CheckRun) -> String {
-    format!("{:?}", run.conclusion.as_ref().unwrap_or(&Conclusion::ActionRequired))
+    format!("{}, {:?}", run.name, run.conclusion.as_ref().unwrap_or(&Conclusion::ActionRequired))
 }

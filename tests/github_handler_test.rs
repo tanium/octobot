@@ -1138,6 +1138,10 @@ fn test_push_with_pr() {
     pr2.assignees = vec![User::new("assign2")];
     pr2.requested_reviewers = None;
 
+    // no jira references here: should fail
+    test.github.mock_create_check_run(&pr1, &CheckRun::new("jira", &pr1, None).completed(Conclusion::Failure), Ok(1));
+    test.github.mock_create_check_run(&pr2, &CheckRun::new("jira", &pr2, None).completed(Conclusion::Failure), Ok(1));
+
     test.github.mock_get_pull_request_commits(
         "some-user",
         "some-repo",

@@ -19,11 +19,11 @@ fn new_push_commit(msg: &str) -> github::PushCommit {
 }
 
 fn expect_pass(git: &MockGithub, pr: &github::PullRequest) {
-    git.mock_create_check_run(&pr, &github::CheckRun::new("", &pr, None).completed(github::Conclusion::Success), Ok(1));
+    git.mock_create_check_run(&pr, &github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Success), Ok(1));
 }
 
 fn expect_failure(git: &MockGithub, pr: &github::PullRequest) {
-    git.mock_create_check_run(&pr, &github::CheckRun::new("", &pr, None).completed(github::Conclusion::Failure), Ok(1));
+    git.mock_create_check_run(&pr, &github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Failure), Ok(1));
 }
 
 
