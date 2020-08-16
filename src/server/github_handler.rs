@@ -435,14 +435,12 @@ impl GithubEventHandler {
                     }
 
                     // Mark if no JIRA references
-                    if let Some(ref commits) = self.data.commits {
-                        jira::check_jira_refs(
-                            &pull_request,
-                            commits,
-                            &jira_projects,
-                            self.github_session.deref(),
-                        );
-                    }
+                    jira::check_jira_refs(
+                        &pull_request,
+                        &commits,
+                        &jira_projects,
+                        self.github_session.deref(),
+                    );
                 }
             }
 

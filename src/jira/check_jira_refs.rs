@@ -2,13 +2,13 @@ use log;
 
 use crate::errors::*;
 use crate::jira;
-use crate::github;
+use crate::github::{self, CommitLike};
 
 const JIRA_REF_CONTEXT: &'static str = "jira";
 
-pub fn check_jira_refs(
+pub fn check_jira_refs<T: CommitLike>(
     pull_request: &github::PullRequest,
-    commits: &Vec<github::PushCommit>,
+    commits: &Vec<T>,
     projects: &Vec<String>,
     github: &dyn github::api::Session) {
 
@@ -28,9 +28,9 @@ pub fn check_jira_refs(
     }
 }
 
-fn do_check_jira_refs(
+fn do_check_jira_refs<T: CommitLike>(
     pull_request: &github::PullRequest,
-    commits: &Vec<github::PushCommit>,
+    commits: &Vec<T>,
     projects: &Vec<String>,
     github: &dyn github::api::Session) -> Result<()> {
 
