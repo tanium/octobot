@@ -403,6 +403,11 @@ impl GithubEventHandler {
 
                 // Mark JIRAs in review for PR open
                 if self.action == "opened" {
+                    let jira_projects = self.config.repos().jira_projects(
+                        &self.data.repository,
+                        &pull_request.base.ref_name,
+                    );
+
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
                             if commits.len() > MAX_COMMITS_FOR_JIRA_CONSIDERATION {
@@ -418,11 +423,6 @@ impl GithubEventHandler {
                                 );
 
                             } else {
-                                let jira_projects = self.config.repos().jira_projects(
-                                    &self.data.repository,
-                                    &pull_request.base.ref_name,
-                                );
-
                                 jira::workflow::submit_for_review(
                                     &pull_request,
                                     &commits,
@@ -436,11 +436,10 @@ impl GithubEventHandler {
 
                     // Mark if no JIRA references
                     if let Some(ref commits) = self.data.commits {
-                        let branch_name = self.data.ref_name().replace("refs/heads/", "");
                         jira::check_jira_refs(
                             &pull_request,
                             commits,
-                            &self.config.repos().jira_projects(&self.data.repository, &branch_name),
+                            &jira_projects,
                             self.github_session.deref(),
                         );
                     }
