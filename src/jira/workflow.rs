@@ -57,7 +57,7 @@ fn get_referenced_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<Stri
     refd
 }
 
-fn get_all_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
+pub(crate) fn get_all_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
     get_jira_keys(commits.iter().map(|c| c.message().to_string()).collect(), projects)
 }
 

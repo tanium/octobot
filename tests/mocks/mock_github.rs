@@ -24,6 +24,10 @@ pub struct MockGithub {
     create_status_calls: Mutex<Vec<MockCall<()>>>,
     approve_pull_request_calls: Mutex<Vec<MockCall<()>>>,
     get_timeline_calls: Mutex<Vec<MockCall<Vec<TimelineEvent>>>>,
+    get_suites_calls: Mutex<Vec<MockCall<Vec<CheckSuite>>>>,
+    get_check_run_calls: Mutex<Vec<MockCall<CheckRun>>>,
+    create_check_run_calls: Mutex<Vec<MockCall<u32>>>,
+    update_check_run_calls: Mutex<Vec<MockCall<()>>>,
 }
 
 #[derive(Debug)]
@@ -62,6 +66,10 @@ impl MockGithub {
             create_status_calls: Mutex::new(vec![]),
             approve_pull_request_calls: Mutex::new(vec![]),
             get_timeline_calls: Mutex::new(vec![]),
+            get_suites_calls: Mutex::new(vec![]),
+            get_check_run_calls: Mutex::new(vec![]),
+            create_check_run_calls: Mutex::new(vec![]),
+            update_check_run_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -139,6 +147,10 @@ impl Session for MockGithub {
 
     fn github_token(&self) -> &str {
         &self.token
+    }
+
+    fn github_app_id(&self) -> Option<u32> {
+        Some(2)
     }
 
     fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
@@ -339,6 +351,45 @@ impl Session for MockGithub {
 
         call.ret
     }
+
+    fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>> {
+        let mut calls = self.get_suites_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_suites");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], pr.number().to_string());
+
+        call.ret
+    }
+
+    fn get_check_run(&self, pr: &PullRequest, id: u32) -> Result<CheckRun> {
+        let mut calls = self.get_check_run_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_check_run");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], pr.number().to_string());
+
+        call.ret
+    }
+
+    fn create_check_run(&self, pr: &PullRequest, run: &CheckRun) -> Result<u32> {
+        let mut calls = self.create_check_run_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to create_check_run");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], pr.number().to_string());
+        assert_eq!(call.args[1], format_check_run(run));
+
+        call.ret
+    }
+
+    fn update_check_run(&self, pr: &PullRequest, check_run_id: u32, run: &CheckRun) -> Result<()> {
+        let mut calls = self.update_check_run_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to update_check_run");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], pr.number().to_string());
+        assert_eq!(call.args[1], check_run_id.to_string());
+        assert_eq!(call.args[2], format_check_run(run));
+
+        call.ret
+    }
 }
 
 impl MockGithub {
@@ -501,4 +552,15 @@ impl MockGithub {
             vec![owner, repo, &number.to_string()],
         ));
     }
+
+    pub fn mock_create_check_run(&self, pr: &PullRequest, run: &CheckRun, ret: Result<u32>) {
+        self.create_check_run_calls.lock().unwrap().push(MockCall::new(
+            ret,
+            vec![&pr.number.to_string(), &format_check_run(run)],
+        ));
+    }
+}
+
+fn format_check_run(run: &CheckRun) -> String {
+    format!("{:?}", run.conclusion.as_ref().unwrap_or(&Conclusion::ActionRequired))
 }

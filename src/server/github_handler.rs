@@ -720,6 +720,16 @@ impl GithubEventHandler {
                             );
                             self.force_push.send(msg);
                         }
+
+                        // Mark if no JIRA references
+                        if let Some(ref commits) = self.data.commits {
+                            jira::check_jira_refs(
+                                &pull_request,
+                                commits,
+                                &self.config.repos().jira_projects(&self.data.repository, &branch_name),
+                                self.github_session.deref(),
+                            );
+                        }
                     }
                 }
             }
