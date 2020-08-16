@@ -4,6 +4,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::errors::*;
 use crate::github::models::*;
+use crate::github::models_checks::*;
 use crate::http_client::HTTPClient;
 use crate::jwt;
 
@@ -11,6 +12,8 @@ pub trait Session: Send + Sync {
     fn bot_name(&self) -> &str;
     fn github_host(&self) -> &str;
     fn github_token(&self) -> &str;
+    fn github_app_id(&self) -> Option<u32>;
+
     fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest>;
     fn get_pull_requests(
         &self,
@@ -54,6 +57,12 @@ pub trait Session: Send + Sync {
         comment: Option<&str>,
     ) -> Result<()>;
     fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>>;
+
+    // checks api
+    fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>>;
+    fn get_check_run(&self, pr: &PullRequest, id: u32) -> Result<CheckRun>;
+    fn create_check_run(&self, pr: &PullRequest, run: &CheckRun) -> Result<u32>;
+    fn update_check_run(&self, pr: &PullRequest, check_run_id: u32, run: &CheckRun) -> Result<()>;
 }
 
 pub trait GithubSessionFactory: Send + Sync {
@@ -160,7 +169,7 @@ impl GithubSessionFactory for GithubApp {
     }
 
     fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession> {
-        GithubSession::new(&self.host, &self.bot_name(), &self.get_token_repo(owner, repo)?)
+        GithubSession::new(&self.host, &self.bot_name(), &self.get_token_repo(owner, repo)?, Some(self.app_id))
     }
 }
 
@@ -200,7 +209,7 @@ impl GithubSessionFactory for GithubOauthApp {
     }
 
     fn new_session(&self, _owner: &str, _repo: &str) -> Result<GithubSession> {
-        GithubSession::new(&self.host, &self.bot_name(), &self.api_token)
+        GithubSession::new(&self.host, &self.bot_name(), &self.api_token, None)
     }
 }
 
@@ -209,10 +218,11 @@ pub struct GithubSession {
     host: String,
     token: String,
     bot_name: String,
+    app_id: Option<u32>,
 }
 
 impl GithubSession {
-    pub fn new(host: &str, bot_name: &str, token: &str) -> Result<GithubSession> {
+    pub fn new(host: &str, bot_name: &str, token: &str, app_id: Option<u32>) -> Result<GithubSession> {
         let mut headers = reqwest::header::HeaderMap::new();
 
         let accept_headers = vec![
@@ -222,6 +232,8 @@ impl GithubSession {
             "application/vnd.github.mockingbird-preview",
             // draft PRs
             "application/vnd.github.shadow-cat-preview+json",
+            // checks API
+            "application/vnd.github.antiope-preview+json",
         ].join(",");
 
         headers.append(
@@ -240,6 +252,7 @@ impl GithubSession {
             bot_name: bot_name.to_string(),
             host: host.to_string(),
             token: token.to_string(),
+            app_id: app_id,
         })
     }
 }
@@ -255,6 +268,10 @@ impl Session for GithubSession {
 
     fn github_token(&self) -> &str {
         &self.token
+    }
+
+    fn github_app_id(&self) -> Option<u32> {
+        self.app_id.clone()
     }
 
     fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
@@ -525,5 +542,91 @@ impl Session for GithubSession {
         }
 
         Ok(events)
+    }
+
+    fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>> {
+        #[derive(Deserialize)]
+        pub struct CheckSuiteList {
+            pub total_count: u32,
+            pub check_suites: Vec<CheckSuite>,
+        }
+
+        let app_id = match self.app_id {
+            Some(id) => id,
+            None => {
+                return Err(format_err!("get_suites only supported for GitHub Apps"));
+            }
+        };
+
+        self.client
+            .get::<CheckSuiteList>(&format!(
+                "/repos/{}/commits/{}/check-suites?app_id={}",
+                pr.base.repo.full_name, pr.head.sha, app_id
+            ))
+            .map(|list| list.check_suites)
+            .map_err(|e| {
+                format_err!(
+                    "Error getting suites for {} {}: {}",
+                    pr.base.repo.full_name, pr.head.sha, e
+                )
+            })
+    }
+
+    fn get_check_run(&self, pr: &PullRequest, id: u32) -> Result<CheckRun> {
+        self.client
+            .get(&format!(
+                "/repos/{}/check-runs/{}",
+                pr.base.repo.full_name, id
+            ))
+            .map_err(|e| {
+                format_err!(
+                    "Error getting check run #{} for {}: {}",
+                    id, pr.base.repo.full_name, e
+                )
+            })
+    }
+
+    fn create_check_run(&self, pr: &PullRequest, run: &CheckRun) -> Result<u32> {
+        #[derive(Deserialize, Serialize, Clone, Debug)]
+        pub struct Resp {
+            pub id: u32,
+        }
+
+        self.client
+            .post::<Resp, CheckRun>(
+                &format!("/repos/{}/check-runs", pr.base.repo.full_name),
+                &run,
+            )
+            .map_err(|e| {
+                format_err!(
+                    "Error creating check run for {}: {}",
+                    pr.base.repo.full_name, e
+                )
+            })
+            .map(|r| r.id)
+    }
+
+    fn update_check_run(
+        &self,
+        pr: &PullRequest,
+        check_run_id: u32,
+        run: &CheckRun,
+    ) -> Result<()> {
+        self.client
+            .client
+            .patch(&format!(
+                "{}/repos/{}/check-runs/{}",
+                self.client.api_base, pr.base.repo.full_name, check_run_id
+            ))
+            .json(&run)
+            .send()
+            .and_then(|r| r.error_for_status())
+            .and_then(|_| Ok(()))
+            .map_err(|e| {
+                format_err!(
+                    "Error updating check run #{} for {}: {}\n\nPayload: {:#?}",
+                    check_run_id, pr.base.repo.full_name, e, run
+                )
+            })
     }
 }
