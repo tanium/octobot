@@ -1248,6 +1248,8 @@ fn test_push_force_notify() {
         Ok(some_commits()),
     );
 
+    expect_jira_ref_fail_pr(&test.github, &pr);
+
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![
         SlackAttachmentBuilder::new("")
@@ -1324,7 +1326,7 @@ fn test_push_force_notify_ignored() {
         "some-other-repo",
         Some("open"),
         None,
-        Ok(vec![pr]),
+        Ok(vec![pr.clone()]),
     );
     test.github.mock_get_pull_request_commits(
         "some-other-user",
@@ -1332,6 +1334,7 @@ fn test_push_force_notify_ignored() {
         32,
         Ok(some_commits()),
     );
+    expect_jira_ref_fail_pr(&test.github, &pr);
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![

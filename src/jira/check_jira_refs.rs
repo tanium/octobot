@@ -2,13 +2,13 @@ use log;
 
 use crate::errors::*;
 use crate::jira;
-use crate::github::{self, CommitLike};
+use crate::github;
 
 const JIRA_REF_CONTEXT: &'static str = "jira";
 
-pub fn check_jira_refs<T: CommitLike>(
+pub fn check_jira_refs(
     pull_request: &github::PullRequest,
-    commits: &Vec<T>,
+    commits: &Vec<github::Commit>,
     projects: &Vec<String>,
     github: &dyn github::api::Session) {
 
@@ -28,9 +28,11 @@ pub fn check_jira_refs<T: CommitLike>(
     }
 }
 
-fn do_check_jira_refs<T: CommitLike>(
+// Note: this requires PR commits, not push commits, because we want to take all PR commits into
+// consideration, not just what was recently pushed.
+fn do_check_jira_refs(
     pull_request: &github::PullRequest,
-    commits: &Vec<T>,
+    commits: &Vec<github::Commit>,
     projects: &Vec<String>,
     github: &dyn github::api::Session) -> Result<()> {
 
