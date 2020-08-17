@@ -710,13 +710,15 @@ impl GithubEventHandler {
                                     .build(),
                             );
 
+                        let commits = self.pull_request_commits(&pull_request);
+
                         self.messenger.send_to_all(
                             &message,
                             &attachments,
                             &pull_request.user,
                             &self.data.sender,
                             &self.data.repository,
-                            &self.all_participants(&pull_request),
+                            &self.all_participants_with_commits(&pull_request, &commits),
                         );
 
                         if self.data.forced() && self.config.repos().notify_force_push(&self.data.repository) {
@@ -730,14 +732,12 @@ impl GithubEventHandler {
                         }
 
                         // Mark if no JIRA references
-                        if let Some(ref commits) = self.data.commits {
-                            jira::check_jira_refs(
-                                &pull_request,
-                                commits,
-                                &self.config.repos().jira_projects(&self.data.repository, &branch_name),
-                                self.github_session.deref(),
-                            );
-                        }
+                        jira::check_jira_refs(
+                            &pull_request,
+                            &commits,
+                            &self.config.repos().jira_projects(&self.data.repository, &branch_name),
+                            self.github_session.deref(),
+                        );
                     }
                 }
             }
