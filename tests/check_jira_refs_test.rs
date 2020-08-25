@@ -24,7 +24,7 @@ fn expect_pass(git: &MockGithub, pr: &github::PullRequest) {
 }
 
 fn expect_failure(git: &MockGithub, pr: &github::PullRequest) {
-    git.mock_create_check_run(&pr, &github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Failure), Ok(1));
+    git.mock_create_check_run(&pr, &github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Neutral), Ok(1));
 }
 
 

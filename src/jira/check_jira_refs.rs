@@ -38,7 +38,7 @@ fn do_check_jira_refs(
 
     let mut run = github::CheckRun::new(JIRA_REF_CONTEXT, pull_request, None);
     if jira::workflow::get_all_jira_keys(commits, projects).is_empty() {
-        run = run.completed(github::Conclusion::Failure);
+        run = run.completed(github::Conclusion::Neutral);
 
         let msg: String;
         if projects.len() == 1 {

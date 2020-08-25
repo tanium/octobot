@@ -211,7 +211,7 @@ fn expect_jira_ref_fail(git: &MockGithub) {
 }
 
 fn expect_jira_ref_fail_pr(git: &MockGithub, pr: &PullRequest) {
-    git.mock_create_check_run(&pr, &CheckRun::new("jira", &pr, None).completed(Conclusion::Failure), Ok(1));
+    git.mock_create_check_run(&pr, &CheckRun::new("jira", &pr, None).completed(Conclusion::Neutral), Ok(1));
 }
 
 fn expect_jira_ref_pass(git: &MockGithub) {
