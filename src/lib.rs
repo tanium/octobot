@@ -27,6 +27,5 @@ pub mod errors {
     pub type Result<T> = std::result::Result<T, failure::Error>;
 }
 
-mod db_migrations;
 #[cfg(target_os = "linux")]
 mod docker;

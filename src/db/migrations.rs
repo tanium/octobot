@@ -1,15 +1,36 @@
 use failure::format_err;
 use log::info;
-use rusqlite::Connection;
+use rusqlite::{Connection, Transaction};
 
+use crate::db::migrations_code;
 use crate::errors::*;
 
 const CREATE_VERSIONS: &'static str = r#"
 create table __version ( current_version integer primary key )
 "#;
 
-const MIGRATIONS: [&'static str; 3] = [
-    r#"
+pub trait Migration {
+    fn run(&self, tx: &Transaction) -> Result<()>;
+}
+
+struct SQLMigration {
+    sql: &'static str,
+}
+
+impl Migration for SQLMigration {
+    fn run(&self, tx: &Transaction) -> Result<()> {
+        tx.execute_batch(self.sql)
+            .map_err(|e| format_err!("Error running migration: \n---\n{}\n---\n. Error: {}", self.sql, e))
+    }
+}
+
+fn sql(s: &'static str) -> Box<dyn Migration> {
+    Box::new(SQLMigration { sql: s })
+}
+
+fn all_migrations() -> Vec<Box<dyn Migration>> {
+    vec![
+        sql(r#"
     create table users (
       id integer not null,
       github_name varchar not null,
@@ -33,10 +54,46 @@ const MIGRATIONS: [&'static str; 3] = [
       UNIQUE( repo, branches ),
       PRIMARY KEY( id )
     );
-    "#,
-    r#"alter table users add column mute_direct_messages tinyint not null default 0"#,
-    r#"alter table repos add column next_branch_suffix varchar not null default ''"#,
-];
+    "#),
+        sql(r#"alter table users add column mute_direct_messages tinyint not null default 0"#),
+        sql(r#"alter table repos add column next_branch_suffix varchar not null default ''"#),
+        sql(r#"
+    create table repos_jiras (
+        repo_id integer not null,
+        jira varchar not null,
+        channel varchar not null,
+        version_script varchar not null,
+        release_branch_regex varchar not null,
+
+        PRIMARY KEY( repo_id, jira )
+    );
+    "#),
+        Box::new(migrations_code::MigrationReposJiras {}),
+        sql(r#"
+    create table repos_new (
+      id integer not null,
+      repo varchar not null,
+      channel varchar not null,
+      force_push_notify tinyint not null,
+      force_push_reapply_statuses varchar not null,
+      branches varchar not null,
+      release_branch_prefix varchar not null,
+      next_branch_suffix varchar not null default '',
+
+      UNIQUE( repo, branches ),
+      PRIMARY KEY( id )
+    );
+
+    insert into repos_new
+        select id, repo, channel, force_push_notify, force_push_reapply_statuses, branches, release_branch_prefix, next_branch_suffix
+        from repos;
+
+    drop table repos;
+
+    alter table repos_new rename to repos;
+    "#),
+    ]
+}
 
 fn current_version(conn: &Connection) -> Result<Option<i32>> {
     let mut version: Option<i32> = None;
@@ -62,15 +119,16 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
 
     info!("Current schema version: {:?}", version);
 
+    let migrations = all_migrations();
+
     let mut next_version = version.map(|v| v + 1).unwrap_or(0);
-    while next_version < MIGRATIONS.len() as i32 {
+    while next_version < migrations.len() as i32 {
         info!("Migrating to schema version: {:}", next_version);
         let tx = conn.transaction()?;
 
         let next_version_unsigned: usize = next_version as usize;
 
-        tx.execute_batch(MIGRATIONS[next_version_unsigned])
-            .map_err(|e| format_err!("Error running migrations: {}", e))?;
+        migrations[next_version_unsigned].run(&tx)?;
 
         if next_version == 0 {
             tx.execute("INSERT INTO __version VALUES (?1)", &[&next_version])
@@ -89,8 +147,8 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use tempdir::TempDir;
     use super::*;
+    use tempdir::TempDir;
 
     #[test]
     fn test_migration_versions() {
@@ -100,7 +158,7 @@ mod tests {
 
         migrate(&mut conn).unwrap();
 
-        assert_eq!(Some((MIGRATIONS.len() as i32) - 1), current_version(&conn).unwrap());
+        assert_eq!(Some((all_migrations().len() as i32) - 1), current_version(&conn).unwrap());
     }
 
     #[test]

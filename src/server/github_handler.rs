@@ -638,14 +638,15 @@ impl GithubEventHandler {
             );
             let next_branch_suffix = self.config.repos().next_branch_suffix(&self.data.repository);
 
-            let is_main_branch = branch_name == "master" || branch_name == "develop" || branch_name == "main" ||
-                branch_name.starts_with(&release_branch_prefix);
+            let is_versioned_branch = github::is_main_branch(&branch_name) || branch_name.starts_with(&release_branch_prefix);
 
             let is_next_branch = branch_name.starts_with(&release_branch_prefix) &&
                 branch_name.ends_with(&next_branch_suffix);
 
+            let jira_projects = self.config.repos().jira_projects(&self.data.repository, &branch_name);
+
             // only lookup PRs for non-main branches
-            if !is_main_branch {
+            if !is_versioned_branch {
                 let prs = match self.github_session.get_pull_requests(
                     &self.data.repository.owner.login(),
                     &self.data.repository.name,
@@ -735,7 +736,7 @@ impl GithubEventHandler {
                         jira::check_jira_refs(
                             &pull_request,
                             &commits,
-                            &self.config.repos().jira_projects(&self.data.repository, &branch_name),
+                            &jira_projects,
                             self.github_session.deref(),
                         );
                     }
@@ -743,38 +744,15 @@ impl GithubEventHandler {
             }
 
             // Mark JIRAs as merged
-            if is_main_branch && !is_next_branch {
-                if let Some(ref jira_config) = self.config.jira {
-                    if let Some(ref jira_session) = self.jira_session {
-                        if let Some(ref commits) = self.data.commits {
-
-                            // try to send resolve message w/ a version in it if possible
-                            let has_version =
-                                match self.config.repos().version_script(&self.data.repository, &branch_name) {
-                                    Some(_) => {
-                                        let msg = repo_version::req(
-                                            &self.data.repository,
-                                            &branch_name,
-                                            self.data.after(),
-                                            commits,
-                                        );
-                                        self.repo_version.send(msg);
-                                        true
-                                    }
-                                    None => false,
-                                };
-                            if !has_version {
-                                jira::workflow::resolve_issue(
-                                    &branch_name,
-                                    None,
-                                    commits,
-                                    &self.config.repos().jira_projects(&self.data.repository, &branch_name),
-                                    jira_session.deref(),
-                                    jira_config,
-                                );
-                            }
-                        }
-                    }
+            if is_versioned_branch && !is_next_branch && !jira_projects.is_empty() {
+                if let Some(ref commits) = self.data.commits {
+                    let msg = repo_version::req(
+                        &self.data.repository,
+                        &branch_name,
+                        self.data.after(),
+                        commits,
+                    );
+                    self.repo_version.send(msg);
                 }
             }
         }
@@ -824,7 +802,7 @@ impl GithubEventHandler {
             Some(c) => c[1].to_string(),
             None => return,
         };
-        let target_branch = if backport == "master" || backport == "develop" || backport == "main" {
+        let target_branch = if github::is_main_branch(&backport) {
             backport
         } else {
             release_branch_prefix.to_string() + &backport

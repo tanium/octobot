@@ -335,7 +335,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
   $scope.addRepo = function() {
     $scope.theRepo = {
       force_push_notify: true,
-      jira_versions_enabled: true,
+      jira_config: [],
     };
     $('#add-repo-modal').modal('show');
   }
@@ -348,6 +348,15 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
     } else {
       doAddRepo();
     }
+  }
+
+  $scope.addJIRA = function(theRepo) {
+    theRepo.jira_config.push({
+    });
+  };
+
+  $scope.removeJIRA = function(theRepo, index) {
+   theRepo.jira_config.splice(index, 1);
   }
 
   function doAddRepo() {

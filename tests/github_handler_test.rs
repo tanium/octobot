@@ -100,7 +100,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     config
         .repos_write()
         .insert_info(&repos::RepoInfo::new("some-user/some-repo", "the-reviews-channel")
-            .with_jira(vec!["SER".to_string(), "CLI".to_string()])
+            .with_jira("SER").with_jira("CLI")
             .with_force_push(true))
         .expect("Failed to add some-user/some-repo");
 
@@ -1526,15 +1526,10 @@ fn test_jira_push_master() {
     test.handler.data.ref_name = Some("refs/heads/master".into());
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
-    test.handler.data.commits = Some(some_jira_push_commits());
+    let commits = some_jira_push_commits();
+    test.handler.data.commits = Some(commits.clone());
 
-    if let Some(ref jira) = test.jira {
-        jira.mock_get_issue("SER-1", Ok(new_issue("SER-1")));
-        jira.mock_comment_issue("SER-1", "Merged into branch master: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
-
-        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
-        jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
-    }
+    test.expect_will_run_version_script("master", "1111abcdef", &commits);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
@@ -1547,15 +1542,10 @@ fn test_jira_push_develop() {
     test.handler.data.ref_name = Some("refs/heads/develop".into());
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
-    test.handler.data.commits = Some(some_jira_push_commits());
+    let commits = some_jira_push_commits();
+    test.handler.data.commits = Some(commits.clone());
 
-    if let Some(ref jira) = test.jira {
-        jira.mock_get_issue("SER-1", Ok(new_issue("SER-1")));
-        jira.mock_comment_issue("SER-1", "Merged into branch develop: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
-
-        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
-        jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
-    }
+    test.expect_will_run_version_script("develop", "1111abcdef", &commits);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
@@ -1568,15 +1558,10 @@ fn test_jira_push_release() {
     test.handler.data.ref_name = Some("refs/heads/release/55".into());
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
-    test.handler.data.commits = Some(some_jira_push_commits());
+    let commits = some_jira_push_commits();
+    test.handler.data.commits = Some(commits.clone());
 
-    if let Some(ref jira) = test.jira {
-        jira.mock_get_issue("SER-1", Ok(new_issue("SER-1")));
-        jira.mock_comment_issue("SER-1", "Merged into branch release/55: [ffeedd0|http://commit/ffeedd00110011]\n{quote}Fix [SER-1] Add the feature{quote}", Ok(()));
-
-        jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "the-resolved")]));
-        jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
-    }
+    test.expect_will_run_version_script("release/55", "1111abcdef", &commits);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
@@ -1634,7 +1619,7 @@ fn test_jira_push_triggers_version_script() {
     test.config
         .repos_write()
         .insert_info(&repos::RepoInfo::new("some-user/versioning-repo", "the-reviews-channel")
-            .with_version_script("echo 1.2.3.4".into()))
+            .with_jira("PRJ"))
         .expect("Failed to add repo");
 
     // change the repo to an unconfigured one
@@ -1662,7 +1647,7 @@ fn test_jira_push_on_next_branch_does_not_trigger_version_script() {
     test.config
         .repos_write()
         .insert_info(&repos::RepoInfo::new("some-user/versioning-repo", "the-reviews-channel")
-            .with_version_script("echo 1.2.3.4".into())
+            .with_jira("PRJ")
             .with_release_branch_prefix("the-release-".into())
             .with_next_branch_suffix("-the-next".into()))
         .expect("Failed to add repo");

@@ -17,7 +17,7 @@
       </td>
       <td>
         <a href title="Edit" ng-click="editRepo(repo)"><span class="oi oi-pencil" /></a>&nbsp;
-        <a href ng-click="removeRepo(repo)"><span class="oi oi-trash" /></a>
+        <a href title="Delete" ng-click="removeRepo(repo)"><span class="oi oi-trash" /></a>
       </td>
     </tr>
   </table>
@@ -40,7 +40,6 @@
           </div>
           <div class="form-group">
             <label>Slack channel</label>
-
             <input type="text" class="form-control" ng-model="theRepo.channel" placeholder="the-reviews" required />
           </div>
           <div class="form-group">
@@ -48,19 +47,35 @@
             <input type="text" class="form-control" ng-model="theRepo.branches" ng-list=", " placeholder="features/special-branch1" />
           </div>
 
-          <h4>JIRA</h4>
-          <div class="form-group">
-            <label>JIRA project(s)</label>
-            <input type="text" class="form-control" ng-model="theRepo.jira_projects" ng-list=", " placeholder="SERVER, APP" />
+          <h4>JIRA project(s)</h4>
+          <div style="margin: 10px 0px">
+            <button type="button" class="btn btn-sm btn-primary" ng-click="addJIRA(theRepo)">Add JIRA</button>
           </div>
-          <div class="checkbox">
-            <label>
-              <input type="checkbox" ng-model="theRepo.jira_versions_enabled" /> JIRA versions enabled
-            </label>
-          </div>
-          <div class="form-group">
-            <label>Version script</label>
-            <input type="text" class="form-control" ng-model="theRepo.version_script"  placeholder="./make-the-version.sh" />
+
+          <div class="container">
+            <div ng-repeat="config in theRepo.jira_config" class="row">
+              <div class="border p-2 mb-2 col-11">
+                <div class="form-group">
+                  <label>Project</label>
+                  <input type="text" class="form-control" ng-model="config.jira_project" placeholder="APP" required  />
+                </div>
+                <div class="form-group">
+                  <label>Release branch regex</label>
+                  <input type="text" class="form-control" ng-model="config.release_branch_regex"  placeholder="release/app-.*" />
+                </div>
+                <div class="form-group">
+                  <label>Version script</label>
+                  <input type="text" class="form-control" ng-model="config.version_script"  placeholder="./make-the-version.sh" />
+                </div>
+                <div class="form-group">
+                  <label>Slack channel override</label>
+                  <input type="text" class="form-control" ng-model="config.channel" placeholder="app-reviews" />
+                </div>
+              </div>
+              <div class="col-1">
+                <button title="Remove JIRA" ng-click="removeJIRA(theRepo, $index)" class="btn btn-sm btn-secondary"><span class="oi oi-trash" /></button>
+              </div>
+            </div>
           </div>
 
           <h4>Git</h4>
