@@ -1,4 +1,8 @@
 <h3>Repos</h3>
+  <div style="margin: 10px; float: right">
+    <button type="button" class="btn btn-sm btn-primary" ng-click="addRepo()">Add repo</button>
+  </div>
+
   <table class="table">
     <tr>
       <th>Repo</th>
@@ -12,14 +16,11 @@
       <td>{{repo.channel}}</td>
       </td>
       <td>
-        <a href title="Edit" ng-click="editRepo(repo)"><span class="glyphicon glyphicon-edit" /></a>&nbsp;
-        <a href ng-click="removeRepo(repo)"><span class="glyphicon glyphicon-trash" /></a>
+        <a href title="Edit" ng-click="editRepo(repo)"><span class="oi oi-pencil" /></a>&nbsp;
+        <a href ng-click="removeRepo(repo)"><span class="oi oi-trash" /></a>
       </td>
     </tr>
   </table>
-  <div style="margin: 10px">
-    <button type="button" class="btn btn-sm btn-primary" ng-click="addRepo()">Add repo</button>
-  </div>
 </div>
 
 <div class="modal fade" tabindex="-1" role="dialog" id="add-repo-modal">
@@ -27,8 +28,8 @@
     <div class="modal-content">
       <form class="" ng-submit="addRepoSubmit()">
         <div class="modal-header">
-          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
           <h4 class="modal-title">{{!!theRepo.id ? 'Edit' : 'Add'}} Repo</h4>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
         </div>
         <div class="modal-body">
           <h4>Repo</h4>
@@ -82,7 +83,7 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-primary">Save</button>
         </div>
       </form>
