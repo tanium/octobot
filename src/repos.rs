@@ -550,4 +550,20 @@ mod tests {
         assert_eq!(vec!["CLI"], repos.jira_projects(&repo, "release/client-5.6"));
         assert_eq!(Vec::<String>::new(), repos.jira_projects(&repo, "release/other"));
     }
+
+    #[test]
+    fn test_repos_update() {
+        let (mut repos, _temp) = new_test();
+        repos.insert("some-user", "SOME_OTHER_CHANNEL").unwrap();
+
+        let mut all = repos.get_all().unwrap();
+        assert_eq!(1, all.len());
+
+        all[0].channel = "new-channel".into();
+        repos.update(&all[0]).unwrap();
+
+        let all = repos.get_all().unwrap();
+        assert_eq!(1, all.len());
+        assert_eq!("new-channel", all[0].channel);
+    }
 }
