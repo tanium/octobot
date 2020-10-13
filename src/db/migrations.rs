@@ -61,7 +61,6 @@ fn all_migrations() -> Vec<Box<dyn Migration>> {
     create table repos_jiras (
         repo_id integer not null,
         jira varchar not null,
-        channel varchar not null,
         version_script varchar not null,
         release_branch_regex varchar not null,
 

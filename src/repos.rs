@@ -43,12 +43,6 @@ pub struct RepoJiraConfig {
     #[serde(default)]
     pub version_script: String,
 
-    // An override to the entire repo slack channel.
-    // If specified, PRs for this JIRA will be sent *only* to this slack channel,
-    // not to the whole repo slack channel.
-    #[serde(default)]
-    pub channel: String,
-
     // A regex that matches release branchs that are relevant to this JIRA project.
     // If left blank, it matches all release branches.
     #[serde(default)]
@@ -116,7 +110,6 @@ impl RepoJiraConfig {
         RepoJiraConfig {
             jira_project: jira_project.into(),
             version_script: String::new(),
-            channel: String::new(),
             release_branch_regex: String::new(),
         }
     }
@@ -216,12 +209,11 @@ impl RepoConfig {
     fn insert_jiras(&mut self, tx: &Transaction, id: i64, jira_config: &Vec<RepoJiraConfig>) -> Result<()> {
         for config in jira_config {
             tx.execute(
-                r#"INSERT INTO repos_jiras (repo_id, jira, channel, version_script, release_branch_regex)
-               VALUES (?1, ?2, ?3, ?4, ?5)"#,
+                r#"INSERT INTO repos_jiras (repo_id, jira, version_script, release_branch_regex)
+               VALUES (?1, ?2, ?3, ?4)"#,
                 &[
                     &id,
                     &config.jira_project as &dyn ToSql,
-                    &config.channel,
                     &config.version_script,
                     &config.release_branch_regex,
                 ],
@@ -387,7 +379,6 @@ impl RepoConfig {
         while let Ok(Some(row)) = rows.next() {
             let config = RepoJiraConfig {
                 jira_project: cols.get(row, "jira")?,
-                channel: cols.get(row, "channel")?,
                 version_script: cols.get(row, "version_script")?,
                 release_branch_regex: cols.get(row, "release_branch_regex")?,
             };
