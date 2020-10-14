@@ -18,7 +18,7 @@ use crate::git_clone_manager::GitCloneManager;
 use crate::github;
 use crate::github::api::{GithubSessionFactory, Session};
 use crate::jira;
-use crate::messenger::{self, Messenger};
+use crate::messenger;
 use crate::slack::{SlackAttachmentBuilder, SlackRequest};
 use crate::worker;
 
@@ -236,6 +236,8 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                 &format!("Error running version script for [{}]", config.jira_project),
                                 &vec![attach],
                                 &req.repo,
+                                &req.branch,
+                                &req.commits,
                             );
                         } else {
                             resolved = true

@@ -7,6 +7,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::db::{self, Database};
 use crate::errors::*;
 use crate::github;
+use crate::jira;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RepoInfo {
@@ -33,6 +34,12 @@ pub struct RepoJiraConfig {
     // The version script to use for this JIRA project
     #[serde(default)]
     pub version_script: String,
+
+    // An override to the entire repo slack channel.
+    // If specified, PRs for this JIRA will be sent *only* to this slack channel,
+    // not to the whole repo slack channel.
+    #[serde(default)]
+    pub channel: String,
 
     // A regex that matches release branchs that are relevant to this JIRA project.
     // If left blank, it matches all release branches.
@@ -86,6 +93,7 @@ impl RepoJiraConfig {
         RepoJiraConfig {
             jira_project: jira_project.into(),
             version_script: String::new(),
+            channel: String::new(),
             release_branch_regex: String::new(),
         }
     }
@@ -99,6 +107,12 @@ impl RepoJiraConfig {
     pub fn with_release_branch_regex(self, value: &str) -> RepoJiraConfig {
         let mut c = self;
         c.release_branch_regex = value.into();
+        c
+    }
+
+    pub fn with_channel(self, value: &str) -> RepoJiraConfig {
+        let mut c = self;
+        c.channel = value.into();
         c
     }
 }
@@ -175,11 +189,12 @@ impl RepoConfig {
     fn insert_jiras(&mut self, tx: &Transaction, id: i64, jira_config: &Vec<RepoJiraConfig>) -> Result<()> {
         for config in jira_config {
             tx.execute(
-                r#"INSERT INTO repos_jiras (repo_id, jira, version_script, release_branch_regex)
-               VALUES (?1, ?2, ?3, ?4)"#,
+                r#"INSERT INTO repos_jiras (repo_id, jira, channel, version_script, release_branch_regex)
+               VALUES (?1, ?2, ?3, ?4, ?5)"#,
                 &[
                     &id,
                     &config.jira_project as &dyn ToSql,
+                    &config.channel,
                     &config.version_script,
                     &config.release_branch_regex,
                 ],
@@ -198,24 +213,47 @@ impl RepoConfig {
         Ok(())
     }
 
-    pub fn lookup_channel(&self, repo: &github::Repo) -> Option<String> {
-        self.lookup_info(repo).map(|r| r.channel.clone())
+    pub fn lookup_channels<T: github::CommitLike>(
+        &self,
+        repo: &github::Repo,
+        branch: &str,
+        commits: &Vec<T>,
+    ) -> Vec<String> {
+        let info = match self.lookup_info(repo) {
+            None => return vec![],
+            Some(i) => i,
+        };
+
+        let configs = self.filter_configs(info.jira_config, branch);
+
+        let channels = configs
+            .into_iter()
+            .filter(|c| !c.channel.is_empty() && jira::workflow::references_jira(&commits, &c.jira_project))
+            .map(|c| c.channel)
+            .collect::<Vec<_>>();
+
+        if channels.is_empty() && info.channel.is_empty() {
+            vec![]
+        } else if channels.is_empty() {
+            vec![info.channel]
+        } else {
+            channels
+        }
     }
 
     pub fn notify_force_push(&self, repo: &github::Repo) -> bool {
-        self.lookup_info(repo)
-            .map(|r| r.force_push_notify)
-            .unwrap_or(false)
+        self.lookup_info(repo).map(|r| r.force_push_notify).unwrap_or(false)
     }
 
     pub fn jira_configs(&self, repo: &github::Repo, branch: &str) -> Vec<RepoJiraConfig> {
-        let mut configs = self
-            .lookup_info(repo)
-            .map(|r| r.jira_config.clone())
-            .unwrap_or(vec![]);
+        let configs = self.lookup_info(repo).map(|r| r.jira_config.clone()).unwrap_or(vec![]);
 
+        self.filter_configs(configs, branch)
+    }
+
+    fn filter_configs(&self, configs: Vec<RepoJiraConfig>, branch: &str) -> Vec<RepoJiraConfig> {
+        let mut configs = configs;
         configs.retain(|c| github::is_main_branch(branch) || self.matches_branch(branch, &c.release_branch_regex));
-
         configs
     }
 
@@ -245,7 +283,7 @@ impl RepoConfig {
         }
     }
 
-   pub fn get_all(&self) -> Result<Vec<RepoInfo>> {
+    pub fn get_all(&self) -> Result<Vec<RepoInfo>> {
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare("SELECT * FROM repos ORDER BY repo")?;
         let cols = db::Columns::from_stmt(&stmt)?;
@@ -319,6 +357,7 @@ impl RepoConfig {
         while let Ok(Some(row)) = rows.next() {
             let config = RepoJiraConfig {
                 jira_project: cols.get(row, "jira")?,
+                channel: cols.get(row, "channel")?,
                 version_script: cols.get(row, "version_script")?,
                 release_branch_regex: cols.get(row, "release_branch_regex")?,
             };
@@ -352,7 +391,10 @@ mod tests {
         repos.insert("some-user/the-repo", "the-repo-reviews").unwrap();
 
         let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
-        assert_eq!("the-repo-reviews", repos.lookup_channel(&repo).unwrap());
+        assert_eq!(
+            vec!["the-repo-reviews"],
+            repos.lookup_channels(&repo, "", &Vec::<github::Commit>::new())
+        );
     }
 
     #[test]
@@ -361,7 +403,10 @@ mod tests {
         repos.insert("some-user", "the-repo-reviews").unwrap();
 
         let repo = github::Repo::parse("http://git.company.com/some-user/some-other-repo").unwrap();
-        assert_eq!("the-repo-reviews", repos.lookup_channel(&repo).unwrap());
+        assert_eq!(
+            vec!["the-repo-reviews"],
+            repos.lookup_channels(&repo, "", &Vec::<github::Commit>::new())
+        );
     }
 
     #[test]
@@ -372,8 +417,66 @@ mod tests {
         // fail by channel/repo
         {
             let repo = github::Repo::parse("http://git.company.com/someone-else/some-other-repo").unwrap();
-            assert!(repos.lookup_channel(&repo).is_none());
+            assert_eq!(
+                Vec::<String>::new(),
+                repos.lookup_channels(&repo, "", &Vec::<github::Commit>::new())
+            );
         }
+    }
+
+    #[test]
+    fn lookup_channel_jiras() {
+        let (mut repos, _temp) = new_test();
+        repos.insert("some-user", "the-repo-reviews").unwrap();
+
+        let config1 = RepoJiraConfig::new("SER")
+            .with_release_branch_regex("release/server-.*")
+            .with_channel("server-reviews");
+        let config2 = RepoJiraConfig::new("CLI")
+            .with_release_branch_regex("release/client-.*")
+            .with_channel("client-reviews");
+
+        repos
+            .insert_info(
+                &RepoInfo::new("some-user/the-repo", "the-repo-reviews")
+                    .with_jira_config(config1)
+                    .with_jira_config(config2),
+            )
+            .unwrap();
+
+        let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
+
+        let mut client_commit = github::Commit::new();
+        client_commit.commit  = github::CommitDetails { message: "[CLI-123] Do stuff".to_owned() };
+        let mut server_commit = github::Commit::new();
+        server_commit.commit  = github::CommitDetails { message: "[SER-123] Do stuff".to_owned() };
+        let mut both_commit = github::Commit::new();
+        both_commit.commit  = github::CommitDetails { message: "[CLI-123][SER-123] Do stuff".to_owned() };
+        let mut none_commit = github::Commit::new();
+        none_commit .commit  = github::CommitDetails { message: "[OTHER-123] Do stuff".to_owned() };
+
+        // no branch/commits -> default
+        assert_eq!(vec!["the-repo-reviews"], repos.lookup_channels(&repo, "", &Vec::<github::Commit>::new()));
+
+        // no matching jiras -> default
+        assert_eq!(vec!["the-repo-reviews"], repos.lookup_channels(&repo, "", &vec![none_commit.clone()]));
+
+        // matching jiras, wrong branch -> default
+        assert_eq!(vec!["the-repo-reviews"], repos.lookup_channels(&repo, "other", &vec![client_commit.clone()]));
+
+        // matching jiras, right branch
+        assert_eq!(vec!["server-reviews"], repos.lookup_channels(&repo, "main", &vec![server_commit.clone()]));
+        assert_eq!(vec!["server-reviews"], repos.lookup_channels(&repo, "release/server-1.0", &vec![server_commit.clone()]));
+        assert_eq!(vec!["client-reviews"], repos.lookup_channels(&repo, "main", &vec![client_commit.clone()]));
+        assert_eq!(vec!["client-reviews"], repos.lookup_channels(&repo, "release/client-1.0", &vec![client_commit.clone()]));
+
+        // both jiras - main branch
+        assert_eq!(vec!["client-reviews", "server-reviews"], repos.lookup_channels(&repo, "main", &vec![both_commit.clone()]));
+        assert_eq!(vec!["client-reviews", "server-reviews"], repos.lookup_channels(&repo, "main", &vec![client_commit.clone(), server_commit.clone()]));
+
+        // both jiras - release branch
+        assert_eq!(vec!["server-reviews"], repos.lookup_channels(&repo, "release/server-1.0", &vec![both_commit.clone()]));
+        assert_eq!(vec!["client-reviews"], repos.lookup_channels(&repo, "release/client-1.0", &vec![both_commit.clone()]));
     }
 
     #[test]
@@ -444,10 +547,8 @@ mod tests {
         let (mut repos, _temp) = new_test();
         repos.insert("some-user", "SOME_OTHER_CHANNEL").unwrap();
 
-        let config1 = RepoJiraConfig::new("SER")
-            .with_release_branch_regex("release/server-.*");
-        let config2 = RepoJiraConfig::new("CLI")
-            .with_release_branch_regex("release/client-.*");
+        let config1 = RepoJiraConfig::new("SER").with_release_branch_regex("release/server-.*");
+        let config2 = RepoJiraConfig::new("CLI").with_release_branch_regex("release/client-.*");
 
         repos
             .insert_info(

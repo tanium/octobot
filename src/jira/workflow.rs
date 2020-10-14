@@ -61,6 +61,12 @@ pub(crate) fn get_all_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<
     get_jira_keys(commits.iter().map(|c| c.message().to_string()).collect(), projects)
 }
 
+pub fn references_jira<T: CommitLike>(commits: &Vec<T>, project: &str) -> bool {
+    let projects = vec![project.to_owned()];
+
+    !get_all_jira_keys(commits, &projects).is_empty()
+}
+
 fn get_jira_project(jira_key: &str) -> &str {
     let re = Regex::new(r"^([A-Za-z0-9]+)(-[0-9]+)?$").unwrap();
 

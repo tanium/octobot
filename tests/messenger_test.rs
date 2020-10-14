@@ -7,7 +7,7 @@ use tempdir::TempDir;
 use octobot::config::Config;
 use octobot::db::Database;
 use octobot::github;
-use octobot::messenger::{self, Messenger};
+use octobot::messenger;
 use octobot::slack;
 
 use mocks::mock_slack::MockSlack;
@@ -37,6 +37,8 @@ fn test_sends_to_owner() {
         &github::User::new("the-sender"),
         &github::Repo::new(),
         &vec![],
+        "",
+        &Vec::<github::Commit>::new(),
     );
 }
 
@@ -54,6 +56,8 @@ fn test_sends_to_mapped_usernames() {
         &github::User::new("the-sender"),
         &github::Repo::parse("http://git.foo.com/some-org/some-repo").unwrap(),
         &vec![],
+        "",
+        &Vec::<github::Commit>::new(),
     );
 }
 
@@ -81,6 +85,8 @@ fn test_sends_to_owner_with_channel() {
         &github::User::new("the-sender"),
         &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
         &vec![],
+        "",
+        &Vec::<github::Commit>::new(),
     );
 }
 
@@ -104,6 +110,8 @@ fn test_sends_to_assignees() {
         &github::User::new("the-sender"),
         &github::Repo::new(),
         &vec![github::User::new("assign1"), github::User::new("assign2")],
+        "",
+        &Vec::<github::Commit>::new(),
     );
 }
 
@@ -125,6 +133,8 @@ fn test_does_not_send_to_event_sender() {
         &github::User::new("userA"),
         &github::Repo::new(),
         &vec![github::User::new("userA"), github::User::new("userB")],
+        "",
+        &Vec::<github::Commit>::new(),
     );
 }
 
@@ -147,6 +157,8 @@ fn test_sends_only_once() {
         &github::User::new("the-sender"),
         &github::Repo::new(),
         &vec![github::User::new("the-owner"), github::User::new("assign2")],
+        "",
+        &Vec::<github::Commit>::new(),
     );
 }
 
@@ -171,5 +183,7 @@ fn test_peace_and_quiet() {
         &github::User::new("the-sender"),
         &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
         &vec![github::User::new("the-owner"), github::User::new("assign2")],
+        "",
+        &Vec::<github::Commit>::new(),
     );
 }

@@ -6,43 +6,20 @@ use crate::slack::{self, SlackAttachment, SlackRequest};
 use crate::util;
 use crate::worker::Worker;
 
-pub trait Messenger {
-    fn send_to_all(
-        &self,
-        msg: &str,
-        attachments: &Vec<SlackAttachment>,
-        item_owner: &github::User,
-        sender: &github::User,
-        repo: &github::Repo,
-        participants: &Vec<github::User>,
-    );
-
-    fn send_to_owner(
-        &self,
-        msg: &str,
-        attachments: &Vec<SlackAttachment>,
-        item_owner: &github::User,
-        repo: &github::Repo,
-    );
-
-    fn send_to_channel(&self, msg: &str, attachments: &Vec<SlackAttachment>, repo: &github::Repo);
+pub struct Messenger {
+    config: Arc<Config>,
+    slack: Arc<dyn Worker<SlackRequest>>,
 }
 
-
-struct SlackMessenger {
-    pub config: Arc<Config>,
-    pub slack: Arc<dyn Worker<SlackRequest>>,
-}
-
-pub fn new(config: Arc<Config>, slack: Arc<dyn Worker<SlackRequest>>) -> impl Messenger {
-    SlackMessenger {
+pub fn new(config: Arc<Config>, slack: Arc<dyn Worker<SlackRequest>>) -> Messenger {
+    Messenger {
         slack: slack.clone(),
         config: config.clone(),
     }
 }
 
-impl Messenger for SlackMessenger {
-    fn send_to_all(
+impl Messenger {
+    pub fn send_to_all<T: github::CommitLike>(
         &self,
         msg: &str,
         attachments: &Vec<SlackAttachment>,
@@ -50,13 +27,18 @@ impl Messenger for SlackMessenger {
         sender: &github::User,
         repo: &github::Repo,
         participants: &Vec<github::User>,
+        branch: &str,
+        commits: &Vec<T>,
     ) {
-        self.send_to_channel(msg, attachments, repo);
+        self.send_to_channel(msg, attachments, repo, branch, commits);
 
         let mut slackbots: Vec<github::User> = vec![item_owner.clone()];
 
         slackbots.extend(
-            participants.iter().filter(|a| a.login != item_owner.login).map(|a| a.clone()),
+            participants
+                .iter()
+                .filter(|a| a.login != item_owner.login)
+                .map(|a| a.clone()),
         );
 
         // make sure we do not send private message to author of that message
@@ -65,26 +47,33 @@ impl Messenger for SlackMessenger {
         self.send_to_slackbots(slackbots, msg, attachments);
     }
 
-    fn send_to_owner(
+    pub fn send_to_owner<T: github::CommitLike>(
         &self,
         msg: &str,
         attachments: &Vec<SlackAttachment>,
         item_owner: &github::User,
         repo: &github::Repo,
+        branch: &str,
+        commits: &Vec<T>,
     ) {
-        self.send_to_channel(msg, attachments, repo);
+        self.send_to_channel(msg, attachments, repo, branch, commits);
         self.send_to_slackbots(vec![item_owner.clone()], msg, attachments);
     }
 
-    fn send_to_channel(&self, msg: &str, attachments: &Vec<SlackAttachment>, repo: &github::Repo) {
-        if let Some(channel) = self.config.repos().lookup_channel(repo) {
+    pub fn send_to_channel<T: github::CommitLike>(
+        &self,
+        msg: &str,
+        attachments: &Vec<SlackAttachment>,
+        repo: &github::Repo,
+        branch: &str,
+        commits: &Vec<T>,
+    ) {
+        for channel in self.config.repos().lookup_channels(repo, branch, commits) {
             let channel_msg = format!("{} ({})", msg, util::make_link(&repo.html_url, &repo.full_name));
             self.send_to_slack(channel.as_str(), &channel_msg, attachments);
         }
     }
-}
 
-impl SlackMessenger {
     fn send_to_slack(&self, channel: &str, msg: &str, attachments: &Vec<SlackAttachment>) {
         self.slack.send(slack::req(channel, msg, attachments.clone()));
     }
