@@ -319,11 +319,11 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
     });
   }
 
-  $scope.displayBranches = function(repo) {
-    if (!repo.branches || repo.branches.length == 0) {
-      return '(any)';
+  $scope.displayJIRAs = function(repo) {
+    if (!repo.jira_config || repo.jira_config.length == 0) {
+      return '(none)';
     } else {
-      return repo.branches.join(', ');
+      return repo.jira_config.map(function(c) { return c.jira_project; }).join(', ');
     }
   }
 

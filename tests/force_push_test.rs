@@ -26,12 +26,10 @@ fn test_force_push_identical() {
         Ok(()),
     );
 
-    github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
     github.mock_get_timeline("some-user", "some-repo", 32, Ok(vec![]));
 
     force_push::comment_force_push(
         diffs,
-        vec![],
         &github,
         "some-user",
         "some-repo",
@@ -40,108 +38,6 @@ fn test_force_push_identical() {
         "1111abc9999999",
     ).unwrap();
 }
-
-#[test]
-fn test_force_push_identical_with_statuses() {
-    let mut pr = github::PullRequest::new();
-    pr.number = 32;
-
-    let diff = "this is a big diff\n\nIt has lots of lines,\n\nbut it is the same".to_string();
-    let diffs = Ok(DiffOfDiffs::new(&diff, &diff));
-
-    let github = MockGithub::new();
-    github.mock_comment_pull_request(
-        "some-user",
-        "some-repo",
-        32,
-        "Force-push detected: before: the-bef, after: the-aft: Identical diff post-rebase.",
-        Ok(()),
-    );
-
-    github.mock_get_timeline("some-user", "some-repo", 32, Ok(vec![]));
-
-    let statuses = vec![
-        github::Status {
-            state: "success".into(),
-            target_url: Some("http://ci/build".into()),
-            context: Some("ci/build".into()),
-            description: Some("the desc".into()),
-            creator: None,
-            updated_at: None,
-        },
-        github::Status {
-            state: "failure".into(),
-            target_url: None,
-            context: Some("checks/cla".into()),
-            description: None,
-            creator: None,
-            updated_at: None,
-        },
-        github::Status {
-            state: "error".into(),
-            target_url: None,
-            context: Some("checks/cla".into()), // duplicate context -- should be ignored
-            description: None,
-            creator: None,
-            updated_at: None,
-        },
-        github::Status {
-            state: "pending".into(),
-            target_url: None,
-            context: Some("something/else".into()),
-            description: None,
-            creator: None,
-            updated_at: None,
-        },
-    ];
-
-    github.mock_get_statuses("some-user", "some-repo", "the-before-hash", Ok(statuses));
-
-    let new_status1 = github::Status {
-        state: "success".into(),
-        target_url: Some("http://ci/build".into()),
-        context: Some("ci/build".into()),
-        description: Some("the desc (reapplied by octobot)".into()),
-        creator: None,
-        updated_at: None,
-    };
-    let new_status2 = github::Status {
-        state: "failure".into(),
-        target_url: None,
-        context: Some("checks/cla".into()),
-        description: Some("(reapplied by octobot)".into()),
-        creator: None,
-        updated_at: None,
-    };
-
-
-    github.mock_create_status(
-        "some-user",
-        "some-repo",
-        "the-after-hash",
-        &new_status1,
-        Ok(()),
-    );
-    github.mock_create_status(
-        "some-user",
-        "some-repo",
-        "the-after-hash",
-        &new_status2,
-        Ok(()),
-    );
-
-    force_push::comment_force_push(
-        diffs,
-        vec!["ci/build".into(), "checks/cla".into()],
-        &github,
-        "some-user",
-        "some-repo",
-        &pr,
-        "the-before-hash",
-        "the-after-hash",
-    ).unwrap();
-}
-
 
 #[test]
 fn test_force_push_different() {
@@ -161,7 +57,6 @@ fn test_force_push_different() {
 
     force_push::comment_force_push(
         diffs,
-        vec![],
         &github,
         "some-user",
         "some-repo",
@@ -295,7 +190,6 @@ index 33667da..3503c28 100644
 
     force_push::comment_force_push(
         diffs,
-        vec![],
         &github,
         "some-user",
         "some-repo",
@@ -321,7 +215,6 @@ fn test_force_push_error() {
 
     force_push::comment_force_push(
         Err(format_err!("Ahh!!")),
-        vec![],
         &github,
         "some-user",
         "some-repo",
@@ -349,14 +242,12 @@ fn test_force_push_identical_no_previous_approve_dismissal() {
         Ok(()),
     );
 
-    github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
     github.mock_get_timeline("some-user", "some-repo", 32, Ok(vec![]));
 
     // Do not mock approve_pull_request: Should not re-approve
 
     force_push::comment_force_push(
         diffs,
-        vec![],
         &github,
         "some-user",
         "some-repo",
@@ -384,8 +275,6 @@ fn test_force_push_identical_no_previous_approval() {
         Ok(()),
     );
 
-    github.mock_get_statuses("some-user", "some-repo", "abcdef0999999", Ok(vec![]));
-
     // Claims to have dismissed a review, but no such review is in the timeline. Skip.
     github.mock_get_timeline(
         "some-user",
@@ -402,7 +291,6 @@ fn test_force_push_identical_no_previous_approval() {
 
     force_push::comment_force_push(
         diffs,
-        vec![],
         &github,
         "some-user",
         "some-repo",
@@ -425,8 +313,6 @@ fn test_force_push_identical_reapprove() {
 
     let before_hash = "abcdef0999999";
     let after_hash = "1111abc9999999";
-
-    github.mock_get_statuses("some-user", "some-repo", before_hash, Ok(vec![]));
 
     // This timeline is valid for reapproval because the latest dismissal came from a code change
     // with a commit hash that is the exact same as the `before_hash` for this force push.
@@ -465,7 +351,7 @@ fn test_force_push_identical_reapprove() {
         Ok(()),
     );
 
-    force_push::comment_force_push(diffs, vec![], &github, "some-user", "some-repo", &pr, before_hash, after_hash)
+    force_push::comment_force_push(diffs, &github, "some-user", "some-repo", &pr, before_hash, after_hash)
         .unwrap();
 }
 
@@ -490,7 +376,6 @@ fn test_force_push_identical_wrong_previous_approval() {
     let before_hash = "abcdef0999999";
     let after_hash = "1111abc9999999";
 
-    github.mock_get_statuses("some-user", "some-repo", before_hash, Ok(vec![]));
     github.mock_get_timeline(
         "some-user",
         "some-repo",
@@ -514,6 +399,6 @@ fn test_force_push_identical_wrong_previous_approval() {
 
     // Do not mock approve_pull_request: Should not re-approve
 
-    force_push::comment_force_push(diffs, vec![], &github, "some-user", "some-repo", &pr, before_hash, after_hash)
+    force_push::comment_force_push(diffs, &github, "some-user", "some-repo", &pr, before_hash, after_hash)
         .unwrap();
 }

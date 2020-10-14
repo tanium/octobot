@@ -84,7 +84,6 @@ impl GithubHandlerState {
             slack_worker.clone(),
         ));
         let force_push_worker = TokioWorker::new(runtime.clone(), force_push::new_runner(
-            config.clone(),
             github_app.clone(),
             git_clone_manager.clone(),
         ));
@@ -444,10 +443,7 @@ impl GithubEventHandler {
                 }
             }
 
-            let release_branch_prefix = self.config.repos().release_branch_prefix(
-                &self.data.repository,
-                &pull_request.base.ref_name,
-            );
+            let release_branch_prefix = self.config.repos().release_branch_prefix(&self.data.repository);
             if self.action == "labeled" {
                 if let Some(ref label) = self.data.label {
                     self.merge_pull_request(pull_request, label, &release_branch_prefix);
@@ -632,16 +628,8 @@ impl GithubEventHandler {
 
             let branch_name = self.data.ref_name().replace("refs/heads/", "");
 
-            let release_branch_prefix = self.config.repos().release_branch_prefix(
-                &self.data.repository,
-                &branch_name
-            );
-            let next_branch_suffix = self.config.repos().next_branch_suffix(&self.data.repository);
-
+            let release_branch_prefix = self.config.repos().release_branch_prefix(&self.data.repository);
             let is_versioned_branch = github::is_main_branch(&branch_name) || branch_name.starts_with(&release_branch_prefix);
-
-            let is_next_branch = branch_name.starts_with(&release_branch_prefix) &&
-                branch_name.ends_with(&next_branch_suffix);
 
             let jira_projects = self.config.repos().jira_projects(&self.data.repository, &branch_name);
 
@@ -744,7 +732,7 @@ impl GithubEventHandler {
             }
 
             // Mark JIRAs as merged
-            if is_versioned_branch && !is_next_branch && !jira_projects.is_empty() {
+            if is_versioned_branch && !jira_projects.is_empty() {
                 if let Some(ref commits) = self.data.commits {
                     let msg = repo_version::req(
                         &self.data.repository,

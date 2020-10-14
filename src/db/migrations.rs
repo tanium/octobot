@@ -74,17 +74,14 @@ fn all_migrations() -> Vec<Box<dyn Migration>> {
       repo varchar not null,
       channel varchar not null,
       force_push_notify tinyint not null,
-      force_push_reapply_statuses varchar not null,
-      branches varchar not null,
       release_branch_prefix varchar not null,
-      next_branch_suffix varchar not null default '',
 
-      UNIQUE( repo, branches ),
+      UNIQUE( repo ),
       PRIMARY KEY( id )
     );
 
     insert into repos_new
-        select id, repo, channel, force_push_notify, force_push_reapply_statuses, branches, release_branch_prefix, next_branch_suffix
+        select id, repo, channel, force_push_notify, release_branch_prefix
         from repos;
 
     drop table repos;

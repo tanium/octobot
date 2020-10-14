@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use log::{error, info};
 
-use crate::config::Config;
 use crate::diffs::DiffOfDiffs;
 use crate::errors::*;
 use crate::git::Git;
@@ -14,7 +13,6 @@ use crate::worker;
 
 pub fn comment_force_push(
     diffs: Result<DiffOfDiffs>,
-    reapply_statuses: Vec<String>,
     github: &dyn github::api::Session,
     owner: &str,
     repo: &str,
@@ -57,42 +55,6 @@ pub fn comment_force_push(
     let mut reapprove = false;
 
     if identical_diff {
-        // Avoid failing the whole function if this fails
-        let statuses = match github.get_statuses(owner, repo, before_hash) {
-            Ok(t) => t,
-            Err(e) => {
-                error!("Error fetching statuses for PR #{}: {}", pull_request.number, e);
-                vec![]
-            }
-        };
-
-        // keep track of seen statuses to only track latest ones
-        let mut seen = vec![];
-        for status in &statuses {
-            if let Some(ref context) = status.context {
-                if seen.contains(&context) {
-                    continue;
-                }
-                seen.push(context.into());
-
-                if reapply_statuses.contains(&context) {
-                    let mut new_status = status.clone();
-                    new_status.creator = None;
-                    let octobot_was_here = "(reapplied by octobot)";
-                    if let Some(ref mut desc) = new_status.description {
-                        desc.push_str(" ");
-                        desc.push_str(octobot_was_here);
-                    } else {
-                        new_status.description = Some(octobot_was_here.into());
-                    }
-
-                    if let Err(e) = github.create_status(owner, repo, after_hash, &new_status) {
-                        error!("Error re-applying status to new commit {}, {:?}: {}", after_hash, new_status, e);
-                    }
-                }
-            }
-        }
-
         // Avoid failing the whole function if this fails
         let timeline = match github.get_timeline(owner, repo, pull_request.number) {
             Ok(t) => t,
@@ -194,7 +156,6 @@ pub struct ForcePushRequest {
 }
 
 struct Runner {
-    config: Arc<Config>,
     github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
 }
@@ -215,12 +176,10 @@ pub fn req(
 }
 
 pub fn new_runner(
-    config: Arc<Config>,
     github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
 ) -> Arc<dyn worker::Runner<ForcePushRequest>> {
     Arc::new(Runner {
-        config: config,
         github_app: github_app,
         clone_mgr: clone_mgr,
     })
@@ -228,8 +187,6 @@ pub fn new_runner(
 
 impl worker::Runner<ForcePushRequest> for Runner {
     fn handle(&self, req: ForcePushRequest) {
-        let statuses = self.config.repos().force_push_reapply_statuses(&req.repo);
-
         let github = match self.github_app.new_session(&req.repo.owner.login(), &req.repo.name) {
             Ok(g) => g,
             Err(e) => {
@@ -250,7 +207,6 @@ impl worker::Runner<ForcePushRequest> for Runner {
 
         let comment = comment_force_push(
             diffs,
-            statuses,
             &github,
             &req.repo.owner.login(),
             &req.repo.name,
