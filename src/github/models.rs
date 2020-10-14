@@ -4,6 +4,10 @@ use url::Url;
 
 use crate::errors::*;
 
+pub fn is_main_branch(branch_name: &str) -> bool {
+    branch_name == "master" || branch_name == "develop" || branch_name == "main"
+}
+
 // An incomplete container for all the kinds of events that we care about.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct HookBody {

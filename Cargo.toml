@@ -24,11 +24,6 @@ doc = false
 name = "ldap-check"
 path = "src/ldap-check.rs"
 
-[[bin]]
-doc = false
-name = "migrate-db"
-path = "src/migrate-db.rs"
-
 [dependencies]
 base64 = "0.10.1"
 env_logger = "0.6.1"

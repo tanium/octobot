@@ -5,7 +5,6 @@ use log::error;
 use rusqlite::types::FromSql;
 use rusqlite::{Connection, Row, Statement};
 
-use crate::db_migrations;
 use crate::errors::*;
 
 #[derive(Clone)]
@@ -38,7 +37,7 @@ impl Database {
             error!("Error setting WAL mode. Result: {}", mode);
         }
 
-        db_migrations::migrate(&mut conn)
+        crate::db::migrations::migrate(&mut conn)
     }
 }
 
@@ -63,7 +62,7 @@ impl Columns {
         self.cols
             .get(col)
             .map(|i| i.clone())
-            .ok_or(format_err!("Invalid columnL '{}'", col))
+            .ok_or(format_err!("Invalid column '{}'", col))
     }
 
     pub fn get<T: FromSql>(&self, row: &Row, col: &str) -> Result<T> {

@@ -1,7 +1,7 @@
 use failure::format_err;
 use log::error;
-use rusqlite::Row;
 use rusqlite::types::ToSql;
+use rusqlite::{Connection, Row, Transaction};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::db::{self, Database};
@@ -24,16 +24,29 @@ pub struct RepoInfo {
     pub branches: Vec<String>,
     // A list of jira projects to be respected in processing.
     #[serde(default)]
-    pub jira_projects: Vec<String>,
-    pub jira_versions_enabled: bool,
-    #[serde(default)]
-    pub version_script: String,
+    pub jira_config: Vec<RepoJiraConfig>,
     // Used for backporting. Defaults to "release/"
     #[serde(default)]
     pub release_branch_prefix: String,
     // Used for skipping versioning on postponed release branches. Defaults to "-next"
     #[serde(default)]
     pub next_branch_suffix: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct RepoJiraConfig {
+    // The jira project key
+    #[serde(default)]
+    pub jira_project: String,
+
+    // The version script to use for this JIRA project
+    #[serde(default)]
+    pub version_script: String,
+
+    // A regex that matches release branchs that are relevant to this JIRA project.
+    // If left blank, it matches all release branches.
+    #[serde(default)]
+    pub release_branch_regex: String,
 }
 
 #[derive(Clone)]
@@ -50,9 +63,7 @@ impl RepoInfo {
             channel: channel.into(),
             force_push_notify: false,
             force_push_reapply_statuses: vec![],
-            jira_projects: vec![],
-            jira_versions_enabled: false,
-            version_script: String::new(),
+            jira_config: vec![],
             release_branch_prefix: String::new(),
             next_branch_suffix: String::new(),
         }
@@ -70,15 +81,14 @@ impl RepoInfo {
         info
     }
 
-    pub fn with_jira(self, value: Vec<String>) -> RepoInfo {
-        let mut info = self;
-        info.jira_projects = value;
-        info
+    pub fn with_jira(self, jira_project: &str) -> RepoInfo {
+        self.with_jira_config(RepoJiraConfig::new(jira_project))
     }
 
-    pub fn with_version_script(self, value: String) -> RepoInfo {
+    pub fn with_jira_config(self, config: RepoJiraConfig) -> RepoInfo {
         let mut info = self;
-        info.version_script = value;
+
+        info.jira_config.push(config);
         info
     }
 
@@ -95,6 +105,28 @@ impl RepoInfo {
     }
 }
 
+impl RepoJiraConfig {
+    pub fn new(jira_project: &str) -> RepoJiraConfig {
+        RepoJiraConfig {
+            jira_project: jira_project.into(),
+            version_script: String::new(),
+            release_branch_regex: String::new(),
+        }
+    }
+
+    pub fn with_version_script(self, value: &str) -> RepoJiraConfig {
+        let mut c = self;
+        c.version_script = value.into();
+        c
+    }
+
+    pub fn with_release_branch_regex(self, value: &str) -> RepoJiraConfig {
+        let mut c = self;
+        c.release_branch_regex = value.into();
+        c
+    }
+}
+
 impl RepoConfig {
     pub fn new(db: Database) -> RepoConfig {
         RepoConfig { db: db }
@@ -105,25 +137,29 @@ impl RepoConfig {
     }
 
     pub fn insert_info(&mut self, repo: &RepoInfo) -> Result<()> {
-        let conn = self.db.connect()?;
-        conn.execute(
+        let mut conn = self.db.connect()?;
+        let tx = conn.transaction()?;
+
+        tx.execute(
             r#"INSERT INTO repos (repo, channel, force_push_notify, force_push_reapply_statuses,
-                                  branches, jira_projects, jira_versions_enabled, version_script,
-                                  release_branch_prefix, next_branch_suffix)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
+                                  branches, release_branch_prefix, next_branch_suffix)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
             &[
                 &repo.repo,
                 &repo.channel,
                 &db::to_tinyint(repo.force_push_notify) as &dyn ToSql,
                 &db::from_string_vec(&repo.force_push_reapply_statuses),
                 &db::from_string_vec(&repo.branches),
-                &db::from_string_vec(&repo.jira_projects),
-                &db::to_tinyint(repo.jira_versions_enabled) as &dyn ToSql,
-                &repo.version_script,
                 &repo.release_branch_prefix,
                 &repo.next_branch_suffix,
             ],
-        ).map_err(|e| format_err!("Error inserting repo {}: {}", repo.repo, e))?;
+        )
+        .map_err(|e| format_err!("Error inserting repo {}: {}", repo.repo, e))?;
+
+        let id = tx.last_insert_rowid();
+        self.insert_jiras(&tx, id, &repo.jira_config)?;
+
+        tx.commit()?;
 
         Ok(())
     }
@@ -132,44 +168,66 @@ impl RepoConfig {
         if repo.id.is_none() {
             return Err(format_err!("Repo does not have an id: cannot update."));
         }
+        let id = repo.id.unwrap();
 
-        let conn = self.db.connect()?;
-        conn.execute(
+        let mut conn = self.db.connect()?;
+        let tx = conn.transaction()?;
+
+        tx.execute(
             r#"UPDATE repos
                 SET repo = ?1,
                     channel = ?2,
                     force_push_notify = ?3,
                     force_push_reapply_statuses = ?4,
                     branches = ?5,
-                    jira_projects = ?6,
-                    jira_versions_enabled = ?7,
-                    version_script = ?8,
-                    release_branch_prefix = ?9,
-                    next_branch_suffix = ?10
-               WHERE id = ?11"#,
+                    release_branch_prefix = ?6,
+                    next_branch_suffix = ?7
+               WHERE id = ?8"#,
             &[
                 &repo.repo,
                 &repo.channel,
                 &db::to_tinyint(repo.force_push_notify) as &dyn ToSql,
                 &db::from_string_vec(&repo.force_push_reapply_statuses),
                 &db::from_string_vec(&repo.branches),
-                &db::from_string_vec(&repo.jira_projects),
-                &db::to_tinyint(repo.jira_versions_enabled) as &dyn ToSql,
-                &repo.version_script,
                 &repo.release_branch_prefix,
                 &repo.next_branch_suffix,
-                &repo.id.unwrap(),
+                &id,
             ],
-        ).map_err(|e| format_err!("Error updating repo {}: {}", repo.repo, e))?;
+        )
+        .map_err(|e| format_err!("Error updating repo {}: {}", repo.repo, e))?;
+
+        tx.execute(r#"DELETE from repos_jiras where repo_id = ?1"#, &[&id])
+            .map_err(|e| format_err!("Error clearing repo jira entries {}: {}", repo.repo, e))?;
+
+        self.insert_jiras(&tx, id as i64, &repo.jira_config)?;
+
+        tx.commit()?;
+
+        Ok(())
+    }
+
+    fn insert_jiras(&mut self, tx: &Transaction, id: i64, jira_config: &Vec<RepoJiraConfig>) -> Result<()> {
+        for config in jira_config {
+            tx.execute(
+                r#"INSERT INTO repos_jiras (repo_id, jira, version_script, release_branch_regex)
+               VALUES (?1, ?2, ?3, ?4)"#,
+                &[
+                    &id,
+                    &config.jira_project as &dyn ToSql,
+                    &config.version_script,
+                    &config.release_branch_regex,
+                ],
+            )
+            .map_err(|e| format_err!("Error inserting jira {} for repo {}: {}", config.jira_project, id, e))?;
+        }
 
         Ok(())
     }
 
     pub fn delete(&mut self, id: i32) -> Result<()> {
         let conn = self.db.connect()?;
-        conn.execute("DELETE from repos where id = ?1", &[&id]).map_err(|e| {
-            format_err!("Error deleting repo {}: {}", id, e)
-        })?;
+        conn.execute("DELETE from repos where id = ?1", &[&id])
+            .map_err(|e| format_err!("Error deleting repo {}: {}", id, e))?;
 
         Ok(())
     }
@@ -179,31 +237,43 @@ impl RepoConfig {
     }
 
     pub fn notify_force_push(&self, repo: &github::Repo) -> bool {
-        self.lookup_info(repo, None).map(|r| r.force_push_notify).unwrap_or(false)
+        self.lookup_info(repo, None)
+            .map(|r| r.force_push_notify)
+            .unwrap_or(false)
     }
 
     pub fn force_push_reapply_statuses(&self, repo: &github::Repo) -> Vec<String> {
-        self.lookup_info(repo, None).map(|r| r.force_push_reapply_statuses.clone()).unwrap_or(
-            vec![],
-        )
+        self.lookup_info(repo, None)
+            .map(|r| r.force_push_reapply_statuses.clone())
+            .unwrap_or(vec![])
+    }
+
+    pub fn jira_configs(&self, repo: &github::Repo, branch: &str) -> Vec<RepoJiraConfig> {
+        let mut configs = self
+            .lookup_info(repo, Some(branch))
+            .map(|r| r.jira_config.clone())
+            .unwrap_or(vec![]);
+
+        configs.retain(|c| github::is_main_branch(branch) || self.matches_branch(branch, &c.release_branch_regex));
+
+        configs
+    }
+
+    fn matches_branch(&self, branch: &str, regex: &str) -> bool {
+        match regex::Regex::new(regex) {
+            Ok(r) => r.is_match(branch),
+            Err(e) => {
+                log::error!("Error parsing branch regex: '{}': {}", regex, e);
+                false
+            }
+        }
     }
 
     pub fn jira_projects(&self, repo: &github::Repo, branch: &str) -> Vec<String> {
-        self.lookup_info(repo, Some(branch)).map(|r| r.jira_projects.clone()).unwrap_or(vec![])
-    }
-
-    pub fn jira_versions_enabled(&self, repo: &github::Repo, branch: &str) -> bool {
-        self.lookup_info(repo, Some(branch)).map(|r| r.jira_versions_enabled).unwrap_or(false)
-    }
-
-    pub fn version_script(&self, repo: &github::Repo, branch: &str) -> Option<String> {
-        self.lookup_info(repo, Some(branch))
-            .map(|r| if r.version_script.is_empty() {
-                None
-            } else {
-                Some(r.version_script.clone())
-            })
-            .unwrap_or(None)
+        self.jira_configs(repo, branch)
+            .into_iter()
+            .map(|c| c.jira_project)
+            .collect::<Vec<_>>()
     }
 
     pub fn release_branch_prefix(&self, repo: &github::Repo, branch: &str) -> String {
@@ -232,7 +302,7 @@ impl RepoConfig {
 
         let mut repos = vec![];
         while let Ok(Some(row)) = rows.next() {
-            repos.push(self.map_row(&row, &cols)?);
+            repos.push(self.map_row(&conn, &row, &cols)?);
         }
 
         Ok(repos)
@@ -256,7 +326,7 @@ impl RepoConfig {
 
         let mut repos = Vec::new();
         while let Ok(Some(row)) = rows.next() {
-            repos.push(self.map_row(&row, &cols)?);
+            repos.push(self.map_row(&conn, &row, &cols)?);
         }
 
         // try to match by branch
@@ -283,28 +353,48 @@ impl RepoConfig {
         Ok(None)
     }
 
-    fn map_row(&self, row: &Row, cols: &db::Columns) -> Result<RepoInfo> {
+    fn map_row(&self, conn: &Connection, row: &Row, cols: &db::Columns) -> Result<RepoInfo> {
+        let id = cols.get(row, "id")?;
+        let jira_config = self.load_jira_config(&conn, id)?;
+
         Ok(RepoInfo {
-            id: Some(cols.get(row, "id")?),
+            id: Some(id),
             repo: cols.get(row, "repo")?,
             channel: cols.get(row, "channel")?,
             force_push_notify: db::to_bool(cols.get(row, "force_push_notify")?),
             force_push_reapply_statuses: db::to_string_vec(cols.get(row, "force_push_reapply_statuses")?),
             branches: db::to_string_vec(cols.get(row, "branches")?),
-            jira_projects: db::to_string_vec(cols.get(row, "jira_projects")?),
-            jira_versions_enabled: db::to_bool(cols.get(row, "jira_versions_enabled")?),
-            version_script: cols.get(row, "version_script")?,
+            jira_config: jira_config,
             release_branch_prefix: cols.get(row, "release_branch_prefix")?,
             next_branch_suffix: cols.get(row, "next_branch_suffix")?,
         })
+    }
+
+    fn load_jira_config(&self, conn: &Connection, id: i32) -> Result<Vec<RepoJiraConfig>> {
+        let mut stmt = conn.prepare(r#"SELECT * FROM repos_jiras where repo_id = :id"#)?;
+        let cols = db::Columns::from_stmt(&stmt)?;
+        let mut rows = stmt.query_named(&[(":id", &id)])?;
+
+        let mut result = vec![];
+        while let Ok(Some(row)) = rows.next() {
+            let config = RepoJiraConfig {
+                jira_project: cols.get(row, "jira")?,
+                version_script: cols.get(row, "version_script")?,
+                release_branch_regex: cols.get(row, "release_branch_regex")?,
+            };
+
+            result.push(config);
+        }
+
+        Ok(result)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use tempdir::TempDir;
     use super::*;
     use github;
+    use tempdir::TempDir;
 
     fn new_test() -> (RepoConfig, TempDir) {
         let temp_dir = TempDir::new("repos.rs").unwrap();
@@ -349,7 +439,9 @@ mod tests {
     #[test]
     fn test_notify_force_push() {
         let (mut repos, _temp) = new_test();
-        repos.insert_info(&RepoInfo::new("some-user/the-default", "reviews")).unwrap();
+        repos
+            .insert_info(&RepoInfo::new("some-user/the-default", "reviews"))
+            .unwrap();
         repos
             .insert_info(&RepoInfo::new("some-user/on-purpose", "reviews").with_force_push(true))
             .unwrap();
@@ -380,9 +472,15 @@ mod tests {
     #[test]
     fn test_jira_enabled() {
         let (mut repos, _temp) = new_test();
-        repos.insert_info(&RepoInfo::new("some-user/no-config", "reviews")).unwrap();
         repos
-            .insert_info(&RepoInfo::new("some-user/with-config", "reviews").with_jira(vec!["a".into(), "b".into()]))
+            .insert_info(&RepoInfo::new("some-user/no-config", "reviews"))
+            .unwrap();
+        repos
+            .insert_info(
+                &RepoInfo::new("some-user/with-config", "reviews")
+                    .with_jira("a")
+                    .with_jira("b"),
+            )
             .unwrap();
 
         {
@@ -399,7 +497,6 @@ mod tests {
             let repo = github::Repo::parse("http://git.company.com/some-user/with-config").unwrap();
             assert_eq!(vec!["a", "b"], repos.jira_projects(&repo, "any"));
         }
-
     }
 
     #[test]
@@ -408,18 +505,65 @@ mod tests {
         repos.insert("some-user", "SOME_OTHER_CHANNEL").unwrap();
 
         repos
-            .insert_info(&RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira(vec!["SOME".into()]))
+            .insert_info(&RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira("SOME"))
             .unwrap();
 
         repos
-            .insert_info(&RepoInfo::new("some-user/the-repo", "the-repo-reviews")
-                .with_branches(vec!["the-branch".to_string()])
-                .with_jira(vec!["THE-BRANCH".into()]))
+            .insert_info(
+                &RepoInfo::new("some-user/the-repo", "the-repo-reviews")
+                    .with_branches(vec!["the-branch".to_string()])
+                    .with_jira("THE-BRANCH"),
+            )
             .unwrap();
 
         let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
 
         assert_eq!(vec!["THE-BRANCH"], repos.jira_projects(&repo, "the-branch"));
         assert_eq!(vec!["SOME"], repos.jira_projects(&repo, "any-other-branch"));
+    }
+
+    #[test]
+    fn test_jira_repos_config() {
+        let (mut repos, _temp) = new_test();
+        repos.insert("some-user", "SOME_OTHER_CHANNEL").unwrap();
+
+        let config1 = RepoJiraConfig::new("SER")
+            .with_release_branch_regex("release/server-.*");
+        let config2 = RepoJiraConfig::new("CLI")
+            .with_release_branch_regex("release/client-.*");
+
+        repos
+            .insert_info(
+                &RepoInfo::new("some-user/the-repo", "the-repo-reviews")
+                    .with_jira_config(config1)
+                    .with_jira_config(config2),
+            )
+            .unwrap();
+
+        let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
+
+        assert_eq!(vec!["CLI", "SER"], repos.jira_projects(&repo, "master"));
+        assert_eq!(vec!["CLI", "SER"], repos.jira_projects(&repo, "main"));
+        assert_eq!(vec!["CLI", "SER"], repos.jira_projects(&repo, "develop"));
+
+        assert_eq!(vec!["SER"], repos.jira_projects(&repo, "release/server-1.2"));
+        assert_eq!(vec!["CLI"], repos.jira_projects(&repo, "release/client-5.6"));
+        assert_eq!(Vec::<String>::new(), repos.jira_projects(&repo, "release/other"));
+    }
+
+    #[test]
+    fn test_repos_update() {
+        let (mut repos, _temp) = new_test();
+        repos.insert("some-user", "SOME_OTHER_CHANNEL").unwrap();
+
+        let mut all = repos.get_all().unwrap();
+        assert_eq!(1, all.len());
+
+        all[0].channel = "new-channel".into();
+        repos.update(&all[0]).unwrap();
+
+        let all = repos.get_all().unwrap();
+        assert_eq!(1, all.len());
+        assert_eq!("new-channel", all[0].channel);
     }
 }

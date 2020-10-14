@@ -5,11 +5,11 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
+use failure::format_err;
 use log;
-use log::error;
 #[cfg(target_os = "linux")]
 use log::debug;
-use failure::format_err;
+use log::error;
 
 use crate::config::{Config, JiraConfig};
 use crate::errors::*;
@@ -37,7 +37,6 @@ pub fn comment_repo_version(
     commit_hash: &str,
     commits: &Vec<github::PushCommit>,
     jira_projects: &Vec<String>,
-    jira_versions_enabled: bool,
 ) -> Result<()> {
     let github = github_app.new_session(owner, repo)?;
     let held_clone_dir = clone_mgr.clone(owner, repo)?;
@@ -59,9 +58,7 @@ pub fn comment_repo_version(
     // resolve with version
     jira::workflow::resolve_issue(branch_name, maybe_version, commits, jira_projects, jira, jira_config);
 
-    if jira_versions_enabled {
-        jira::workflow::add_pending_version(maybe_version, commits, jira_projects, jira);
-    }
+    jira::workflow::add_pending_version(maybe_version, commits, jira_projects, jira);
 
     Ok(())
 }
@@ -101,12 +98,12 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
 
     log::info!("Running version script {:?} from {:?}", version_script, clone_dir);
 
-    let child = cmd.spawn().map_err(|e| {
-        format_err!("Error starting version script (script: {}): {}", version_script, e)
-    })?;
-    let result = child.wait_with_output().map_err(|e| {
-        format_err!("Error running version script (script: {}): {}", version_script, e)
-    })?;
+    let child = cmd
+        .spawn()
+        .map_err(|e| format_err!("Error starting version script (script: {}): {}", version_script, e))?;
+    let result = child
+        .wait_with_output()
+        .map_err(|e| format_err!("Error running version script (script: {}): {}", version_script, e))?;
 
     let mut output = String::new();
     if result.stdout.len() > 0 {
@@ -115,8 +112,12 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
         output += &stdout;
         // skip over firejail output (even with --quiet)
         if output.starts_with("OverlayFS") {
-            let new_lines: Vec<String> =
-                output.lines().skip(1).skip_while(|s| s.trim().len() == 0).map(|s| s.into()).collect();
+            let new_lines: Vec<String> = output
+                .lines()
+                .skip(1)
+                .skip_while(|s| s.trim().len() == 0)
+                .map(|s| s.into())
+                .collect();
             output = new_lines.join("\n");
         }
     }
@@ -132,17 +133,15 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
     // Note: there are some firejail failure conditions that do not trigger a non-zero exit code.
     // To catch these, and in the general case, we treat an empty version as an error.
     if !result.status.success() || output.is_empty() {
-        Err(
-            format_err!(
-                "Error running version script (exit code {}; script: {}):\n{}\n{}",
-                result.status.code().unwrap_or(-1),
-                version_script,
-                output,
-                stderr
-            ),
-        )
+        Err(format_err!(
+            "Error running version script (exit code {}; script: {}):\n{}\n{}",
+            result.status.code().unwrap_or(-1),
+            version_script,
+            output,
+            stderr
+        ))
     } else {
-        if !stderr.is_empty()  {
+        if !stderr.is_empty() {
             log::info!("Version script succeeded, but printed to stderr: {}", stderr);
         }
 
@@ -198,46 +197,53 @@ pub fn new_runner(
 
 impl worker::Runner<RepoVersionRequest> for Runner {
     fn handle(&self, req: RepoVersionRequest) {
-        let version_script;
-        let jira_projects;
-        let jira_versions_enabled;
+        let configs;
         {
             let repos_lock = self.config.repos();
-            version_script = repos_lock.version_script(&req.repo, &req.branch);
-            jira_projects = repos_lock.jira_projects(&req.repo, &req.branch);
-            jira_versions_enabled = repos_lock.jira_versions_enabled(&req.repo, &req.branch);
+            configs = repos_lock.jira_configs(&req.repo, &req.branch);
         }
 
-        if let Some(version_script) = version_script {
-            if let Some(ref jira_session) = self.jira_session {
-                if let Some(ref jira_config) = self.config.jira {
+        if let Some(ref jira_session) = self.jira_session {
+            if let Some(ref jira_config) = self.config.jira {
+                for config in &configs {
+                    let mut resolved = false;
                     let jira = jira_session.borrow();
-                    if let Err(e) = comment_repo_version(
-                        &version_script,
-                        jira_config,
-                        jira,
-                        self.github_app.borrow(),
-                        self.clone_mgr.borrow(),
-                        &req.repo.owner.login(),
-                        &req.repo.name,
-                        &req.branch,
-                        &req.commit_hash,
-                        &req.commits,
-                        &jira_projects,
-                        jira_versions_enabled,
-                    )
-                    {
-                        error!("Error running version script {}: {}", version_script, e);
-                        let messenger = messenger::new(self.config.clone(), self.slack.clone());
+                    let jira_projects = vec![config.jira_project.clone()];
 
-                        let attach = SlackAttachmentBuilder::new(&format!("{}", e))
-                            .title(version_script.clone())
-                            .color("danger")
-                            .build();
+                    if !config.version_script.is_empty() {
+                        if let Err(e) = comment_repo_version(
+                            &config.version_script,
+                            jira_config,
+                            jira,
+                            self.github_app.borrow(),
+                            self.clone_mgr.borrow(),
+                            &req.repo.owner.login(),
+                            &req.repo.name,
+                            &req.branch,
+                            &req.commit_hash,
+                            &req.commits,
+                            &jira_projects,
+                        ) {
+                            error!("Error running version script {}: {}", config.version_script, e);
+                            let messenger = messenger::new(self.config.clone(), self.slack.clone());
 
-                        messenger.send_to_channel("Error running version script", &vec![attach], &req.repo);
+                            let attach = SlackAttachmentBuilder::new(&format!("{}", e))
+                                .title(config.version_script.clone())
+                                .color("danger")
+                                .build();
 
-                        // resolve the issue with no version
+                            messenger.send_to_channel(
+                                &format!("Error running version script for [{}]", config.jira_project),
+                                &vec![attach],
+                                &req.repo,
+                            );
+                        } else {
+                            resolved = true
+                        }
+                    }
+
+                    // resolve the issue with no version if version script is missing or failed
+                    if !resolved {
                         jira::workflow::resolve_issue(
                             &req.branch,
                             None,
@@ -288,7 +294,8 @@ mod tests {
         let script_file = sub_dir.join("version.sh");
         {
             let mut file = fs::File::create(&script_file).expect("create file");
-            file.write_all(b"echo out-err; echo err-err >&2; exit 1").expect("write file");
+            file.write_all(b"echo out-err; echo err-err >&2; exit 1")
+                .expect("write file");
         }
 
         let err = format!("{}", run_script("bash version.sh", &sub_dir).unwrap_err());
@@ -335,7 +342,7 @@ mod tests {
     fn test_run_script_isolation() {
         // firejail tmpfs isolation not quite working inside docker
         if docker::in_docker() {
-            return
+            return;
         }
 
         let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
@@ -362,12 +369,16 @@ mod tests {
 
             echo 1.2.3.4
             "#,
-            ).expect("write file");
+            )
+            .expect("write file");
         }
 
         assert_eq!("1.2.3.4", run_script("bash version.sh", &sub_dir).unwrap());
 
-        assert!(parent_file.exists(), "version scripts should not be able to delete files outside its directory");
+        assert!(
+            parent_file.exists(),
+            "version scripts should not be able to delete files outside its directory"
+        );
         assert!(
             !dir.path().join("muahaha.txt").exists(),
             "version scripts should not be able to create files outside its directory"
