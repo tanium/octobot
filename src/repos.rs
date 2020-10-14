@@ -16,21 +16,12 @@ pub struct RepoInfo {
     // slack channel to send all messages to
     pub channel: String,
     pub force_push_notify: bool,
-    // white-listed statuses to reapply on force-push w/ identical diff
-    #[serde(default)]
-    pub force_push_reapply_statuses: Vec<String>,
-    // list of branches this jira/version config is for
-    #[serde(default)]
-    pub branches: Vec<String>,
     // A list of jira projects to be respected in processing.
     #[serde(default)]
     pub jira_config: Vec<RepoJiraConfig>,
     // Used for backporting. Defaults to "release/"
     #[serde(default)]
     pub release_branch_prefix: String,
-    // Used for skipping versioning on postponed release branches. Defaults to "-next"
-    #[serde(default)]
-    pub next_branch_suffix: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -59,20 +50,11 @@ impl RepoInfo {
         RepoInfo {
             id: None,
             repo: repo.into(),
-            branches: vec![],
             channel: channel.into(),
             force_push_notify: false,
-            force_push_reapply_statuses: vec![],
             jira_config: vec![],
             release_branch_prefix: String::new(),
-            next_branch_suffix: String::new(),
         }
-    }
-
-    pub fn with_branches(self, value: Vec<String>) -> RepoInfo {
-        let mut info = self;
-        info.branches = value;
-        info
     }
 
     pub fn with_force_push(self, value: bool) -> RepoInfo {
@@ -95,12 +77,6 @@ impl RepoInfo {
     pub fn with_release_branch_prefix(self, value: String) -> RepoInfo {
         let mut info = self;
         info.release_branch_prefix = value;
-        info
-    }
-
-    pub fn with_next_branch_suffix(self, value: String) -> RepoInfo {
-        let mut info = self;
-        info.next_branch_suffix = value;
         info
     }
 }
@@ -141,17 +117,13 @@ impl RepoConfig {
         let tx = conn.transaction()?;
 
         tx.execute(
-            r#"INSERT INTO repos (repo, channel, force_push_notify, force_push_reapply_statuses,
-                                  branches, release_branch_prefix, next_branch_suffix)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
+            r#"INSERT INTO repos (repo, channel, force_push_notify, release_branch_prefix)
+               VALUES (?1, ?2, ?3, ?4)"#,
             &[
                 &repo.repo,
                 &repo.channel,
                 &db::to_tinyint(repo.force_push_notify) as &dyn ToSql,
-                &db::from_string_vec(&repo.force_push_reapply_statuses),
-                &db::from_string_vec(&repo.branches),
                 &repo.release_branch_prefix,
-                &repo.next_branch_suffix,
             ],
         )
         .map_err(|e| format_err!("Error inserting repo {}: {}", repo.repo, e))?;
@@ -178,19 +150,13 @@ impl RepoConfig {
                 SET repo = ?1,
                     channel = ?2,
                     force_push_notify = ?3,
-                    force_push_reapply_statuses = ?4,
-                    branches = ?5,
-                    release_branch_prefix = ?6,
-                    next_branch_suffix = ?7
-               WHERE id = ?8"#,
+                    release_branch_prefix = ?4
+               WHERE id = ?5"#,
             &[
                 &repo.repo,
                 &repo.channel,
                 &db::to_tinyint(repo.force_push_notify) as &dyn ToSql,
-                &db::from_string_vec(&repo.force_push_reapply_statuses),
-                &db::from_string_vec(&repo.branches),
                 &repo.release_branch_prefix,
-                &repo.next_branch_suffix,
                 &id,
             ],
         )
@@ -233,24 +199,18 @@ impl RepoConfig {
     }
 
     pub fn lookup_channel(&self, repo: &github::Repo) -> Option<String> {
-        self.lookup_info(repo, None).map(|r| r.channel.clone())
+        self.lookup_info(repo).map(|r| r.channel.clone())
     }
 
     pub fn notify_force_push(&self, repo: &github::Repo) -> bool {
-        self.lookup_info(repo, None)
+        self.lookup_info(repo)
             .map(|r| r.force_push_notify)
             .unwrap_or(false)
     }
 
-    pub fn force_push_reapply_statuses(&self, repo: &github::Repo) -> Vec<String> {
-        self.lookup_info(repo, None)
-            .map(|r| r.force_push_reapply_statuses.clone())
-            .unwrap_or(vec![])
-    }
-
     pub fn jira_configs(&self, repo: &github::Repo, branch: &str) -> Vec<RepoJiraConfig> {
         let mut configs = self
-            .lookup_info(repo, Some(branch))
+            .lookup_info(repo)
             .map(|r| r.jira_config.clone())
             .unwrap_or(vec![]);
 
@@ -276,25 +236,16 @@ impl RepoConfig {
             .collect::<Vec<_>>()
     }
 
-    pub fn release_branch_prefix(&self, repo: &github::Repo, branch: &str) -> String {
+    pub fn release_branch_prefix(&self, repo: &github::Repo) -> String {
         let default = "release/".to_string();
-        match self.lookup_info(repo, Some(branch)).map(|r| r.release_branch_prefix) {
+        match self.lookup_info(repo).map(|r| r.release_branch_prefix) {
             None => default,
             Some(ref p) if p.is_empty() => default,
             Some(p) => p,
         }
     }
 
-    pub fn next_branch_suffix(&self, repo: &github::Repo) -> String {
-        let default = "-next".to_string();
-        match self.lookup_info(repo, None).map(|r| r.next_branch_suffix) {
-            None => default,
-            Some(ref p) if p.is_empty() => default,
-            Some(p) => p,
-        }
-    }
-
-    pub fn get_all(&self) -> Result<Vec<RepoInfo>> {
+   pub fn get_all(&self) -> Result<Vec<RepoInfo>> {
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare("SELECT * FROM repos ORDER BY repo")?;
         let cols = db::Columns::from_stmt(&stmt)?;
@@ -308,8 +259,8 @@ impl RepoConfig {
         Ok(repos)
     }
 
-    fn lookup_info(&self, repo: &github::Repo, maybe_branch: Option<&str>) -> Option<RepoInfo> {
-        match self.do_lookup_info(repo, maybe_branch) {
+    fn lookup_info(&self, repo: &github::Repo) -> Option<RepoInfo> {
+        match self.do_lookup_info(repo) {
             Ok(u) => u,
             Err(e) => {
                 error!("Error looking up repo: {}", e);
@@ -318,7 +269,7 @@ impl RepoConfig {
         }
     }
 
-    fn do_lookup_info(&self, repo: &github::Repo, maybe_branch: Option<&str>) -> Result<Option<RepoInfo>> {
+    fn do_lookup_info(&self, repo: &github::Repo) -> Result<Option<RepoInfo>> {
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare(r#"SELECT * FROM repos where repo = :full OR repo = :org"#)?;
         let cols = db::Columns::from_stmt(&stmt)?;
@@ -329,14 +280,6 @@ impl RepoConfig {
             repos.push(self.map_row(&conn, &row, &cols)?);
         }
 
-        // try to match by branch
-        if let Some(branch) = maybe_branch {
-            for r in &repos {
-                if r.repo == repo.full_name && r.branches.contains(&branch.to_string()) {
-                    return Ok(Some(r.clone()));
-                }
-            }
-        }
         // try to match by org/repo
         for r in &repos {
             if r.repo == repo.full_name {
@@ -362,11 +305,8 @@ impl RepoConfig {
             repo: cols.get(row, "repo")?,
             channel: cols.get(row, "channel")?,
             force_push_notify: db::to_bool(cols.get(row, "force_push_notify")?),
-            force_push_reapply_statuses: db::to_string_vec(cols.get(row, "force_push_reapply_statuses")?),
-            branches: db::to_string_vec(cols.get(row, "branches")?),
             jira_config: jira_config,
             release_branch_prefix: cols.get(row, "release_branch_prefix")?,
-            next_branch_suffix: cols.get(row, "next_branch_suffix")?,
         })
     }
 
@@ -497,29 +437,6 @@ mod tests {
             let repo = github::Repo::parse("http://git.company.com/some-user/with-config").unwrap();
             assert_eq!(vec!["a", "b"], repos.jira_projects(&repo, "any"));
         }
-    }
-
-    #[test]
-    fn test_jira_by_branch() {
-        let (mut repos, _temp) = new_test();
-        repos.insert("some-user", "SOME_OTHER_CHANNEL").unwrap();
-
-        repos
-            .insert_info(&RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira("SOME"))
-            .unwrap();
-
-        repos
-            .insert_info(
-                &RepoInfo::new("some-user/the-repo", "the-repo-reviews")
-                    .with_branches(vec!["the-branch".to_string()])
-                    .with_jira("THE-BRANCH"),
-            )
-            .unwrap();
-
-        let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
-
-        assert_eq!(vec!["THE-BRANCH"], repos.jira_projects(&repo, "the-branch"));
-        assert_eq!(vec!["SOME"], repos.jira_projects(&repo, "any-other-branch"));
     }
 
     #[test]

@@ -1639,33 +1639,3 @@ fn test_jira_push_triggers_version_script() {
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
-
-#[test]
-fn test_jira_push_on_next_branch_does_not_trigger_version_script() {
-    let mut test = new_test_with_jira();
-
-    test.config
-        .repos_write()
-        .insert_info(&repos::RepoInfo::new("some-user/versioning-repo", "the-reviews-channel")
-            .with_jira("PRJ")
-            .with_release_branch_prefix("the-release-".into())
-            .with_next_branch_suffix("-the-next".into()))
-        .expect("Failed to add repo");
-
-    // change the repo to an unconfigured one
-    test.handler.data.repository = Repo::parse(
-        &format!("http://{}/some-user/versioning-repo", test.github.github_host()),
-    ).unwrap();
-
-    test.handler.event = "push".into();
-    test.handler.data.ref_name = Some("refs/heads/the-release-1.1-the-next".into());
-    test.handler.data.before = Some("abcdef0000".into());
-    test.handler.data.after = Some("1111abcdef".into());
-    let commits = some_jira_push_commits();
-    test.handler.data.commits = Some(commits.clone());
-
-    // no assertions
-
-    let resp = test.handler.handle_event().unwrap();
-    assert_eq!((StatusCode::OK, "push".into()), resp);
-}

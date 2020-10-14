@@ -46,8 +46,6 @@ pub trait Session: Send + Sync {
     fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()>;
     fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()>;
     fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()>;
-    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>>;
-    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<()>;
     fn approve_pull_request(
         &self,
         owner: &str,
@@ -463,29 +461,6 @@ impl Session for GithubSession {
         self.client
             .delete_void(&format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name))
             .map_err(|e| format_err!("Error deleting branch {}/{} {}: {}", owner, repo, branch_name, e))
-    }
-
-    fn get_statuses(&self, owner: &str, repo: &str, ref_name: &str) -> Result<Vec<Status>> {
-        #[derive(Deserialize)]
-        struct CombinedStatus {
-            statuses: Vec<Status>,
-        }
-
-        let status: Result<CombinedStatus> = self
-            .client
-            .get(&format!("repos/{}/{}/commits/{}/status", owner, repo, ref_name))
-            .map_err(|e| format_err!("Error getting statuses {}/{} {}: {}", owner, repo, ref_name, e));
-
-        status.map(|s| s.statuses)
-    }
-
-    fn create_status(&self, owner: &str, repo: &str, ref_name: &str, status: &Status) -> Result<()> {
-        self.client
-            .post_void(
-                &format!("repos/{}/{}/commits/{}/statuses", owner, repo, ref_name),
-                status,
-            )
-            .map_err(|e| format_err!("Error creating status {}/{} {}: {}", owner, repo, ref_name, e))
     }
 
     fn approve_pull_request(

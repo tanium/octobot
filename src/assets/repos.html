@@ -6,14 +6,14 @@
   <table class="table">
     <tr>
       <th>Repo</th>
-      <th>Branches</th>
       <th>Slack Channel</th>
+      <th>JIRA Project(s)</th>
       <th>&nbsp;</th>
     </tr>
     <tr ng-repeat="repo in repos">
       <td>{{repo.repo}}
-      <td>{{displayBranches(repo)}}
       <td>{{repo.channel}}</td>
+      <td>{{displayJIRAs(repo)}}</td>
       </td>
       <td>
         <a href title="Edit" ng-click="editRepo(repo)"><span class="oi oi-pencil" /></a>&nbsp;
@@ -42,12 +42,19 @@
             <label>Slack channel</label>
             <input type="text" class="form-control" ng-model="theRepo.channel" placeholder="the-reviews" required />
           </div>
+
+          <h4>Git</h4>
+          <div class="checkbox">
+            <label>
+              <input type="checkbox" ng-model="theRepo.force_push_notify"> Force-push notification
+            </label>
+          </div>
           <div class="form-group">
-            <label>Restrict to branches (optional)</label>
-            <input type="text" class="form-control" ng-model="theRepo.branches" ng-list=", " placeholder="features/special-branch1" />
+            <label>Release branch prefix</label>
+            <input type="text" class="form-control" ng-model="theRepo.release_branch_prefix" placeholder="release/" />
           </div>
 
-          <h4>JIRA project(s)</h4>
+          <h4>JIRA</h4>
           <div style="margin: 10px 0px">
             <button type="button" class="btn btn-sm btn-primary" ng-click="addJIRA(theRepo)">Add JIRA</button>
           </div>
@@ -72,25 +79,6 @@
                 <button title="Remove JIRA" ng-click="removeJIRA(theRepo, $index)" class="btn btn-sm btn-secondary"><span class="oi oi-trash" /></button>
               </div>
             </div>
-          </div>
-
-          <h4>Git</h4>
-          <div class="checkbox">
-            <label>
-              <input type="checkbox" ng-model="theRepo.force_push_notify"> Force-push notification
-            </label>
-          </div>
-          <div class="form-group">
-            <label>Force-push status reapply</label>
-            <input type="text" class="form-control" ng-model="theRepo.force_push_reapply_statuses" ng-list=", " />
-          </div>
-          <div class="form-group">
-            <label>Release branch prefix</label>
-            <input type="text" class="form-control" ng-model="theRepo.release_branch_prefix" placeholder="release/" />
-          </div>
-          <div class="form-group">
-            <label>Next branch suffix</label>
-            <input type="text" class="form-control" ng-model="theRepo.next_branch_suffix" placeholder="-next" />
           </div>
         </div>
         <div class="modal-footer">
