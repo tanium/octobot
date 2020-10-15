@@ -990,13 +990,7 @@ fn test_pull_request_merged_retroactively_labeled() {
     test.handler.data.label = Some(Label::new("backport-7.123"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    let commits = some_commits();
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(commits.clone()),
-    );
+    let commits = test.mock_pull_request_commits();
 
     test.expect_will_merge_branches("release/", vec!["release/7.123".into()], commits);
 
