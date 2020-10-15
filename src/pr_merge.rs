@@ -11,7 +11,7 @@ use crate::git::Git;
 use crate::git_clone_manager::GitCloneManager;
 use crate::github;
 use crate::github::api::{GithubSessionFactory, Session};
-use crate::messenger::{self, Messenger};
+use crate::messenger;
 use crate::slack::{SlackAttachmentBuilder, SlackRequest};
 use crate::worker;
 
@@ -205,6 +205,7 @@ pub struct PRMergeRequest {
     pub pull_request: github::PullRequest,
     pub target_branch: String,
     pub release_branch_prefix: String,
+    pub commits: Vec<github::Commit>,
 }
 
 struct Runner {
@@ -214,12 +215,13 @@ struct Runner {
     slack: Arc<dyn worker::Worker<SlackRequest>>,
 }
 
-pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str, release_branch_prefix: &str) -> PRMergeRequest {
+pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str, release_branch_prefix: &str, commits: Vec<github::Commit>) -> PRMergeRequest {
     PRMergeRequest {
         repo: repo.clone(),
         pull_request: pull_request.clone(),
         target_branch: target_branch.to_string(),
         release_branch_prefix: release_branch_prefix.to_string(),
+        commits: commits,
     }
 }
 
@@ -269,6 +271,8 @@ impl worker::Runner<PRMergeRequest> for Runner {
                 &vec![attach],
                 &req.pull_request.user,
                 &req.repo,
+                &req.target_branch,
+                &req.commits,
             );
         }
     }

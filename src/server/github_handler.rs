@@ -43,7 +43,7 @@ pub struct GithubHandler {
 }
 
 pub struct GithubEventHandler {
-    pub messenger: Box<dyn Messenger>,
+    pub messenger: Messenger,
     pub config: Arc<Config>,
     pub event: String,
     pub data: github::HookBody,
@@ -235,7 +235,7 @@ impl Handler for GithubHandler {
                 data: data,
                 action: action,
                 config: config.clone(),
-                messenger: Box::new(messenger::new(config.clone(), slack)),
+                messenger: messenger::new(config.clone(), slack),
                 github_session: github_session,
                 jira_session: jira_session,
                 pr_merge: pr_merge,
@@ -306,11 +306,7 @@ impl GithubEventHandler {
         }
     }
 
-    fn all_participants(&self, pull_request: &dyn github::PullRequestLike) -> Vec<github::User> {
-        self.all_participants_with_commits(pull_request, &self.pull_request_commits(pull_request))
-    }
-
-    fn all_participants_with_commits(
+    fn all_participants(
         &self,
         pull_request: &dyn github::PullRequestLike,
         pr_commits: &Vec<github::Commit>,
@@ -372,8 +368,15 @@ impl GithubEventHandler {
                 notify_channel_only = true;
             }
 
+            // early exit if we have nothing to do here.
+            if verb.is_none() && self.action != "labeled" {
+                return (StatusCode::OK, "pr".into())
+            }
+
+            let commits = self.pull_request_commits(&pull_request);
+
             if let Some(ref verb) = verb {
-                let commits = self.pull_request_commits(&pull_request);
+                let branch_name = &pull_request.base.ref_name;
 
                 let attachments = vec![
                     SlackAttachmentBuilder::new("")
@@ -386,7 +389,7 @@ impl GithubEventHandler {
                     let msg = format!("Pull Request {}", verb);
 
                     if notify_channel_only {
-                        self.messenger.send_to_channel(&msg, &attachments, &self.data.repository);
+                        self.messenger.send_to_channel(&msg, &attachments, &self.data.repository, &branch_name, &commits);
                     } else {
                         self.messenger.send_to_all(
                             &msg,
@@ -394,7 +397,9 @@ impl GithubEventHandler {
                             &pull_request.user,
                             &self.data.sender,
                             &self.data.repository,
-                            &self.all_participants_with_commits(&pull_request, &commits),
+                            &self.all_participants(&pull_request, &commits),
+                            &branch_name,
+                            &commits,
                         );
 
                     }
@@ -402,10 +407,7 @@ impl GithubEventHandler {
 
                 // Mark JIRAs in review for PR open
                 if self.action == "opened" {
-                    let jira_projects = self.config.repos().jira_projects(
-                        &self.data.repository,
-                        &pull_request.base.ref_name,
-                    );
+                    let jira_projects = self.config.repos().jira_projects(&self.data.repository, branch_name);
 
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
@@ -419,6 +421,8 @@ impl GithubEventHandler {
                                     &attachments,
                                     &pull_request.user,
                                     &self.data.repository,
+                                    &branch_name,
+                                    &commits,
                                 );
 
                             } else {
@@ -446,10 +450,10 @@ impl GithubEventHandler {
             let release_branch_prefix = self.config.repos().release_branch_prefix(&self.data.repository);
             if self.action == "labeled" {
                 if let Some(ref label) = self.data.label {
-                    self.merge_pull_request(pull_request, label, &release_branch_prefix);
+                    self.merge_pull_request(pull_request, label, &release_branch_prefix, &commits);
                 }
             } else if verb == Some("merged".to_string()) {
-                self.merge_pull_request_all_labels(pull_request, &release_branch_prefix);
+                self.merge_pull_request_all_labels(pull_request, &release_branch_prefix, &commits);
             }
         }
 
@@ -460,7 +464,11 @@ impl GithubEventHandler {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref comment) = self.data.comment {
                 if self.action == "created" {
-                    self.do_pull_request_comment(&pull_request, &comment)
+
+                    let branch_name = &pull_request.base.ref_name;
+                    let commits = self.pull_request_commits(&pull_request);
+
+                    self.do_pull_request_comment(&pull_request, &comment, branch_name, &commits)
                 }
 
             }
@@ -474,9 +482,12 @@ impl GithubEventHandler {
             if let Some(ref review) = self.data.review {
                 if self.action == "submitted" {
 
+                    let branch_name = &pull_request.base.ref_name;
+                    let commits = self.pull_request_commits(&pull_request);
+
                     // just a comment. should just be handled by regular comment handler.
                     if review.state == "commented" {
-                        self.do_pull_request_comment(&pull_request, &review);
+                        self.do_pull_request_comment(&pull_request, &review, branch_name, &commits);
                         return (StatusCode::OK, "pr_review [comment]".into());
                     }
 
@@ -512,7 +523,7 @@ impl GithubEventHandler {
                             .build(),
                     ];
 
-                    let mut participants = self.all_participants(&pull_request);
+                    let mut participants = self.all_participants(&pull_request, &commits);
                     for username in util::get_mentioned_usernames(review.body()) {
                         participants.push(github::User::new(username))
                     }
@@ -524,6 +535,8 @@ impl GithubEventHandler {
                         &self.data.sender,
                         &self.data.repository,
                         &participants,
+                        branch_name,
+                        &commits,
                     );
                 }
             }
@@ -532,7 +545,7 @@ impl GithubEventHandler {
         (StatusCode::OK, "pr_review".into())
     }
 
-    fn do_pull_request_comment(&self, pull_request: &dyn github::PullRequestLike, comment: &dyn github::CommentLike) {
+    fn do_pull_request_comment(&self, pull_request: &dyn github::PullRequestLike, comment: &dyn github::CommentLike, branch_name: &str, commits: &Vec<github::Commit>) {
         if comment.body().trim().len() == 0 {
             return;
         }
@@ -551,7 +564,7 @@ impl GithubEventHandler {
                 .build(),
         ];
 
-        let mut participants = self.all_participants(pull_request);
+        let mut participants = self.all_participants(pull_request, &commits);
         for username in util::get_mentioned_usernames(comment.body()) {
             participants.push(github::User::new(username))
         }
@@ -563,6 +576,8 @@ impl GithubEventHandler {
             &self.data.sender,
             &self.data.repository,
             &participants,
+            &branch_name,
+            &commits,
         );
 
     }
@@ -590,6 +605,10 @@ impl GithubEventHandler {
                             .build(),
                     ];
 
+                    // TODO: should try to tie this back to a PR to get this to the right channel.
+                    let branch_name = "";
+                    let commits = Vec::<github::Commit>::new();
+
                     self.messenger.send_to_all(
                         &msg,
                         &attachments,
@@ -597,6 +616,8 @@ impl GithubEventHandler {
                         &self.data.sender,
                         &self.data.repository,
                         &vec![],
+                        branch_name,
+                        &commits,
                     );
                 }
             }
@@ -608,11 +629,15 @@ impl GithubEventHandler {
     fn handle_issue_comment(&self) -> EventResponse {
         if let Some(ref comment) = self.data.comment {
             if self.action == "created" {
+                // issues do not have branches or commits -> main channel is fine.
+                let branch_name = "";
+                let commits = vec![];
+
                 // Check to see if we remapped this "issue" to a PR
                 if let Some(ref pr) = self.data.pull_request {
-                    self.do_pull_request_comment(&pr, &comment);
+                    self.do_pull_request_comment(&pr, &comment, branch_name, &commits);
                 } else if let Some(ref issue) = self.data.issue {
-                    self.do_pull_request_comment(&issue, &comment);
+                    self.do_pull_request_comment(&issue, &comment, branch_name, &commits);
                 }
             }
         }
@@ -707,7 +732,9 @@ impl GithubEventHandler {
                             &pull_request.user,
                             &self.data.sender,
                             &self.data.repository,
-                            &self.all_participants_with_commits(&pull_request, &commits),
+                            &self.all_participants(&pull_request, &commits),
+                            &branch_name,
+                            &commits,
                         );
 
                         if self.data.forced() && self.config.repos().notify_force_push(&self.data.repository) {
@@ -748,10 +775,12 @@ impl GithubEventHandler {
         (StatusCode::OK, "push".into())
     }
 
-    fn merge_pull_request_all_labels(&self, pull_request: &github::PullRequest, release_branch_prefix: &str) {
+    fn merge_pull_request_all_labels(&self, pull_request: &github::PullRequest, release_branch_prefix: &str, commits: &Vec<github::Commit>) {
         if !pull_request.is_merged() {
             return;
         }
+
+        let branch_name = &pull_request.base.ref_name;
 
         let labels = match self.github_session.get_pull_request_labels(
             &self.data.repository.owner.login(),
@@ -765,13 +794,15 @@ impl GithubEventHandler {
                     &vec![SlackAttachmentBuilder::new(&format!("{}", e)).color("danger").build()],
                     &pull_request.user,
                     &self.data.repository,
+                    branch_name,
+                    &commits,
                 );
                 return;
             }
         };
 
         for label in &labels {
-            self.merge_pull_request(pull_request, label, release_branch_prefix);
+            self.merge_pull_request(pull_request, label, release_branch_prefix, &commits);
         }
     }
 
@@ -780,6 +811,7 @@ impl GithubEventHandler {
         pull_request: &github::PullRequest,
         label: &github::Label,
         release_branch_prefix: &str,
+        commits: &Vec<github::Commit>,
     ) {
         if !pull_request.is_merged() {
             return;
@@ -796,7 +828,7 @@ impl GithubEventHandler {
             release_branch_prefix.to_string() + &backport
         };
 
-        let req = pr_merge::req(&self.data.repository, pull_request, &target_branch, release_branch_prefix);
+        let req = pr_merge::req(&self.data.repository, pull_request, &target_branch, release_branch_prefix, commits.clone());
         self.pr_merge.send(req);
     }
 }

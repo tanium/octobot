@@ -44,12 +44,12 @@ struct GithubHandlerTest {
 }
 
 impl GithubHandlerTest {
-    fn expect_will_merge_branches(&mut self, release_branch_prefix: &str, branches: Vec<String>) {
+    fn expect_will_merge_branches(&mut self, release_branch_prefix: &str, branches: Vec<String>, commits: Vec<Commit>) {
         let repo = &self.handler.data.repository;
         let pr = &self.handler.data.pull_request.as_ref().unwrap();
 
         for branch in branches {
-            self.pr_merge.expect_req(pr_merge::req(repo, pr, &branch, release_branch_prefix));
+            self.pr_merge.expect_req(pr_merge::req(repo, pr, &branch, release_branch_prefix, commits.clone()));
         }
     }
 
@@ -63,6 +63,18 @@ impl GithubHandlerTest {
         let repo = &self.handler.data.repository;
 
         self.repo_version.expect_req(repo_version::req(repo, branch, commit_hash, commits));
+    }
+
+    fn mock_pull_request_commits(&self) -> Vec<Commit> {
+        let commits = some_commits();
+        self.github.mock_get_pull_request_commits(
+            "some-user",
+            "some-repo",
+            32,
+            Ok(commits.clone()),
+        );
+
+        commits
     }
 }
 
@@ -126,7 +138,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             data: data,
             action: "".to_string(),
             config: config.clone(),
-            messenger: Box::new(messenger::new(config.clone(), slack_sender)),
+            messenger: messenger::new(config.clone(), slack_sender),
             github_session: github.clone(),
             jira_session: None,
             pr_merge: pr_merge_sender,
@@ -344,12 +356,7 @@ fn test_pull_request_comment() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("I think this file should change, cc: @mentioned-participant")
@@ -384,12 +391,7 @@ fn test_pull_request_review_commented() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("I think this file should change, cc: @mentioned-participant")
@@ -425,6 +427,7 @@ fn test_pull_request_comments_ignore_empty_messages() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
+    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
@@ -446,6 +449,7 @@ fn test_pull_request_comments_ignore_octobot() {
         user: User::new("octobot[bot]"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
+    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
@@ -466,12 +470,7 @@ fn test_pull_request_review_approved() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("I like it! cc: @mentioned-participant")
@@ -507,12 +506,7 @@ fn test_pull_request_review_changes_requested() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("It needs some work! cc: @mentioned-participant")
@@ -541,12 +535,7 @@ fn test_pull_request_opened() {
     test.handler.action = "opened".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-owner");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     expect_jira_ref_fail(&test.github);
 
@@ -577,12 +566,7 @@ fn test_pull_request_closed() {
     test.handler.action = "closed".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-closer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("")
@@ -611,12 +595,7 @@ fn test_pull_request_reopened() {
     test.handler.action = "reopened".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-closer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("")
@@ -648,12 +627,7 @@ fn test_pull_request_assigned() {
         pr.assignees.push(User::new("assign2"));
     }
     test.handler.data.sender = User::new("the-pr-closer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("")
@@ -683,12 +657,7 @@ fn test_pull_request_unassigned() {
     test.handler.action = "unassigned".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.sender = User::new("the-pr-closer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("")
@@ -720,12 +689,7 @@ fn test_pull_request_review_requested() {
         pr.requested_reviewers = Some(vec![User::new("joe-reviewer"), User::new("smith-reviewer")]);
     }
     test.handler.data.sender = User::new("the-pr-closer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("")
@@ -759,12 +723,7 @@ fn test_pull_request_review_no_username() {
         pr.requested_reviewers = Some(vec![User::new("some-unknown-reviewer")]);
     }
     test.handler.data.sender = User::new("the-pr-closer");
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     let attach = vec![
         SlackAttachmentBuilder::new("")
@@ -810,6 +769,7 @@ fn test_pull_request_labeled_not_merged() {
         pr.merged = Some(false);
     }
     test.handler.data.sender = User::new("the-pr-owner");
+    test.mock_pull_request_commits();
 
     // labeled but not merged --> noop
 
@@ -828,12 +788,7 @@ fn test_pull_request_merged_error_getting_labels() {
     }
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
     test.github.mock_get_pull_request_labels(
         "some-user",
         "some-repo",
@@ -878,12 +833,7 @@ fn test_pull_request_merged_no_labels() {
     }
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
     test.github.mock_get_pull_request_labels("some-user", "some-repo", 32, Ok(vec![]));
 
     let attach = vec![
@@ -925,12 +875,7 @@ fn test_pull_request_merged_backport_labels() {
     ];
     let msg = "Pull Request merged";
 
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    let commits = test.mock_pull_request_commits();
     test.github.mock_get_pull_request_labels(
         "some-user",
         "some-repo",
@@ -955,6 +900,7 @@ fn test_pull_request_merged_backport_labels() {
     test.expect_will_merge_branches(
         "release/",
         vec!["release/1.0".into(), "release/2.0".into(), "release/other-thing".into()],
+        commits,
     );
 
     let resp = test.handler.handle_event().unwrap();
@@ -991,12 +937,14 @@ fn test_pull_request_merged_backport_labels_custom_pattern() {
     ];
     let msg = "Pull Request merged";
 
+    let commits = some_commits();
     test.github.mock_get_pull_request_commits(
         "some-user",
         "custom-branches-repo",
         32,
-        Ok(some_commits()),
+        Ok(commits.clone()),
     );
+
     test.github.mock_get_pull_request_labels(
         "some-user",
         "custom-branches-repo",
@@ -1024,7 +972,7 @@ fn test_pull_request_merged_backport_labels_custom_pattern() {
         "the-other-prefix-1.0".into(),
         "the-other-prefix-2.0".into(),
         "the-other-prefix-other-thing".into(),
-    ]);
+    ], commits);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1042,7 +990,9 @@ fn test_pull_request_merged_retroactively_labeled() {
     test.handler.data.label = Some(Label::new("backport-7.123"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.expect_will_merge_branches("release/", vec!["release/7.123".into()]);
+    let commits = test.mock_pull_request_commits();
+
+    test.expect_will_merge_branches("release/", vec!["release/7.123".into()], commits);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1060,7 +1010,9 @@ fn test_pull_request_merged_master_branch() {
     test.handler.data.label = Some(Label::new("backport-master"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.expect_will_merge_branches("release/", vec!["master".into()]);
+    let commits = test.mock_pull_request_commits();
+
+    test.expect_will_merge_branches("release/", vec!["master".into()], commits);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1078,7 +1030,9 @@ fn test_pull_request_merged_develop_branch() {
     test.handler.data.label = Some(Label::new("backport-develop"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.expect_will_merge_branches("release/", vec!["develop".into()]);
+    let commits = test.mock_pull_request_commits();
+
+    test.expect_will_merge_branches("release/", vec!["develop".into()], commits);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1096,7 +1050,9 @@ fn test_pull_request_merged_main_branch() {
     test.handler.data.label = Some(Label::new("backport-main"));
     test.handler.data.sender = User::new("the-pr-merger");
 
-    test.expect_will_merge_branches("release/", vec!["main".into()]);
+    let commits = test.mock_pull_request_commits();
+
+    test.expect_will_merge_branches("release/", vec!["main".into()], commits);
 
     let resp = test.handler.handle_event().unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1241,12 +1197,8 @@ fn test_push_force_notify() {
         None,
         Ok(vec![pr.clone()]),
     );
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+
+    test.mock_pull_request_commits();
 
     expect_jira_ref_fail_pr(&test.github, &pr);
 
@@ -1291,12 +1243,7 @@ fn test_push_force_notify_wip() {
         None,
         Ok(vec![pr]),
     );
-    test.github.mock_get_pull_request_commits(
-        "some-user",
-        "some-repo",
-        32,
-        Ok(some_commits()),
-    );
+    test.mock_pull_request_commits();
 
     // Note: no expectations here.
 
