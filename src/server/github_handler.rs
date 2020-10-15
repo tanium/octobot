@@ -368,12 +368,12 @@ impl GithubEventHandler {
                 notify_channel_only = true;
             }
 
-            let commits: Vec<github::Commit>;
-            if verb.is_some() || self.action == "labeled" {
-                commits = self.pull_request_commits(&pull_request);
-            } else {
-                commits = vec![];
+            // early exit if we have nothing to do here.
+            if verb.is_none() && self.action != "labeled" {
+                return (StatusCode::OK, "pr".into())
             }
+
+            let commits = self.pull_request_commits(&pull_request);
 
             if let Some(ref verb) = verb {
                 let branch_name = &pull_request.base.ref_name;
