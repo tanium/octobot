@@ -36,8 +36,9 @@ pub struct RepoJiraConfig {
     pub version_script: String,
 
     // An override to the entire repo slack channel.
-    // If specified, PRs for this JIRA will be sent *only* to this slack channel,
-    // not to the whole repo slack channel.
+    // If specified, PRs that match either a main branch or the the release branch regex,
+    // and whose commits mention this JIRA project will be sent to this slack channel
+    // instead of the repo's default slack channel.
     #[serde(default)]
     pub channel: String,
 
