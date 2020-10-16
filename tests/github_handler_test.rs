@@ -618,6 +618,54 @@ fn test_pull_request_reopened() {
 }
 
 #[test]
+fn test_pull_request_ready_for_review() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "ready_for_review".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.mock_pull_request_commits();
+
+    expect_jira_ref_fail(&test.github);
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    let msg = "Pull Request is ready for review";
+
+    test.slack.expect(vec![
+        slack::req("the-reviews-channel", &format!("{} {}", msg, REPO_MSG), attach.clone()),
+        slack::req("@the.pr.owner", msg, attach.clone()),
+        slack::req("@assign1", msg, attach.clone()),
+        slack::req("@bob.author", msg, attach.clone()),
+        slack::req("@joe.reviewer", msg, attach.clone()),
+    ]);
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+}
+
+#[test]
+fn test_pull_request_edited() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "edited".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.mock_pull_request_commits();
+
+    expect_jira_ref_fail(&test.github);
+
+    // no slack mocks
+
+    let resp = test.handler.handle_event().unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+}
+
+#[test]
 fn test_pull_request_assigned() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
