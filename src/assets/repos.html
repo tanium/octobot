@@ -23,8 +23,8 @@
   </table>
 </div>
 
-<div class="modal fade" tabindex="-1" role="dialog" id="add-repo-modal">
-  <div class="modal-dialog" role="document">
+<div class="modal fade bd-example-modal-lg" tabindex="-1" role="dialog" id="add-repo-modal">
+  <div class="modal-dialog modal-lg" role="document">
     <div class="modal-content">
       <form class="" ng-submit="addRepoSubmit()">
         <div class="modal-header">
@@ -34,9 +34,8 @@
         <div class="modal-body">
           <h4>Repo</h4>
           <div class="form-group">
-            <label>Repository full name or org</label>
-            <input id="add-repo-repo" type="text" class="form-control" ng-model="theRepo.repo"
-                   placeholder="some-org/some-repo, or some-org" required />
+            <label>Repository</label>
+            <input id="add-repo-repo" type="text" class="form-control" ng-model="theRepo.repo" placeholder="some-org/some-repo" required />
           </div>
           <div class="form-group">
             <label>Slack channel</label>
