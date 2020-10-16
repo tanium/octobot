@@ -332,29 +332,41 @@ impl GithubEventHandler {
     }
 
     fn handle_pr(&self) -> EventResponse {
+        enum NotifyMode {
+            NotifyAll,
+            NotifyChannel,
+            NotifyNone,
+        }
+
         if let Some(ref pull_request) = self.data.pull_request {
             let verb: Option<String>;
-            let notify_channel_only;
+            let notify_mode;
             if self.action == "opened" {
                 verb = Some(format!("opened by {}", self.slack_user_name(&pull_request.user)));
-                notify_channel_only = true;
+                notify_mode = NotifyMode::NotifyChannel;
             } else if self.action == "closed" {
                 if pull_request.merged == Some(true) {
                     verb = Some("merged".to_string());
                 } else {
                     verb = Some("closed".to_string());
                 }
-                notify_channel_only = false;
+                notify_mode = NotifyMode::NotifyAll;
             } else if self.action == "reopened" {
                 verb = Some("reopened".to_string());
-                notify_channel_only = true;
+                notify_mode = NotifyMode::NotifyChannel;
+            } else if self.action == "edited" {
+                verb = Some("edited".to_string());
+                notify_mode = NotifyMode::NotifyNone;
+            } else if self.action == "ready_for_review" {
+                verb = Some("is ready for review".to_string());
+                notify_mode = NotifyMode::NotifyAll;
             } else if self.action == "assigned" {
                 let assignees_str = self.slack_user_names(&pull_request.assignees).join(", ");
                 verb = Some(format!("assigned to {}", assignees_str));
-                notify_channel_only = false;
+                notify_mode = NotifyMode::NotifyAll;
             } else if self.action == "unassigned" {
                 verb = Some("unassigned".to_string());
-                notify_channel_only = true;
+                notify_mode = NotifyMode::NotifyChannel;
             } else if self.action == "review_requested" {
                 if let Some(ref reviewers) = pull_request.requested_reviewers {
                     let assignees_str = self.slack_user_names(reviewers).join(", ");
@@ -362,10 +374,10 @@ impl GithubEventHandler {
                 } else {
                     verb = None;
                 }
-                notify_channel_only = false;
+                notify_mode = NotifyMode::NotifyAll;
             } else {
                 verb = None;
-                notify_channel_only = true;
+                notify_mode = NotifyMode::NotifyNone;
             }
 
             // early exit if we have nothing to do here.
@@ -388,9 +400,11 @@ impl GithubEventHandler {
                 if !pull_request.is_draft() {
                     let msg = format!("Pull Request {}", verb);
 
-                    if notify_channel_only {
-                        self.messenger.send_to_channel(&msg, &attachments, &self.data.repository, &branch_name, &commits);
-                    } else {
+                    match notify_mode {
+                    NotifyMode::NotifyChannel =>
+                        self.messenger.send_to_channel(&msg, &attachments, &self.data.repository, &branch_name, &commits),
+
+                    NotifyMode::NotifyAll =>
                         self.messenger.send_to_all(
                             &msg,
                             &attachments,
@@ -400,15 +414,18 @@ impl GithubEventHandler {
                             &self.all_participants(&pull_request, &commits),
                             &branch_name,
                             &commits,
-                        );
+                        ),
 
-                    }
+                    NotifyMode::NotifyNone => (),
+                    };
                 }
 
-                // Mark JIRAs in review for PR open
-                if self.action == "opened" {
-                    let jira_projects = self.config.repos().jira_projects(&self.data.repository, branch_name);
+                let jira_projects = self.config.repos().jira_projects(&self.data.repository, branch_name);
 
+                let is_pull_request_ready = self.action == "opened" || self.action == "ready_for_review";
+
+                // Mark JIRAs in review for PR open
+                if is_pull_request_ready {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
                             if commits.len() > MAX_COMMITS_FOR_JIRA_CONSIDERATION {
@@ -436,7 +453,11 @@ impl GithubEventHandler {
                             }
                         }
                     }
+                }
 
+                // Check for jira reference on ready for review and PR title rename
+                // (since JIRA check ignore is based on PR title)
+                if is_pull_request_ready || self.action == "edited" {
                     // Mark if no JIRA references
                     jira::check_jira_refs(
                         &pull_request,
