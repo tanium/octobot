@@ -422,10 +422,10 @@ impl GithubEventHandler {
 
                 let jira_projects = self.config.repos().jira_projects(&self.data.repository, branch_name);
 
-                let isPullRequestReady = self.action == "opened" || self.action == "ready_for_review";
+                let is_pull_request_ready = self.action == "opened" || self.action == "ready_for_review";
 
                 // Mark JIRAs in review for PR open
-                if isPullRequestReady {
+                if is_pull_request_ready {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
                             if commits.len() > MAX_COMMITS_FOR_JIRA_CONSIDERATION {
@@ -457,7 +457,7 @@ impl GithubEventHandler {
 
                 // Check for jira reference on ready for review and PR title rename
                 // (since JIRA check ignore is based on PR title)
-                if isPullRequestReady || self.action == "edited" {
+                if is_pull_request_ready || self.action == "edited" {
                     // Mark if no JIRA references
                     jira::check_jira_refs(
                         &pull_request,
