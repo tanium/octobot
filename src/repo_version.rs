@@ -206,6 +206,11 @@ impl worker::Runner<RepoVersionRequest> for Runner {
         if let Some(ref jira_session) = self.jira_session {
             if let Some(ref jira_config) = self.config.jira {
                 for config in &configs {
+                    // Don't run version scripts for jiras not mentioned
+                    if !jira::workflow::references_jira(&req.commits, &config.jira_project) {
+                        continue;
+                    }
+
                     let mut resolved = false;
                     let jira = jira_session.borrow();
                     let jira_projects = vec![config.jira_project.clone()];
