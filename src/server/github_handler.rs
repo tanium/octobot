@@ -629,14 +629,18 @@ impl GithubEventHandler {
     fn handle_issue_comment(&self) -> EventResponse {
         if let Some(ref comment) = self.data.comment {
             if self.action == "created" {
-                // issues do not have branches or commits -> main channel is fine.
-                let branch_name = "";
-                let commits = vec![];
-
                 // Check to see if we remapped this "issue" to a PR
                 if let Some(ref pr) = self.data.pull_request {
+                    let branch_name = &pr.base.ref_name;
+                    let commits = self.pull_request_commits(&pr);
+
                     self.do_pull_request_comment(&pr, &comment, branch_name, &commits);
                 } else if let Some(ref issue) = self.data.issue {
+                    // issues do not have branches or commits -> main channel is fine.
+                    let branch_name = "";
+                    let commits = vec![];
+
+
                     self.do_pull_request_comment(&issue, &comment, branch_name, &commits);
                 }
             }
