@@ -784,9 +784,11 @@ impl GithubEventHandler {
                 }
             }
 
+            // Note: check for jira projects on the branch being pushed to
+            let has_jira_projects = !self.config.repos().jira_projects(&self.data.repository, &branch_name).is_empty();
+
             // Mark JIRAs as merged
-            let dest_jira_projects = self.config.repos().jira_projects(&self.data.repository, &branch_name);
-            if is_versioned_branch && !dest_jira_projects.is_empty() {
+            if is_versioned_branch && has_jira_projects {
                 if let Some(ref commits) = self.data.commits {
                     let msg = repo_version::req(
                         &self.data.repository,
