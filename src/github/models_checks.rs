@@ -42,7 +42,7 @@ pub struct CheckRun {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CheckOutput {
-    title: Option<String>,
+    pub title: Option<String>,
     summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,

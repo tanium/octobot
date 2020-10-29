@@ -1,4 +1,5 @@
 use log;
+use conventional::{Commit, Simple as _};
 
 use crate::errors::*;
 use crate::jira;
@@ -6,20 +7,31 @@ use crate::github;
 
 const JIRA_REF_CONTEXT: &'static str = "jira";
 
+const ALLOWED_SKIP_TYPES : &'static [&'static str] = &[
+    "build",
+    "chore",
+    "docs",
+    "refactor",
+    "style",
+    "test",
+];
+
 pub fn check_jira_refs(
     pull_request: &github::PullRequest,
     commits: &Vec<github::Commit>,
     projects: &Vec<String>,
     github: &dyn github::api::Session) {
 
-    // Skip PRs named accordingl
-    if pull_request.title.to_lowercase().starts_with("chore:") ||
-       pull_request.title.to_lowercase().starts_with("build:") {
+    // Always skip projects with no JIRAs configured
+    if projects.is_empty() {
         return;
     }
 
-    // Always skip projects with no JIRAs configured
-    if projects.is_empty() {
+    // Skip PRs titled accordingly.
+    if let Some(commit_type) = conventional_commit_jira_skip_type(&pull_request.title) {
+        if let Err(e) = do_skip_jira_check(pull_request, commit_type, github) {
+            log::error!("Error marking skipped jira refs: {}", e);
+        }
         return;
     }
 
@@ -50,6 +62,41 @@ fn do_check_jira_refs(
     } else {
         run = run.completed(github::Conclusion::Success);
     }
+
+    github.create_check_run(pull_request, &run)?;
+
+    Ok(())
+}
+
+fn conventional_commit_jira_skip_type(title: &str) -> Option<&str> {
+    match Commit::new(title) {
+        Ok(commit) => {
+            for t in ALLOWED_SKIP_TYPES {
+                if *t == commit.type_() {
+                    return Some(t)
+                }
+            }
+
+            return None;
+        }
+        Err(_) => {
+            // no conventional commit: require jira
+            None
+        },
+    }
+}
+
+fn do_skip_jira_check(
+    pull_request: &github::PullRequest,
+    commit_type: &str,
+    github: &dyn github::api::Session) -> Result<()> {
+
+    let msg = "Skipped JIRA check";
+    let body = format!("Skipped JIRA check for commit type: {}", commit_type);
+
+    let mut run = github::CheckRun::new(JIRA_REF_CONTEXT, pull_request, None);
+    run = run.completed(github::Conclusion::Neutral);
+    run.output = Some(github::CheckOutput::new(&msg, &body));
 
     github.create_check_run(pull_request, &run)?;
 

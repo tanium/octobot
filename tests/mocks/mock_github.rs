@@ -517,5 +517,10 @@ impl MockGithub {
 }
 
 fn format_check_run(run: &CheckRun) -> String {
-    format!("{}, {:?}", run.name, run.conclusion.as_ref().unwrap_or(&Conclusion::ActionRequired))
+    let output = match &run.output {
+        Some(o) => o.title.as_ref().unwrap_or(&String::new()).clone(),
+        None => String::new(),
+    };
+
+    format!("{}, {:?}, {}", run.name, run.conclusion.as_ref().unwrap_or(&Conclusion::ActionRequired), output)
 }
