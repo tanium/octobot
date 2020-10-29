@@ -8,8 +8,9 @@ use crate::github;
 const JIRA_REF_CONTEXT: &'static str = "jira";
 
 const ALLOWED_SKIP_TYPES : &'static [&'static str] = &[
-    "chore",
     "build",
+    "chore",
+    "docs",
     "refactor",
     "style",
     "test",
