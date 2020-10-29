@@ -681,8 +681,6 @@ impl GithubEventHandler {
             let release_branch_prefix = self.config.repos().release_branch_prefix(&self.data.repository);
             let is_versioned_branch = github::is_main_branch(&branch_name) || branch_name.starts_with(&release_branch_prefix);
 
-            let jira_projects = self.config.repos().jira_projects(&self.data.repository, &branch_name);
-
             // only lookup PRs for non-main branches
             if !is_versioned_branch {
                 let prs = match self.github_session.get_pull_requests(
@@ -772,6 +770,9 @@ impl GithubEventHandler {
                             self.force_push.send(msg);
                         }
 
+                        // Lookup jira projects for this PR's base branch
+                        let jira_projects = self.config.repos().jira_projects(&self.data.repository, &pull_request.base.ref_name);
+
                         // Mark if no JIRA references
                         jira::check_jira_refs(
                             &pull_request,
@@ -784,7 +785,8 @@ impl GithubEventHandler {
             }
 
             // Mark JIRAs as merged
-            if is_versioned_branch && !jira_projects.is_empty() {
+            let dest_jira_projects = self.config.repos().jira_projects(&self.data.repository, &branch_name);
+            if is_versioned_branch && !dest_jira_projects.is_empty() {
                 if let Some(ref commits) = self.data.commits {
                     let msg = repo_version::req(
                         &self.data.repository,
