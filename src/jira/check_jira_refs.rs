@@ -1,4 +1,5 @@
 use log;
+use conventional::{Commit, Simple as _};
 
 use crate::errors::*;
 use crate::jira;
@@ -6,25 +7,50 @@ use crate::github;
 
 const JIRA_REF_CONTEXT: &'static str = "jira";
 
+const ALLOWED_SKIP_TYPES : &'static [&'static str] = &[
+    "chore",
+    "build",
+    "refactor",
+    "style",
+    "test",
+];
+
 pub fn check_jira_refs(
     pull_request: &github::PullRequest,
     commits: &Vec<github::Commit>,
     projects: &Vec<String>,
     github: &dyn github::api::Session) {
 
-    // Skip PRs named accordingl
-    if pull_request.title.to_lowercase().starts_with("chore:") ||
-       pull_request.title.to_lowercase().starts_with("build:") {
-        return;
-    }
-
     // Always skip projects with no JIRAs configured
     if projects.is_empty() {
         return;
     }
 
+    // Skip PRs titled accordingly.
+    if !conventional_commit_requires_jira(&pull_request.title) {
+        return;
+    }
+
     if let Err(e) = do_check_jira_refs(pull_request, commits, projects, github) {
         log::error!("Error checking jira refs: {}", e);
+    }
+}
+
+fn conventional_commit_requires_jira(title: &str) -> bool {
+    match Commit::new(title) {
+        Ok(commit) => {
+            for t in ALLOWED_SKIP_TYPES {
+                if *t == commit.type_() {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        Err(_) => {
+            // no conventional commit: require jira
+            true
+        },
     }
 }
 

@@ -55,6 +55,19 @@ fn test_check_jira_refs_chore_commit() {
 }
 
 #[test]
+fn test_check_jira_refs_chore_commit_scope() {
+    let git = MockGithub::new();
+
+    let pr = new_pr("chore(deps): Update deps");
+    let commits = vec![new_commit("update deps")];
+    let projects = vec!["SERVER".into()];
+
+    // No assertions -- it shouldn't do anything
+
+    jira::check_jira_refs(&pr, &commits, &projects, &git);
+}
+
+#[test]
 fn test_check_jira_refs_build_commit() {
     let git = MockGithub::new();
 

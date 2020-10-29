@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 use std::sync::Arc;
 
+use conventional::{Commit, Simple as _};
 use failure::format_err;
 use log::{error, info};
 use regex::Regex;
@@ -176,7 +177,24 @@ fn make_merge_desc(
     // strip out PR from title
     let orig_title = pr_regex.replace(&orig_desc.0, "");
     // strip out previous merge title prefixes
-    let orig_title = prev_merge_regex.replace(&orig_title, "");
+    let mut orig_title = prev_merge_regex.replace(&orig_title, "").to_owned().to_string();
+
+    // strip out conventional commit prefix
+    let mut prefix = String::new();
+    match Commit::new(&orig_title) {
+        Ok(commit) => {
+            prefix = commit.type_().to_owned();
+            if let Some(s) = commit.scope() {
+                prefix += &format!("({})", s);
+            }
+            if commit.breaking() {
+                prefix += "!";
+            }
+            prefix += ": ";
+            orig_title = commit.description().to_owned();
+        }
+        Err(_) => (),
+    };
 
     // strip out 'release' from the prefix to keep titles shorter
     let mut target_branch = target_branch.to_owned();
@@ -188,7 +206,7 @@ fn make_merge_desc(
         orig_base_branch = orig_base_branch.replacen(release_branch_prefix, "", 1);
     }
 
-    let title = format!("{}->{}: {}", orig_base_branch, target_branch, orig_title);
+    let title = format!("{}{}->{}: {}", prefix, orig_base_branch, target_branch, orig_title);
     let mut body = orig_desc.1;
 
     if body.len() != 0 {

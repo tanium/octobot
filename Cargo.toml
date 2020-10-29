@@ -54,6 +54,7 @@ toml = "0.5.0"
 unidiff = "0.3.2"
 url = "1.7.2"
 tokio-threadpool = "0.1.12"
+conventional = "0.5.0"
 
 [dependencies.jsonwebtoken]
 git = "https://github.com/matthauck/jsonwebtoken"
