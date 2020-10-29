@@ -24,7 +24,17 @@ fn expect_pass(git: &MockGithub, pr: &github::PullRequest) {
 }
 
 fn expect_failure(git: &MockGithub, pr: &github::PullRequest) {
-    git.mock_create_check_run(&pr, &github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Neutral), Ok(1));
+    let mut run = github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Neutral);
+    run.output = Some(github::CheckOutput::new("Missing JIRA reference", ""));
+
+    git.mock_create_check_run(&pr, &run, Ok(1));
+}
+
+fn expect_skip(git: &MockGithub, pr: &github::PullRequest) {
+    let mut run = github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Neutral);
+    run.output = Some(github::CheckOutput::new("Skipped JIRA check", ""));
+
+    git.mock_create_check_run(&pr, &run, Ok(1));
 }
 
 
@@ -49,7 +59,7 @@ fn test_check_jira_refs_chore_commit() {
     let commits = vec![new_commit("did stuff")];
     let projects = vec!["SERVER".into()];
 
-    // No assertions -- it shouldn't do anything
+    expect_skip(&git, &pr);
 
     jira::check_jira_refs(&pr, &commits, &projects, &git);
 }
@@ -62,7 +72,7 @@ fn test_check_jira_refs_chore_commit_scope() {
     let commits = vec![new_commit("update deps")];
     let projects = vec!["SERVER".into()];
 
-    // No assertions -- it shouldn't do anything
+    expect_skip(&git, &pr);
 
     jira::check_jira_refs(&pr, &commits, &projects, &git);
 }
@@ -75,7 +85,7 @@ fn test_check_jira_refs_build_commit() {
     let commits = vec![new_commit("did stuff")];
     let projects = vec!["SERVER".into()];
 
-    // No assertions -- it shouldn't do anything
+    expect_skip(&git, &pr);
 
     jira::check_jira_refs(&pr, &commits, &projects, &git);
 }

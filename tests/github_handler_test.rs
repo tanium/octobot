@@ -223,7 +223,10 @@ fn expect_jira_ref_fail(git: &MockGithub) {
 }
 
 fn expect_jira_ref_fail_pr(git: &MockGithub, pr: &PullRequest) {
-    git.mock_create_check_run(&pr, &CheckRun::new("jira", &pr, None).completed(Conclusion::Neutral), Ok(1));
+    let mut run = CheckRun::new("jira", &pr, None).completed(Conclusion::Neutral);
+    run.output = Some(CheckOutput::new("Missing JIRA reference", ""));
+
+    git.mock_create_check_run(&pr, &run, Ok(1));
 }
 
 fn expect_jira_ref_pass(git: &MockGithub) {
