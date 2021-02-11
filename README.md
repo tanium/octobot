@@ -32,7 +32,7 @@ This will result in docker image called `octobot:latest` that you can deploy as 
 
 ### Configuration
 
-There is one main config file to know about. Hopefully this examples will be sufficiently explanatory:
+There is one main config file to know about. Hopefully this example will be sufficiently explanatory:
 
 config.toml
 
