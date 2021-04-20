@@ -81,15 +81,19 @@ const TRIM_MESSAGES_AT: usize = 200;
 const TRIM_MESSAGES_TO: usize = 20;
 
 impl Slack {
-    pub fn new(webhook_url: &str) -> Slack {
+    pub fn new(webhook_url: Option<String>) -> Slack {
         Slack {
             client: reqwest::r#async::Client::new(),
-            webhook_url: webhook_url.into(),
+            webhook_url: webhook_url.unwrap_or(String::new()),
             recent_messages: Mutex::new(Vec::new()),
         }
     }
 
     fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
+        if self.webhook_url.is_empty() {
+            return
+        }
+
         let slack_msg = SlackMessage {
             text: msg.to_string(),
             attachments: attachments,
@@ -136,7 +140,7 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
     }
 }
 
-pub fn new_runner(webhook_url: &str) -> Arc<dyn worker::Runner<SlackRequest>> {
+pub fn new_runner(webhook_url: Option<String>) -> Arc<dyn worker::Runner<SlackRequest>> {
     Arc::new(Runner {
         slack: Arc::new(Slack::new(webhook_url)),
     })
