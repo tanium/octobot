@@ -34,7 +34,7 @@ pub struct ConfigModel {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MainConfig {
-    pub slack_webhook_url: String,
+    pub slack_webhook_url: Option<String>,
     pub listen_addr: Option<String>,
     pub listen_addr_ssl: Option<String>,
     pub clone_root_dir: String,
@@ -163,7 +163,7 @@ impl ConfigModel {
     pub fn new() -> ConfigModel {
         ConfigModel {
             main: MainConfig {
-                slack_webhook_url: String::new(),
+                slack_webhook_url: None,
                 listen_addr: None,
                 listen_addr_ssl: None,
                 clone_root_dir: String::new(),
@@ -296,7 +296,7 @@ app_key_file = "some-file.key"
 "#;
         let config = parse_string(config_str).unwrap();
 
-        assert_eq!("https://hooks.slack.com/foo", config.main.slack_webhook_url);
+        assert_eq!(Some(String::from("https://hooks.slack.com/foo")), config.main.slack_webhook_url);
 
     }
 }
