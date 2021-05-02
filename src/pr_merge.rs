@@ -63,19 +63,24 @@ pub fn merge_pull_request(
             .color("danger")
             .build();
 
+        let msg = &format!(
+            "Error creating merge PR from {} to {}",
+            req.pull_request.head.ref_name,
+            req.target_branch
+        );
         let messenger = messenger::new(config.clone(), slack.clone());
         messenger.send_to_owner(
-            &format!(
-                "Error creating merge PR from {} to {}",
-                req.pull_request.head.ref_name,
-                req.target_branch
-            ),
+            &msg,
             &vec![attach],
             &req.pull_request.user,
             &req.repo,
             &req.target_branch,
             &req.commits,
         );
+
+        if let Err(e) = session.comment_pull_request(req.repo.owner.login(), &req.repo.name, req.pull_request.number, msg) {
+            error!("Error making backport failure comment on pull request: {}", e);
+        }
     }
 }
 

@@ -409,6 +409,14 @@ fn test_pr_merge_backport_failure() {
         Err(format_err!("bad stuff")),
     );
 
+    test.github.mock_comment_pull_request(
+        "the-owner",
+        "the-repo",
+        123,
+        "Error creating merge PR from my-feature-branch to release/1.0",
+        Ok(()),
+    );
+
     test.slack.expect(vec![
         slack::req(
             "the-review-channel",
