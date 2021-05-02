@@ -1,23 +1,64 @@
 mod git_helper;
 mod mocks;
 
+use std::sync::Arc;
+
+use tempdir::TempDir;
+
+use octobot::config::Config;
+use octobot::db::Database;
 use git_helper::temp_git::TempGit;
 use mocks::mock_github::MockGithub;
 use octobot::github;
 use octobot::pr_merge;
+use octobot::repos;
+use octobot::slack::{self, SlackAttachmentBuilder};
+
+use failure::format_err;
+
+use mocks::mock_slack::MockSlack;
+
+struct PRMergeTest {
+    git: TempGit,
+    github: MockGithub,
+    config: Arc<Config>,
+    slack: MockSlack,
+}
+
+fn new_test() -> (PRMergeTest, TempDir) {
+    let temp_dir = TempDir::new("repos.rs").unwrap();
+    let db_file = temp_dir.path().join("db.sqlite3");
+    let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
+
+    let config = Arc::new(Config::new(db));
+    config.users_write().insert("the-pr-owner", "the.pr.owner").unwrap();
+    config
+        .repos_write()
+        .insert_info(&repos::RepoInfo::new("the-owner/the-repo", "the-review-channel")
+            .with_jira("SER").with_jira("CLI")
+            .with_force_push(true))
+        .expect("Failed to add some-user/some-repo");
+
+    // todo: configure channels/users
+    (PRMergeTest{
+        git: TempGit::new(),
+        github: MockGithub::new(),
+        config,
+        slack: MockSlack::new(vec![]),
+    }, temp_dir)
+}
 
 #[test]
 fn test_pr_merge_basic() {
-    let git = TempGit::new();
-    let github = MockGithub::new();
+    let (test, _temp_dir) = new_test();
 
     // setup a release branch
-    git.run_git(&["push", "origin", "master:release/1.0"]);
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
 
     // make a new commit on master
-    git.run_git(&["checkout", "master"]);
-    git.add_repo_file("file.txt", "contents1", "I made a change");
-    let commit1 = git.git.current_commit().unwrap();
+    test.git.run_git(&["checkout", "master"]);
+    test.git.add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
     let mut pr = github::PullRequest::new();
@@ -39,7 +80,7 @@ fn test_pr_merge_basic() {
     new_pr.number = 456;
     let new_pr = new_pr;
 
-    github.mock_create_pull_request(
+    test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
         "master->1.0: I made a change",
@@ -49,7 +90,7 @@ fn test_pr_merge_basic() {
         Ok(new_pr),
     );
 
-    github.mock_assign_pull_request(
+    test.github.mock_assign_pull_request(
         "the-owner",
         "the-repo",
         456,
@@ -57,7 +98,7 @@ fn test_pr_merge_basic() {
         Ok(()),
     );
 
-    github.mock_request_review(
+    test.github.mock_request_review(
         "the-owner",
         "the-repo",
         456,
@@ -65,22 +106,21 @@ fn test_pr_merge_basic() {
         Ok(()),
     );
 
-    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0", "release/")
-        .unwrap();
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
 
-    let (user, email) = git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
+    let (user, email) = test.git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
 
-    assert_eq!(user, git.user_name());
-    assert_eq!(email, git.user_email());
+    assert_eq!(user, test.git.user_name());
+    assert_eq!(email, test.git.user_email());
 
-    assert_eq!(456, created_pr.number);
-    assert_eq!("", git.run_git(&["diff", "master", "origin/my-feature-branch-1.0"]));
+    assert_eq!("", test.git.run_git(&["diff", "master", "origin/my-feature-branch-1.0"]));
 }
 
 #[test]
 fn test_pr_merge_ignore_space_change() {
-    let git = TempGit::new();
-    let github = MockGithub::new();
+    let (test, _temp_dir) = new_test();
 
     let contents_base = "
 if (true) {
@@ -111,17 +151,17 @@ if (true)    {
 }";
 
     // base contents
-    git.add_repo_file("file.cpp", contents_base, "base");
+    test.git.add_repo_file("file.cpp", contents_base, "base");
 
     // setup a release branch: make change in space length
-    git.run_git(&["checkout", "-b", "release/1.0"]);
-    git.add_repo_file("file.cpp", contents_10, "a change on 1.0");
-    git.run_git(&["push", "-u", "origin", "release/1.0"]);
+    test.git.run_git(&["checkout", "-b", "release/1.0"]);
+    test.git.add_repo_file("file.cpp", contents_10, "a change on 1.0");
+    test.git.run_git(&["push", "-u", "origin", "release/1.0"]);
 
     // make a new commit on master
-    git.run_git(&["checkout", "master"]);
-    git.add_repo_file("file.cpp", contents_master, "final change");
-    let commit1 = git.git.current_commit().unwrap();
+    test.git.run_git(&["checkout", "master"]);
+    test.git.add_repo_file("file.cpp", contents_master, "final change");
+    let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
     let mut pr = github::PullRequest::new();
@@ -137,7 +177,7 @@ if (true)    {
     new_pr.number = 456;
     let new_pr = new_pr;
 
-    github.mock_create_pull_request(
+    test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
         "master->1.0: final change",
@@ -147,7 +187,7 @@ if (true)    {
         Ok(new_pr),
     );
 
-    github.mock_assign_pull_request(
+    test.github.mock_assign_pull_request(
         "the-owner",
         "the-repo",
         456,
@@ -155,7 +195,7 @@ if (true)    {
         Ok(()),
     );
 
-    github.mock_comment_pull_request(
+    test.github.mock_comment_pull_request(
         "the-owner",
         "the-repo",
         456,
@@ -163,17 +203,16 @@ if (true)    {
         Ok(()),
     );
 
-    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0", "release/")
-        .unwrap();
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
 
-    assert_eq!(456, created_pr.number);
-    assert_eq!(contents_10_final, git.run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"]));
+    assert_eq!(contents_10_final, test.git.run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"]));
 }
 
 #[test]
 fn test_pr_merge_ignore_all_space() {
-    let git = TempGit::new();
-    let github = MockGithub::new();
+    let (test, _temp_dir) = new_test();
 
     let contents_base = "
 if (true) {
@@ -203,17 +242,17 @@ if (true) {
 }";
 
     // base contents
-    git.add_repo_file("file.cpp", contents_base, "base");
+    test.git.add_repo_file("file.cpp", contents_base, "base");
 
     // setup a release branch: make a change
-    git.run_git(&["checkout", "-b", "release/1.0"]);
-    git.add_repo_file("file.cpp", contents_10, "a change on 1.0");
-    git.run_git(&["push", "-u", "origin", "release/1.0"]);
+    test.git.run_git(&["checkout", "-b", "release/1.0"]);
+    test.git.add_repo_file("file.cpp", contents_10, "a change on 1.0");
+    test.git.run_git(&["push", "-u", "origin", "release/1.0"]);
 
     // make a new commit on master
-    git.run_git(&["checkout", "master"]);
-    git.add_repo_file("file.cpp", contents_master, "final change");
-    let commit1 = git.git.current_commit().unwrap();
+    test.git.run_git(&["checkout", "master"]);
+    test.git.add_repo_file("file.cpp", contents_master, "final change");
+    let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
     let mut pr = github::PullRequest::new();
@@ -229,7 +268,7 @@ if (true) {
     new_pr.number = 456;
     let new_pr = new_pr;
 
-    github.mock_create_pull_request(
+    test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
         "master->1.0: final change",
@@ -239,7 +278,7 @@ if (true) {
         Ok(new_pr),
     );
 
-    github.mock_assign_pull_request(
+    test.github.mock_assign_pull_request(
         "the-owner",
         "the-repo",
         456,
@@ -247,7 +286,7 @@ if (true) {
         Ok(()),
     );
 
-    github.mock_comment_pull_request(
+    test.github.mock_comment_pull_request(
         "the-owner",
         "the-repo",
         456,
@@ -255,25 +294,24 @@ if (true) {
         Ok(()),
     );
 
-    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0", "release/")
-        .unwrap();
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
 
-    assert_eq!(456, created_pr.number);
-    assert_eq!(contents_10_final, git.run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"]));
+    assert_eq!(contents_10_final, test.git.run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"]));
 }
 
 #[test]
 fn test_pr_merge_conventional_commit() {
-    let git = TempGit::new();
-    let github = MockGithub::new();
+    let (test, _temp_dir) = new_test();
 
     // setup a release branch
-    git.run_git(&["push", "origin", "master:release/1.0"]);
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
 
     // make a new commit on master
-    git.run_git(&["checkout", "master"]);
-    git.add_repo_file("file.txt", "contents1", "fix(thing)!: I made a change");
-    let commit1 = git.git.current_commit().unwrap();
+    test.git.run_git(&["checkout", "master"]);
+    test.git.add_repo_file("file.txt", "contents1", "fix(thing)!: I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
     let mut pr = github::PullRequest::new();
@@ -295,7 +333,7 @@ fn test_pr_merge_conventional_commit() {
     new_pr.number = 456;
     let new_pr = new_pr;
 
-    github.mock_create_pull_request(
+    test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
         "fix(thing)!: master->1.0: I made a change",
@@ -305,7 +343,7 @@ fn test_pr_merge_conventional_commit() {
         Ok(new_pr),
     );
 
-    github.mock_assign_pull_request(
+    test.github.mock_assign_pull_request(
         "the-owner",
         "the-repo",
         456,
@@ -313,7 +351,7 @@ fn test_pr_merge_conventional_commit() {
         Ok(()),
     );
 
-    github.mock_request_review(
+    test.github.mock_request_review(
         "the-owner",
         "the-repo",
         456,
@@ -321,14 +359,70 @@ fn test_pr_merge_conventional_commit() {
         Ok(()),
     );
 
-    let created_pr = pr_merge::merge_pull_request(&git.git, &github, "the-owner", "the-repo", &pr, "release/1.0", "release/")
-        .unwrap();
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
 
-    let (user, email) = git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
+    let (user, email) = test.git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
 
-    assert_eq!(user, git.user_name());
-    assert_eq!(email, git.user_email());
+    assert_eq!(user, test.git.user_name());
+    assert_eq!(email, test.git.user_email());
 
-    assert_eq!(456, created_pr.number);
-    assert_eq!("", git.run_git(&["diff", "master", "origin/my-feature-branch-1.0"]));
+    assert_eq!("", test.git.run_git(&["diff", "master", "origin/my-feature-branch-1.0"]));
+}
+
+#[test]
+fn test_pr_merge_backport_failure() {
+    let (mut test, _temp_dir) = new_test();
+
+    // setup a release branch
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    // make a new commit on master
+    test.git.run_git(&["checkout", "master"]);
+    test.git.add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
+
+    // pretend this came from a PR
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.title = "The Title".into();
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(commit1.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.assignees = vec![github::User::new("user1"), github::User::new("user2"), github::User::new("the-pr-author")];
+    pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
+    pr.reviews = Some(vec![
+        github::Review::new("fantastic change", github::User::new("reviewer2")),
+        github::Review::new("i like to comment on my own PRs", github::User::new("the-pr-author")),
+    ]);
+    pr.user = github::User::new("the-pr-author");
+    let pr = pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: I made a change",
+        &format!("(cherry-picked from {}, PR #123)", commit1),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Err(format_err!("bad stuff")),
+    );
+
+    test.slack.expect(vec![
+        slack::req(
+            "the-review-channel",
+            "Error creating merge PR from my-feature-branch to release/1.0 (<http://the-github-host/the-owner/the-repo|the-owner/the-repo>)",
+            vec![SlackAttachmentBuilder::new("bad stuff")
+                .title("Source PR: #123: \"The Title\"")
+                .title_link("")
+                .color("danger")
+                .build()]
+        )
+    ]);
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
 }
