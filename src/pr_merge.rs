@@ -19,30 +19,77 @@ use crate::worker;
 fn clone_and_merge_pull_request(
     github_app: &dyn GithubSessionFactory,
     clone_mgr: &GitCloneManager,
-    owner: &str,
-    repo: &str,
-    pull_request: &github::PullRequest,
-    target_branch: &str,
-    release_branch_prefix: &str,
-) -> Result<github::PullRequest> {
+    req: &PRMergeRequest,
+    config: Arc<Config>,
+    slack: Arc<dyn worker::Worker<SlackRequest>>,
+) {
+    let owner = &req.repo.owner.login();
+    let repo = &req.repo.name;
 
-    let session = github_app.new_session(owner, repo)?;
-    let held_clone_dir = clone_mgr.clone(owner, repo)?;
+    let session = match github_app.new_session(owner, repo) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Error getting new session: {}", e);
+            return;
+        }
+    };
+    let held_clone_dir = match clone_mgr.clone(owner, repo) {
+        Ok(h) => h,
+        Err(e) => {
+            error!("Error getting new session: {}", e);
+            return;
+        }
+    };
     let clone_dir = held_clone_dir.dir();
     let git = Git::new(session.github_host(), session.github_token(), clone_dir);
 
-    merge_pull_request(&git, &session, owner, repo, pull_request, target_branch, release_branch_prefix)
+    merge_pull_request(&git, &session, &req, config, slack)
 }
 
 pub fn merge_pull_request(
     git: &Git,
     session: &dyn Session,
-    owner: &str,
-    repo: &str,
-    pull_request: &github::PullRequest,
-    target_branch: &str,
-    release_branch_prefix: &str,
+    req: &PRMergeRequest,
+    config: Arc<Config>,
+    slack: Arc<dyn worker::Worker<SlackRequest>>,
+) {
+    if let Err(e) = try_merge_pull_request(git, session, req) {
+        let attach = SlackAttachmentBuilder::new(&format!("{}", e))
+            .title(
+                format!("Source PR: #{}: \"{}\"", req.pull_request.number, req.pull_request.title)
+                    .as_str(),
+            )
+            .title_link(req.pull_request.html_url.clone())
+            .color("danger")
+            .build();
+
+        let msg = &format!(
+            "Error creating merge PR from {} to {}",
+            req.pull_request.head.ref_name,
+            req.target_branch
+        );
+        let messenger = messenger::new(config.clone(), slack.clone());
+        messenger.send_to_owner(
+            &msg,
+            &vec![attach],
+            &req.pull_request.user,
+            &req.repo,
+            &req.target_branch,
+            &req.commits,
+        );
+
+        if let Err(e) = session.comment_pull_request(req.repo.owner.login(), &req.repo.name, req.pull_request.number, msg) {
+            error!("Error making backport failure comment on pull request: {}", e);
+        }
+    }
+}
+
+pub fn try_merge_pull_request(
+    git: &Git,
+    session: &dyn Session,
+    req: &PRMergeRequest,
 ) -> Result<github::PullRequest> {
+    let pull_request = &req.pull_request;
     if !pull_request.is_merged() {
         return Err(format_err!("Pull Request #{} is not yet merged.", pull_request.number));
     }
@@ -57,7 +104,7 @@ pub fn merge_pull_request(
     // strip everything before last slash
     let regex = Regex::new(r".*/").unwrap();
     let pr_branch_name =
-        format!("{}-{}", regex.replace(&pull_request.head.ref_name, ""), regex.replace(&target_branch, ""));
+        format!("{}-{}", regex.replace(&pull_request.head.ref_name, ""), regex.replace(&req.target_branch, ""));
 
     // make sure there isn't already such a branch
     let current_remotes = git.run(&["ls-remote", "--heads"])?;
@@ -70,14 +117,16 @@ pub fn merge_pull_request(
         &merge_commit_sha,
         &pr_branch_name,
         pull_request.number,
-        &target_branch,
+        &req.target_branch,
         &pull_request.base.ref_name,
-        release_branch_prefix,
+        &req.release_branch_prefix,
     )?;
 
     git.run(&["push", "origin", &format!("HEAD:{}", pr_branch_name)])?;
 
-    let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &target_branch)?;
+    let owner = &req.repo.owner.login();
+    let repo = &req.repo.name;
+    let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &req.target_branch)?;
 
     let mut assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
     assignees.retain(|r| r != pull_request.user.login());
@@ -259,40 +308,13 @@ pub fn new_runner(
 
 impl worker::Runner<PRMergeRequest> for Runner {
     fn handle(&self, req: PRMergeRequest) {
-        let merge_result = clone_and_merge_pull_request(
+        clone_and_merge_pull_request(
             self.github_app.borrow(),
             self.clone_mgr.borrow(),
-            &req.repo.owner.login(),
-            &req.repo.name,
-            &req.pull_request,
-            &req.target_branch,
-            &req.release_branch_prefix,
+            &req,
+            self.config.clone(),
+            self.slack.clone(),
         );
-
-        if let Err(e) = merge_result {
-            let attach = SlackAttachmentBuilder::new(&format!("{}", e))
-                .title(
-                    format!("Source PR: #{}: \"{}\"", req.pull_request.number, req.pull_request.title)
-                        .as_str(),
-                )
-                .title_link(req.pull_request.html_url.clone())
-                .color("danger")
-                .build();
-
-            let messenger = messenger::new(self.config.clone(), self.slack.clone());
-            messenger.send_to_owner(
-                &format!(
-                    "Error creating merge PR from {} to {}",
-                    req.pull_request.head.ref_name,
-                    req.target_branch
-                ),
-                &vec![attach],
-                &req.pull_request.user,
-                &req.repo,
-                &req.target_branch,
-                &req.commits,
-            );
-        }
     }
 }
 
