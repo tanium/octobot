@@ -16,6 +16,10 @@ pub struct TempGit {
 
 impl TempGit {
     pub fn new() -> TempGit {
+        let home = TempDir::new("home").expect("create fake home dir for configs").into_path();
+        std::env::set_var("HOME", &home);
+        std::env::set_var("XDG_CONFIG_HOME", &home);
+
         let dir = TempDir::new("git_test.rs").expect("create temp dir for git_test.rs");
 
         let repo_dir = dir.path().join("repo");
