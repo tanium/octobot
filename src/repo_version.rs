@@ -339,7 +339,7 @@ mod tests {
         let script_file = sub_dir.join("version.py");
         {
             let mut file = fs::File::create(&script_file).expect("create file");
-            file.write_all(b"print '1.2.3.4'").expect("write file");
+            file.write_all(b"print('1.2.3.4')").expect("write file");
         }
 
         assert_eq!("1.2.3.4", run_script("python version.py", &sub_dir).unwrap());
