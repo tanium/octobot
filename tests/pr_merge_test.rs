@@ -39,7 +39,6 @@ fn new_test() -> (PRMergeTest, TempDir) {
             .with_force_push(true))
         .expect("Failed to add some-user/some-repo");
 
-    // todo: configure channels/users
     (PRMergeTest{
         git: TempGit::new(),
         github: MockGithub::new(),
