@@ -306,9 +306,9 @@ mod tests {
         }
 
         let err = format!("{}", run_script("bash version.sh", &sub_dir).unwrap_err());
-        assert!(err.contains("Error running version script"), err);
-        assert!(err.contains("out-err"), err);
-        assert!(err.contains("err-err"), err);
+        assert!(err.contains("Error running version script"), "{}", err);
+        assert!(err.contains("out-err"), "{}", err);
+        assert!(err.contains("err-err"), "{}", err);
     }
 
     #[test]
@@ -325,8 +325,8 @@ mod tests {
         }
 
         let err = format!("{}", run_script("bash version.sh", &sub_dir).unwrap_err());
-        assert!(err.contains("Error running version script"), err);
-        assert!(err.contains("some error"), err);
+        assert!(err.contains("Error running version script"), "{}", err);
+        assert!(err.contains("some error"), "{}", err);
     }
 
     #[test]
