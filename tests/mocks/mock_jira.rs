@@ -119,7 +119,7 @@ impl Drop for MockJira {
 impl Session for MockJira {
     fn get_issue(&self, key: &str) -> Result<Issue> {
         let mut calls = self.get_issue_calls.lock().unwrap();
-        assert!(calls.len() > 0, format!("Unexpected call to get_issue {}", key));
+        assert!(calls.len() > 0, "Unexpected call to get_issue {}", key);
         let call = calls.remove(0);
         assert_eq!(call.args[0], key);
 
