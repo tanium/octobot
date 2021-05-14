@@ -13,6 +13,7 @@ pub struct MockGithub {
     get_prs_calls: Mutex<Vec<MockCall<Vec<PullRequest>>>>,
     create_pr_calls: Mutex<Vec<MockCall<PullRequest>>>,
     get_pr_labels_calls: Mutex<Vec<MockCall<Vec<Label>>>>,
+    add_pr_labels_calls: Mutex<Vec<MockCall<()>>>,
     get_pr_commits_calls: Mutex<Vec<MockCall<Vec<Commit>>>>,
     get_pr_reviews_calls: Mutex<Vec<MockCall<Vec<Review>>>>,
     assign_pr_calls: Mutex<Vec<MockCall<()>>>,
@@ -53,6 +54,7 @@ impl MockGithub {
             get_prs_calls: Mutex::new(vec![]),
             create_pr_calls: Mutex::new(vec![]),
             get_pr_labels_calls: Mutex::new(vec![]),
+            add_pr_labels_calls: Mutex::new(vec![]),
             get_pr_commits_calls: Mutex::new(vec![]),
             get_pr_reviews_calls: Mutex::new(vec![]),
             assign_pr_calls: Mutex::new(vec![]),
@@ -92,6 +94,11 @@ impl Drop for MockGithub {
                 self.get_pr_labels_calls.lock().unwrap().len() == 0,
                 "Unmet get_pull_request_labels calls: {:?}",
                 *self.get_pr_labels_calls.lock().unwrap()
+            );
+            assert!(
+                self.add_pr_labels_calls.lock().unwrap().len() == 0,
+                "Unmet add_pull_request_labels calls: {:?}",
+                *self.add_pr_labels_calls.lock().unwrap()
             );
             assert!(
                 self.assign_pr_calls.lock().unwrap().len() == 0,
@@ -209,6 +216,18 @@ impl Session for MockGithub {
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
         assert_eq!(call.args[2], number.to_string());
+
+        call.ret
+    }
+
+    fn add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>) -> Result<()> {
+        let mut calls = self.add_pr_labels_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to add_pull_request_labels");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], number.to_string());
+        assert_eq!(call.args[3], labels.join(","));
 
         call.ret
     }
@@ -412,6 +431,13 @@ impl MockGithub {
         self.get_pr_labels_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, &number.to_string()],
+        ));
+    }
+
+    pub fn mock_add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>, ret: Result<()>) {
+        self.add_pr_labels_calls.lock().unwrap().push(MockCall::new(
+            ret,
+            vec![owner, repo, &number.to_string(), &labels.join(",")],
         ));
     }
 

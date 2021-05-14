@@ -81,6 +81,10 @@ pub fn merge_pull_request(
         if let Err(e) = session.comment_pull_request(req.repo.owner.login(), &req.repo.name, req.pull_request.number, msg) {
             error!("Error making backport failure comment on pull request: {}", e);
         }
+
+        if let Err(e) = session.add_pull_request_labels(req.repo.owner.login(), &req.repo.name, req.pull_request.number, vec!["failed-backport".to_string()]) {
+            error!("Error adding failed-backport label on pull request: {}", e);
+        }
     }
 }
 

@@ -35,6 +35,8 @@ pub trait Session: Send + Sync {
 
     fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>>;
 
+    fn add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>) -> Result<()>;
+
     fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>>;
 
     fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>>;
@@ -377,6 +379,20 @@ impl Session for GithubSession {
         self.client
             .get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number))
             .map_err(|e| format_err!("error looking up pr labels: {}/{} #{}: {}", owner, repo, number, e))
+    }
+
+    fn add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>) -> Result<()> {
+        #[derive(Serialize)]
+        struct AddLabels {
+            labels: Vec<String>,
+        }
+
+        let body = AddLabels {
+            labels: labels,
+        };
+
+        self.client.post_void(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number), &body)
+            .map_err(|e| format_err!("Error adding label: {}/{} #{}: {}", owner, repo, number, e))
     }
 
     fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>> {
