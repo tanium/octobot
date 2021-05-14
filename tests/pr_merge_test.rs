@@ -417,6 +417,14 @@ fn test_pr_merge_backport_failure() {
         Ok(()),
     );
 
+    test.github.mock_add_pull_request_labels(
+        "the-owner",
+        "the-repo",
+        123,
+        vec!["failed-backport".to_string()],
+        Ok(()),
+    );
+
     test.slack.expect(vec![
         slack::req(
             "the-review-channel",
