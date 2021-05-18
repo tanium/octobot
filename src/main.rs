@@ -30,9 +30,18 @@ fn run() -> Result<()> {
         return Err(format_err!("Usage: octobot <config-file>"));
     }
 
-    let config_file = std::env::args().nth(1).unwrap();
-
     setup_logging();
+
+    if let Ok(mut path) = std::env::current_exe() {
+        path.pop();
+        path.push("version");
+
+        if let Ok(version) = std::fs::read_to_string(path) {
+            log::info!("Starting octobot version [{}]", version.trim());
+        }
+    }
+
+    let config_file = std::env::args().nth(1).unwrap();
 
     let config = config::new(config_file.into()).map_err(|e| format_err!("Error parsing config: {}", e))?;
 

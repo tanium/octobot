@@ -45,5 +45,9 @@ with task("extract_files"):
     run("docker cp extract:/usr/src/app/target/release/octobot-passwd {}".format(docker_out))
     run("docker cp extract:/usr/src/app/target/release/octobot-ask-pass {}".format(docker_out))
     run("docker rm -f extract")
+    # write out the version file
+    commit_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'])
+    with open(os.path.join(docker_out, 'version'), 'w') as f:
+        f.write(commit_hash)
 with task("Dockerfile"):
     run("docker build . -t octobot:latest")
