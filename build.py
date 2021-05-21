@@ -11,16 +11,16 @@ class task:
         self.title = title
     def __enter__(self):
         if is_travis:
-            print "travis_fold:start:{}".format(self.title)
-        print ">> Starting {}".format(self.title)
+            print("travis_fold:start:{}".format(self.title))
+        print(">> Starting {}".format(self.title))
         return self
     def __exit__(self, type, value, traceback):
-        print ">> Ending {}".format(self.title)
+        print(">> Ending {}".format(self.title))
         if is_travis:
-            print "travis_fold:end:{}".format(self.title)
+            print("travis_fold:end:{}".format(self.title))
 
 def run(cmd, ignore_fail=False, quiet=False):
-    print ">> {}".format(cmd)
+    print(">> {}".format(cmd))
     stdout = subprocess.PIPE if quiet else None
     proc = subprocess.Popen(re.split('\s+', cmd), stdout=stdout, stderr=subprocess.STDOUT)
     _, _ = proc.communicate()
