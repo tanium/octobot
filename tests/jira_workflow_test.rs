@@ -28,6 +28,7 @@ fn new_test() -> JiraWorkflowTest {
         fix_versions_field: Some("the-versions".into()),
         pending_versions_field: Some("the-pending-versions".into()),
         restrict_comment_visibility_to_role: None,
+        login_suffix: None,
     };
 
     JiraWorkflowTest {

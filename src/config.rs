@@ -79,6 +79,8 @@ pub struct JiraConfig {
     pub pending_versions_field: Option<String>,
     // optional name of role to restrict octobot comment visibility. (e.g. "Developers")
     pub restrict_comment_visibility_to_role: Option<String>,
+    // optional suffix to add to the username for the login dialog (e.g. "@company.com")
+    pub login_suffix: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
