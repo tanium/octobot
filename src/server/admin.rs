@@ -227,6 +227,7 @@ struct MergeVersionsReq {
 #[derive(Serialize, Clone)]
 struct MergeVersionsResp {
     jira_base: String,
+    login_suffix: Option<String>,
     versions: HashMap<String, Vec<version::Version>>,
 }
 
@@ -281,6 +282,7 @@ impl Handler for MergeVersions {
 
             let resp = MergeVersionsResp {
                 jira_base: jira_config.base_url(),
+                login_suffix: jira_config.login_suffix,
                 versions: all_relevant_versions,
             };
 

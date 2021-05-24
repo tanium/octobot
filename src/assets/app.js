@@ -450,6 +450,9 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
       if (!jiraBase && resp.data.jira_base) {
         jiraBase = resp.data.jira_base;
       }
+      if (resp.data.login_suffix) {
+        $scope.req.admin_user = loggedInUser() + resp.data.login_suffix;
+      }
       return resp;
     }).finally(function(e) {
       $scope.processing = false;
