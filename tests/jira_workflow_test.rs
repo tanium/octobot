@@ -211,7 +211,7 @@ fn test_transition_issues_only_if_necessary() {
     let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_commit(
-        "Fix [SER-1][SER-2][SER-3] I fixed it. And also relates to [CLI-9999][CLI-9998][OTHER-999]",
+        "Fix [SER-1][SER-2][SER-3] I fixed it. And also relates to [CLI-9999][CLI-9998][OTHER-999]. See [CLI-1]",
         "aabbccddee",
     );
 
@@ -228,6 +228,12 @@ fn test_transition_issues_only_if_necessary() {
     test.jira.mock_comment_issue(
         "SER-3",
         "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+    // "See:" references should be mentioned but not transitioned
+    test.jira.mock_comment_issue(
+        "CLI-1",
+        "Referenced by review submitted for branch master: http://the-pr",
         Ok(()),
     );
     test.jira.mock_comment_issue(

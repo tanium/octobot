@@ -47,6 +47,20 @@ fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) 
     get_jira_keys(all_refs, projects)
 }
 
+fn get_mentioned_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
+    // See [ABC-123][OTHER-567], [YEAH-999]
+    let re = Regex::new(r"(?i)(?:See):?\s*(?-i)((\[?([A-Z0-9]+-[0-9]+)(?:\]|\b)[\s,]*)+)")
+        .unwrap();
+
+    // first extract jiras with see markers
+    let mut all_refs = vec![];
+    for c in commits {
+        all_refs.extend(re.captures_iter(c.message()).map(|c| c[1].to_string()));
+    }
+
+    get_jira_keys(all_refs, projects)
+}
+
 fn get_referenced_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
     let fixed = get_fixed_jira_keys(commits, projects);
 
@@ -120,6 +134,7 @@ pub fn submit_for_review(
         try_transition(&key, &review_states, jira);
     }
 
+    let mentioned = get_mentioned_jira_keys(commits, projects);
     for key in get_referenced_jira_keys(commits, projects) {
         // add comment
         if let Err(e) = jira.comment_issue(
@@ -133,6 +148,10 @@ pub fn submit_for_review(
         {
             error!("Error commenting on key [{}]: {}", key, e);
             continue; // give up on transitioning if we can't comment.
+        }
+
+        if mentioned.contains(&key) {
+            continue; // don't transition
         }
 
         let issue_state = try_get_issue_state(&key, jira);
