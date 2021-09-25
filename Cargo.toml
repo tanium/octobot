@@ -1,72 +1,8 @@
-[package]
-authors = ["Matt Hauck <matt.hauck@tanium.com>"]
-name = "octobot"
-version = "0.1.0"
-edition = "2018"
-
-[[bin]]
-doc = false
-name = "octobot"
-path = "src/main.rs"
-
-[[bin]]
-doc = false
-name = "octobot-ask-pass"
-path = "src/ask-pass.rs"
-
-[[bin]]
-doc = false
-name = "octobot-passwd"
-path = "src/octobot-passwd.rs"
-
-[[bin]]
-doc = false
-name = "ldap-check"
-path = "src/ldap-check.rs"
-
-[dependencies]
-base64 = "0.10.1"
-env_logger = "0.6.1"
-failure = "0.1.5"
-futures = "0.1.25"
-http = "0.1.16"
-hyper = "0.12.25"
-hyper-rustls = "0.16.1"
-log = "0.4.6"
-maplit = "1.0.1"
-openldap = "1.2.1"
-regex = "1.1.2"
-ring = "0.14.6"
-rpassword = "3.0.0"
-rusqlite = "0.17.0"
-rust-crypto = "0.2.36"
-rustc-serialize = "0.3.24"
-rustls = "0.15.1"
-serde = "1.0.89"
-serde_derive = "1.0.89"
-serde_json = "1.0.39"
-thread-id = "3.3.0"
-time = "0.1.42"
-tokio = "0.1.17"
-tokio-core = "0.1.17"
-tokio-rustls = "0.9.1"
-toml = "0.5.0"
-unidiff = "0.3.2"
-url = "1.7.2"
-tokio-threadpool = "0.1.12"
-conventional = "0.5.0"
-
-[dependencies.jsonwebtoken]
-git = "https://github.com/matthauck/jsonwebtoken"
-rev = "f4c2ab6a380bb85e931a5586cc6ca9fd8dda3ace"
-
-[dependencies.reqwest]
-version = "0.9.12"
-
-[dev-dependencies]
-tempdir = "0.3.7"
-
-[lib]
-doc = false
-name = "octobot"
-path = "src/lib.rs"
+[workspace]
+members = [
+    "ldap",
+    "lib",
+    "ops",
+    "octobot",
+    "utils",
+]
