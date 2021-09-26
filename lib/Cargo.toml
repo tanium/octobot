@@ -1,0 +1,32 @@
+[package]
+authors = ["Matt Hauck <matt.hauck@tanium.com>"]
+name = "octobot_lib"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+base64 = "0.10.1"
+conventional = "0.5.0"
+failure = "0.1.5"
+log = "0.4.6"
+regex = "1.1.2"
+ring = "0.14.6"
+rusqlite = "0.17.0"
+rustc-serialize = "0.3.24"
+serde = "1.0.89"
+serde_derive = "1.0.89"
+serde_json = "1.0.39"
+time = "0.1.42"
+toml = "0.5.0"
+url = "1.7.2"
+
+[dependencies.reqwest]
+version = "0.9.12"
+
+[dependencies.jsonwebtoken]
+git = "https://github.com/matthauck/jsonwebtoken"
+rev = "f4c2ab6a380bb85e931a5586cc6ca9fd8dda3ace"
+
+[dev-dependencies]
+tempdir = "0.3.7"
+maplit = "1.0.1"

@@ -1,0 +1,18 @@
+[package]
+authors = ["Matt Hauck <matt.hauck@tanium.com>"]
+name = "octobot_ldap"
+version = "0.1.0"
+edition = "2018"
+
+[[bin]]
+doc = false
+name = "ldap-check"
+path = "src/ldap-check.rs"
+
+[dependencies]
+octobot_lib = { path = "../lib" }
+failure = "0.1.5"
+log = "0.4.6"
+openldap = "1.2.1"
+regex = "1.1.2"
+rpassword = "3.0.0"

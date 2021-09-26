@@ -1,0 +1,22 @@
+[package]
+authors = ["Matt Hauck <matt.hauck@tanium.com>"]
+name = "octobot_utils"
+version = "0.1.0"
+edition = "2018"
+
+[[bin]]
+doc = false
+name = "octobot-ask-pass"
+path = "src/ask-pass.rs"
+
+[[bin]]
+doc = false
+name = "octobot-passwd"
+path = "src/octobot-passwd.rs"
+
+[dependencies]
+rpassword = "3.0.0"
+ring = "0.14.6"
+rustc-serialize = "0.3.24"
+regex = "1.1.2"
+octobot_lib = { "path" = "../lib" }
