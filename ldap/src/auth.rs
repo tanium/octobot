@@ -33,6 +33,10 @@ pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> Result<bool> {
         info!("Cannot authenticate without username");
         return Ok(false);
     }
+    if pass.is_empty() {
+        info!("Cannot authenticate without password");
+        return Ok(false);
+    }
 
     // in the absence of `ldap_escape` from ldap3, just whitelist acceptable characters
     let re = Regex::new(r"([^A-Za-z0-9\.\-_@])").unwrap();
