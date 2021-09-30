@@ -106,10 +106,14 @@ impl Slack {
         }
 
         info!("Sending message to #{}", channel);
-        tokio::spawn(self.client.post(&self.webhook_url).json(&slack_msg).send().then(|res| {
+        let webhook_url = self.webhook_url.clone();
+        tokio::spawn(self.client.post(&webhook_url).json(&slack_msg).send().then(move |res| {
             match res {
                 Ok(_) => info!("Successfully sent slack message"),
-                Err(e) => error!("Error sending slack message: {}", e),
+                Err(e) => {
+                    let msg = format!("{}", e).replace(&webhook_url, "<webhook url>");
+                    error!("Error sending slack message: {}", msg);
+                }
             };
             future::ok::<(), ()>(())
         }));
