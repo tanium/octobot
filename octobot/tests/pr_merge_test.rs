@@ -413,7 +413,7 @@ fn test_pr_merge_backport_failure() {
         "the-owner",
         "the-repo",
         123,
-        "Error creating merge PR from my-feature-branch to release/1.0",
+        "Error backporting PR from my-feature-branch to release/1.0: bad stuff",
         Ok(()),
     );
 
@@ -428,7 +428,7 @@ fn test_pr_merge_backport_failure() {
     test.slack.expect(vec![
         slack::req(
             "the-review-channel",
-            "Error creating merge PR from my-feature-branch to release/1.0 (<http://the-github-host/the-owner/the-repo|the-owner/the-repo>)",
+            "Error backporting PR from my-feature-branch to release/1.0 (<http://the-github-host/the-owner/the-repo|the-owner/the-repo>)",
             vec![SlackAttachmentBuilder::new("bad stuff")
                 .title("Source PR: #123: \"The Title\"")
                 .title_link("")
