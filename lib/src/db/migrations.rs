@@ -94,7 +94,7 @@ fn all_migrations() -> Vec<Box<dyn Migration>> {
 
 fn current_version(conn: &Connection) -> Result<Option<i32>> {
     let mut version: Option<i32> = None;
-    conn.query_row("SELECT current_version from __version", rusqlite::NO_PARAMS, |row| {
+    conn.query_row("SELECT current_version from __version", [], |row| {
         version = row.get(0).ok();
         Ok(())
     })
@@ -108,7 +108,7 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         Ok(v) => v,
         Err(_) => {
             // versions table probably doesn't exist.
-            conn.execute(CREATE_VERSIONS, rusqlite::NO_PARAMS)
+            conn.execute(CREATE_VERSIONS, [])
                 .map_err(|e| format_err!("Error creating versions table: {}", e))?;
             None
         }

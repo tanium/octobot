@@ -1,7 +1,7 @@
 use failure::format_err;
 use log::error;
 use rusqlite::types::ToSql;
-use rusqlite::{Connection, Row, Transaction};
+use rusqlite::{Connection, Row, Transaction, named_params};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::db::{self, Database};
@@ -288,7 +288,7 @@ impl RepoConfig {
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare("SELECT * FROM repos ORDER BY repo")?;
         let cols = db::Columns::from_stmt(&stmt)?;
-        let mut rows = stmt.query(rusqlite::NO_PARAMS)?;
+        let mut rows = stmt.query([])?;
 
         let mut repos = vec![];
         while let Ok(Some(row)) = rows.next() {
@@ -312,7 +312,7 @@ impl RepoConfig {
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare(r#"SELECT * FROM repos where repo = :full OR repo = :org"#)?;
         let cols = db::Columns::from_stmt(&stmt)?;
-        let mut rows = stmt.query_named(&[(":full", &repo.full_name), (":org", &repo.owner.login())])?;
+        let mut rows = stmt.query(named_params!{":full": &repo.full_name, ":org": &repo.owner.login()})?;
 
         let mut repos = Vec::new();
         while let Ok(Some(row)) = rows.next() {
@@ -352,7 +352,7 @@ impl RepoConfig {
     fn load_jira_config(&self, conn: &Connection, id: i32) -> Result<Vec<RepoJiraConfig>> {
         let mut stmt = conn.prepare(r#"SELECT * FROM repos_jiras where repo_id = :id"#)?;
         let cols = db::Columns::from_stmt(&stmt)?;
-        let mut rows = stmt.query_named(&[(":id", &id)])?;
+        let mut rows = stmt.query(named_params!{":id": &id})?;
 
         let mut result = vec![];
         while let Ok(Some(row)) = rows.next() {

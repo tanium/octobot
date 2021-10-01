@@ -12,7 +12,7 @@ impl Migration for MigrationReposJiras {
     fn run(&self, tx: &Transaction) -> Result<()> {
         let mut stmt = tx.prepare(r#"SELECT * FROM repos"#)?;
         let cols = db::Columns::from_stmt(&stmt)?;
-        let mut rows = stmt.query(rusqlite::NO_PARAMS)?;
+        let mut rows = stmt.query([])?;
 
         while let Ok(Some(row)) = rows.next() {
             let id = cols.get::<i32>(row, "id")?;
