@@ -26,7 +26,28 @@ RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$RUST_VERS
   && rustc --version && cargo --version
 
 WORKDIR /usr/src/app
-COPY . /usr/src/app
+
+# only do downloads and library compiles once
+COPY Cargo.toml .
+COPY Cargo.lock .
+
+COPY ldap/Cargo.toml ldap/
+COPY lib/Cargo.toml lib/
+COPY octobot/Cargo.toml octobot/
+COPY ops/Cargo.toml ops/
+COPY utils/Cargo.toml utils/
+
+RUN cargo fetch
+RUN cargo build; exit 0
+RUN cargo build --release; exit 0
+
+# now add source
+COPY ldap/src ldap/src
+COPY lib/src lib/src
+COPY octobot/src octobot/src
+COPY octobot/tests octobot/tests
+COPY ops/src ops/src
+COPY utils/src utils/src
 
 RUN cargo build --release
 
