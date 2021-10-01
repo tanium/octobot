@@ -85,7 +85,7 @@ impl UserConfig {
         let mut stmt = conn.prepare(
             "SELECT id, slack_name, github_name, mute_direct_messages FROM users ORDER BY github_name",
         )?;
-        let found = stmt.query_map(rusqlite::NO_PARAMS, |row| {
+        let found = stmt.query_map([], |row| {
             Ok(UserInfo {
                 id: row.get(0)?,
                 slack: row.get(1)?,
