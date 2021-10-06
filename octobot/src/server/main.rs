@@ -4,6 +4,7 @@ use std::sync::Arc;
 use futures::Future;
 use log::{error, info};
 use hyper::server::Server;
+use hyper::service::{make_service_fn, service_fn};
 use tokio;
 
 use octobot_lib::config::Config;
@@ -23,7 +24,6 @@ pub fn start(config: Config) {
 
 fn run_server(config: Config) {
     let config = Arc::new(config);
-
 
     let github: Arc<dyn github::api::GithubSessionFactory>;
 
@@ -63,8 +63,14 @@ fn run_server(config: Config) {
 
     let ui_sessions = Arc::new(Sessions::new());
     let github_handler_state = Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone()));
+    let octobot = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone());
 
-    let main_service = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone());
+    let main_service = make_service_fn(move |_| {
+        let octobot = octobot.clone();
+        service_fn(move |req: hyper::Request<hyper::Body>| {
+            octobot.call(req)
+        })
+    });
 
     let server = Server::bind(&http_addr).serve(main_service).map(|_| ()).map_err(
         |e| error!("server error: {}", e),
