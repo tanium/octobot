@@ -902,7 +902,6 @@ dependencies = [
  "time",
  "tokio",
  "tokio-core",
- "tokio-rustls",
  "tokio-threadpool",
 ]
 

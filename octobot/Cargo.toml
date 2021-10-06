@@ -36,7 +36,6 @@ thread-id = "3.3.0"
 time = "0.1.42"
 tokio = "0.1.17"
 tokio-core = "0.1.17"
-tokio-rustls = "0.9.1"
 tokio-threadpool = "0.1.12"
 
 [dev-dependencies]
