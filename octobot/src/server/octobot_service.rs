@@ -1,8 +1,7 @@
 use std::sync::Arc;
-use futures::future::{self, Future};
-use hyper::{self, Body, Method, Request};
+use hyper::{self, Body, Method, Request, Response};
 use time;
-use log::{debug, error, info};
+use log::{debug, info};
 
 use octobot_lib::config::Config;
 use octobot_ops::util;
@@ -11,7 +10,7 @@ use crate::server::admin::{Op, RepoAdmin, UserAdmin};
 use crate::server::admin;
 use crate::server::github_handler::{GithubHandler, GithubHandlerState};
 use crate::server::html_handler::HtmlHandler;
-use crate::server::http::{FilteredHandler, FutureResponse, Handler, NotFoundHandler};
+use crate::server::http::{FilteredHandler, Handler, NotFoundHandler};
 use crate::server::login::{LoginHandler, LoginSessionFilter, LogoutHandler, SessionCheckHandler};
 use crate::server::sessions::Sessions;
 
@@ -37,28 +36,20 @@ impl OctobotService {
 }
 
 impl OctobotService {
-    pub fn call(&self, req: Request<Body>) -> FutureResponse {
+    pub async fn call(self, req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
         let start = time::now();
 
         let method = req.method().clone();
         let path = req.uri().path().to_string();
         debug!("Received request: {} {}", method, path);
 
-        Box::new(
-            self.route(&req)
-                .handle(req)
-                .map(move |res| {
-                    info!("{} {} {} ({})", method, path, res.status(), util::format_duration(time::now() - start));
-                    res
-                })
-                .or_else(move |e| {
-                    error!("Error processing request: {}", e);
-                    future::err(e)
-                }),
-        )
+        let handler = self.route(&req);
+        let res = handler.handle_ok(req).await;
+        info!("{} {} {} ({})", method, path, res.status(), util::format_duration(time::now() - start));
+        Ok(res)
     }
 
-    fn route(&self, req: &Request<Body>) -> Box<dyn Handler> {
+    fn route(&self, req: &Request<Body>) -> Arc<dyn Handler> {
         // API routes
         if req.uri().path().starts_with("/api") {
             let filter = LoginSessionFilter::new(self.ui_sessions.clone());
@@ -78,7 +69,7 @@ impl OctobotService {
 
                     (&Method::POST, "/api/merge-versions") => admin::MergeVersions::new(self.config.clone()),
 
-                    _ => Box::new(NotFoundHandler),
+                    _ => Arc::new(NotFoundHandler),
                 },
             );
         }
@@ -110,7 +101,7 @@ impl OctobotService {
             // hooks
             (&Method::POST, "/hooks/github") => GithubHandler::from_state(self.github_handler_state.clone()),
 
-            _ => Box::new(NotFoundHandler),
+            _ => Arc::new(NotFoundHandler),
         }
     }
 }

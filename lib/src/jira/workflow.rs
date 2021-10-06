@@ -98,7 +98,7 @@ fn needs_transition(state: &Option<jira::Status>, target: &Vec<String>) -> bool 
     }
 }
 
-pub fn submit_for_review(
+pub async fn submit_for_review(
     pr: &PullRequest,
     commits: &Vec<Commit>,
     projects: &Vec<String>,
@@ -113,13 +113,13 @@ pub fn submit_for_review(
         if let Err(e) = jira.comment_issue(
             &key,
             &format!("Review submitted for branch {}: {}", pr.base.ref_name, pr.html_url),
-        )
+        ).await
         {
             error!("Error commenting on key [{}]: {}", key, e);
             continue; // give up on transitioning if we can't comment.
         }
 
-        let issue_state = try_get_issue_state(&key, jira);
+        let issue_state = try_get_issue_state(&key, jira).await;
 
         if !needs_transition(&issue_state, &review_states) {
             continue;
@@ -127,11 +127,11 @@ pub fn submit_for_review(
 
         // try to transition to in-progress
         if needs_transition(&issue_state, &progress_states) {
-            try_transition(&key, &progress_states, jira);
+            try_transition(&key, &progress_states, jira).await;
         }
 
         // try transition to pending-review
-        try_transition(&key, &review_states, jira);
+        try_transition(&key, &review_states, jira).await;
     }
 
     let mentioned = get_mentioned_jira_keys(commits, projects);
@@ -144,7 +144,7 @@ pub fn submit_for_review(
                 pr.base.ref_name,
                 pr.html_url
             ),
-        )
+        ).await
         {
             error!("Error commenting on key [{}]: {}", key, e);
             continue; // give up on transitioning if we can't comment.
@@ -154,18 +154,18 @@ pub fn submit_for_review(
             continue; // don't transition
         }
 
-        let issue_state = try_get_issue_state(&key, jira);
+        let issue_state = try_get_issue_state(&key, jira).await;
 
         if !needs_transition(&issue_state, &progress_states) {
             continue;
         }
 
         // try to transition to in-progress
-        try_transition(&key, &progress_states, jira);
+        try_transition(&key, &progress_states, jira).await;
     }
 }
 
-pub fn resolve_issue(
+pub async fn resolve_issue(
     branch: &str,
     version: Option<&str>,
     commits: &Vec<PushCommit>,
@@ -191,16 +191,16 @@ pub fn resolve_issue(
         let resolved_states = config.resolved_states();
 
         for key in get_fixed_jira_keys(&vec![commit], projects) {
-            if let Err(e) = jira.comment_issue(&key, &fix_msg) {
+            if let Err(e) = jira.comment_issue(&key, &fix_msg).await {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
 
-            let issue_state = try_get_issue_state(&key, jira);
+            let issue_state = try_get_issue_state(&key, jira).await;
             if !needs_transition(&issue_state, &resolved_states) {
                 continue;
             }
 
-            match find_transition(&key, &resolved_states, jira) {
+            match find_transition(&key, &resolved_states, jira).await {
                 Ok(Some(transition)) => {
                     let mut req = transition.new_request();
 
@@ -226,7 +226,7 @@ pub fn resolve_issue(
                         }
                     }
 
-                    if let Err(e) = jira.transition_issue(&key, &req) {
+                    if let Err(e) = jira.transition_issue(&key, &req).await {
                         error!("Error transitioning JIRA issue [{}] to one of [{:?}]: {}", key, resolved_states, e);
                     } else {
                         info!("Transitioned [{}] to one of [{:?}]", key, resolved_states);
@@ -239,14 +239,14 @@ pub fn resolve_issue(
 
         // add comment only to referenced jiras
         for key in get_referenced_jira_keys(&vec![commit], projects) {
-            if let Err(e) = jira.comment_issue(&key, &ref_msg) {
+            if let Err(e) = jira.comment_issue(&key, &ref_msg).await {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
         }
     }
 }
 
-pub fn add_pending_version(
+pub async fn add_pending_version(
     maybe_version: Option<&str>,
     commits: &Vec<PushCommit>,
     projects: &Vec<String>,
@@ -254,7 +254,7 @@ pub fn add_pending_version(
 ) {
     if let Some(version) = maybe_version {
         for key in get_all_jira_keys(commits, projects) {
-            if let Err(e) = jira.add_pending_version(&key, version) {
+            if let Err(e) = jira.add_pending_version(&key, version).await {
                 error!("Error adding pending version {} to key{}: {}", version, key, e);
                 continue;
             }
@@ -272,7 +272,7 @@ pub enum DryRunMode {
     ForReal,
 }
 
-pub fn merge_pending_versions(
+pub async fn merge_pending_versions(
     version: &str,
     project: &str,
     jira: &dyn jira::api::Session,
@@ -283,8 +283,8 @@ pub fn merge_pending_versions(
         None => return Err(format_err!("Invalid target version: {}", version)),
     };
 
-    let real_versions = jira.get_versions(project)?;
-    let all_pending_versions = jira.find_pending_versions(project)?;
+    let real_versions = jira.get_versions(project).await?;
+    let all_pending_versions = jira.find_pending_versions(project).await?;
 
     let all_relevant_versions = all_pending_versions
         .iter()
@@ -311,7 +311,7 @@ pub fn merge_pending_versions(
         info!("JIRA version {} already exists for project {}", version, project);
     } else {
         info!("Creating new JIRA version {} for project {}", version, project);
-        jira.add_version(project, version)?;
+        jira.add_version(project, version).await?;
     }
 
     {
@@ -323,13 +323,13 @@ pub fn merge_pending_versions(
         for key in keys {
             info!("Assigning JIRA version key {}: {}", key, version);
             let relevant_versions = all_relevant_versions.get(key).unwrap();
-            if let Err(e) = jira.assign_fix_version(&key, version) {
+            if let Err(e) = jira.assign_fix_version(&key, version).await {
                 error!("Error assigning version {} to key {}: {}", version, key, e);
                 continue;
             }
 
             info!("Removing pending versions key {}: {:?}", key, relevant_versions);
-            if let Err(e) = jira.remove_pending_versions(&key, &relevant_versions) {
+            if let Err(e) = jira.remove_pending_versions(&key, &relevant_versions).await {
                 error!("Error clearing pending version {} from key {}: {}", version, key, e);
                 continue;
             }
@@ -367,8 +367,8 @@ fn find_relevant_versions(
         .collect::<Vec<_>>()
 }
 
-fn try_get_issue_state(key: &str, jira: &dyn jira::api::Session) -> Option<jira::Status> {
-    match jira.get_issue(key) {
+async fn try_get_issue_state(key: &str, jira: &dyn jira::api::Session) -> Option<jira::Status> {
+    match jira.get_issue(key).await {
         Ok(issue) => issue.status,
         Err(e) => {
             error!("Error getting JIRA [{}] {}", key, e);
@@ -377,11 +377,11 @@ fn try_get_issue_state(key: &str, jira: &dyn jira::api::Session) -> Option<jira:
     }
 }
 
-fn try_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Session) {
-    match find_transition(&key, to, jira) {
+async fn try_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Session) {
+    match find_transition(&key, to, jira).await {
         Ok(Some(transition)) => {
             let req = transition.new_request();
-            if let Err(e) = jira.transition_issue(&key, &req) {
+            if let Err(e) = jira.transition_issue(&key, &req).await {
                 error!("Error transitioning JIRA issue [{}] to one of [{:?}]: {}", key, to, e);
             } else {
                 info!("Transitioned [{}] to one of [{:?}]", key, to);
@@ -392,8 +392,8 @@ fn try_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Session) {
     };
 }
 
-fn find_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Session) -> Result<Option<Transition>> {
-    let transitions = jira.get_transitions(&key)?;
+async fn find_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Session) -> Result<Option<Transition>> {
+    let transitions = jira.get_transitions(&key).await?;
 
     Ok(pick_transition(to, &transitions))
 }
@@ -410,8 +410,8 @@ fn pick_transition(to: &Vec<String>, choices: &Vec<Transition>) -> Option<Transi
     None
 }
 
-pub fn sort_versions(project: &str, jira: &dyn jira::api::Session) -> Result<()> {
-    let mut versions = jira.get_versions(project)?;
+pub async fn sort_versions(project: &str, jira: &dyn jira::api::Session) -> Result<()> {
+    let mut versions = jira.get_versions(project).await?;
 
     versions.sort_by(|a, b| {
         let v1 = version::Version::parse(&a.name);
@@ -430,10 +430,10 @@ pub fn sort_versions(project: &str, jira: &dyn jira::api::Session) -> Result<()>
     for i in 0..versions.len() {
         let v = &versions[i];
         if i == 0 {
-            jira.reorder_version(v, jira::api::JiraVersionPosition::First)?;
+            jira.reorder_version(v, jira::api::JiraVersionPosition::First).await?;
         } else {
             let prev = &versions[i - 1];
-            jira.reorder_version(v, jira::api::JiraVersionPosition::After(prev.clone()))?;
+            jira.reorder_version(v, jira::api::JiraVersionPosition::After(prev.clone())).await?;
         }
     }
 

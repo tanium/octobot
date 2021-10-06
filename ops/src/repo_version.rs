@@ -25,7 +25,7 @@ use crate::worker;
 #[cfg(target_os = "linux")]
 use crate::docker;
 
-pub fn comment_repo_version(
+pub async fn comment_repo_version(
     version_script: &str,
     jira_config: &JiraConfig,
     jira: &dyn jira::api::Session,
@@ -38,8 +38,8 @@ pub fn comment_repo_version(
     commits: &Vec<github::PushCommit>,
     jira_projects: &Vec<String>,
 ) -> Result<()> {
-    let github = github_app.new_session(owner, repo)?;
-    let held_clone_dir = clone_mgr.clone(owner, repo)?;
+    let github = github_app.new_session(owner, repo).await?;
+    let held_clone_dir = clone_mgr.clone(owner, repo).await?;
     let clone_dir = held_clone_dir.dir();
 
     let git = Git::new(github.github_host(), github.github_token(), &clone_dir);
@@ -56,9 +56,9 @@ pub fn comment_repo_version(
     };
 
     // resolve with version
-    jira::workflow::resolve_issue(branch_name, maybe_version, commits, jira_projects, jira, jira_config);
+    jira::workflow::resolve_issue(branch_name, maybe_version, commits, jira_projects, jira, jira_config).await;
 
-    jira::workflow::add_pending_version(maybe_version, commits, jira_projects, jira);
+    jira::workflow::add_pending_version(maybe_version, commits, jira_projects, jira).await;
 
     Ok(())
 }
@@ -195,8 +195,9 @@ pub fn new_runner(
     })
 }
 
+#[async_trait::async_trait]
 impl worker::Runner<RepoVersionRequest> for Runner {
-    fn handle(&self, req: RepoVersionRequest) {
+    async fn handle(&self, req: RepoVersionRequest) {
         let configs;
         {
             let repos_lock = self.config.repos();
@@ -228,7 +229,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             &req.commit_hash,
                             &req.commits,
                             &jira_projects,
-                        ) {
+                        ).await {
                             error!("Error running version script {}: {}", config.version_script, e);
                             let messenger = messenger::new(self.config.clone(), self.slack.clone());
 
@@ -258,7 +259,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             &jira_projects,
                             jira,
                             jira_config,
-                        );
+                        ).await;
                     }
                 }
             }

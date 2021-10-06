@@ -1,6 +1,6 @@
 use hyper::HeaderMap;
 use log::{debug, error};
-use ring::{digest, hmac};
+use ring::hmac;
 use rustc_serialize::hex::FromHex;
 
 pub struct GithubWebhookVerifier {
@@ -40,7 +40,7 @@ impl GithubWebhookVerifier {
             }
         };
 
-        let key = hmac::VerificationKey::new(&digest::SHA1, self.secret.as_bytes());
+        let key = hmac::Key::new(hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, self.secret.as_bytes());
         match hmac::verify(&key, data, &sig_bytes) {
             Ok(_) => {
                 debug!("Signature verified!");
@@ -57,13 +57,13 @@ impl GithubWebhookVerifier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ring::{digest, hmac};
+    use ring::hmac;
     use rustc_serialize::hex::ToHex;
 
     #[test]
     fn verify_sig_valid() {
         let key_value = String::from("this is my secret key!");
-        let key = hmac::SigningKey::new(&digest::SHA1, key_value.as_bytes());
+        let key = hmac::Key::new(hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, key_value.as_bytes());
 
         let msg = "a message from the githubs.";
         let signature = hmac::sign(&key, msg.as_bytes());
@@ -77,7 +77,7 @@ mod tests {
     #[test]
     fn verify_sig_wrong_digest() {
         let key_value = String::from("this is my secret key!");
-        let key = hmac::SigningKey::new(&digest::SHA1, key_value.as_bytes());
+        let key = hmac::Key::new(hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, key_value.as_bytes());
 
         let msg = "a message from the githubs.";
         let signature = hmac::sign(&key, msg.as_bytes());
@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn verify_sig_missing_header() {
         let key_value = String::from("this is my secret key!");
-        let key = hmac::SigningKey::new(&digest::SHA1, key_value.as_bytes());
+        let key = hmac::Key::new(hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, key_value.as_bytes());
 
         let msg = "a message from the githubs.";
         let signature = hmac::sign(&key, msg.as_bytes());

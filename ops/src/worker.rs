@@ -1,14 +1,14 @@
 use std::sync::{Arc, Mutex};
 
-use futures::future;
 use tokio;
 
 pub trait Worker<T: Send + 'static>: Send + Sync {
     fn send(&self, req: T);
 }
 
+#[async_trait::async_trait]
 pub trait Runner<T: Send + 'static>: Send + Sync {
-    fn handle(&self, req: T);
+    async fn handle(&self, req: T);
 }
 
 pub struct TokioWorker<T: Send + Sync + 'static> {
@@ -19,8 +19,8 @@ pub struct TokioWorker<T: Send + Sync + 'static> {
 impl<T: Send + Sync + 'static> TokioWorker<T> {
     pub fn new(runtime: Arc<Mutex<tokio::runtime::Runtime>>, runner: Arc<dyn Runner<T>>) -> Arc<dyn Worker<T>> {
         Arc::new(TokioWorker {
-            runner: runner,
-            runtime: runtime,
+            runner,
+            runtime,
         })
     }
 }
@@ -28,10 +28,10 @@ impl<T: Send + Sync + 'static> TokioWorker<T> {
 impl<T: Send + Sync + 'static> Worker<T> for TokioWorker<T> {
     fn send(&self, req: T) -> () {
         let runner = self.runner.clone();
-        self.runtime.lock().unwrap().spawn(future::lazy(move || {
-            runner.handle(req);
-            future::ok(())
-        }));
+        self.runtime.lock().unwrap().spawn(async move {
+            runner.handle(req).await
+        });
+
     }
 }
 

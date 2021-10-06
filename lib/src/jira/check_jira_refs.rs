@@ -16,7 +16,7 @@ const ALLOWED_SKIP_TYPES : &'static [&'static str] = &[
     "test",
 ];
 
-pub fn check_jira_refs(
+pub async fn check_jira_refs(
     pull_request: &github::PullRequest,
     commits: &Vec<github::Commit>,
     projects: &Vec<String>,
@@ -29,20 +29,20 @@ pub fn check_jira_refs(
 
     // Skip PRs titled accordingly.
     if let Some(commit_type) = conventional_commit_jira_skip_type(&pull_request.title) {
-        if let Err(e) = do_skip_jira_check(pull_request, commit_type, github) {
+        if let Err(e) = do_skip_jira_check(pull_request, commit_type, github).await {
             log::error!("Error marking skipped jira refs: {}", e);
         }
         return;
     }
 
-    if let Err(e) = do_check_jira_refs(pull_request, commits, projects, github) {
+    if let Err(e) = do_check_jira_refs(pull_request, commits, projects, github).await {
         log::error!("Error checking jira refs: {}", e);
     }
 }
 
 // Note: this requires PR commits, not push commits, because we want to take all PR commits into
 // consideration, not just what was recently pushed.
-fn do_check_jira_refs(
+async fn do_check_jira_refs(
     pull_request: &github::PullRequest,
     commits: &Vec<github::Commit>,
     projects: &Vec<String>,
@@ -63,7 +63,7 @@ fn do_check_jira_refs(
         run = run.completed(github::Conclusion::Success);
     }
 
-    github.create_check_run(pull_request, &run)?;
+    github.create_check_run(pull_request, &run).await?;
 
     Ok(())
 }
@@ -86,7 +86,7 @@ fn conventional_commit_jira_skip_type(title: &str) -> Option<&str> {
     }
 }
 
-fn do_skip_jira_check(
+async fn do_skip_jira_check(
     pull_request: &github::PullRequest,
     commit_type: &str,
     github: &dyn github::api::Session) -> Result<()> {
@@ -98,7 +98,7 @@ fn do_skip_jira_check(
     run = run.completed(github::Conclusion::Neutral);
     run.output = Some(github::CheckOutput::new(&msg, &body));
 
-    github.create_check_run(pull_request, &run)?;
+    github.create_check_run(pull_request, &run).await?;
 
     Ok(())
 }

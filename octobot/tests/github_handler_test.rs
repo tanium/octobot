@@ -239,17 +239,17 @@ fn expect_jira_ref_pass_pr(git: &MockGithub, pr: &PullRequest) {
 }
 
 
-#[test]
-fn test_ping() {
+#[tokio::test]
+async fn test_ping() {
     let mut test = new_test();
     test.handler.event = "ping".to_string();
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "ping".into()), resp);
 }
 
-#[test]
-fn test_commit_comment_with_path() {
+#[tokio::test]
+async fn test_commit_comment_with_path() {
     let mut test = new_test();
     test.handler.event = "commit_comment".into();
     test.handler.action = "created".into();
@@ -273,12 +273,12 @@ fn test_commit_comment_with_path() {
         )
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "commit_comment".into()), resp);
 }
 
-#[test]
-fn test_commit_comment_no_path() {
+#[tokio::test]
+async fn test_commit_comment_no_path() {
     let mut test = new_test();
     test.handler.event = "commit_comment".into();
     test.handler.action = "created".into();
@@ -302,12 +302,12 @@ fn test_commit_comment_no_path() {
         )
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "commit_comment".into()), resp);
 }
 
-#[test]
-fn test_issue_comment() {
+#[tokio::test]
+async fn test_issue_comment() {
     let mut test = new_test();
     test.handler.event = "issue_comment".into();
     test.handler.action = "created".into();
@@ -342,12 +342,12 @@ fn test_issue_comment() {
         slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
 }
 
-#[test]
-fn test_pull_request_comment() {
+#[tokio::test]
+async fn test_pull_request_comment() {
     let mut test = new_test();
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
@@ -378,12 +378,12 @@ fn test_pull_request_comment() {
         slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
 }
 
-#[test]
-fn test_pull_request_review_commented() {
+#[tokio::test]
+async fn test_pull_request_review_commented() {
     let mut test = new_test();
     test.handler.event = "pull_request_review".into();
     test.handler.action = "submitted".into();
@@ -413,12 +413,12 @@ fn test_pull_request_review_commented() {
         slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr_review [comment]".into()), resp);
 }
 
-#[test]
-fn test_pull_request_comments_ignore_empty_messages() {
+#[tokio::test]
+async fn test_pull_request_comments_ignore_empty_messages() {
     let mut test = new_test();
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
@@ -435,12 +435,12 @@ fn test_pull_request_comments_ignore_empty_messages() {
 
     test.slack.expect(vec![]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
 }
 
-#[test]
-fn test_pull_request_comments_ignore_octobot() {
+#[tokio::test]
+async fn test_pull_request_comments_ignore_octobot() {
     let mut test = new_test();
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
@@ -457,12 +457,12 @@ fn test_pull_request_comments_ignore_octobot() {
 
     test.slack.expect(vec![]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
 }
 
-#[test]
-fn test_pull_request_review_approved() {
+#[tokio::test]
+async fn test_pull_request_review_approved() {
     let mut test = new_test();
     test.handler.event = "pull_request_review".into();
     test.handler.action = "submitted".into();
@@ -493,12 +493,12 @@ fn test_pull_request_review_approved() {
         slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr_review".into()), resp);
 }
 
-#[test]
-fn test_pull_request_review_changes_requested() {
+#[tokio::test]
+async fn test_pull_request_review_changes_requested() {
     let mut test = new_test();
     test.handler.event = "pull_request_review".into();
     test.handler.action = "submitted".into();
@@ -528,12 +528,12 @@ fn test_pull_request_review_changes_requested() {
         slack::req("@mentioned.participant", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr_review".into()), resp);
 }
 
-#[test]
-fn test_pull_request_opened() {
+#[tokio::test]
+async fn test_pull_request_opened() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
@@ -559,12 +559,12 @@ fn test_pull_request_opened() {
         ),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_closed() {
+#[tokio::test]
+async fn test_pull_request_closed() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
@@ -588,12 +588,12 @@ fn test_pull_request_closed() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_reopened() {
+#[tokio::test]
+async fn test_pull_request_reopened() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "reopened".into();
@@ -617,12 +617,12 @@ fn test_pull_request_reopened() {
         ),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_ready_for_review() {
+#[tokio::test]
+async fn test_pull_request_ready_for_review() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "ready_for_review".into();
@@ -648,12 +648,12 @@ fn test_pull_request_ready_for_review() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_edited() {
+#[tokio::test]
+async fn test_pull_request_edited() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "edited".into();
@@ -665,12 +665,12 @@ fn test_pull_request_edited() {
 
     // no slack mocks
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_assigned() {
+#[tokio::test]
+async fn test_pull_request_assigned() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "assigned".into();
@@ -698,12 +698,12 @@ fn test_pull_request_assigned() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_unassigned() {
+#[tokio::test]
+async fn test_pull_request_unassigned() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "unassigned".into();
@@ -727,12 +727,12 @@ fn test_pull_request_unassigned() {
         ),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_review_requested() {
+#[tokio::test]
+async fn test_pull_request_review_requested() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "review_requested".into();
@@ -760,13 +760,13 @@ fn test_pull_request_review_requested() {
         slack::req("@smith.reviewer", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 
-#[test]
-fn test_pull_request_review_no_username() {
+#[tokio::test]
+async fn test_pull_request_review_no_username() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "review_requested".into();
@@ -792,12 +792,12 @@ fn test_pull_request_review_no_username() {
         slack::req("@bob.author", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_other() {
+#[tokio::test]
+async fn test_pull_request_other() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "some-other-action".into();
@@ -806,13 +806,13 @@ fn test_pull_request_other() {
 
     // should not do anything!
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
 
-#[test]
-fn test_pull_request_labeled_not_merged() {
+#[tokio::test]
+async fn test_pull_request_labeled_not_merged() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
@@ -825,12 +825,12 @@ fn test_pull_request_labeled_not_merged() {
 
     // labeled but not merged --> noop
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_merged_error_getting_labels() {
+#[tokio::test]
+async fn test_pull_request_merged_error_getting_labels() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
@@ -870,12 +870,12 @@ fn test_pull_request_merged_error_getting_labels() {
         slack::req("@the.pr.owner", msg2, attach2.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_merged_no_labels() {
+#[tokio::test]
+async fn test_pull_request_merged_no_labels() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
@@ -904,12 +904,12 @@ fn test_pull_request_merged_no_labels() {
         slack::req("@joe.reviewer", msg, attach.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_merged_backport_labels() {
+#[tokio::test]
+async fn test_pull_request_merged_backport_labels() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
@@ -955,12 +955,12 @@ fn test_pull_request_merged_backport_labels() {
         commits,
     );
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_merged_backport_labels_custom_pattern() {
+#[tokio::test]
+async fn test_pull_request_merged_backport_labels_custom_pattern() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
@@ -1026,12 +1026,12 @@ fn test_pull_request_merged_backport_labels_custom_pattern() {
         "the-other-prefix-other-thing".into(),
     ], commits);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_merged_retroactively_labeled() {
+#[tokio::test]
+async fn test_pull_request_merged_retroactively_labeled() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
@@ -1046,12 +1046,12 @@ fn test_pull_request_merged_retroactively_labeled() {
 
     test.expect_will_merge_branches("release/", vec!["release/7.123".into()], commits);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_merged_master_branch() {
+#[tokio::test]
+async fn test_pull_request_merged_master_branch() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
@@ -1066,12 +1066,12 @@ fn test_pull_request_merged_master_branch() {
 
     test.expect_will_merge_branches("release/", vec!["master".into()], commits);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_merged_develop_branch() {
+#[tokio::test]
+async fn test_pull_request_merged_develop_branch() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
@@ -1086,12 +1086,12 @@ fn test_pull_request_merged_develop_branch() {
 
     test.expect_will_merge_branches("release/", vec!["develop".into()], commits);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_pull_request_merged_main_branch() {
+#[tokio::test]
+async fn test_pull_request_merged_main_branch() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
@@ -1106,12 +1106,12 @@ fn test_pull_request_merged_main_branch() {
 
     test.expect_will_merge_branches("release/", vec!["main".into()], commits);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_push_no_pr() {
+#[tokio::test]
+async fn test_push_no_pr() {
     let mut test = new_test();
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/some-branch".into());
@@ -1126,12 +1126,12 @@ fn test_push_no_pr() {
         Ok(vec![]),
     );
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
-#[test]
-fn test_push_with_pr() {
+#[tokio::test]
+async fn test_push_with_pr() {
     let mut test = new_test();
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/some-branch".into());
@@ -1225,12 +1225,12 @@ fn test_push_with_pr() {
         slack::req("@bob.author", msg, attach2.clone()),
     ]);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
-#[test]
-fn test_push_force_notify() {
+#[tokio::test]
+async fn test_push_force_notify() {
     let mut test = new_test();
 
     test.handler.event = "push".into();
@@ -1271,12 +1271,12 @@ fn test_push_force_notify() {
 
     test.expect_will_force_push_notify(&pr, "abcdef0000", "1111abcdef");
 
-    let resp = test.handler.handle_event().expect("handled event");
+    let resp = test.handler.handle_event().await.expect("handled event");
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
-#[test]
-fn test_push_force_notify_wip() {
+#[tokio::test]
+async fn test_push_force_notify_wip() {
     let mut test = new_test();
 
     test.handler.event = "push".into();
@@ -1299,12 +1299,12 @@ fn test_push_force_notify_wip() {
 
     // Note: no expectations here.
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
-#[test]
-fn test_push_force_notify_ignored() {
+#[tokio::test]
+async fn test_push_force_notify_ignored() {
     let mut test = new_test();
 
     test.handler.event = "push".into();
@@ -1351,7 +1351,7 @@ fn test_push_force_notify_ignored() {
 
     // Note: no expectations here.
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
@@ -1417,8 +1417,8 @@ fn some_jira_push_commits() -> Vec<PushCommit> {
     ]
 }
 
-#[test]
-fn test_jira_pull_request_opened() {
+#[tokio::test]
+async fn test_jira_pull_request_opened() {
     let mut test = new_test_with_jira();
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
@@ -1466,12 +1466,12 @@ fn test_jira_pull_request_opened() {
         jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
     }
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_jira_pull_request_opened_too_many_commits() {
+#[tokio::test]
+async fn test_jira_pull_request_opened_too_many_commits() {
     let mut test = new_test_with_jira();
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
@@ -1514,12 +1514,12 @@ fn test_jira_pull_request_opened_too_many_commits() {
 
     // do not set jira expectations
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-#[test]
-fn test_jira_push_master() {
+#[tokio::test]
+async fn test_jira_push_master() {
     let mut test = new_test_with_jira();
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/master".into());
@@ -1530,12 +1530,12 @@ fn test_jira_push_master() {
 
     test.expect_will_run_version_script("master", "1111abcdef", &commits);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
-#[test]
-fn test_jira_push_develop() {
+#[tokio::test]
+async fn test_jira_push_develop() {
     let mut test = new_test_with_jira();
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/develop".into());
@@ -1546,12 +1546,12 @@ fn test_jira_push_develop() {
 
     test.expect_will_run_version_script("develop", "1111abcdef", &commits);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
-#[test]
-fn test_jira_push_release() {
+#[tokio::test]
+async fn test_jira_push_release() {
     let mut test = new_test_with_jira();
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/release/55".into());
@@ -1562,12 +1562,12 @@ fn test_jira_push_release() {
 
     test.expect_will_run_version_script("release/55", "1111abcdef", &commits);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
-#[test]
-fn test_jira_push_other_branch() {
+#[tokio::test]
+async fn test_jira_push_other_branch() {
     let mut test = new_test_with_jira();
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/some-branch".into());
@@ -1586,13 +1586,13 @@ fn test_jira_push_other_branch() {
 
     // no jira mocks: will fail if called
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
 
-#[test]
-fn test_jira_disabled() {
+#[tokio::test]
+async fn test_jira_disabled() {
     let mut test = new_test_with_jira();
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/master".into());
@@ -1607,12 +1607,12 @@ fn test_jira_disabled() {
 
     // no jira mocks: will fail if called
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }
 
-#[test]
-fn test_jira_push_triggers_version_script() {
+#[tokio::test]
+async fn test_jira_push_triggers_version_script() {
     let mut test = new_test_with_jira();
 
     test.config
@@ -1635,6 +1635,6 @@ fn test_jira_push_triggers_version_script() {
 
     test.expect_will_run_version_script("master", "1111abcdef", &commits);
 
-    let resp = test.handler.handle_event().unwrap();
+    let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
 }

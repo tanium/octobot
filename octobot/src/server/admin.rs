@@ -2,12 +2,13 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use hyper::{Body, Request};
+use hyper::{Body, Request, Response};
 use hyper::StatusCode;
 use serde_json;
 use serde_derive::{Deserialize, Serialize};
 use log::error;
 
+use octobot_lib::errors::*;
 use octobot_lib::config::{Config, JiraConfig};
 use octobot_lib::jira;
 use octobot_lib::repos::RepoInfo;
@@ -16,7 +17,7 @@ use octobot_lib::version;
 use octobot_ops::util;
 
 use crate::http_util;
-use crate::server::http::{FutureResponse, Handler, parse_json};
+use crate::server::http::{Handler, parse_json};
 
 pub enum Op {
     List,
@@ -37,8 +38,8 @@ pub struct RepoAdmin {
 
 
 impl UserAdmin {
-    pub fn new(config: Arc<Config>, op: Op) -> Box<UserAdmin> {
-        Box::new(UserAdmin {
+    pub fn new(config: Arc<Config>, op: Op) -> Arc<UserAdmin> {
+        Arc::new(UserAdmin {
             config: config,
             op: op,
         })
@@ -46,104 +47,90 @@ impl UserAdmin {
 }
 
 impl RepoAdmin {
-    pub fn new(config: Arc<Config>, op: Op) -> Box<RepoAdmin> {
-        Box::new(RepoAdmin {
+    pub fn new(config: Arc<Config>, op: Op) -> Arc<RepoAdmin> {
+        Arc::new(RepoAdmin {
             config: config,
             op: op,
         })
     }
 }
 
-
+#[async_trait::async_trait]
 impl Handler for UserAdmin {
-    fn handle(&self, req: Request<Body>) -> FutureResponse {
+    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
         match &self.op {
-            &Op::List => self.get_all(req),
-            &Op::Create => self.create(req),
-            &Op::Update => self.update(req),
-            &Op::Delete => self.delete(req),
+            &Op::List => self.get_all(req).await,
+            &Op::Create => self.create(req).await,
+            &Op::Update => self.update(req).await,
+            &Op::Delete => self.delete(req).await,
         }
     }
 }
 
 impl UserAdmin {
-    fn get_all(&self, _: Request<Body>) -> FutureResponse {
+    async fn get_all(&self, _: Request<Body>) -> Result<Response<Body>> {
         #[derive(Serialize)]
         struct UsersResp {
             users: Vec<UserInfo>,
         }
 
-        let users = match self.config.users().get_all() {
-            Ok(u) => u,
-            Err(e) => {
-                return self.respond_error(&format!("{}", e));
-            }
-        };
+        let users = self.config.users().get_all()?;
         let resp = UsersResp { users: users };
 
-        let users = match serde_json::to_string(&resp) {
-            Ok(u) => u,
-            Err(e) => {
-                error!("Error serializing users: {}", e);
-                String::new()
-            }
-        };
-        self.respond(http_util::new_json_resp(users))
+        let users = serde_json::to_string(&resp)?;
+
+        Ok(http_util::new_json_resp(users))
     }
 
-    fn create(&self, req: Request<Body>) -> FutureResponse {
+    async fn create(&self, req: Request<Body>) -> Result<Response<Body>> {
         let config = self.config.clone();
-        parse_json(req, move |user: UserInfo| {
-            if let Err(e) = config.users_write().insert_info(&user) {
-                error!("{}", e);
-                return http_util::new_empty_error_resp();
-            }
-            http_util::new_empty_resp(StatusCode::OK)
-        })
+        let user: UserInfo = parse_json(req).await?;
+        config.users_write().insert_info(&user)?;
+
+        Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 
-    fn update(&self, req: Request<Body>) -> FutureResponse {
+    async fn update(&self, req: Request<Body>) -> Result<Response<Body>> {
         let config = self.config.clone();
 
-        parse_json(req, move |user: UserInfo| {
-            if let Err(e) = config.users_write().update(&user) {
-                error!("{}", e);
-                return http_util::new_empty_error_resp();
-            }
-            http_util::new_empty_resp(StatusCode::OK)
-        })
+        let user: UserInfo = parse_json(req).await?;
+        config.users_write().update(&user)?;
+
+        Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 
-    fn delete(&self, req: Request<Body>) -> FutureResponse {
+    async fn delete(&self, req: Request<Body>) -> Result<Response<Body>> {
         let config = self.config.clone();
 
         let query = util::parse_query(req.uri().query());
 
         let user_id = match query.get("id").map(|id| id.parse::<i32>()) {
-            None | Some(Err(_)) => return self.respond(http_util::new_bad_req_resp("No `id` param specified")),
+            None | Some(Err(_)) => return Ok(http_util::new_bad_req_resp("No `id` param specified")),
             Some(Ok(id)) => id,
         };
 
         if let Err(e) = config.users_write().delete(user_id) {
-            return self.respond_error(&format!("{}", e));
+            return Ok(self.respond_error(&format!("{}", e)));
         }
-        self.respond_with(StatusCode::OK, "")
+
+        Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 }
 
+#[async_trait::async_trait]
 impl Handler for RepoAdmin {
-    fn handle(&self, req: Request<Body>) -> FutureResponse {
+    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
         match &self.op {
-            &Op::List => self.get_all(req),
-            &Op::Create => self.create(req),
-            &Op::Update => self.update(req),
-            &Op::Delete => self.delete(req),
+            &Op::List => self.get_all(req).await,
+            &Op::Create => self.create(req).await,
+            &Op::Update => self.update(req).await,
+            &Op::Delete => self.delete(req).await,
         }
     }
 }
 
 impl RepoAdmin {
-    fn get_all(&self, _: Request<Body>) -> FutureResponse {
+    async fn get_all(&self, _: Request<Body>) -> Result<Response<Body>> {
         #[derive(Serialize)]
         struct ReposResp {
             repos: Vec<RepoInfo>,
@@ -152,7 +139,7 @@ impl RepoAdmin {
         let repos = match self.config.repos().get_all() {
             Ok(u) => u,
             Err(e) => {
-                return self.respond_error(&format!("{}", e));
+                return Ok(self.respond_error(&format!("{}", e)));
             }
         };
         let resp = ReposResp { repos: repos };
@@ -164,46 +151,41 @@ impl RepoAdmin {
                 String::new()
             }
         };
-        self.respond(http_util::new_json_resp(repos))
+
+        Ok(http_util::new_json_resp(repos))
     }
 
-    fn create(&self, req: Request<Body>) -> FutureResponse {
+    async fn create(&self, req: Request<Body>) -> Result<Response<Body>> {
         let config = self.config.clone();
-        parse_json(req, move |repo: RepoInfo| {
-            if let Err(e) = config.repos_write().insert_info(&repo) {
-                error!("{}", e);
-                return http_util::new_empty_error_resp();
-            }
-            http_util::new_empty_resp(StatusCode::OK)
-        })
+        let repo: RepoInfo = parse_json(req).await?;
+        config.repos_write().insert_info(&repo)?;
+
+        Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 
-    fn update(&self, req: Request<Body>) -> FutureResponse {
+    async fn update(&self, req: Request<Body>) -> Result<Response<Body>> {
         let config = self.config.clone();
+        let repo: RepoInfo = parse_json(req).await?;
+        config.repos_write().update(&repo)?;
 
-        parse_json(req, move |repo: RepoInfo| {
-            if let Err(e) = config.repos_write().update(&repo) {
-                error!("{}", e);
-                return http_util::new_empty_error_resp();
-            }
-            http_util::new_empty_resp(StatusCode::OK)
-        })
+        Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 
-    fn delete(&self, req: Request<Body>) -> FutureResponse {
+    async fn delete(&self, req: Request<Body>) -> Result<Response<Body>> {
         let config = self.config.clone();
 
         let query = util::parse_query(req.uri().query());
 
         let repo_id = match query.get("id").map(|id| id.parse::<i32>()) {
-            None | Some(Err(_)) => return self.respond(http_util::new_bad_req_resp("No `id` param specified")),
+            None | Some(Err(_)) => return Ok(http_util::new_bad_req_resp("No `id` param specified")),
             Some(Ok(id)) => id,
         };
 
         if let Err(e) = config.repos_write().delete(repo_id) {
-            return self.respond_error(&format!("{}", e));
+            return Ok(self.respond_error(&format!("{}", e)));
         }
-        self.respond_with(StatusCode::OK, "")
+
+        Ok(self.respond_with(StatusCode::OK, ""))
     }
 }
 
@@ -212,8 +194,8 @@ pub struct MergeVersions {
 }
 
 impl MergeVersions {
-    pub fn new(config: Arc<Config>) -> Box<MergeVersions> {
-        Box::new(MergeVersions { config: config })
+    pub fn new(config: Arc<Config>) -> Arc<MergeVersions> {
+        Arc::new(MergeVersions { config: config })
     }
 }
 
@@ -233,70 +215,78 @@ struct MergeVersionsResp {
     versions: HashMap<String, Vec<version::Version>>,
 }
 
+#[async_trait::async_trait]
 impl Handler for MergeVersions {
-    fn handle(&self, req: Request<Body>) -> FutureResponse {
+    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+        let merge_req: MergeVersionsReq = parse_json(req).await?;
+
+        Ok(self.do_handle(merge_req).await)
+    }
+}
+
+impl MergeVersions {
+    // TODO: This returns error codes as HTTP 400, so we want to not hide the error message
+    async fn do_handle(&self, merge_req: MergeVersionsReq) -> Response<Body> {
         let config = self.config.clone();
-        parse_json(req, move |merge_req: MergeVersionsReq| {
-            // make a copy of the jira config so we can modify the auth
-            let mut jira_config: JiraConfig = match config.jira {
-                Some(ref j) => j.clone(),
-                None => return http_util::new_bad_req_resp("No JIRA config"),
-            };
+        // make a copy of the jira config so we can modify the auth
+        let mut jira_config: JiraConfig = match config.jira {
+            Some(ref j) => j.clone(),
+            None => return http_util::new_bad_req_resp("No JIRA config"),
+        };
 
-            if !merge_req.dry_run {
-                jira_config.username = merge_req.admin_user.unwrap_or(String::new());
-                jira_config.password = merge_req.admin_pass.unwrap_or(String::new());
+        if !merge_req.dry_run {
+            jira_config.username = merge_req.admin_user.unwrap_or(String::new());
+            jira_config.password = merge_req.admin_pass.unwrap_or(String::new());
 
-                if jira_config.username.is_empty() || jira_config.password.is_empty() {
-                    return http_util::new_bad_req_resp("JIRA auth required for non dry-run");
-                }
+            if jira_config.username.is_empty() || jira_config.password.is_empty() {
+                return http_util::new_bad_req_resp("JIRA auth required for non dry-run");
             }
+        }
 
-            let jira_sess = match jira::api::JiraSession::new(&jira_config) {
-                Ok(j) => j,
-                Err(e) => return http_util::new_bad_req_resp(format!("Error creating JIRA session: {}", e)),
-            };
+        let jira_sess = match jira::api::JiraSession::new(&jira_config).await {
+            Ok(j) => j,
+            Err(e) => return http_util::new_bad_req_resp(format!("Error creating JIRA session: {}", e)),
+        };
 
-            let dry_run_mode = if merge_req.dry_run {
-                jira::workflow::DryRunMode::DryRun
-            } else {
-                jira::workflow::DryRunMode::ForReal
-            };
+        let dry_run_mode = if merge_req.dry_run {
+            jira::workflow::DryRunMode::DryRun
+        } else {
+            jira::workflow::DryRunMode::ForReal
+        };
 
-            let all_relevant_versions = match jira::workflow::merge_pending_versions(
-                &merge_req.version,
-                &merge_req.project,
-                jira_sess.borrow(),
-                dry_run_mode,
-            ) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Error merging pending versions: {}", e);
-                    return http_util::new_error_resp(format!("Error merging pending versions: {}", e));
-                }
-            };
-
-            if !merge_req.dry_run {
-                if let Err(e) = jira::workflow::sort_versions(&merge_req.project, jira_sess.borrow()) {
-                    error!("Error sorting versions: {}", e);
-                }
+        let all_relevant_versions = match jira::workflow::merge_pending_versions(
+            &merge_req.version,
+            &merge_req.project,
+            jira_sess.borrow(),
+            dry_run_mode,
+        ).await {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Error merging pending versions: {}", e);
+                return http_util::new_error_resp(format!("Error merging pending versions: {}", e));
             }
+        };
 
-            let resp = MergeVersionsResp {
-                jira_base: jira_config.base_url(),
-                login_suffix: jira_config.login_suffix,
-                versions: all_relevant_versions,
-            };
+        if !merge_req.dry_run {
+            if let Err(e) = jira::workflow::sort_versions(&merge_req.project, jira_sess.borrow()).await {
+                error!("Error sorting versions: {}", e);
+            }
+        }
 
-            let resp_json = match serde_json::to_string(&resp) {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("Error serializing versions: {}", e);
-                    return http_util::new_error_resp(format!("Error serializing pending versions: {}", e));
-                }
-            };
+        let resp = MergeVersionsResp {
+            jira_base: jira_config.base_url(),
+            login_suffix: jira_config.login_suffix,
+            versions: all_relevant_versions,
+        };
 
-            http_util::new_json_resp(resp_json)
-        })
+        let resp_json = match serde_json::to_string(&resp) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error serializing versions: {}", e);
+                return http_util::new_error_resp(format!("Error serializing pending versions: {}", e));
+            }
+        };
+
+        http_util::new_json_resp(resp_json)
     }
 }

@@ -8,8 +8,8 @@ use octobot_ops::diffs::DiffOfDiffs;
 use octobot_ops::force_push;
 use octobot_lib::github;
 
-#[test]
-fn test_force_push_identical() {
+#[tokio::test]
+async fn test_force_push_identical() {
     let mut pr = github::PullRequest::new();
     pr.number = 32;
     pr.head.ref_name = "the-pr-branch".into();
@@ -36,11 +36,11 @@ fn test_force_push_identical() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).unwrap();
+    ).await.unwrap();
 }
 
-#[test]
-fn test_force_push_different() {
+#[tokio::test]
+async fn test_force_push_different() {
     let mut pr = github::PullRequest::new();
     pr.number = 32;
 
@@ -63,11 +63,11 @@ fn test_force_push_different() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).unwrap();
+    ).await.unwrap();
 }
 
-#[test]
-fn test_force_push_different_with_details() {
+#[tokio::test]
+async fn test_force_push_different_with_details() {
     let diff0 = r#"
 diff --git a/src/diffs.rs b/src/diffs.rs
 index 9c8643c..5aa6c73 100644
@@ -196,11 +196,11 @@ index 33667da..3503c28 100644
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).unwrap();
+    ).await.unwrap();
 }
 
-#[test]
-fn test_force_push_error() {
+#[tokio::test]
+async fn test_force_push_error() {
     let mut pr = github::PullRequest::new();
     pr.number = 32;
 
@@ -221,11 +221,11 @@ fn test_force_push_error() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).unwrap();
+    ).await.unwrap();
 }
 
-#[test]
-fn test_force_push_identical_no_previous_approve_dismissal() {
+#[tokio::test]
+async fn test_force_push_identical_no_previous_approve_dismissal() {
     let mut pr = github::PullRequest::new();
     pr.number = 32;
     pr.head.ref_name = "the-pr-branch".into();
@@ -254,11 +254,11 @@ fn test_force_push_identical_no_previous_approve_dismissal() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).unwrap();
+    ).await.unwrap();
 }
 
-#[test]
-fn test_force_push_identical_no_previous_approval() {
+#[tokio::test]
+async fn test_force_push_identical_no_previous_approval() {
     let mut pr = github::PullRequest::new();
     pr.number = 32;
     pr.head.ref_name = "the-pr-branch".into();
@@ -297,11 +297,11 @@ fn test_force_push_identical_no_previous_approval() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).unwrap();
+    ).await.unwrap();
 }
 
-#[test]
-fn test_force_push_identical_reapprove() {
+#[tokio::test]
+async fn test_force_push_identical_reapprove() {
     let mut pr = github::PullRequest::new();
     pr.number = 32;
     pr.head.ref_name = "the-pr-branch".into();
@@ -352,11 +352,12 @@ fn test_force_push_identical_reapprove() {
     );
 
     force_push::comment_force_push(diffs, &github, "some-user", "some-repo", &pr, before_hash, after_hash)
+        .await
         .unwrap();
 }
 
-#[test]
-fn test_force_push_identical_wrong_previous_approval() {
+#[tokio::test]
+async fn test_force_push_identical_wrong_previous_approval() {
     let mut pr = github::PullRequest::new();
     pr.number = 32;
     pr.head.ref_name = "the-pr-branch".into();
@@ -400,5 +401,6 @@ fn test_force_push_identical_wrong_previous_approval() {
     // Do not mock approve_pull_request: Should not re-approve
 
     force_push::comment_force_push(diffs, &github, "some-user", "some-repo", &pr, before_hash, after_hash)
+        .await
         .unwrap();
 }

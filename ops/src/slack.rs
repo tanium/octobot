@@ -1,6 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use futures::{future, Future};
 use reqwest;
 use serde_derive::Serialize;
 use tokio;
@@ -72,7 +71,6 @@ struct SlackMessage {
 
 // the main object for sending messages to slack
 struct Slack {
-    client: reqwest::r#async::Client,
     webhook_url: String,
     recent_messages: Mutex<Vec<SlackMessage>>,
 }
@@ -83,7 +81,6 @@ const TRIM_MESSAGES_TO: usize = 20;
 impl Slack {
     pub fn new(webhook_url: Option<String>) -> Slack {
         Slack {
-            client: reqwest::r#async::Client::new(),
             webhook_url: webhook_url.unwrap_or(String::new()),
             recent_messages: Mutex::new(Vec::new()),
         }
@@ -107,7 +104,9 @@ impl Slack {
 
         info!("Sending message to #{}", channel);
         let webhook_url = self.webhook_url.clone();
-        tokio::spawn(self.client.post(&webhook_url).json(&slack_msg).send().then(move |res| {
+        tokio::spawn(async move {
+            let client = reqwest::Client::new();
+            let res = client.post(&webhook_url).json(&slack_msg).send().await;
             match res {
                 Ok(_) => info!("Successfully sent slack message"),
                 Err(e) => {
@@ -115,8 +114,7 @@ impl Slack {
                     error!("Error sending slack message: {}", msg);
                 }
             };
-            future::ok::<(), ()>(())
-        }));
+        });
     }
 
     fn is_unique(&self, req: &SlackMessage) -> bool {
@@ -150,8 +148,9 @@ pub fn new_runner(webhook_url: Option<String>) -> Arc<dyn worker::Runner<SlackRe
     })
 }
 
+#[async_trait::async_trait]
 impl worker::Runner<SlackRequest> for Runner {
-    fn handle(&self, req: SlackRequest) {
+    async fn handle(&self, req: SlackRequest) {
         self.slack.send(&req.channel, &req.msg, req.attachments);
     }
 }

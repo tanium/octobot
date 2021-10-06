@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
 use base64;
 use failure::format_err;
 use log::{debug, info};
@@ -15,22 +16,23 @@ use crate::http_client::HTTPClient;
 use crate::jira::models::*;
 use crate::version;
 
+#[async_trait]
 pub trait Session: Send + Sync {
-    fn get_issue(&self, key: &str) -> Result<Issue>;
-    fn get_transitions(&self, key: &str) -> Result<Vec<Transition>>;
+    async fn get_issue(&self, key: &str) -> Result<Issue>;
+    async fn get_transitions(&self, key: &str) -> Result<Vec<Transition>>;
 
-    fn transition_issue(&self, key: &str, transition: &TransitionRequest) -> Result<()>;
+    async fn transition_issue(&self, key: &str, transition: &TransitionRequest) -> Result<()>;
 
-    fn comment_issue(&self, key: &str, comment: &str) -> Result<()>;
+    async fn comment_issue(&self, key: &str, comment: &str) -> Result<()>;
 
-    fn add_version(&self, proj: &str, version: &str) -> Result<()>;
-    fn get_versions(&self, proj: &str) -> Result<Vec<Version>>;
-    fn assign_fix_version(&self, key: &str, version: &str) -> Result<()>;
-    fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<()>;
+    async fn add_version(&self, proj: &str, version: &str) -> Result<()>;
+    async fn get_versions(&self, proj: &str) -> Result<Vec<Version>>;
+    async fn assign_fix_version(&self, key: &str, version: &str) -> Result<()>;
+    async fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<()>;
 
-    fn add_pending_version(&self, key: &str, version: &str) -> Result<()>;
-    fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<()>;
-    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>>;
+    async fn add_pending_version(&self, key: &str, version: &str) -> Result<()>;
+    async fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<()>;
+    async fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>>;
 }
 
 #[derive(Debug)]
@@ -62,7 +64,7 @@ fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String> {
 }
 
 impl JiraSession {
-    pub fn new(config: &JiraConfig) -> Result<JiraSession> {
+    pub async fn new(config: &JiraConfig) -> Result<JiraSession> {
         let jira_base = config.base_url();
         let api_base = format!("{}/rest/api/2", jira_base);
 
@@ -77,12 +79,12 @@ impl JiraSession {
 
         let client = HTTPClient::new_with_headers(&api_base, headers)?;
 
-        let auth_resp = client.get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base)).map_err(
+        let auth_resp = client.get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base)).await.map_err(
             |e| format_err!("Error authenticating to JIRA: {}", e),
         )?;
         info!("Logged into JIRA as {}", auth_resp.name);
 
-        let fields = client.get::<Vec<Field>>("/field")?;
+        let fields = client.get::<Vec<Field>>("/field").await?;
 
         let pending_versions_field_id = match config.pending_versions_field {
             Some(ref f) => Some(lookup_field(f, &fields)?),
@@ -94,40 +96,42 @@ impl JiraSession {
         debug!("Fix Versions field: {:?}", fix_versions_field);
 
         Ok(JiraSession {
-            client: client,
-            fix_versions_field: fix_versions_field,
+            client,
+            fix_versions_field,
             pending_versions_field: config.pending_versions_field.clone(),
-            pending_versions_field_id: pending_versions_field_id,
+            pending_versions_field_id,
             restrict_comment_visibility_to_role: config.restrict_comment_visibility_to_role.clone(),
         })
     }
 }
 
+#[async_trait]
 impl Session for JiraSession {
-    fn get_issue(&self, key: &str) -> Result<Issue> {
-        self.client.get::<Issue>(&format!("/issue/{}", key)).map_err(|e| {
+    async fn get_issue(&self, key: &str) -> Result<Issue> {
+        self.client.get::<Issue>(&format!("/issue/{}", key)).await.map_err(|e| {
             format_err!("Error creating getting issue [{}]: {}", key, e)
         })
     }
 
-    fn get_transitions(&self, key: &str) -> Result<Vec<Transition>> {
+    async fn get_transitions(&self, key: &str) -> Result<Vec<Transition>> {
         #[derive(Deserialize)]
         struct TransitionsResp {
             transitions: Vec<Transition>,
         }
         let resp = self.client
             .get::<TransitionsResp>(&format!("/issue/{}/transitions?expand=transitions.fields", key))
+            .await
             .map_err(|e| format_err!("Error creating getting transitions for [{}]: {}", key, e))?;
         Ok(resp.transitions)
     }
 
-    fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<()> {
-        self.client.post_void(&format!("/issue/{}/transitions", key), &req).map_err(|e| {
+    async fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<()> {
+        self.client.post_void(&format!("/issue/{}/transitions", key), &req).await.map_err(|e| {
             format_err!("Error transitioning [{}]: {}", key, e)
         })
     }
 
-    fn comment_issue(&self, key: &str, comment: &str) -> Result<()> {
+    async fn comment_issue(&self, key: &str, comment: &str) -> Result<()> {
         #[derive(Serialize)]
         struct VisibilityReq {
             #[serde(rename = "type")]
@@ -152,7 +156,7 @@ impl Session for JiraSession {
                 value: r.clone(),
             });
 
-            let result = self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req);
+            let result = self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req).await;
             if result.is_ok() {
                 return Ok(());
             }
@@ -161,14 +165,14 @@ impl Session for JiraSession {
             // Fall-through to making the request without the visibility restriction
         }
 
-        self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req).map_err(
+        self.client.post_void::<CommentReq>(&format!("/issue/{}/comment", key), &req).await.map_err(
             |e| {
                 format_err!("Error commenting on [{}]: {}", key, e)
             },
         )
     }
 
-    fn add_version(&self, proj: &str, version: &str) -> Result<()> {
+    async fn add_version(&self, proj: &str, version: &str) -> Result<()> {
         #[derive(Serialize)]
         struct AddVersionReq {
             name: String,
@@ -179,18 +183,18 @@ impl Session for JiraSession {
             name: version.into(),
             project: proj.into(),
         };
-        self.client.post_void("/version", &req).map_err(|e| {
+        self.client.post_void("/version", &req).await.map_err(|e| {
             format_err!("Error adding version {} to project {}: {}", version, proj, e)
         })
     }
 
-    fn get_versions(&self, proj: &str) -> Result<Vec<Version>> {
-        self.client.get::<Vec<Version>>(&format!("/project/{}/versions", proj)).map_err(|e| {
+    async fn get_versions(&self, proj: &str) -> Result<Vec<Version>> {
+        self.client.get::<Vec<Version>>(&format!("/project/{}/versions", proj)).await.map_err(|e| {
             format_err!("Error getting versions for project {}: {}", proj, e)
         })
     }
 
-    fn assign_fix_version(&self, key: &str, version: &str) -> Result<()> {
+    async fn assign_fix_version(&self, key: &str, version: &str) -> Result<()> {
         let field = self.fix_versions_field.clone();
         let req = json!({
             "update": {
@@ -198,12 +202,12 @@ impl Session for JiraSession {
             }
         });
 
-        self.client.put_void(&format!("/issue/{}", key), &req).map_err(|e| {
+        self.client.put_void(&format!("/issue/{}", key), &req).await.map_err(|e| {
             format_err!("Error adding fix-version {} to [{}]: {}", version, key, e)
         })
     }
 
-    fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<()> {
+    async fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<()> {
         let req = match position {
             JiraVersionPosition::First => {
                 json!({
@@ -217,14 +221,14 @@ impl Session for JiraSession {
             }
         };
 
-        self.client.post_void(&format!("/version/{}/move", version.id), &req).map_err(|e| {
+        self.client.post_void(&format!("/version/{}/move", version.id), &req).await.map_err(|e| {
             format_err!("Error reordering version {}: {}", version.name, e)
         })
     }
 
-    fn add_pending_version(&self, key: &str, version: &str) -> Result<()> {
+    async fn add_pending_version(&self, key: &str, version: &str) -> Result<()> {
         if let Some(ref field) = self.pending_versions_field_id.clone() {
-            let issue = self.client.get::<serde_json::Value>(&format!("/issue/{}", key))?;
+            let issue = self.client.get::<serde_json::Value>(&format!("/issue/{}", key)).await?;
 
             let version_parsed = match version::Version::parse(version) {
                 Some(v) => v,
@@ -245,17 +249,16 @@ impl Session for JiraSession {
                 }
             });
 
-            self.client.put_void(&format!("/issue/{}", key), &req).map_err(|e| {
+            self.client.put_void(&format!("/issue/{}", key), &req).await.map_err(|e| {
                 format_err!("Error adding pending version {} to [{}]: {}", version, key, e)
             })?;
         }
         Ok(())
     }
 
-
-    fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<()> {
+    async fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<()> {
         if let Some(ref field_id) = self.pending_versions_field_id.clone() {
-            let issue = self.client.get::<serde_json::Value>(&format!("/issue/{}", key))?;
+            let issue = self.client.get::<serde_json::Value>(&format!("/issue/{}", key)).await?;
 
             let pending_versions = parse_pending_version_field(&issue["fields"][field_id]);
             let new_pending_versions = pending_versions
@@ -271,14 +274,14 @@ impl Session for JiraSession {
                 }
             });
 
-            self.client.put_void(&format!("/issue/{}", key), &req).map_err(|e| {
+            self.client.put_void(&format!("/issue/{}", key), &req).await.map_err(|e| {
                 format_err!("Error removing pending versions {:?} from [{}]: {}", versions, key, e)
             })?;
         }
         Ok(())
     }
 
-    fn find_pending_versions(&self, project: &str) -> Result<HashMap<String, Vec<version::Version>>> {
+    async fn find_pending_versions(&self, project: &str) -> Result<HashMap<String, Vec<version::Version>>> {
         if let Some(ref field) = self.pending_versions_field.clone() {
             if let Some(ref field_id) = self.pending_versions_field_id {
                 let jql = format!("(project = \"{}\") and \"{}\" is not EMPTY", project, field);
@@ -287,6 +290,7 @@ impl Session for JiraSession {
                         .get::<serde_json::Value>(
                             &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, DEFAULT_ENCODE_SET)),
                         )
+                        .await
                         .map_err(|e| {
                             format_err!("Error finding pending pending versions for project {}: {}", project, e)
                         })?;

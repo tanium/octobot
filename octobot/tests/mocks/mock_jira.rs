@@ -116,8 +116,9 @@ impl Drop for MockJira {
     }
 }
 
+#[async_trait::async_trait]
 impl Session for MockJira {
-    fn get_issue(&self, key: &str) -> Result<Issue> {
+    async fn get_issue(&self, key: &str) -> Result<Issue> {
         let mut calls = self.get_issue_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_issue {}", key);
         let call = calls.remove(0);
@@ -125,7 +126,7 @@ impl Session for MockJira {
 
         call.ret
     }
-    fn get_transitions(&self, key: &str) -> Result<Vec<Transition>> {
+    async fn get_transitions(&self, key: &str) -> Result<Vec<Transition>> {
         let mut calls = self.get_transitions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_transitions");
         let call = calls.remove(0);
@@ -134,7 +135,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<()> {
+    async fn transition_issue(&self, key: &str, req: &TransitionRequest) -> Result<()> {
         let mut calls = self.transition_issue_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to transition_issue");
         let call = calls.remove(0);
@@ -144,7 +145,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn comment_issue(&self, key: &str, comment: &str) -> Result<()> {
+    async fn comment_issue(&self, key: &str, comment: &str) -> Result<()> {
         let mut calls = self.comment_issue_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to comment_issue");
         let call = calls.remove(0);
@@ -154,7 +155,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn add_version(&self, proj: &str, version: &str) -> Result<()> {
+    async fn add_version(&self, proj: &str, version: &str) -> Result<()> {
         let mut calls = self.add_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to add_version");
         let call = calls.remove(0);
@@ -164,7 +165,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn get_versions(&self, proj: &str) -> Result<Vec<Version>> {
+    async fn get_versions(&self, proj: &str) -> Result<Vec<Version>> {
         let mut calls = self.get_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_versions");
         let call = calls.remove(0);
@@ -173,7 +174,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn assign_fix_version(&self, key: &str, version: &str) -> Result<()> {
+    async fn assign_fix_version(&self, key: &str, version: &str) -> Result<()> {
         let mut calls = self.assign_fix_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to assign_fix_version");
         let call = calls.remove(0);
@@ -183,7 +184,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<()> {
+    async fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<()> {
         let mut calls = self.reorder_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to reorder_version");
         let call = calls.remove(0);
@@ -193,7 +194,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn add_pending_version(&self, key: &str, version: &str) -> Result<()> {
+    async fn add_pending_version(&self, key: &str, version: &str) -> Result<()> {
         let mut calls = self.add_pending_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to add_pending_version");
         let call = calls.remove(0);
@@ -203,7 +204,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<()> {
+    async fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<()> {
         let mut calls = self.remove_pending_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to remove_pending_versions");
         let call = calls.remove(0);
@@ -213,7 +214,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>> {
+    async fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>> {
         let mut calls = self.find_pending_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to find_pending_versions");
         let call = calls.remove(0);

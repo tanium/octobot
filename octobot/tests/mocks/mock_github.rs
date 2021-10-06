@@ -139,6 +139,7 @@ impl Drop for MockGithub {
     }
 }
 
+#[async_trait::async_trait]
 impl Session for MockGithub {
     fn bot_name(&self) -> &str {
         "octobot[bot]"
@@ -156,7 +157,7 @@ impl Session for MockGithub {
         Some(2)
     }
 
-    fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
+    async fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
         let mut calls = self.get_pr_calls.lock().unwrap();
         if calls.len() == 0 {
             panic!("Unexpected call to get_pull_request");
@@ -169,7 +170,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_pull_requests(
+    async fn get_pull_requests(
         &self,
         owner: &str,
         repo: &str,
@@ -187,7 +188,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn create_pull_request(
+    async fn create_pull_request(
         &self,
         owner: &str,
         repo: &str,
@@ -209,7 +210,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>> {
+    async fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>> {
         let mut calls = self.get_pr_labels_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_pull_request_labels");
         let call = calls.remove(0);
@@ -220,7 +221,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>) -> Result<()> {
+    async fn add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>) -> Result<()> {
         let mut calls = self.add_pr_labels_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to add_pull_request_labels");
         let call = calls.remove(0);
@@ -232,7 +233,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>> {
+    async fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>> {
         let mut calls = self.get_pr_commits_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_pull_request_commits");
         let call = calls.remove(0);
@@ -243,7 +244,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>> {
+    async fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>> {
         let mut calls = self.get_pr_reviews_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_pull_request_reviews");
         let call = calls.remove(0);
@@ -254,7 +255,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<()> {
+    async fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<()> {
         let mut calls = self.assign_pr_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to assign_pull_request");
         let call = calls.remove(0);
@@ -266,7 +267,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>) -> Result<()> {
+    async fn request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>) -> Result<()> {
         let mut calls = self.request_review_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to request_review");
         let call = calls.remove(0);
@@ -278,7 +279,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()> {
+    async fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()> {
         let mut calls = self.comment_pr_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to comment_pull_request");
         let call = calls.remove(0);
@@ -290,7 +291,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()> {
+    async fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()> {
         let mut calls = self.create_branch_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to create_branch");
         let call = calls.remove(0);
@@ -302,7 +303,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()> {
+    async fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()> {
         let mut calls = self.create_branch_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to delete_branch");
         let call = calls.remove(0);
@@ -313,7 +314,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn approve_pull_request(
+    async fn approve_pull_request(
         &self,
         owner: &str,
         repo: &str,
@@ -333,7 +334,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>> {
+    async fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>> {
         let mut calls = self.get_timeline_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_timeline");
         let call = calls.remove(0);
@@ -344,7 +345,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>> {
+    async fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>> {
         let mut calls = self.get_suites_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_suites");
         let call = calls.remove(0);
@@ -353,7 +354,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn get_check_run(&self, pr: &PullRequest, id: u32) -> Result<CheckRun> {
+    async fn get_check_run(&self, pr: &PullRequest, id: u32) -> Result<CheckRun> {
         let mut calls = self.get_check_run_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_check_run");
         let call = calls.remove(0);
@@ -362,7 +363,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn create_check_run(&self, pr: &PullRequest, run: &CheckRun) -> Result<u32> {
+    async fn create_check_run(&self, pr: &PullRequest, run: &CheckRun) -> Result<u32> {
         let mut calls = self.create_check_run_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to create_check_run");
         let call = calls.remove(0);
@@ -372,7 +373,7 @@ impl Session for MockGithub {
         call.ret
     }
 
-    fn update_check_run(&self, pr: &PullRequest, check_run_id: u32, run: &CheckRun) -> Result<()> {
+    async fn update_check_run(&self, pr: &PullRequest, check_run_id: u32, run: &CheckRun) -> Result<()> {
         let mut calls = self.update_check_run_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to update_check_run");
         let call = calls.remove(0);

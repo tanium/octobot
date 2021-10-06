@@ -1,83 +1,90 @@
-use futures::Stream;
-use futures::future::{self, Future};
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use hyper::{self, Body, Request, Response, StatusCode};
 use log::error;
 use serde::de::DeserializeOwned;
 use serde_json;
 
+use octobot_lib::errors::*;
 use crate::http_util;
 
-pub type FutureResponse = Box<dyn Future<Item = Response<Body>, Error = hyper::Error> + Send>;
-
-pub trait Handler {
-    fn handle(&self, req: Request<Body>) -> FutureResponse;
-
-    fn respond(&self, resp: Response<Body>) -> FutureResponse {
-        Box::new(future::ok(resp))
+#[async_trait]
+pub trait Handler : Send + Sync {
+    async fn handle_ok(&self, req: Request<Body>) -> Response<Body> {
+        match self.handle(req).await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Request handler error: {}", e);
+                http_util::new_empty_error_resp()
+            }
+        }
     }
 
-    fn respond_with(&self, status: StatusCode, msg: &str) -> FutureResponse {
-        self.respond(http_util::new_msg_resp(status, msg.to_string()))
+    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>>;
+
+    fn respond_with(&self, status: StatusCode, msg: &str) -> Response<Body> {
+        http_util::new_msg_resp(status, msg.to_string())
     }
 
-    fn respond_error(&self, err: &str) -> FutureResponse {
+    fn respond_error(&self, err: &str) -> Response<Body> {
         error!("InternalServerError: {}", err);
-        self.respond(http_util::new_empty_resp(StatusCode::INTERNAL_SERVER_ERROR))
+        http_util::new_empty_resp(StatusCode::INTERNAL_SERVER_ERROR)
     }
 }
 
-pub trait Filter {
-    fn filter(&self, req: &Request<Body>) -> FilterResult;
+pub trait Filter : Send + Sync {
+    fn filter(&self, req: Request<Body>) -> FilterResult;
 }
 
 pub enum FilterResult {
     Halt(Response<Body>),
-    Continue,
+    Continue(Request<Body>),
 }
 
 pub struct FilteredHandler {
-    filter: Box<dyn Filter>,
-    handler: Box<dyn Handler>,
+    filter: Arc<dyn Filter>,
+    handler: Arc<dyn Handler>,
 }
 
 pub struct NotFoundHandler;
 
 impl FilteredHandler {
-    pub fn new(filter: Box<dyn Filter>, handler: Box<dyn Handler>) -> Box<FilteredHandler> {
-        Box::new(FilteredHandler {
-            filter: filter,
-            handler: handler,
+    pub fn new(filter: Arc<dyn Filter>, handler: Arc<dyn Handler>) -> Arc<FilteredHandler> {
+        Arc::new(FilteredHandler {
+            filter,
+            handler,
         })
     }
 }
 
+#[async_trait]
 impl Handler for FilteredHandler {
-    fn handle(&self, req: Request<Body>) -> FutureResponse {
-        match self.filter.filter(&req) {
-            FilterResult::Halt(resp) => Box::new(future::ok(resp)),
-            FilterResult::Continue => self.handler.handle(req),
-        }
-    }
-}
-
-impl Handler for NotFoundHandler {
-    fn handle(&self, _: Request<Body>) -> FutureResponse {
-        Box::new(future::ok(http_util::new_empty_resp(StatusCode::NOT_FOUND)))
-    }
-}
-
-pub fn parse_json<T: DeserializeOwned, F>(req: Request<Body>, func: F) -> FutureResponse
-where
-    F: FnOnce(T) -> Response<Body> + Send + 'static,
-{
-    Box::new(req.into_body().concat2().map(move |data| {
-        let obj: T = match serde_json::from_slice(&data) {
-            Ok(l) => l,
-            Err(e) => {
-                return http_util::new_bad_req_resp(format!("Failed to parse JSON: {}", e));
-            }
+    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+        let req = match self.filter.filter(req) {
+            FilterResult::Halt(resp) => return Ok(resp),
+            FilterResult::Continue(req) => req,
         };
 
-        func(obj)
-    }))
+        self.handler.handle(req).await
+    }
+}
+
+#[async_trait]
+impl Handler for NotFoundHandler {
+    async fn handle(&self, _: Request<Body>) -> Result<Response<Body>> {
+        Ok(http_util::new_empty_resp(StatusCode::NOT_FOUND))
+    }
+}
+
+pub async fn parse_json<T: DeserializeOwned>(req: Request<Body>) -> Result<T> {
+    let bytes = match hyper::body::to_bytes(req.into_body()).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Err(failure::format_err!("Failed to read request body: {}", e));
+        }
+    };
+
+    serde_json::from_slice::<T>(bytes.as_ref())
+        .map_err(|e| failure::format_err!("Failed to parse JSON: {}", e))
 }

@@ -194,7 +194,7 @@ impl BranchRef {
     }
 }
 
-pub trait PullRequestLike {
+pub trait PullRequestLike : Send + Sync {
     fn user(&self) -> &User;
     fn assignees(&self) -> Vec<User>;
     fn title(&self) -> &str;
@@ -343,7 +343,7 @@ impl Label {
 }
 
 
-pub trait CommentLike {
+pub trait CommentLike : Send + Sync {
     fn user(&self) -> &User;
     fn body(&self) -> &str;
     fn html_url(&self) -> &str;
@@ -413,7 +413,7 @@ impl<'a> CommentLike for &'a Comment {
     }
 }
 
-pub trait CommitLike {
+pub trait CommitLike : Send + Sync {
     fn sha(&self) -> &str;
     fn html_url(&self) -> &str;
     fn message(&self) -> &str;
