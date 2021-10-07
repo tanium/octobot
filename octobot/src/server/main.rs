@@ -25,6 +25,7 @@ pub fn start(config: Config) {
 
 async fn run_server(config: Config) {
     let config = Arc::new(config);
+    let metrics = metrics::Metrics::new();
 
     let github: Arc<dyn github::api::GithubSessionFactory>;
 
@@ -33,6 +34,7 @@ async fn run_server(config: Config) {
             &config.github.host,
             config.github.app_id.expect("expected an app_id"),
             &config.github.app_key().expect("expected an app_key"),
+            Some(metrics.clone()),
         ).await {
             Ok(s) => Arc::new(s),
             Err(e) => panic!("Error initiating github session: {}", e),
@@ -41,6 +43,7 @@ async fn run_server(config: Config) {
         github = match github::api::GithubOauthApp::new(
             &config.github.host,
             &config.github.api_token.as_ref().expect("expected an api_token"),
+            Some(metrics.clone())
         ).await {
             Ok(s) => Arc::new(s),
             Err(e) => panic!("Error initiating github session: {}", e),
@@ -49,7 +52,7 @@ async fn run_server(config: Config) {
 
     let jira: Option<Arc<dyn jira::api::Session>>;
     if let Some(ref jira_config) = config.jira {
-        jira = match JiraSession::new(&jira_config).await {
+        jira = match JiraSession::new(&jira_config, Some(metrics.clone())).await {
             Ok(s) => Some(Arc::new(s)),
             Err(e) => panic!("Error initiating jira session: {}", e),
         };
@@ -63,8 +66,7 @@ async fn run_server(config: Config) {
     };
 
     let ui_sessions = Arc::new(Sessions::new());
-    let metrics = metrics::Metrics::new();
-    let github_handler_state = Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone()));
+    let github_handler_state = Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone(), metrics.clone()));
     let octobot = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone(), metrics.clone());
 
     let main_service = make_service_fn(move |_| {

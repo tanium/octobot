@@ -36,7 +36,7 @@ tokio-threadpool = "0.1.18"
 async-trait = "0.1.51"
 chrono = "0.4.19"
 prometheus = "0.13.0"
+maplit = "1.0.2"
 
 [dev-dependencies]
-maplit = "1.0.2"
 tempdir = "0.3.7"

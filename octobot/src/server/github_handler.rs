@@ -13,6 +13,7 @@ use octobot_lib::github::api::Session;
 use octobot_lib::github::CommentLike;
 use octobot_lib::github;
 use octobot_lib::jira;
+use octobot_lib::metrics::Metrics;
 use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::git_clone_manager::GitCloneManager;
 use octobot_ops::messenger::{self, Messenger};
@@ -64,13 +65,14 @@ impl GithubHandlerState {
         config: Arc<Config>,
         github_app: Arc<dyn github::api::GithubSessionFactory>,
         jira_session: Option<Arc<dyn jira::api::Session>>,
+        metrics: Arc<Metrics>,
     ) -> GithubHandlerState {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
 
         let runtime = Arc::new(Mutex::new(runtime::new(MAX_CONCURRENT_JOBS, "jobs")));
 
-        let slack_worker = TokioWorker::new(runtime.clone(), slack::new_runner(config.main.slack_webhook_url.clone()));
+        let slack_worker = TokioWorker::new(runtime.clone(), slack::new_runner(config.main.slack_webhook_url.clone(), metrics.clone()));
         let pr_merge_worker = TokioWorker::new(runtime.clone(), pr_merge::new_runner(
             config.clone(),
             github_app.clone(),
@@ -108,8 +110,9 @@ impl GithubHandler {
         config: Arc<Config>,
         github_app: Arc<dyn github::api::GithubSessionFactory>,
         jira_session: Option<Arc<dyn jira::api::Session>>,
+        metrics: Arc<Metrics>,
     ) -> Box<GithubHandler> {
-        let state = GithubHandlerState::new(config, github_app, jira_session);
+        let state = GithubHandlerState::new(config, github_app, jira_session, metrics);
         GithubHandler::from_state(Arc::new(state))
     }
 

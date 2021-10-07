@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use async_trait::async_trait;
 use failure::format_err;
 use log::{info, error};
@@ -8,6 +9,7 @@ use crate::github::models::*;
 use crate::github::models_checks::*;
 use crate::http_client::HTTPClient;
 use crate::jwt;
+use crate::metrics::Metrics;
 
 #[async_trait]
 pub trait Session: Send + Sync {
@@ -89,21 +91,24 @@ pub struct GithubApp {
     // DER formatted API private key
     app_key: Vec<u8>,
     app: Option<App>,
+    metrics: Option<Arc<Metrics>>,
 }
 
 pub struct GithubOauthApp {
     host: String,
     api_token: String,
     user: Option<User>,
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl GithubApp {
-    pub async fn new(host: &str, app_id: u32, app_key: &[u8]) -> Result<GithubApp> {
+    pub async fn new(host: &str, app_id: u32, app_key: &[u8], metrics: Option<Arc<Metrics>>) -> Result<GithubApp> {
         let mut github = GithubApp {
             host: host.into(),
-            app_id: app_id,
+            app_id,
             app_key: app_key.into(),
             app: None,
+            metrics,
         };
 
         github.app = Some(
@@ -132,7 +137,12 @@ impl GithubApp {
             format!("Bearer {}", jwt_token).parse().unwrap(),
         );
 
-        HTTPClient::new_with_headers(&api_base(&self.host), headers)
+        let client = HTTPClient::new_with_headers(&api_base(&self.host), headers)?;
+        if let Some(ref m) = self.metrics {
+            Ok(client.with_metrics(m.github_api_responses.clone(), m.github_api_duration.clone()))
+        } else {
+            Ok(client)
+        }
     }
 
     async fn new_token(&self, installation_url: &str) -> Result<String> {
@@ -174,16 +184,17 @@ impl GithubSessionFactory for GithubApp {
     }
 
     async fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession> {
-        GithubSession::new(&self.host, &self.bot_name(), &self.get_token_repo(owner, repo).await?, Some(self.app_id))
+        GithubSession::new(&self.host, &self.bot_name(), &self.get_token_repo(owner, repo).await?, Some(self.app_id), self.metrics.clone())
     }
 }
 
 impl GithubOauthApp {
-    pub async fn new(host: &str, api_token: &str) -> Result<GithubOauthApp> {
+    pub async fn new(host: &str, api_token: &str, metrics: Option<Arc<Metrics>>) -> Result<GithubOauthApp> {
         let mut github = GithubOauthApp {
             host: host.into(),
             api_token: api_token.into(),
             user: None,
+            metrics,
         };
 
         github.user = Some(
@@ -216,7 +227,7 @@ impl GithubSessionFactory for GithubOauthApp {
     }
 
     async fn new_session(&self, _owner: &str, _repo: &str) -> Result<GithubSession> {
-        GithubSession::new(&self.host, &self.bot_name(), &self.api_token, None)
+        GithubSession::new(&self.host, &self.bot_name(), &self.api_token, None, self.metrics.clone())
     }
 }
 
@@ -229,7 +240,7 @@ pub struct GithubSession {
 }
 
 impl GithubSession {
-    pub fn new(host: &str, bot_name: &str, token: &str, app_id: Option<u32>) -> Result<GithubSession> {
+    pub fn new(host: &str, bot_name: &str, token: &str, app_id: Option<u32>, metrics: Option<Arc<Metrics>>) -> Result<GithubSession> {
         let mut headers = reqwest::header::HeaderMap::new();
 
         let accept_headers = vec![
@@ -253,6 +264,10 @@ impl GithubSession {
         );
 
         let client = HTTPClient::new_with_headers(&api_base(host), headers)?;
+        let client = match metrics {
+            None => client,
+            Some(ref m) => client.with_metrics(m.github_api_responses.clone(), m.github_api_duration.clone())
+        };
 
         Ok(GithubSession {
             client,
