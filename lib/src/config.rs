@@ -36,10 +36,7 @@ pub struct ConfigModel {
 pub struct MainConfig {
     pub slack_webhook_url: Option<String>,
     pub listen_addr: Option<String>,
-    pub listen_addr_ssl: Option<String>,
     pub clone_root_dir: String,
-    pub ssl_cert_file: Option<String>,
-    pub ssl_key_file: Option<String>,
     pub num_http_threads: Option<usize>,
 }
 
@@ -167,10 +164,7 @@ impl ConfigModel {
             main: MainConfig {
                 slack_webhook_url: None,
                 listen_addr: None,
-                listen_addr_ssl: None,
                 clone_root_dir: String::new(),
-                ssl_cert_file: None,
-                ssl_key_file: None,
                 num_http_threads: None,
             },
             admin: None,

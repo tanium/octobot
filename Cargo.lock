@@ -269,15 +269,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ct-logs"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b4660f8b07a560a88c02d76286edb9f0d5d64e495d2b0f233186155aa51be1f"
-dependencies = [
- "sct",
-]
-
-[[package]]
 name = "dtoa"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -554,23 +545,6 @@ dependencies = [
  "tokio-threadpool",
  "tokio-timer",
  "want",
-]
-
-[[package]]
-name = "hyper-rustls"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15b66d1bd4864ef036adf2363409caa3acd63ebb4725957b66e621c8a36631a3"
-dependencies = [
- "bytes",
- "ct-logs",
- "futures",
- "hyper",
- "rustls",
- "tokio-io",
- "tokio-rustls",
- "webpki",
- "webpki-roots",
 ]
 
 [[package]]
@@ -884,7 +858,6 @@ dependencies = [
  "futures",
  "http",
  "hyper",
- "hyper-rustls",
  "log",
  "maplit",
  "octobot_ldap",
@@ -893,7 +866,6 @@ dependencies = [
  "regex",
  "ring",
  "rustc-serialize",
- "rustls",
  "serde",
  "serde_derive",
  "serde_json",
@@ -902,7 +874,6 @@ dependencies = [
  "time",
  "tokio",
  "tokio-core",
- "tokio-rustls",
  "tokio-threadpool",
 ]
 
@@ -1411,20 +1382,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustls"
-version = "0.15.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f271e3552cd835fa28c541c34a7e8fdd8cdff09d77fe4eb8f6c42e87a11b096e"
-dependencies = [
- "base64 0.10.1",
- "log",
- "ring",
- "sct",
- "untrusted",
- "webpki",
-]
-
-[[package]]
 name = "ryu"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1457,16 +1414,6 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
-
-[[package]]
-name = "sct"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f5adf8fbd58e1b1b52699dc8bed2630faecb6d8c7bee77d009d6bbe4af569b9"
-dependencies = [
- "ring",
- "untrusted",
-]
 
 [[package]]
 name = "security-framework"
@@ -1805,18 +1752,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-rustls"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95a199832a67452c60bed18ed951d28d5755ff57b02b3d2d535d9f13a81ea6c9"
-dependencies = [
- "futures",
- "rustls",
- "tokio-io",
- "webpki",
-]
-
-[[package]]
 name = "tokio-sync"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2033,26 +1968,6 @@ name = "wasi"
 version = "0.10.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
-
-[[package]]
-name = "webpki"
-version = "0.19.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f7e1cd7900a3a6b65a3e8780c51a3e6b59c0e2c55c6dc69578c288d69f7d082"
-dependencies = [
- "ring",
- "untrusted",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c10fa4212003ba19a564f25cd8ab572c6791f99a03cc219c13ed35ccab00de0e"
-dependencies = [
- "untrusted",
- "webpki",
-]
 
 [[package]]
 name = "winapi"
