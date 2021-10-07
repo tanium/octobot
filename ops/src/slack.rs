@@ -112,9 +112,7 @@ impl Slack {
 
         let res = client.post_void(&webhook_url, &slack_msg).await;
         match res {
-            Ok(_) => {
-                info!("Successfully sent slack message")
-            },
+            Ok(_) => info!("Successfully sent slack message"),
             Err(e) => {
                 let msg = format!("{}", e).replace(&webhook_url, "<webhook url>");
                 error!("Error sending slack message: {}", msg);
