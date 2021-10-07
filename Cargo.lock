@@ -980,7 +980,6 @@ dependencies = [
  "conventional",
  "failure",
  "hyper",
- "libc",
  "log",
  "maplit",
  "octobot_lib",

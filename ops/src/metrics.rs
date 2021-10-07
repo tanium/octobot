@@ -1,8 +1,6 @@
 use prometheus::process_collector::ProcessCollector;
 use std::sync::Arc;
 
-const NAMESPACE: &'static str = "octobot";
-
 pub struct Registry {
     pub registry: Arc<prometheus::Registry>,
 }
@@ -10,7 +8,7 @@ pub struct Registry {
 impl Registry {
     pub fn new() -> Arc<Registry> {
         let registry = Arc::new(Registry {
-            registry: Arc::new(prometheus::Registry::new()),
+            registry: Arc::new(prometheus::Registry::new_custom(Some("octobot".into()), None).expect("create prometheus registry")),
         });
 
         registry.register_default();
@@ -19,8 +17,7 @@ impl Registry {
 
     #[cfg(target_os = "linux")]
     fn register_default(&self) {
-        let pid = unsafe { libc::getpid() };
-        if let Err(e) = self.registry.register(Box::new(ProcessCollector::new(pid, NAMESPACE))) {
+        if let Err(e) = self.registry.register(Box::new(ProcessCollector::for_self())) {
             log::error!("Failed to register process metrics collector: {}", e);
         }
     }
