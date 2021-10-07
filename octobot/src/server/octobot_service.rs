@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use futures::future::{self, Future};
 use hyper::{self, Body, Method, Request};
-use hyper::service::{NewService, Service};
 use time;
 use log::{debug, error, info};
 
@@ -37,27 +36,8 @@ impl OctobotService {
     }
 }
 
-impl NewService for OctobotService {
-    type ReqBody = Body;
-    type ResBody = Body;
-    type Error = hyper::Error;
-    type Service = OctobotService;
-    type Future = future::FutureResult<OctobotService, hyper::Error>;
-    type InitError = hyper::Error;
-
-    fn new_service(&self) -> Self::Future {
-        future::ok(self.clone())
-    }
-}
-
-
-impl Service for OctobotService {
-    type ReqBody = Body;
-    type ResBody = Body;
-    type Error = hyper::Error;
-    type Future = FutureResponse;
-
-    fn call(&mut self, req: Request<Body>) -> Self::Future {
+impl OctobotService {
+    pub fn call(&self, req: Request<Body>) -> FutureResponse {
         let start = time::now();
 
         let method = req.method().clone();
@@ -77,9 +57,7 @@ impl Service for OctobotService {
                 }),
         )
     }
-}
 
-impl OctobotService {
     fn route(&self, req: &Request<Body>) -> Box<dyn Handler> {
         // API routes
         if req.uri().path().starts_with("/api") {
