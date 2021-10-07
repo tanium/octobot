@@ -22,7 +22,6 @@ tokio = { version = "1.12.0", features = ["rt"] }
 unidiff = "0.3.3"
 reqwest = { version = "0.11.4", features = ["json"] }
 async-trait = "0.1.51"
-prometheus = { version = "0.13.0", features = ["process"]}
 
 [dev-dependencies]
 tempdir = "0.3.7"

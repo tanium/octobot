@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use hyper::{Body, Request, Response, HeaderMap, StatusCode};
 
-use octobot_ops::metrics::Metrics;
+use octobot_lib::metrics::Metrics;
 use octobot_lib::errors::Result;
 use octobot_lib::config::Config;
 use octobot_lib::passwd;

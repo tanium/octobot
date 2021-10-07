@@ -3,8 +3,8 @@ use hyper::{self, Body, Method, Request, Response};
 use log::{debug, info};
 
 use octobot_lib::config::Config;
+use octobot_lib::metrics;
 use octobot_ops::util;
-use octobot_ops::metrics;
 
 use crate::server::admin::{Op, RepoAdmin, UserAdmin};
 use crate::server::admin;

@@ -28,6 +28,7 @@ reqwest = { version = "0.11.4", features = ["json"] }
 async-trait = "0.1.51"
 percent-encoding = "2.1.0"
 chrono = "0.4.19"
+prometheus = { version = "0.13.0", features = ["process"]}
 
 [dev-dependencies]
 tempdir = "0.3.7"

@@ -9,6 +9,5 @@ pub mod repo_version;
 pub mod slack;
 pub mod util;
 pub mod worker;
-pub mod metrics;
 #[cfg(target_os = "linux")]
 mod docker;

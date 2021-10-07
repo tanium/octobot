@@ -9,7 +9,7 @@ use octobot_lib::config::Config;
 use octobot_lib::github;
 use octobot_lib::jira;
 use octobot_lib::jira::api::JiraSession;
-use octobot_ops::metrics;
+use octobot_lib::metrics;
 use crate::runtime;
 use crate::server::github_handler::GithubHandlerState;
 use crate::server::octobot_service::OctobotService;
