@@ -63,7 +63,7 @@ async fn run_server(config: Config) {
     };
 
     let ui_sessions = Arc::new(Sessions::new());
-    let metrics = metrics::Registry::new();
+    let metrics = metrics::Metrics::new();
     let github_handler_state = Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone()));
     let octobot = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone(), metrics.clone());
 

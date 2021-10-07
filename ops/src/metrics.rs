@@ -1,18 +1,19 @@
+use prometheus::Registry;
 use prometheus::process_collector::ProcessCollector;
 use std::sync::Arc;
 
-pub struct Registry {
-    pub registry: Arc<prometheus::Registry>,
+pub struct Metrics {
+    pub registry: Arc<Registry>,
 }
 
-impl Registry {
-    pub fn new() -> Arc<Registry> {
-        let registry = Arc::new(Registry {
-            registry: Arc::new(prometheus::Registry::new_custom(Some("octobot".into()), None).expect("create prometheus registry")),
+impl Metrics{
+    pub fn new() -> Arc<Metrics> {
+        let metrics = Arc::new(Metrics {
+            registry: Arc::new(Registry::new_custom(Some("octobot".into()), None).expect("create prometheus registry")),
         });
 
-        registry.register_default();
-        registry
+        metrics.register_default();
+        metrics
     }
 
     #[cfg(target_os = "linux")]

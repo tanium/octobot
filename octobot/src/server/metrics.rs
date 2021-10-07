@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use hyper::{Body, Request, Response, HeaderMap, StatusCode};
 
-use octobot_ops::metrics::Registry;
+use octobot_ops::metrics::Metrics;
 use octobot_lib::errors::Result;
 use octobot_lib::config::Config;
 use octobot_lib::passwd;
@@ -12,11 +12,11 @@ use crate::http_util;
 
 pub struct MetricsScrapeHandler {
     config: Arc<Config>,
-    registry: Arc<Registry>,
+    registry: Arc<Metrics>,
 }
 
 impl MetricsScrapeHandler {
-    pub fn new(config: Arc<Config>, registry: Arc<Registry>) -> Box<MetricsScrapeHandler> {
+    pub fn new(config: Arc<Config>, registry: Arc<Metrics>) -> Box<MetricsScrapeHandler> {
         Box::new(MetricsScrapeHandler {
             config,
             registry,

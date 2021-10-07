@@ -20,7 +20,7 @@ pub struct OctobotService {
     config: Arc<Config>,
     ui_sessions: Arc<Sessions>,
     github_handler_state: Arc<GithubHandlerState>,
-    metrics: Arc<metrics::Registry>,
+    metrics: Arc<metrics::Metrics>,
 }
 
 impl OctobotService {
@@ -28,7 +28,7 @@ impl OctobotService {
         config: Arc<Config>,
         ui_sessions: Arc<Sessions>,
         github_handler_state: Arc<GithubHandlerState>,
-        metrics: Arc<metrics::Registry>,
+        metrics: Arc<metrics::Metrics>,
     ) -> OctobotService {
         OctobotService {
             config,
