@@ -71,6 +71,7 @@ struct SlackMessage {
 
 // the main object for sending messages to slack
 struct Slack {
+    client: reqwest::Client,
     webhook_url: String,
     recent_messages: Mutex<Vec<SlackMessage>>,
 }
@@ -81,6 +82,7 @@ const TRIM_MESSAGES_TO: usize = 20;
 impl Slack {
     pub fn new(webhook_url: Option<String>) -> Slack {
         Slack {
+            client: reqwest::Client::new(),
             webhook_url: webhook_url.unwrap_or(String::new()),
             recent_messages: Mutex::new(Vec::new()),
         }
@@ -104,8 +106,8 @@ impl Slack {
 
         info!("Sending message to #{}", channel);
         let webhook_url = self.webhook_url.clone();
+        let client = self.client.clone();
         tokio::spawn(async move {
-            let client = reqwest::Client::new();
             let res = client.post(&webhook_url).json(&slack_msg).send().await;
             match res {
                 Ok(_) => info!("Successfully sent slack message"),
