@@ -1,7 +1,6 @@
 use std::env;
 use std::fs::File;
 use std::io::Read;
-use std::sync::Arc;
 
 use hyper::{Body, Request, Response};
 use hyper::header::CONTENT_TYPE;
@@ -19,8 +18,8 @@ pub struct HtmlHandler {
 }
 
 impl HtmlHandler {
-    pub fn new(path: &str, contents: &str) -> Arc<HtmlHandler> {
-        Arc::new(HtmlHandler {
+    pub fn new(path: &str, contents: &str) -> Box<HtmlHandler> {
+        Box::new(HtmlHandler {
             path: path.into(),
             contents: contents.into(),
         })

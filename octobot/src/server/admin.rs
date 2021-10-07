@@ -38,8 +38,8 @@ pub struct RepoAdmin {
 
 
 impl UserAdmin {
-    pub fn new(config: Arc<Config>, op: Op) -> Arc<UserAdmin> {
-        Arc::new(UserAdmin {
+    pub fn new(config: Arc<Config>, op: Op) -> Box<UserAdmin> {
+        Box::new(UserAdmin {
             config: config,
             op: op,
         })
@@ -47,8 +47,8 @@ impl UserAdmin {
 }
 
 impl RepoAdmin {
-    pub fn new(config: Arc<Config>, op: Op) -> Arc<RepoAdmin> {
-        Arc::new(RepoAdmin {
+    pub fn new(config: Arc<Config>, op: Op) -> Box<RepoAdmin> {
+        Box::new(RepoAdmin {
             config: config,
             op: op,
         })
@@ -194,8 +194,8 @@ pub struct MergeVersions {
 }
 
 impl MergeVersions {
-    pub fn new(config: Arc<Config>) -> Arc<MergeVersions> {
-        Arc::new(MergeVersions { config: config })
+    pub fn new(config: Arc<Config>) -> Box<MergeVersions> {
+        Box::new(MergeVersions { config: config })
     }
 }
 

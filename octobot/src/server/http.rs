@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use hyper::{self, Body, Request, Response, StatusCode};
 use log::error;
@@ -43,15 +41,15 @@ pub enum FilterResult {
 }
 
 pub struct FilteredHandler {
-    filter: Arc<dyn Filter>,
-    handler: Arc<dyn Handler>,
+    filter: Box<dyn Filter>,
+    handler: Box<dyn Handler>,
 }
 
 pub struct NotFoundHandler;
 
 impl FilteredHandler {
-    pub fn new(filter: Arc<dyn Filter>, handler: Arc<dyn Handler>) -> Arc<FilteredHandler> {
-        Arc::new(FilteredHandler {
+    pub fn new(filter: Box<dyn Filter>, handler: Box<dyn Handler>) -> Box<FilteredHandler> {
+        Box::new(FilteredHandler {
             filter,
             handler,
         })

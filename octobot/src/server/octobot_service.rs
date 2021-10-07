@@ -49,7 +49,7 @@ impl OctobotService {
         Ok(res)
     }
 
-    fn route(&self, req: &Request<Body>) -> Arc<dyn Handler> {
+    fn route(&self, req: &Request<Body>) -> Box<dyn Handler> {
         // API routes
         if req.uri().path().starts_with("/api") {
             let filter = LoginSessionFilter::new(self.ui_sessions.clone());
@@ -69,7 +69,7 @@ impl OctobotService {
 
                     (&Method::POST, "/api/merge-versions") => admin::MergeVersions::new(self.config.clone()),
 
-                    _ => Arc::new(NotFoundHandler),
+                    _ => Box::new(NotFoundHandler),
                 },
             );
         }
@@ -101,7 +101,7 @@ impl OctobotService {
             // hooks
             (&Method::POST, "/hooks/github") => GithubHandler::from_state(self.github_handler_state.clone()),
 
-            _ => Arc::new(NotFoundHandler),
+            _ => Box::new(NotFoundHandler),
         }
     }
 }

@@ -108,13 +108,13 @@ impl GithubHandler {
         config: Arc<Config>,
         github_app: Arc<dyn github::api::GithubSessionFactory>,
         jira_session: Option<Arc<dyn jira::api::Session>>,
-    ) -> Arc<GithubHandler> {
+    ) -> Box<GithubHandler> {
         let state = GithubHandlerState::new(config, github_app, jira_session);
         GithubHandler::from_state(Arc::new(state))
     }
 
-    pub fn from_state(state: Arc<GithubHandlerState>) -> Arc<GithubHandler> {
-        Arc::new(GithubHandler { state: state })
+    pub fn from_state(state: Arc<GithubHandlerState>) -> Box<GithubHandler> {
+        Box::new(GithubHandler { state: state })
     }
 }
 

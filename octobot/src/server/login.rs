@@ -32,8 +32,8 @@ pub struct LoginSessionFilter {
 }
 
 impl LoginHandler {
-    pub fn new(sessions: Arc<Sessions>, config: Arc<Config>) -> Arc<LoginHandler> {
-        Arc::new(LoginHandler {
+    pub fn new(sessions: Arc<Sessions>, config: Arc<Config>) -> Box<LoginHandler> {
+        Box::new(LoginHandler {
             sessions: sessions,
             config: config,
         })
@@ -41,20 +41,20 @@ impl LoginHandler {
 }
 
 impl LogoutHandler {
-    pub fn new(sessions: Arc<Sessions>) -> Arc<LogoutHandler> {
-        Arc::new(LogoutHandler { sessions: sessions })
+    pub fn new(sessions: Arc<Sessions>) -> Box<LogoutHandler> {
+        Box::new(LogoutHandler { sessions: sessions })
     }
 }
 
 impl SessionCheckHandler {
-    pub fn new(sessions: Arc<Sessions>) -> Arc<SessionCheckHandler> {
-        Arc::new(SessionCheckHandler { sessions: sessions })
+    pub fn new(sessions: Arc<Sessions>) -> Box<SessionCheckHandler> {
+        Box::new(SessionCheckHandler { sessions: sessions })
     }
 }
 
 impl LoginSessionFilter {
-    pub fn new(sessions: Arc<Sessions>) -> Arc<LoginSessionFilter> {
-        Arc::new(LoginSessionFilter { sessions: sessions })
+    pub fn new(sessions: Arc<Sessions>) -> Box<LoginSessionFilter> {
+        Box::new(LoginSessionFilter { sessions: sessions })
     }
 }
 
