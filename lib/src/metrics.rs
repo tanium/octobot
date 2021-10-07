@@ -117,6 +117,15 @@ impl Metrics {
 }
 
 pub fn cleanup_path(path: &str) -> String {
+    let mut path = path.to_string();
+    if path.is_empty() {
+        return path;
+    }
+
+    if !path.starts_with("/") {
+        path = "/".to_string() + &path;
+    }
+
     match path.find(".") {
         None => path.split("/")
             .filter(|p| p.find(".").is_none())
