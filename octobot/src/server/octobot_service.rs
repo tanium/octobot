@@ -4,11 +4,13 @@ use log::{debug, info};
 
 use octobot_lib::config::Config;
 use octobot_ops::util;
+use octobot_ops::metrics;
 
 use crate::server::admin::{Op, RepoAdmin, UserAdmin};
 use crate::server::admin;
 use crate::server::github_handler::{GithubHandler, GithubHandlerState};
 use crate::server::html_handler::HtmlHandler;
+use crate::server::metrics::MetricsScrapeHandler;
 use crate::server::http::{FilteredHandler, Handler, NotFoundHandler};
 use crate::server::login::{LoginHandler, LoginSessionFilter, LogoutHandler, SessionCheckHandler};
 use crate::server::sessions::Sessions;
@@ -18,6 +20,7 @@ pub struct OctobotService {
     config: Arc<Config>,
     ui_sessions: Arc<Sessions>,
     github_handler_state: Arc<GithubHandlerState>,
+    metrics: Arc<metrics::Registry>,
 }
 
 impl OctobotService {
@@ -25,11 +28,13 @@ impl OctobotService {
         config: Arc<Config>,
         ui_sessions: Arc<Sessions>,
         github_handler_state: Arc<GithubHandlerState>,
+        metrics: Arc<metrics::Registry>,
     ) -> OctobotService {
         OctobotService {
-            config: config,
-            ui_sessions: ui_sessions,
-            github_handler_state: github_handler_state,
+            config,
+            ui_sessions,
+            github_handler_state,
+            metrics,
         }
     }
 }
@@ -99,6 +104,9 @@ impl OctobotService {
 
             // hooks
             (&Method::POST, "/hooks/github") => GithubHandler::from_state(self.github_handler_state.clone()),
+
+            // metrics
+            (&Method::GET, "/metrics") => MetricsScrapeHandler::new(self.config.clone(), self.metrics.clone()),
 
             _ => Box::new(NotFoundHandler),
         }

@@ -1,4 +1,9 @@
+use std::env;
 use hyper::{self, Body, Response, StatusCode};
+
+pub fn is_dev_mode() -> bool {
+    env::var("DEVMODE").is_ok()
+}
 
 pub fn new_msg_resp<S: Into<String>>(status: StatusCode, msg: S) -> Response<Body> {
     let msg: String = msg.into();
