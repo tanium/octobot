@@ -13,6 +13,7 @@ use log::error;
 
 use octobot_lib::config::{Config, JiraConfig};
 use octobot_lib::errors::*;
+use octobot_lib::metrics::{self, Metrics};
 use crate::git::Git;
 use crate::git_clone_manager::GitCloneManager;
 use octobot_lib::github;
@@ -163,6 +164,7 @@ struct Runner {
     jira_session: Option<Arc<dyn jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
     slack: Arc<dyn worker::Worker<SlackRequest>>,
+    metrics: Arc<Metrics>,
 }
 
 pub fn req(
@@ -185,6 +187,7 @@ pub fn new_runner(
     jira_session: Option<Arc<dyn jira::api::Session>>,
     clone_mgr: Arc<GitCloneManager>,
     slack: Arc<dyn worker::Worker<SlackRequest>>,
+    metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<RepoVersionRequest>> {
     Arc::new(Runner {
         config: config,
@@ -192,12 +195,16 @@ pub fn new_runner(
         jira_session: jira_session,
         clone_mgr: clone_mgr,
         slack: slack,
+        metrics,
     })
 }
 
 #[async_trait::async_trait]
 impl worker::Runner<RepoVersionRequest> for Runner {
     async fn handle(&self, req: RepoVersionRequest) {
+        let _scoped_count = metrics::scoped_inc(&self.metrics.current_repo_version_count);
+        let _scoped_timer = self.metrics.repo_version_duration.start_timer();
+
         let configs;
         {
             let repos_lock = self.config.repos();

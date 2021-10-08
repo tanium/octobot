@@ -13,7 +13,7 @@ use octobot_lib::github::api::Session;
 use octobot_lib::github::CommentLike;
 use octobot_lib::github;
 use octobot_lib::jira;
-use octobot_lib::metrics::Metrics;
+use octobot_lib::metrics::{self, Metrics};
 use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::git_clone_manager::GitCloneManager;
 use octobot_ops::messenger::{self, Messenger};
@@ -38,6 +38,7 @@ pub struct GithubHandlerState {
     force_push_worker: Arc<dyn Worker<ForcePushRequest>>,
     slack_worker: Arc<dyn Worker<SlackRequest>>,
     recent_events: Mutex<Vec<String>>,
+    metrics: Arc<Metrics>,
 }
 
 pub struct GithubHandler {
@@ -78,6 +79,7 @@ impl GithubHandlerState {
             github_app.clone(),
             git_clone_manager.clone(),
             slack_worker.clone(),
+            metrics.clone()
         ));
         let repo_version_worker = TokioWorker::new(runtime.clone(), repo_version::new_runner(
             config.clone(),
@@ -85,10 +87,12 @@ impl GithubHandlerState {
             jira_session.clone(),
             git_clone_manager.clone(),
             slack_worker.clone(),
+            metrics.clone()
         ));
         let force_push_worker = TokioWorker::new(runtime.clone(), force_push::new_runner(
             github_app.clone(),
             git_clone_manager.clone(),
+            metrics.clone()
         ));
 
         GithubHandlerState {
@@ -101,6 +105,7 @@ impl GithubHandlerState {
             force_push_worker: force_push_worker,
             slack_worker: slack_worker,
             recent_events: Mutex::new(Vec::new()),
+            metrics,
         }
     }
 }
@@ -128,6 +133,8 @@ impl Handler for GithubHandler {
     }
 
     async fn handle_ok(&self, req: Request<Body>) -> Response<Body> {
+        let _scoped_count = metrics::scoped_inc(&self.state.metrics.current_webhook_count);
+
         let event_id;
         {
             let values = req.headers().get_all("x-github-delivery").iter().collect::<Vec<_>>();

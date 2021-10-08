@@ -70,7 +70,11 @@ async fn run_server(config: Config) {
     let octobot = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone(), metrics.clone());
 
     let main_service = make_service_fn(move |_| {
+        let metrics = metrics.clone();
+        let _scoped_count = metrics::scoped_inc(&metrics.current_connection_count);
+
         let octobot = octobot.clone();
+
         async move {
             let octobot = octobot.clone();
             Ok::<_, hyper::Error>(service_fn(move |req| {
