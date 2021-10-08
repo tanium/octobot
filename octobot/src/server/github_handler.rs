@@ -71,7 +71,7 @@ impl GithubHandlerState {
 
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
 
-        let runtime = Arc::new(Mutex::new(runtime::new(MAX_CONCURRENT_JOBS, "jobs")));
+        let runtime = Arc::new(Mutex::new(runtime::new(MAX_CONCURRENT_JOBS, "jobs", metrics.clone())));
 
         let slack_worker = TokioWorker::new(runtime.clone(), slack::new_runner(config.main.slack_webhook_url.clone(), metrics.clone()));
         let pr_merge_worker = TokioWorker::new(runtime.clone(), pr_merge::new_runner(

@@ -4,6 +4,7 @@ use prometheus::{register_histogram_vec_with_registry, HistogramVec};
 use prometheus::{register_histogram_with_registry, Histogram};
 use prometheus::{register_int_counter_vec_with_registry, IntCounterVec};
 use prometheus::{register_gauge_with_registry, Gauge};
+use prometheus::{register_gauge_vec_with_registry, GaugeVec};
 use std::sync::Arc;
 
 pub struct Metrics {
@@ -31,6 +32,9 @@ pub struct Metrics {
     pub backport_duration: Histogram,
     pub force_push_duration: Histogram,
     pub repo_version_duration: Histogram,
+
+    pub tokio_running_thread_count: GaugeVec,
+    pub tokio_parked_thread_count: GaugeVec,
 }
 
 fn http_duration_buckets() -> Vec<f64> {
@@ -167,6 +171,20 @@ impl Metrics {
                 "Duration of repo-version job",
                 job_duration_buckets(),
                 registry.as_ref(),
+            ).unwrap(),
+
+            tokio_running_thread_count: register_gauge_vec_with_registry!(
+                "tokio_running_thread_count",
+                "Tokio running thread counts per runtime",
+                &["runtime"],
+                registry.as_ref()
+            ).unwrap(),
+
+            tokio_parked_thread_count: register_gauge_vec_with_registry!(
+                "tokio_parked_thread_count",
+                "Tokio parked thread counts per runtime",
+                &["runtime"],
+                registry.as_ref()
             ).unwrap(),
        })
     }

@@ -17,15 +17,15 @@ use crate::server::sessions::Sessions;
 
 pub fn start(config: Config) {
     let num_http_threads = config.main.num_http_threads.unwrap_or(20);
+    let metrics = metrics::Metrics::new();
 
-    runtime::run(num_http_threads, async move {
-        run_server(config).await
+    runtime::run(num_http_threads, metrics.clone(), async move {
+        run_server(config, metrics).await
     });
 }
 
-async fn run_server(config: Config) {
+async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     let config = Arc::new(config);
-    let metrics = metrics::Metrics::new();
 
     let github: Arc<dyn github::api::GithubSessionFactory>;
 
