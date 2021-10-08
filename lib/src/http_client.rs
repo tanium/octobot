@@ -80,7 +80,7 @@ impl HTTPClient {
     {
         let _timer = self.maybe_start_timer("get", path);
         let res = self.client.get(&self.make_url(path)).send().await;
-        let res = self.process_resp(res)?;
+        let res = self.process_resp(res).await?;
         let res = self.parse_json(res).await?;
 
         self.maybe_record_ok();
@@ -93,7 +93,7 @@ impl HTTPClient {
     {
         let _timer = self.maybe_start_timer("post", path);
         let res = self.client.post(&self.make_url(path)).json(body).send().await;
-        let res = self.process_resp(res)?;
+        let res = self.process_resp(res).await?;
         let res = self.parse_json(res).await?;
 
         self.maybe_record_ok();
@@ -103,7 +103,7 @@ impl HTTPClient {
     pub async fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
         let _timer = self.maybe_start_timer("post", path);
         let res = self.client.post(&self.make_url(path)).json(body).send().await;
-        self.process_resp(res)?;
+        self.process_resp(res).await?;
 
         self.maybe_record_ok();
         Ok(())
@@ -115,7 +115,7 @@ impl HTTPClient {
     {
         let _timer = self.maybe_start_timer("put", path);
         let res = self.client.put(&self.make_url(path)).json(body).send().await;
-        let res = self.process_resp(res)?;
+        let res = self.process_resp(res).await?;
         let res = self.parse_json(res).await?;
 
         self.maybe_record_ok();
@@ -125,7 +125,7 @@ impl HTTPClient {
     pub async fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
         let _timer = self.maybe_start_timer("put", path);
         let res = self.client.put(&self.make_url(path)).json(body).send().await;
-        self.process_resp(res)?;
+        self.process_resp(res).await?;
 
         self.maybe_record_ok();
         Ok(())
@@ -134,7 +134,7 @@ impl HTTPClient {
     pub async fn delete_void(&self, path: &str) -> Result<()> {
         let _timer = self.maybe_start_timer("delete", path);
         let res = self.client.delete(&self.make_url(path)).send().await;
-        self.process_resp(res)?;
+        self.process_resp(res).await?;
 
         self.maybe_record_ok();
         Ok(())
@@ -164,7 +164,7 @@ impl HTTPClient {
         })
     }
 
-    fn make_clean_err<T, E: failure::Fail>(&self, e: E) -> Result<T> {
+    fn make_clean_err<T>(&self, e: impl failure::Fail) -> Result<T> {
         if let Some(ref s) = self.secret_path {
             let msg = format!("{}", e);
             bail!("{}", msg.replace(s, "<redacted>"));
@@ -173,7 +173,7 @@ impl HTTPClient {
         }
     }
 
-    fn process_resp(&self, res: reqwest::Result<Response>) -> Result<Response> {
+    async fn process_resp(&self, res: reqwest::Result<Response>) -> Result<Response> {
         let res = match res {
             Ok(r) => r,
             Err(e) => {
@@ -186,7 +186,9 @@ impl HTTPClient {
             Ok(_) => Ok(res),
             Err(e) => {
                 self.maybe_record_status(res.status().as_str());
-                return self.make_clean_err(e);
+                let err: Result<()> = self.make_clean_err(e);
+                let text = res.text().await.unwrap_or(String::new());
+                bail!("{}. Response body: {}", err.unwrap_err(), text);
             }
         }
     }
