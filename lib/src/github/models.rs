@@ -11,6 +11,7 @@ pub fn is_main_branch(branch_name: &str) -> bool {
 // An incomplete container for all the kinds of events that we care about.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct HookBody {
+    #[serde(default)]
     pub repository: Repo,
     pub sender: User,
 
@@ -134,6 +135,12 @@ pub struct Repo {
     pub name: String,
     pub owner: User,
     pub archived: Option<bool>,
+}
+
+impl Default for Repo {
+    fn default() -> Self {
+        Repo::new()
+    }
 }
 
 impl Repo {
