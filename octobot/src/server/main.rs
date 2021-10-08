@@ -76,6 +76,9 @@ async fn run_server(config: Config) {
         let octobot = octobot.clone();
 
         async move {
+            // move the scoped count inside the future
+            let _scoped_count = _scoped_count;
+
             let octobot = octobot.clone();
             Ok::<_, hyper::Error>(service_fn(move |req| {
                 let octobot = octobot.clone();
