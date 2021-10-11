@@ -3,6 +3,7 @@ use std::time::SystemTime;
 
 use anyhow::anyhow;
 use rusqlite::types::ToSql;
+use rusqlite::Connection;
 
 use octobot_lib::db::{migrations, Database};
 use octobot_lib::errors::*;
@@ -29,8 +30,27 @@ impl WebhookDatabase {
         migrations::migrate(&mut connection, &migrations)?;
 
         // Load some recent history into memory at startup
-        let mut stmt = connection
-            .prepare("SELECT guid FROM processed_webhooks ORDER BY timestamp desc LIMIT 1000")?;
+        let recent_events = Self::get_guids(&connection, 1000)?;
+
+        Ok(WebhookDatabase {
+            data: Mutex::new(Data { db, recent_events }),
+        })
+    }
+
+    pub fn get_latest_guid(&self) -> Result<Option<String>> {
+        let data = self.data.lock().unwrap();
+        let connection = data.db.connect()?;
+        let events = Self::get_guids(&connection, 1)?;
+
+        Ok(events.into_iter().next())
+    }
+
+    fn get_guids(connection: &Connection, limit: u32) -> Result<Vec<String>> {
+        // Load some recent history into memory at startup
+        let mut stmt = connection.prepare(&format!(
+            "SELECT guid FROM processed_webhooks ORDER BY timestamp desc LIMIT {}",
+            limit
+        ))?;
         let found = stmt
             .query_map([], |row| row.get(0))
             .map_err(|e| anyhow!("Error fetching webhooks: {}", e))?;
@@ -40,9 +60,7 @@ impl WebhookDatabase {
             recent_events.push(event?);
         }
 
-        Ok(WebhookDatabase {
-            data: Mutex::new(Data { db, recent_events }),
-        })
+        Ok(recent_events)
     }
 
     // records the event and returns true if unique, otherwise returns false

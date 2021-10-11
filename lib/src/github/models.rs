@@ -716,6 +716,15 @@ impl DismissedReview {
     }
 }
 
+#[derive(Deserialize, Debug)]
+pub struct WebhookDelivery {
+    pub id: u32,
+    pub guid: String,
+    pub redelivery: bool,
+    pub status_code: u32,
+    pub delivered_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

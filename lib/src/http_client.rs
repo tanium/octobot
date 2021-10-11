@@ -78,13 +78,20 @@ impl HTTPClient {
         }
     }
 
+    pub async fn get_raw(&self, path: &str) -> Result<Response> {
+        let _timer = self.maybe_start_timer("get", path);
+        let res = self.client.get(&self.make_url(path)).send().await;
+        let res = self.process_resp(res).await?;
+
+        self.maybe_record_ok();
+        Ok(res)
+    }
+
     pub async fn get<T>(&self, path: &str) -> Result<T>
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let _timer = self.maybe_start_timer("get", path);
-        let res = self.client.get(&self.make_url(path)).send().await;
-        let res = self.process_resp(res).await?;
+        let res = self.get_raw(path).await?;
         let res = self.parse_json(res).await?;
 
         self.maybe_record_ok();
@@ -117,6 +124,20 @@ impl HTTPClient {
             .json(body)
             .send()
             .await;
+        self.process_resp(res).await?;
+
+        self.maybe_record_ok();
+        Ok(())
+    }
+
+    pub async fn post_void_opt<U: Serialize>(&self, path: &str, body: Option<&U>) -> Result<()> {
+        let _timer = self.maybe_start_timer("post", path);
+        let res = self.client.post(&self.make_url(path));
+        let res = match body {
+            None => res,
+            Some(body) => res.json(body),
+        };
+        let res = res.send().await;
         self.process_resp(res).await?;
 
         self.maybe_record_ok();
@@ -218,7 +239,7 @@ impl HTTPClient {
         }
     }
 
-    async fn parse_json<T>(&self, res: Response) -> Result<T>
+    pub async fn parse_json<T>(&self, res: Response) -> Result<T>
     where
         T: DeserializeOwned + Send + 'static,
     {
@@ -230,7 +251,12 @@ impl HTTPClient {
             Ok(r) => Ok(r),
             Err(e) => {
                 self.maybe_record_status("<invalid json>");
-                self.make_clean_err(e)
+                let err: Result<()> = self.make_clean_err(e);
+                bail!(
+                    "Invalid JSONL: {}. Response body: {}",
+                    err.unwrap_err(),
+                    text
+                );
             }
         }
     }
