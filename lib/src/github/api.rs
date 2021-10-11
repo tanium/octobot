@@ -121,7 +121,7 @@ impl GithubApp {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.append(
             reqwest::header::ACCEPT,
-            "application/vnd.github.machine-man-preview+json".parse().unwrap(),
+            "application/vnd.github.v3+json".parse().unwrap(),
         );
         headers.insert(
             reqwest::header::AUTHORIZATION,
@@ -148,7 +148,7 @@ impl GithubApp {
         let installation: Installation = client.get(installation_url)?;
         // Get a new access token for this id
         let token: AccessToken = client.post(
-            &format!("/installations/{}/access_tokens", installation.id),
+            &format!("/app/installations/{}/access_tokens", installation.id),
             &String::new(),
         )?;
         Ok(token.token)
