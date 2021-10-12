@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use log::{error, info};
-use serde_derive::{Serialize, Deserialize};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::util;
 use crate::worker;
@@ -128,10 +128,13 @@ impl Slack {
                 if r.ok {
                     info!("Successfully sent slack message")
                 } else {
-                    error!("Error sending slack message: {}", r.error.unwrap_or(String::new()))
+                    error!(
+                        "Error sending slack message: {}",
+                        r.error.unwrap_or(String::new())
+                    )
                 }
-            },
-            Err(e) => error!("Error sending slack message: {}", e)
+            }
+            Err(e) => error!("Error sending slack message: {}", e),
         }
     }
 
