@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use jsonwebtoken::{self, Algorithm, Header};
+use jsonwebtoken::{self, Algorithm, Header, EncodingKey};
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -18,5 +18,7 @@ pub fn new_token(app_id: u32, app_key_der: &[u8]) -> String {
         iss: app_id.to_string(),
     };
 
-    return jsonwebtoken::encode(&Header::new(Algorithm::RS256), &claims, app_key_der).unwrap();
+    let key = EncodingKey::from_rsa_der(app_key_der);
+
+    return jsonwebtoken::encode(&Header::new(Algorithm::RS256), &claims, &key).unwrap();
 }

@@ -16,7 +16,7 @@ path = "src/octobot-passwd.rs"
 
 [dependencies]
 rpassword = "3.0.0"
-ring = "0.14.6"
+ring = "0.16.20"
 rustc-serialize = "0.3.24"
 regex = "1.1.2"
 octobot_lib = { "path" = "../lib" }

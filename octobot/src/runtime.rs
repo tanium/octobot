@@ -1,29 +1,25 @@
 use std;
 
-use futures::{future, Future};
 use tokio;
 
 pub fn new(num_threads: usize, name: &str) -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new()
-        .name_prefix(format!("{}-", name))
-        .blocking_threads(num_threads)
+    tokio::runtime::Builder::new_multi_thread()
+        .thread_name(format!("{}-", name))
+        .worker_threads(num_threads)
+        .enable_all()
         .build()
         .unwrap()
 }
 
-pub fn run<F>(num_threads: usize, func: F) -> ()
+pub fn run<T>(num_threads: usize, fut: T) -> ()
 where
-    F: FnOnce() -> () + Send + 'static,
+    T: std::future::Future + Send + 'static,
+    T::Output: Send + 'static,
 {
     // need at least two threads or it can get stuck on startup.
     let num_threads = std::cmp::max(2, num_threads);
 
-    let mut runtime = self::new(num_threads, "runtime");
+    let runtime = self::new(num_threads, "runtime");
 
-    runtime.spawn(future::lazy(move || {
-        func();
-        future::ok(())
-    }));
-
-    runtime.shutdown_on_idle().wait().unwrap();
+    runtime.block_on(fut);
 }

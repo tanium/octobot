@@ -38,8 +38,8 @@ fn expect_skip(git: &MockGithub, pr: &github::PullRequest) {
 }
 
 
-#[test]
-fn test_check_jira_refs_no_projects() {
+#[tokio::test]
+async fn test_check_jira_refs_no_projects() {
     let git = MockGithub::new();
 
     let pr = new_pr("");
@@ -48,11 +48,11 @@ fn test_check_jira_refs_no_projects() {
 
     // No assertions -- it shouldn't do anything
 
-    jira::check_jira_refs(&pr, &commits, &projects, &git);
+    jira::check_jira_refs(&pr, &commits, &projects, &git).await;
 }
 
-#[test]
-fn test_check_jira_refs_chore_commit() {
+#[tokio::test]
+async fn test_check_jira_refs_chore_commit() {
     let git = MockGithub::new();
 
     let pr = new_pr("chore: Do stuff");
@@ -61,11 +61,11 @@ fn test_check_jira_refs_chore_commit() {
 
     expect_skip(&git, &pr);
 
-    jira::check_jira_refs(&pr, &commits, &projects, &git);
+    jira::check_jira_refs(&pr, &commits, &projects, &git).await;
 }
 
-#[test]
-fn test_check_jira_refs_chore_commit_scope() {
+#[tokio::test]
+async fn test_check_jira_refs_chore_commit_scope() {
     let git = MockGithub::new();
 
     let pr = new_pr("chore(deps): Update deps");
@@ -74,11 +74,11 @@ fn test_check_jira_refs_chore_commit_scope() {
 
     expect_skip(&git, &pr);
 
-    jira::check_jira_refs(&pr, &commits, &projects, &git);
+    jira::check_jira_refs(&pr, &commits, &projects, &git).await;
 }
 
-#[test]
-fn test_check_jira_refs_build_commit() {
+#[tokio::test]
+async fn test_check_jira_refs_build_commit() {
     let git = MockGithub::new();
 
     let pr = new_pr("build: do stuff");
@@ -87,11 +87,11 @@ fn test_check_jira_refs_build_commit() {
 
     expect_skip(&git, &pr);
 
-    jira::check_jira_refs(&pr, &commits, &projects, &git);
+    jira::check_jira_refs(&pr, &commits, &projects, &git).await;
 }
 
-#[test]
-fn test_check_jira_refs_mismatch() {
+#[tokio::test]
+async fn test_check_jira_refs_mismatch() {
     let git = MockGithub::new();
 
     let pr = new_pr("Do stuff");
@@ -100,11 +100,11 @@ fn test_check_jira_refs_mismatch() {
 
     expect_failure(&git, &pr);
 
-    jira::check_jira_refs(&pr, &commits, &projects, &git);
+    jira::check_jira_refs(&pr, &commits, &projects, &git).await;
 }
 
-#[test]
-fn test_check_jira_refs_pass() {
+#[tokio::test]
+async fn test_check_jira_refs_pass() {
     let git = MockGithub::new();
 
     let pr = new_pr("Do stuff");
@@ -113,11 +113,11 @@ fn test_check_jira_refs_pass() {
 
     expect_pass(&git, &pr);
 
-    jira::check_jira_refs(&pr, &commits, &projects, &git);
+    jira::check_jira_refs(&pr, &commits, &projects, &git).await;
 }
 
-#[test]
-fn test_check_jira_refs_requires_only_one_ref() {
+#[tokio::test]
+async fn test_check_jira_refs_requires_only_one_ref() {
     let git = MockGithub::new();
 
     let pr = new_pr("Do stuff");
@@ -126,11 +126,11 @@ fn test_check_jira_refs_requires_only_one_ref() {
 
     expect_pass(&git, &pr);
 
-    jira::check_jira_refs(&pr, &commits, &projects, &git);
+    jira::check_jira_refs(&pr, &commits, &projects, &git).await;
 }
 
-#[test]
-fn test_check_jira_refs_checks_all_commits() {
+#[tokio::test]
+async fn test_check_jira_refs_checks_all_commits() {
     let git = MockGithub::new();
 
     let pr = new_pr("Do stuff");
@@ -142,5 +142,5 @@ fn test_check_jira_refs_checks_all_commits() {
 
     expect_pass(&git, &pr);
 
-    jira::check_jira_refs(&pr, &commits, &projects, &git);
+    jira::check_jira_refs(&pr, &commits, &projects, &git).await;
 }

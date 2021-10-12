@@ -6,7 +6,7 @@ use log::info;
 use failure::format_err;
 
 use octobot_lib::config::Config;
-use crate::dir_pool::{DirPool, HeldDir};
+use crate::dir_pool::{ArcDirPool, HeldDir};
 use octobot_lib::errors::*;
 use crate::git::Git;
 use octobot_lib::github;
@@ -14,7 +14,7 @@ use octobot_lib::github::api::Session;
 
 // clones git repos with given github session into a managed directory pool
 pub struct GitCloneManager {
-    dir_pool: Arc<DirPool>,
+    dir_pool: ArcDirPool,
     github_app: Arc<dyn github::api::GithubSessionFactory>,
 }
 
@@ -23,13 +23,13 @@ impl GitCloneManager {
         let clone_root_dir = config.main.clone_root_dir.to_string();
 
         GitCloneManager {
-            dir_pool: Arc::new(DirPool::new(&clone_root_dir)),
+            dir_pool: ArcDirPool::new(&clone_root_dir),
             github_app: github_app.clone(),
         }
     }
 
-    pub fn clone(&self, owner: &str, repo: &str) -> Result<HeldDir> {
-        let session = self.github_app.new_session(owner, repo)?;
+    pub async fn clone(&self, owner: &str, repo: &str) -> Result<HeldDir> {
+        let session = self.github_app.new_session(owner, repo).await?;
 
         let held_clone_dir = self.dir_pool.take_directory(session.github_host(), owner, repo);
         self.clone_repo(&session, owner, repo, &held_clone_dir.dir())?;

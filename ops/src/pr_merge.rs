@@ -16,24 +16,24 @@ use crate::messenger;
 use crate::slack::{SlackAttachmentBuilder, SlackRequest};
 use crate::worker;
 
-fn clone_and_merge_pull_request(
-    github_app: &dyn GithubSessionFactory,
-    clone_mgr: &GitCloneManager,
-    req: &PRMergeRequest,
+async fn clone_and_merge_pull_request<'a>(
+    github_app: &'a dyn GithubSessionFactory,
+    clone_mgr: &'a GitCloneManager,
+    req: &'a PRMergeRequest,
     config: Arc<Config>,
     slack: Arc<dyn worker::Worker<SlackRequest>>,
 ) {
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
 
-    let session = match github_app.new_session(owner, repo) {
+    let session = match github_app.new_session(owner, repo).await {
         Ok(s) => s,
         Err(e) => {
             error!("Error getting new session: {}", e);
             return;
         }
     };
-    let held_clone_dir = match clone_mgr.clone(owner, repo) {
+    let held_clone_dir = match clone_mgr.clone(owner, repo).await {
         Ok(h) => h,
         Err(e) => {
             error!("Error getting new session: {}", e);
@@ -43,17 +43,17 @@ fn clone_and_merge_pull_request(
     let clone_dir = held_clone_dir.dir();
     let git = Git::new(session.github_host(), session.github_token(), clone_dir);
 
-    merge_pull_request(&git, &session, &req, config, slack)
+    merge_pull_request(&git, &session, &req, config, slack).await
 }
 
-pub fn merge_pull_request(
-    git: &Git,
-    session: &dyn Session,
-    req: &PRMergeRequest,
+pub async fn merge_pull_request<'a>(
+    git: &'a Git,
+    session: &'a dyn Session,
+    req: &'a PRMergeRequest,
     config: Arc<Config>,
     slack: Arc<dyn worker::Worker<SlackRequest>>,
 ) {
-    if let Err(e) = try_merge_pull_request(git, session, req) {
+    if let Err(e) = try_merge_pull_request(git, session, req).await {
         let attach = SlackAttachmentBuilder::new(&format!("{}", e))
             .title(
                 format!("Source PR: #{}: \"{}\"", req.pull_request.number, req.pull_request.title)
@@ -81,17 +81,17 @@ pub fn merge_pull_request(
             &req.commits,
         );
 
-        if let Err(e) = session.comment_pull_request(req.repo.owner.login(), &req.repo.name, req.pull_request.number, &msg_full) {
+        if let Err(e) = session.comment_pull_request(req.repo.owner.login(), &req.repo.name, req.pull_request.number, &msg_full).await {
             error!("Error making backport failure comment on pull request: {}", e);
         }
 
-        if let Err(e) = session.add_pull_request_labels(req.repo.owner.login(), &req.repo.name, req.pull_request.number, vec!["failed-backport".to_string()]) {
+        if let Err(e) = session.add_pull_request_labels(req.repo.owner.login(), &req.repo.name, req.pull_request.number, vec!["failed-backport".to_string()]).await {
             error!("Error adding failed-backport label on pull request: {}", e);
         }
     }
 }
 
-pub fn try_merge_pull_request(
+pub async fn try_merge_pull_request(
     git: &Git,
     session: &dyn Session,
     req: &PRMergeRequest,
@@ -133,23 +133,23 @@ pub fn try_merge_pull_request(
 
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
-    let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &req.target_branch)?;
+    let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &req.target_branch).await?;
 
     let mut assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
     assignees.retain(|r| r != pull_request.user.login());
     if !assignees.is_empty() {
-        session.assign_pull_request(owner, repo, new_pr.number, assignees)?;
+        session.assign_pull_request(owner, repo, new_pr.number, assignees).await?;
     }
 
     let mut reviewers: Vec<String> = pull_request.all_reviewers().into_iter().map(|a| a.login().to_string()).collect();
     reviewers.retain(|r| r != pull_request.user.login());
     if !reviewers.is_empty() {
-        session.request_review(owner, repo, new_pr.number, reviewers)?;
+        session.request_review(owner, repo, new_pr.number, reviewers).await?;
     }
 
     if whitespace_mode.len() > 0 {
         let msg = format!("Cherry-pick required option `{}`. Please verify correctness.", whitespace_mode);
-        if let Err(e) = session.comment_pull_request(owner, repo, new_pr.number, &msg) {
+        if let Err(e) = session.comment_pull_request(owner, repo, new_pr.number, &msg).await {
             error!("Error making whitespace comment on pull request: {}", e);
         }
     }
@@ -313,15 +313,16 @@ pub fn new_runner(
     })
 }
 
+#[async_trait::async_trait]
 impl worker::Runner<PRMergeRequest> for Runner {
-    fn handle(&self, req: PRMergeRequest) {
+    async fn handle(&self, req: PRMergeRequest) {
         clone_and_merge_pull_request(
             self.github_app.borrow(),
             self.clone_mgr.borrow(),
             &req,
             self.config.clone(),
             self.slack.clone(),
-        );
+        ).await;
     }
 }
 

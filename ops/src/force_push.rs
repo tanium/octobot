@@ -11,7 +11,7 @@ use octobot_lib::github::Commit;
 use octobot_lib::github::api::GithubSessionFactory;
 use crate::worker;
 
-pub fn comment_force_push(
+pub async fn comment_force_push(
     diffs: Result<DiffOfDiffs>,
     github: &dyn github::api::Session,
     owner: &str,
@@ -56,7 +56,7 @@ pub fn comment_force_push(
 
     if identical_diff {
         // Avoid failing the whole function if this fails
-        let timeline = match github.get_timeline(owner, repo, pull_request.number) {
+        let timeline = match github.get_timeline(owner, repo, pull_request.number).await {
             Ok(t) => t,
             Err(e) => {
                 error!("Error fetching timeline for PR #{}: {}", pull_request.number, e);
@@ -97,7 +97,7 @@ pub fn comment_force_push(
 
         if reapprove {
             let msg = format!("{}\n\nReapproved based on review by {}", comment, review_msg);
-            if let Err(e) = github.approve_pull_request(owner, repo, pull_request.number, after_hash, Some(&msg)) {
+            if let Err(e) = github.approve_pull_request(owner, repo, pull_request.number, after_hash, Some(&msg)).await {
                 error!("Error reapproving pull request #{}: {}", pull_request.number, e);
             }
         }
@@ -105,7 +105,7 @@ pub fn comment_force_push(
 
     // Only comment if not reapproved since reapproval already includes the "identical diff" comment.
     if !reapprove {
-        if let Err(e) = github.comment_pull_request(owner, repo, pull_request.number, &comment) {
+        if let Err(e) = github.comment_pull_request(owner, repo, pull_request.number, &comment).await {
             error!("Error sending github PR comment: {}", e);
         }
     }
@@ -113,7 +113,7 @@ pub fn comment_force_push(
     Ok(())
 }
 
-pub fn diff_force_push(
+pub async fn diff_force_push(
     github: &dyn github::api::Session,
     clone_mgr: &GitCloneManager,
     owner: &str,
@@ -122,7 +122,7 @@ pub fn diff_force_push(
     before_hash: &str,
     after_hash: &str,
 ) -> Result<DiffOfDiffs> {
-    let held_clone_dir = clone_mgr.clone(owner, repo)?;
+    let held_clone_dir = clone_mgr.clone(owner, repo).await?;
     let clone_dir = held_clone_dir.dir();
 
     let git = Git::new(github.github_host(), github.github_token(), clone_dir);
@@ -133,9 +133,9 @@ pub fn diff_force_push(
 
     // create a branch for the before hash then fetch, then delete it to get the ref
     let temp_branch = format!("octobot-{}-{}", pull_request.head.ref_name, before_hash);
-    github.create_branch(owner, repo, &temp_branch, before_hash)?;
+    github.create_branch(owner, repo, &temp_branch, before_hash).await?;
     git.run(&["fetch"])?;
-    github.delete_branch(owner, repo, &temp_branch)?;
+    github.delete_branch(owner, repo, &temp_branch).await?;
 
     // find the first commits in base_branch that `before`/`after` came from
     let before_base_commit = git.find_base_branch_commit(before_hash, base_branch)?;
@@ -185,9 +185,10 @@ pub fn new_runner(
     })
 }
 
+#[async_trait::async_trait]
 impl worker::Runner<ForcePushRequest> for Runner {
-    fn handle(&self, req: ForcePushRequest) {
-        let github = match self.github_app.new_session(&req.repo.owner.login(), &req.repo.name) {
+    async fn handle(&self, req: ForcePushRequest) {
+        let github = match self.github_app.new_session(&req.repo.owner.login(), &req.repo.name).await {
             Ok(g) => g,
             Err(e) => {
                 error!("Error getting new session: {}", e);
@@ -203,7 +204,7 @@ impl worker::Runner<ForcePushRequest> for Runner {
             &req.pull_request,
             &req.before_hash,
             &req.after_hash,
-        );
+        ).await;
 
         let comment = comment_force_push(
             diffs,
@@ -213,7 +214,7 @@ impl worker::Runner<ForcePushRequest> for Runner {
             &req.pull_request,
             &req.before_hash,
             &req.after_hash,
-        );
+        ).await;
         if let Err(e) = comment {
             error!("Error diffing force push: {}", e);
         }

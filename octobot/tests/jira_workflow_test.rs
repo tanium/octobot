@@ -90,8 +90,8 @@ fn new_transition_req(id: &str) -> TransitionRequest {
     }
 }
 
-#[test]
-fn test_submit_for_review() {
+#[tokio::test]
+async fn test_submit_for_review() {
     let test = new_test();
     let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
@@ -121,11 +121,11 @@ fn test_submit_for_review() {
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config);
+    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config).await;
 }
 
-#[test]
-fn test_resolve_issue_no_resolution() {
+#[tokio::test]
+async fn test_resolve_issue_no_resolution() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit1 = new_push_commit("Fix [SER-1] I fixed it. And also fix [CLI-9999][OTHER-999]\n\n\n\n", "aabbccddee");
@@ -152,11 +152,11 @@ fn test_resolve_issue_no_resolution() {
     // should only transition if necessary
     test.jira.mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", Some("resolved2"))));
 
-    jira::workflow::resolve_issue("master", None, &vec![commit1, commit2], &projects, &test.jira, &test.config);
+    jira::workflow::resolve_issue("master", None, &vec![commit1, commit2], &projects, &test.jira, &test.config).await;
 }
 
-#[test]
-fn test_resolve_issue_with_resolution() {
+#[tokio::test]
+async fn test_resolve_issue_with_resolution() {
     let test = new_test();
     let projects = vec!["SER2".to_string(), "CLI".to_string()];
     let commit =
@@ -202,11 +202,11 @@ fn test_resolve_issue_with_resolution() {
     test.jira.mock_get_transitions("SER2-1", Ok(vec![trans]));
     test.jira.mock_transition_issue("SER2-1", &req, Ok(()));
 
-    jira::workflow::resolve_issue("release/99", Some("5.6.7"), &vec![commit], &projects, &test.jira, &test.config);
+    jira::workflow::resolve_issue("release/99", Some("5.6.7"), &vec![commit], &projects, &test.jira, &test.config).await;
 }
 
-#[test]
-fn test_transition_issues_only_if_necessary() {
+#[tokio::test]
+async fn test_transition_issues_only_if_necessary() {
     let test = new_test();
     let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
@@ -265,11 +265,11 @@ fn test_transition_issues_only_if_necessary() {
     test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
     test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config);
+    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config).await;
 }
 
-#[test]
-fn test_add_pending_version() {
+#[tokio::test]
+async fn test_add_pending_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit =
@@ -278,11 +278,11 @@ fn test_add_pending_version() {
     test.jira.mock_add_pending_version("CLI-45", "5.6.7", Ok(()));
     test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
 
-    jira::workflow::add_pending_version(Some("5.6.7"), &vec![commit], &projects, &test.jira);
+    jira::workflow::add_pending_version(Some("5.6.7"), &vec![commit], &projects, &test.jira).await;
 }
 
-#[test]
-fn test_merge_pending_versions_for_real() {
+#[tokio::test]
+async fn test_merge_pending_versions_for_real() {
     let test = new_test();
 
     let new_version = "1.2.0.500";
@@ -333,12 +333,13 @@ fn test_merge_pending_versions_for_real() {
     assert_eq!(
         res,
         jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal)
+            .await
             .unwrap()
     );
 }
 
-#[test]
-fn test_merge_pending_versions_dry_run() {
+#[tokio::test]
+async fn test_merge_pending_versions_dry_run() {
     let test = new_test();
 
     let new_version = "1.2.0.500";
@@ -375,12 +376,13 @@ fn test_merge_pending_versions_dry_run() {
     assert_eq!(
         res,
         jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::DryRun)
+            .await
             .unwrap()
     );
 }
 
-#[test]
-fn test_merge_pending_versions_missed_versions() {
+#[tokio::test]
+async fn test_merge_pending_versions_missed_versions() {
     let test = new_test();
 
     let missed_version = "1.2.0.500";
@@ -416,12 +418,13 @@ fn test_merge_pending_versions_missed_versions() {
     assert_eq!(
         res,
         jira::workflow::merge_pending_versions(missed_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal)
+            .await
             .unwrap()
     );
 }
 
-#[test]
-fn test_sort_versions() {
+#[tokio::test]
+async fn test_sort_versions() {
     let test = new_test();
 
     use jira::api::JiraVersionPosition;
@@ -441,5 +444,5 @@ fn test_sort_versions() {
     test.jira.mock_reorder_version(&v3, JiraVersionPosition::After(v1.clone()), Ok(()));
     test.jira.mock_reorder_version(&v0, JiraVersionPosition::After(v3.clone()), Ok(()));
 
-    assert_eq!((), jira::workflow::sort_versions("SER", &test.jira).unwrap());
+    assert_eq!((), jira::workflow::sort_versions("SER", &test.jira).await.unwrap());
 }

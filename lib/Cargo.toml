@@ -15,7 +15,7 @@ conventional = "0.5.0"
 failure = "0.1.5"
 log = "0.4.6"
 regex = "1.1.2"
-ring = "0.14.6"
+ring = "0.16.20"
 rusqlite = "0.25.3"
 rustc-serialize = "0.3.24"
 serde = "1.0.89"
@@ -24,13 +24,9 @@ serde_json = "1.0.39"
 time = "0.1.42"
 toml = "0.5.0"
 url = "1.7.2"
-
-[dependencies.reqwest]
-version = "0.9.12"
-
-[dependencies.jsonwebtoken]
-git = "https://github.com/matthauck/jsonwebtoken"
-rev = "f4c2ab6a380bb85e931a5586cc6ca9fd8dda3ace"
+jsonwebtoken = "7.2.0"
+reqwest = { version = "0.11.4", features = ["json"]}
+async-trait = "0.1.51"
 
 [dev-dependencies]
 tempdir = "0.3.7"

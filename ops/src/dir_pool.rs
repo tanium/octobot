@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub struct DirPool {
     root_dir: PathBuf,
@@ -13,12 +13,29 @@ struct AvailableDirs {
     unused: Vec<u32>,
 }
 
-pub struct HeldDir<'a> {
+pub struct HeldDir {
     id: u32,
     repo_root: PathBuf,
     dir: PathBuf,
-    pool: &'a DirPool,
+    pool: Arc<DirPool>,
 }
+
+pub struct ArcDirPool {
+    pool: Arc<DirPool>,
+}
+
+impl ArcDirPool {
+    pub fn new(root_dir: &str) -> ArcDirPool {
+        ArcDirPool {
+            pool: Arc::new(DirPool::new(root_dir))
+        }
+    }
+
+    pub fn take_directory(&self, host: &str, owner: &str, repo: &str) -> HeldDir {
+        return DirPool::take_directory(self.pool.clone(), host, owner, repo)
+    }
+}
+
 
 impl DirPool {
     pub fn new(root_dir: &str) -> DirPool {
@@ -28,18 +45,18 @@ impl DirPool {
         }
     }
 
-    pub fn take_directory(&self, host: &str, owner: &str, repo: &str) -> HeldDir {
-        let repo_root = self.root_dir.join(host).join(owner).join(repo);
+    pub fn take_directory(pool: Arc<DirPool>, host: &str, owner: &str, repo: &str) -> HeldDir {
+        let repo_root = pool.root_dir.join(host).join(owner).join(repo);
         let key = repo_root.to_string_lossy().into_owned();
 
         let id;
         {
-            let mut dirs = self.available_dirs.lock().unwrap();
+            let mut dirs = pool.available_dirs.lock().unwrap();
             let entry = dirs.entry(key).or_insert(AvailableDirs::new());
             id = entry.get_id();
         }
 
-        HeldDir::new(id, repo_root, &self)
+        HeldDir::new(id, repo_root, pool)
     }
 
     fn return_dir(&self, id: u32, repo_root: &PathBuf) -> () {
@@ -76,13 +93,13 @@ impl AvailableDirs {
 }
 
 
-impl<'a> HeldDir<'a> {
-    fn new(id: u32, repo_root: PathBuf, pool: &DirPool) -> HeldDir {
+impl HeldDir {
+    fn new(id: u32, repo_root: PathBuf, pool: Arc<DirPool>) -> HeldDir {
         HeldDir {
-            id: id,
+            id,
             dir: repo_root.join(id.to_string()),
-            repo_root: repo_root,
-            pool: pool,
+            repo_root,
+            pool,
         }
     }
 
@@ -91,7 +108,7 @@ impl<'a> HeldDir<'a> {
     }
 }
 
-impl<'a> Drop for HeldDir<'a> {
+impl Drop for HeldDir {
     fn drop(&mut self) {
         self.pool.return_dir(self.id, &self.repo_root)
     }
@@ -118,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_dir_pool() {
-        let dir_pool = DirPool::new("<root>");
+        let dir_pool = ArcDirPool::new("<root>");
 
         {
             let dir_a1 = dir_pool.take_directory("h1", "o1", "repo-A");

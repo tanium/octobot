@@ -2,7 +2,7 @@ use ring::{digest, pbkdf2};
 use log::error;
 use rustc_serialize::hex::{FromHex, ToHex};
 
-static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
+static DIGEST_ALG: &'static pbkdf2::Algorithm = &pbkdf2::PBKDF2_HMAC_SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
 
 fn pbdkf2_iterations() -> std::num::NonZeroU32 {
@@ -12,7 +12,7 @@ fn pbdkf2_iterations() -> std::num::NonZeroU32 {
 pub fn store_password(pass: &str, salt: &str) -> String {
     let mut pass_hash = [0u8; CREDENTIAL_LEN];
     pbkdf2::derive(
-        DIGEST_ALG,
+        *DIGEST_ALG,
         pbdkf2_iterations(),
         salt.as_bytes(),
         pass.as_bytes(),
@@ -32,7 +32,7 @@ pub fn verify_password(pass: &str, salt: &str, pass_hash: &str) -> bool {
         }
     };
     pbkdf2::verify(
-        DIGEST_ALG,
+        *DIGEST_ALG,
         pbdkf2_iterations(),
         salt.as_bytes(),
         pass.as_bytes(),

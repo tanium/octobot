@@ -20,21 +20,21 @@ octobot_ldap = { "path" = "../ldap" }
 octobot_ops = { "path" = "../ops" }
 env_logger = "0.6.1"
 failure = "0.1.5"
-futures = "0.1.25"
 http = "0.1.16"
-hyper = "0.12.25"
+hyper = { version = "0.14.13", features = ["server"]}
 log = "0.4.6"
 regex = "1.1.2"
-ring = "0.14.6"
+ring = "0.16.20"
 rustc-serialize = "0.3.24"
 serde = "1.0.89"
 serde_derive = "1.0.89"
 serde_json = "1.0.39"
 thread-id = "3.3.0"
 time = "0.1.42"
-tokio = "0.1.17"
+tokio = { version = "1.12.0", features = ["rt", "rt-multi-thread", "macros"]}
 tokio-core = "0.1.17"
 tokio-threadpool = "0.1.12"
+async-trait = "0.1.51"
 
 [dev-dependencies]
 maplit = "1.0.1"

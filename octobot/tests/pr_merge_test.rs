@@ -47,8 +47,8 @@ fn new_test() -> (PRMergeTest, TempDir) {
     }, temp_dir)
 }
 
-#[test]
-fn test_pr_merge_basic() {
+#[tokio::test]
+async fn test_pr_merge_basic() {
     let (test, _temp_dir) = new_test();
 
     // setup a release branch
@@ -107,7 +107,7 @@ fn test_pr_merge_basic() {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
 
     let (user, email) = test.git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
 
@@ -117,8 +117,8 @@ fn test_pr_merge_basic() {
     assert_eq!("", test.git.run_git(&["diff", "master", "origin/my-feature-branch-1.0"]));
 }
 
-#[test]
-fn test_pr_merge_ignore_space_change() {
+#[tokio::test]
+async fn test_pr_merge_ignore_space_change() {
     let (test, _temp_dir) = new_test();
 
     let contents_base = "
@@ -204,13 +204,13 @@ if (true)    {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
 
     assert_eq!(contents_10_final, test.git.run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"]));
 }
 
-#[test]
-fn test_pr_merge_ignore_all_space() {
+#[tokio::test]
+async fn test_pr_merge_ignore_all_space() {
     let (test, _temp_dir) = new_test();
 
     let contents_base = "
@@ -295,13 +295,13 @@ if (true) {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
 
     assert_eq!(contents_10_final, test.git.run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"]));
 }
 
-#[test]
-fn test_pr_merge_conventional_commit() {
+#[tokio::test]
+async fn test_pr_merge_conventional_commit() {
     let (test, _temp_dir) = new_test();
 
     // setup a release branch
@@ -360,7 +360,7 @@ fn test_pr_merge_conventional_commit() {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
 
     let (user, email) = test.git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
 
@@ -370,8 +370,8 @@ fn test_pr_merge_conventional_commit() {
     assert_eq!("", test.git.run_git(&["diff", "master", "origin/my-feature-branch-1.0"]));
 }
 
-#[test]
-fn test_pr_merge_backport_failure() {
+#[tokio::test]
+async fn test_pr_merge_backport_failure() {
     let (mut test, _temp_dir) = new_test();
 
     // setup a release branch
@@ -439,5 +439,5 @@ fn test_pr_merge_backport_failure() {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender());
+    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
 }

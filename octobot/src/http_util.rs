@@ -33,5 +33,3 @@ pub fn new_error_resp<S: Into<String>>(msg: S) -> Response<Body> {
 pub fn new_bad_req_resp<S: Into<String>>(msg: S) -> Response<Body> {
     new_msg_resp(StatusCode::BAD_REQUEST, msg)
 }
-
-
