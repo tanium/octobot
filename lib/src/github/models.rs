@@ -11,7 +11,7 @@ pub fn is_main_branch(branch_name: &str) -> bool {
 // An incomplete container for all the kinds of events that we care about.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct HookBody {
-    pub repository: Repo,
+    pub repository: Option<Repo>,
     pub sender: User,
 
     pub action: Option<String>,
@@ -36,7 +36,7 @@ pub struct HookBody {
 impl HookBody {
     pub fn new() -> HookBody {
         HookBody {
-            repository: Repo::new(),
+            repository: Some(Repo::new()),
             sender: User::new(""),
             action: None,
             issue: None,

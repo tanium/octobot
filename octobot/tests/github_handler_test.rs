@@ -45,7 +45,7 @@ struct GithubHandlerTest {
 
 impl GithubHandlerTest {
     fn expect_will_merge_branches(&mut self, release_branch_prefix: &str, branches: Vec<String>, commits: Vec<Commit>) {
-        let repo = &self.handler.data.repository;
+        let repo = &self.handler.repository;
         let pr = &self.handler.data.pull_request.as_ref().unwrap();
 
         for branch in branches {
@@ -54,13 +54,13 @@ impl GithubHandlerTest {
     }
 
     fn expect_will_force_push_notify(&mut self, pr: &PullRequest, before_hash: &str, after_hash: &str) {
-        let repo = &self.handler.data.repository;
+        let repo = &self.handler.repository;
 
         self.force_push.expect_req(force_push::req(repo, pr, before_hash, after_hash));
     }
 
     fn expect_will_run_version_script(&mut self, branch: &str, commit_hash: &str, commits: &Vec<PushCommit>) {
-        let repo = &self.handler.data.repository;
+        let repo = &self.handler.repository;
 
         self.repo_version.expect_req(repo_version::req(repo, branch, commit_hash, commits));
     }
@@ -95,7 +95,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
 
     let mut data = HookBody::new();
 
-    data.repository = Repo::parse(&format!("http://{}/some-user/some-repo", github.github_host())).unwrap();
+    let repository = Repo::parse(&format!("http://{}/some-user/some-repo", github.github_host())).unwrap();
     data.sender = User::new("joe-sender");
 
     let mut config = Config::new(db);
@@ -135,7 +135,8 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
         force_push: force_push,
         handler: GithubEventHandler {
             event: "ping".to_string(),
-            data: data,
+            data: data.clone(),
+            repository: repository,
             action: "".to_string(),
             config: config.clone(),
             messenger: messenger::new(config.clone(), slack_sender),
@@ -977,7 +978,7 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
         .expect("Failed to add repo");
 
     // change the repo to an unconfigured one
-    test.handler.data.repository = Repo::parse(
+    test.handler.repository = Repo::parse(
         &format!("http://{}/some-user/custom-branches-repo", test.github.github_host()),
     ).unwrap();
 
@@ -1314,7 +1315,7 @@ async fn test_push_force_notify_ignored() {
     test.handler.data.forced = Some(true);
 
     // change the repo to an unconfigured one
-    test.handler.data.repository = Repo::parse(
+    test.handler.repository = Repo::parse(
         &format!("http://{}/some-other-user/some-other-repo", test.github.github_host()),
     ).unwrap();
 
@@ -1601,7 +1602,7 @@ async fn test_jira_disabled() {
     test.handler.data.commits = Some(some_jira_push_commits());
 
     // change the repo to an unconfigured one
-    test.handler.data.repository = Repo::parse(
+    test.handler.repository = Repo::parse(
         &format!("http://{}/some-other-user/some-other-repo", test.github.github_host()),
     ).unwrap();
 
@@ -1622,7 +1623,7 @@ async fn test_jira_push_triggers_version_script() {
         .expect("Failed to add repo");
 
     // change the repo to an unconfigured one
-    test.handler.data.repository = Repo::parse(
+    test.handler.repository = Repo::parse(
         &format!("http://{}/some-user/versioning-repo", test.github.github_host()),
     ).unwrap();
 

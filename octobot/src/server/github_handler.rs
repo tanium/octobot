@@ -50,6 +50,7 @@ pub struct GithubEventHandler {
     pub config: Arc<Config>,
     pub event: String,
     pub data: github::HookBody,
+    pub repository: github::Repo,
     pub action: String,
     pub github_session: Arc<dyn github::api::Session>,
     pub jira_session: Option<Arc<dyn jira::api::Session>>,
@@ -198,14 +199,20 @@ impl Handler for GithubHandler {
             }
         };
 
-        let github_session = match github_app.new_session(&data.repository.owner.login(), &data.repository.name).await {
+        // Installation events have no repository, ignore
+        let repository = match data.repository {
+            Some(ref r) => r.clone(),
+            None => return http_util::new_msg_resp(StatusCode::OK, "no repository, ignored"),
+        };
+
+        let github_session = match github_app.new_session(&repository.owner.login(), &repository.name).await {
             // Note: this doesn't really need to be an Arc anymore...
             Ok(g) => Arc::new(g),
             Err(e) => {
                 error!(
                     "Error creating a new github session for {}/{}: {}",
-                    data.repository.owner.login(),
-                    &data.repository.name,
+                    repository.owner.login(),
+                    &repository.name,
                     e
                 );
                 return http_util::new_bad_req_resp("Could not create github session");
@@ -222,8 +229,8 @@ impl Handler for GithubHandler {
         if let Some(ref issue) = data.issue {
             if data.pull_request.is_none() && issue.html_url.contains("/pull/") {
                 data.pull_request = match github_session.get_pull_request(
-                    &data.repository.owner.login(),
-                    &data.repository.name,
+                    &repository.owner.login(),
+                    &repository.name,
                     issue.number,
                 ).await {
                     Ok(pr) => Some(pr),
@@ -240,8 +247,8 @@ impl Handler for GithubHandler {
         if let Some(ref pull_request) = data.pull_request {
             if pull_request.requested_reviewers.is_none() || pull_request.reviews.is_none() {
                 match github_session.get_pull_request(
-                    &data.repository.owner.login(),
-                    &data.repository.name,
+                    &repository.owner.login(),
+                    &repository.name,
                     pull_request.number,
                 ).await {
                     Ok(pr) => changed_pr = Some(pr),
@@ -256,6 +263,7 @@ impl Handler for GithubHandler {
         let handler = GithubEventHandler {
             event: event.clone(),
             data: data,
+            repository: repository,
             action: action,
             config: config.clone(),
             messenger: messenger::new(config.clone(), slack),
@@ -316,8 +324,8 @@ impl GithubEventHandler {
         }
 
         match self.github_session.get_pull_request_commits(
-            &self.data.repository.owner.login(),
-            &self.data.repository.name,
+            &self.repository.owner.login(),
+            &self.repository.name,
             pull_request.number(),
         ).await {
             Ok(commits) => commits,
@@ -424,7 +432,7 @@ impl GithubEventHandler {
 
                     match notify_mode {
                     NotifyMode::NotifyChannel =>
-                        self.messenger.send_to_channel(&msg, &attachments, &self.data.repository, &branch_name, &commits),
+                        self.messenger.send_to_channel(&msg, &attachments, &self.repository, &branch_name, &commits),
 
                     NotifyMode::NotifyAll =>
                         self.messenger.send_to_all(
@@ -432,7 +440,7 @@ impl GithubEventHandler {
                             &attachments,
                             &pull_request.user,
                             &self.data.sender,
-                            &self.data.repository,
+                            &self.repository,
                             &self.all_participants(&pull_request, &commits),
                             &branch_name,
                             &commits,
@@ -442,7 +450,7 @@ impl GithubEventHandler {
                     };
                 }
 
-                let jira_projects = self.config.repos().jira_projects(&self.data.repository, branch_name);
+                let jira_projects = self.config.repos().jira_projects(&self.repository, branch_name);
 
                 let is_pull_request_ready = self.action == "opened" || self.action == "ready_for_review";
 
@@ -459,7 +467,7 @@ impl GithubEventHandler {
                                     &msg,
                                     &attachments,
                                     &pull_request.user,
-                                    &self.data.repository,
+                                    &self.repository,
                                     &branch_name,
                                     &commits,
                                 );
@@ -490,7 +498,7 @@ impl GithubEventHandler {
                 }
             }
 
-            let release_branch_prefix = self.config.repos().release_branch_prefix(&self.data.repository);
+            let release_branch_prefix = self.config.repos().release_branch_prefix(&self.repository);
             if self.action == "labeled" {
                 if let Some(ref label) = self.data.label {
                     self.merge_pull_request(pull_request, label, &release_branch_prefix, &commits);
@@ -576,7 +584,7 @@ impl GithubEventHandler {
                         &attachments,
                         &pull_request.user,
                         &self.data.sender,
-                        &self.data.repository,
+                        &self.repository,
                         &participants,
                         branch_name,
                         &commits,
@@ -617,7 +625,7 @@ impl GithubEventHandler {
             &attachments,
             pull_request.user(),
             &self.data.sender,
-            &self.data.repository,
+            &self.repository,
             &participants,
             &branch_name,
             &commits,
@@ -629,7 +637,7 @@ impl GithubEventHandler {
             if self.action == "created" {
                 if let Some(ref commit_id) = comment.commit_id {
                     let commit: &str = &commit_id[0..7];
-                    let commit_url = format!("{}/commit/{}", self.data.repository.html_url, commit_id);
+                    let commit_url = format!("{}/commit/{}", self.repository.html_url, commit_id);
                     let commit_path: String;
                     if let Some(ref path) = comment.path {
                         commit_path = path.to_string();
@@ -656,7 +664,7 @@ impl GithubEventHandler {
                         &attachments,
                         &comment.user,
                         &self.data.sender,
-                        &self.data.repository,
+                        &self.repository,
                         &vec![],
                         branch_name,
                         &commits,
@@ -700,14 +708,14 @@ impl GithubEventHandler {
 
             let branch_name = self.data.ref_name().replace("refs/heads/", "");
 
-            let release_branch_prefix = self.config.repos().release_branch_prefix(&self.data.repository);
+            let release_branch_prefix = self.config.repos().release_branch_prefix(&self.repository);
             let is_versioned_branch = github::is_main_branch(&branch_name) || branch_name.starts_with(&release_branch_prefix);
 
             // only lookup PRs for non-main branches
             if !is_versioned_branch {
                 let prs = match self.github_session.get_pull_requests(
-                    &self.data.repository.owner.login(),
-                    &self.data.repository.name,
+                    &self.repository.owner.login(),
+                    &self.repository.name,
                     Some("open"),
                     None,
                 ).await {
@@ -776,15 +784,15 @@ impl GithubEventHandler {
                             &attachments,
                             &pull_request.user,
                             &self.data.sender,
-                            &self.data.repository,
+                            &self.repository,
                             &self.all_participants(&pull_request, &commits),
                             &branch_name,
                             &commits,
                         );
 
-                        if self.data.forced() && self.config.repos().notify_force_push(&self.data.repository) {
+                        if self.data.forced() && self.config.repos().notify_force_push(&self.repository) {
                             let msg = force_push::req(
-                                &self.data.repository,
+                                &self.repository,
                                 pull_request,
                                 self.data.before(),
                                 self.data.after(),
@@ -793,7 +801,7 @@ impl GithubEventHandler {
                         }
 
                         // Lookup jira projects for this PR's base branch
-                        let jira_projects = self.config.repos().jira_projects(&self.data.repository, &pull_request.base.ref_name);
+                        let jira_projects = self.config.repos().jira_projects(&self.repository, &pull_request.base.ref_name);
 
                         // Mark if no JIRA references
                         jira::check_jira_refs(
@@ -807,13 +815,13 @@ impl GithubEventHandler {
             }
 
             // Note: check for jira projects on the branch being pushed to
-            let has_jira_projects = !self.config.repos().jira_projects(&self.data.repository, &branch_name).is_empty();
+            let has_jira_projects = !self.config.repos().jira_projects(&self.repository, &branch_name).is_empty();
 
             // Mark JIRAs as merged
             if is_versioned_branch && has_jira_projects {
                 if let Some(ref commits) = self.data.commits {
                     let msg = repo_version::req(
-                        &self.data.repository,
+                        &self.repository,
                         &branch_name,
                         self.data.after(),
                         commits,
@@ -834,8 +842,8 @@ impl GithubEventHandler {
         let branch_name = &pull_request.base.ref_name;
 
         let labels = match self.github_session.get_pull_request_labels(
-            &self.data.repository.owner.login(),
-            &self.data.repository.name,
+            &self.repository.owner.login(),
+            &self.repository.name,
             pull_request.number,
         ).await {
             Ok(l) => l,
@@ -844,7 +852,7 @@ impl GithubEventHandler {
                     "Error getting Pull Request labels",
                     &vec![SlackAttachmentBuilder::new(&format!("{}", e)).color("danger").build()],
                     &pull_request.user,
-                    &self.data.repository,
+                    &self.repository,
                     branch_name,
                     &commits,
                 );
@@ -879,7 +887,7 @@ impl GithubEventHandler {
             release_branch_prefix.to_string() + &backport
         };
 
-        let req = pr_merge::req(&self.data.repository, pull_request, &target_branch, release_branch_prefix, commits.clone());
+        let req = pr_merge::req(&self.repository, pull_request, &target_branch, release_branch_prefix, commits.clone());
         self.pr_merge.send(req);
     }
 }
