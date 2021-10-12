@@ -150,7 +150,7 @@ impl Repo {
     pub fn parse(html_url: &str) -> Result<Repo> {
         let url = Url::parse(html_url)?;
         let segments: Vec<&str> = match url.path_segments() {
-            Some(s) => s.filter(|p| p.len() > 0).collect(),
+            Some(s) => s.filter(|p| !p.is_empty()).collect(),
             None => return Err(format_err!("No path segments in URL")),
         };
         if segments.len() != 2 {
@@ -256,7 +256,7 @@ impl PullRequest {
         }
 
         if let Some(ref reviews) = self.reviews {
-            reviewers.extend(reviews.iter().map(|ref r| r.user.clone()));
+            reviewers.extend(reviews.iter().map(|r| r.user.clone()));
         }
 
         reviewers
@@ -271,7 +271,7 @@ impl<'a> PullRequestLike for &'a PullRequest {
     fn assignees(&self) -> Vec<User> {
         let mut assignees = self.assignees.clone();
         if let Some(ref reviewers) = self.requested_reviewers {
-            assignees.extend(reviewers.iter().map(|r| r.clone()));
+            assignees.extend(reviewers.iter().cloned());
         }
         if let Some(ref reviews) = self.reviews {
             assignees.extend(reviews.iter().map(|r| r.user.clone()));
@@ -362,7 +362,7 @@ impl Review {
             state: "COMMENTED".into(),
             body: Some(body.into()),
             html_url: String::new(),
-            user: user,
+            user,
         }
     }
 }
@@ -528,7 +528,7 @@ impl Commit {
             .message()
             .lines()
             .skip(1)
-            .skip_while(|ref l| l.trim().len() == 0)
+            .skip_while(|l| l.trim().is_empty())
             .collect();
         lines.join("\n")
     }
@@ -613,14 +613,11 @@ impl TimelineEvent {
             }
         }
 
-        return false;
+        false
     }
 
     pub fn dismissed_review_id(&self) -> Option<u32> {
-        match self.dismissed_review {
-            Some(ref r) => Some(r.review_id),
-            None => None,
-        }
+        self.dismissed_review.as_ref().map(|r| r.review_id)
     }
 
     pub fn is_review(&self) -> bool {
@@ -636,7 +633,7 @@ impl TimelineEvent {
             }
         }
 
-        return false;
+        false
     }
 
     pub fn review_user_message(&self, review_id: u32) -> String {
@@ -655,7 +652,7 @@ impl TimelineEvent {
 impl DismissedReview {
     pub fn by_commit(state: &str, commit_hash: &str, review_id: u32) -> DismissedReview {
         DismissedReview {
-            review_id: review_id,
+            review_id,
             state: state.into(),
             dismissal_commit_id: Some(commit_hash.into()),
             dismissal_message: None,
@@ -810,7 +807,7 @@ mod tests {
         assert_eq!(users, (&pr).assignees());
 
         let reviewers = vec![User::new("userC"), User::new("userD")];
-        pr.requested_reviewers = Some(reviewers.clone());
+        pr.requested_reviewers = Some(reviewers);
 
         let all_users = vec![
             User::new("user1"),

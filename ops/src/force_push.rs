@@ -36,7 +36,7 @@ pub async fn comment_force_push(
             } else {
                 comment += "Diff changed post-rebase.";
                 let different_files = diffs.different_patch_files();
-                if different_files.len() > 0 {
+                if !different_files.is_empty() {
                     comment += "\n\nChanged files:\n";
                     for file in different_files {
                         comment += &format!("* {}\n", file.path());
@@ -196,8 +196,8 @@ pub fn new_runner(
     metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<ForcePushRequest>> {
     Arc::new(Runner {
-        github_app: github_app,
-        clone_mgr: clone_mgr,
+        github_app,
+        clone_mgr,
         metrics,
     })
 }
@@ -210,7 +210,7 @@ impl worker::Runner<ForcePushRequest> for Runner {
 
         let github = match self
             .github_app
-            .new_session(&req.repo.owner.login(), &req.repo.name)
+            .new_session(req.repo.owner.login(), &req.repo.name)
             .await
         {
             Ok(g) => g,
@@ -223,7 +223,7 @@ impl worker::Runner<ForcePushRequest> for Runner {
         let diffs = diff_force_push(
             &github,
             &self.clone_mgr,
-            &req.repo.owner.login(),
+            req.repo.owner.login(),
             &req.repo.name,
             &req.pull_request,
             &req.before_hash,
@@ -234,7 +234,7 @@ impl worker::Runner<ForcePushRequest> for Runner {
         let comment = comment_force_push(
             diffs,
             &github,
-            &req.repo.owner.login(),
+            req.repo.owner.login(),
             &req.repo.name,
             &req.pull_request,
             &req.before_hash,

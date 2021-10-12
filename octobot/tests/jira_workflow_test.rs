@@ -32,8 +32,8 @@ fn new_test() -> JiraWorkflowTest {
     };
 
     JiraWorkflowTest {
-        jira: jira,
-        config: config,
+        jira,
+        config,
     }
 }
 

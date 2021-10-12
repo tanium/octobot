@@ -32,7 +32,7 @@ impl UserInfo {
 
 impl UserConfig {
     pub fn new(db: Database) -> UserConfig {
-        UserConfig { db: db }
+        UserConfig { db }
     }
 
     pub fn insert(&mut self, git_user: &str, slack_user: &str) -> Result<()> {

@@ -239,7 +239,7 @@ impl GithubSessionFactory for GithubApp {
     fn bot_name(&self) -> String {
         format!(
             "{}[bot]",
-            self.app.clone().map(|a| a.name).unwrap_or(String::new())
+            self.app.clone().map(|a| a.name).unwrap_or_default()
         )
     }
 
@@ -297,8 +297,7 @@ impl GithubSessionFactory for GithubOauthApp {
     fn bot_name(&self) -> String {
         self.user
             .clone()
-            .map(|a| a.login().into())
-            .unwrap_or(String::new())
+            .map(|a| a.login().into()).unwrap_or_default()
     }
 
     async fn get_token_org(&self, _org: &str) -> Result<String> {
@@ -393,7 +392,7 @@ impl Session for GithubSession {
     }
 
     fn github_app_id(&self) -> Option<u32> {
-        self.app_id.clone()
+        self.app_id
     }
 
     async fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
@@ -539,7 +538,7 @@ impl Session for GithubSession {
             labels: Vec<String>,
         }
 
-        let body = AddLabels { labels: labels };
+        let body = AddLabels { labels };
 
         self.client
             .post_void(
@@ -609,7 +608,7 @@ impl Session for GithubSession {
         }
 
         let body = AssignPR {
-            assignees: assignees,
+            assignees,
         };
 
         self.client
@@ -634,7 +633,7 @@ impl Session for GithubSession {
         }
 
         let body = ReviewPR {
-            reviewers: reviewers,
+            reviewers,
         };
 
         self.client
@@ -867,7 +866,7 @@ impl Session for GithubSession {
         self.client
             .post::<Resp, CheckRun>(
                 &format!("/repos/{}/check-runs", pr.base.repo.full_name),
-                &run,
+                run,
             )
             .await
             .map_err(|e| {

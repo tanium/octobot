@@ -70,7 +70,7 @@ fn get_referenced_jira_keys<T: CommitLike>(
     let mut refd = get_all_jira_keys(commits, projects);
 
     // only return ones not marked as fixed
-    refd.retain(|s| fixed.iter().position(|s2| s == s2).is_none());
+    refd.retain(|s| !fixed.iter().any(|s2| s == s2));
     refd
 }
 
@@ -93,7 +93,7 @@ pub fn references_jira<T: CommitLike>(commits: &Vec<T>, project: &str) -> bool {
 fn get_jira_project(jira_key: &str) -> &str {
     let re = Regex::new(r"^([A-Za-z0-9]+)(-[0-9]+)?$").unwrap();
 
-    match re.captures(&jira_key) {
+    match re.captures(jira_key) {
         Some(c) => c.get(1).map_or(jira_key, |m| m.as_str()),
         None => jira_key,
     }
@@ -101,9 +101,9 @@ fn get_jira_project(jira_key: &str) -> &str {
 
 fn needs_transition(state: &Option<jira::Status>, target: &Vec<String>) -> bool {
     if let &Some(ref state) = state {
-        return !target.contains(&state.name);
+        !target.contains(&state.name)
     } else {
-        return true;
+        true
     }
 }
 
@@ -227,7 +227,7 @@ pub async fn resolve_issue(
                             for res in &resolution.allowed_values {
                                 for resolution in config.fixed_resolutions() {
                                     if res.name == resolution {
-                                        req.set_resolution(&res);
+                                        req.set_resolution(res);
                                         break;
                                     }
                                 }
@@ -319,7 +319,7 @@ pub async fn merge_pending_versions(
     let all_relevant_versions = all_pending_versions
         .iter()
         .filter_map(|(key, list)| {
-            let relevant = find_relevant_versions(&target_version, &list, &real_versions);
+            let relevant = find_relevant_versions(&target_version, list, &real_versions);
             if relevant.is_empty() {
                 None
             } else {
@@ -362,7 +362,7 @@ pub async fn merge_pending_versions(
         for key in keys {
             info!("Assigning JIRA version key {}: {}", key, version);
             let relevant_versions = all_relevant_versions.get(key).unwrap();
-            if let Err(e) = jira.assign_fix_version(&key, version).await {
+            if let Err(e) = jira.assign_fix_version(key, version).await {
                 error!("Error assigning version {} to key {}: {}", version, key, e);
                 continue;
             }
@@ -371,7 +371,7 @@ pub async fn merge_pending_versions(
                 "Removing pending versions key {}: {:?}",
                 key, relevant_versions
             );
-            if let Err(e) = jira.remove_pending_versions(&key, &relevant_versions).await {
+            if let Err(e) = jira.remove_pending_versions(key, relevant_versions).await {
                 error!(
                     "Error clearing pending version {} from key {}: {}",
                     version, key, e
@@ -396,8 +396,7 @@ fn find_relevant_versions(
                 && v.minor() == target_version.minor()
                 && v < &target_version
         })
-        .max()
-        .map(|v| v.clone())
+        .max().cloned()
         .unwrap_or(version::Version::parse("0.0.0.0").unwrap());
 
     pending_versions
@@ -405,7 +404,7 @@ fn find_relevant_versions(
         .filter_map(|version| {
             if version.major() == target_version.major()
                 && version.minor() == target_version.minor()
-                && version <= &target_version
+                && version <= target_version
                 && version > &latest_prior_real_version
             {
                 Some(version.clone())
@@ -427,10 +426,10 @@ async fn try_get_issue_state(key: &str, jira: &dyn jira::api::Session) -> Option
 }
 
 async fn try_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Session) {
-    match find_transition(&key, to, jira).await {
+    match find_transition(key, to, jira).await {
         Ok(Some(transition)) => {
             let req = transition.new_request();
-            if let Err(e) = jira.transition_issue(&key, &req).await {
+            if let Err(e) = jira.transition_issue(key, &req).await {
                 error!(
                     "Error transitioning JIRA issue [{}] to one of [{:?}]: {}",
                     key, to, e
@@ -449,7 +448,7 @@ async fn find_transition(
     to: &Vec<String>,
     jira: &dyn jira::api::Session,
 ) -> Result<Option<Transition>> {
-    let transitions = jira.get_transitions(&key).await?;
+    let transitions = jira.get_transitions(key).await?;
 
     Ok(pick_transition(to, &transitions))
 }
@@ -473,7 +472,7 @@ pub async fn sort_versions(project: &str, jira: &dyn jira::api::Session) -> Resu
         let v1 = version::Version::parse(&a.name);
         let v2 = version::Version::parse(&b.name);
         if v1.is_none() && v2.is_none() {
-            return a.name.cmp(&b.name);
+            a.name.cmp(&b.name)
         } else if v1.is_none() {
             Ordering::Greater
         } else if v2.is_none() {
@@ -547,7 +546,7 @@ mod tests {
         );
         assert_eq!(
             vec!["KEY-1", "KEY-2", "KEY-3", "OTHER-5"],
-            get_referenced_jira_keys(&vec![commit.clone()], &projects)
+            get_referenced_jira_keys(&vec![commit], &projects)
         );
     }
 
@@ -558,7 +557,7 @@ mod tests {
         commit.commit.message = "KEY-1, OTHER-2:Fixed stuff".into();
         assert_eq!(
             vec!["KEY-1"],
-            get_referenced_jira_keys(&vec![commit.clone()], &projects)
+            get_referenced_jira_keys(&vec![commit], &projects)
         );
     }
 
@@ -601,7 +600,7 @@ mod tests {
             None,
             pick_transition(
                 &vec!["something-else".into()],
-                &vec![t1.clone(), t2.clone()]
+                &vec![t1, t2]
             )
         );
     }

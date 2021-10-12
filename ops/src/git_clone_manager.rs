@@ -37,7 +37,7 @@ impl GitCloneManager {
         let held_clone_dir = self
             .dir_pool
             .take_directory(session.github_host(), owner, repo);
-        self.clone_repo(&session, owner, repo, &held_clone_dir.dir())?;
+        self.clone_repo(&session, owner, repo, held_clone_dir.dir())?;
 
         Ok(held_clone_dir)
     }

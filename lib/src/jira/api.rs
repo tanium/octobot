@@ -369,7 +369,7 @@ impl Session for JiraSession {
                         )
                     })?;
 
-                return Ok(parse_pending_versions(&search, &field_id));
+                return Ok(parse_pending_versions(&search, field_id));
             }
         }
 
@@ -391,7 +391,7 @@ fn parse_pending_versions(
     search["issues"]
         .as_array()
         .unwrap_or(&vec![])
-        .into_iter()
+        .iter()
         .filter_map(|issue| {
             let key = issue["key"].as_str().unwrap_or("").to_string();
             let list = parse_pending_version_field(&issue["fields"][field_id]);

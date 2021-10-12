@@ -120,7 +120,7 @@ impl Config {
             jira: config.jira,
             ldap: config.ldap,
             users: RwLock::new(users::UserConfig::new(db.clone())),
-            repos: RwLock::new(repos::RepoConfig::new(db.clone())),
+            repos: RwLock::new(repos::RepoConfig::new(db)),
         }
     }
 

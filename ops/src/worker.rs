@@ -26,7 +26,7 @@ impl<T: Send + Sync + 'static> TokioWorker<T> {
 }
 
 impl<T: Send + Sync + 'static> Worker<T> for TokioWorker<T> {
-    fn send(&self, req: T) -> () {
+    fn send(&self, req: T) {
         let runner = self.runner.clone();
         self.runtime
             .lock()

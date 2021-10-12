@@ -81,7 +81,7 @@ const TRIM_MESSAGES_TO: usize = 20;
 
 impl Slack {
     pub fn new(webhook_url: Option<String>, metrics: Arc<Metrics>) -> Slack {
-        let webhook_url = webhook_url.unwrap_or(String::new());
+        let webhook_url = webhook_url.unwrap_or_default();
         let client = Arc::new(
             HTTPClient::new("")
                 .unwrap()
@@ -105,7 +105,7 @@ impl Slack {
 
         let slack_msg = SlackMessage {
             text: msg.to_string(),
-            attachments: attachments,
+            attachments,
             channel: channel.to_string(),
         };
 
@@ -154,7 +154,7 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
     SlackRequest {
         channel: channel.into(),
         msg: msg.into(),
-        attachments: attachments,
+        attachments,
     }
 }
 

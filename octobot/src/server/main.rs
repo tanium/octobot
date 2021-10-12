@@ -44,7 +44,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     } else {
         github = match github::api::GithubOauthApp::new(
             &config.github.host,
-            &config
+            config
                 .github
                 .api_token
                 .as_ref()
@@ -60,7 +60,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
 
     let jira: Option<Arc<dyn jira::api::Session>>;
     if let Some(ref jira_config) = config.jira {
-        jira = match JiraSession::new(&jira_config, Some(metrics.clone())).await {
+        jira = match JiraSession::new(jira_config, Some(metrics.clone())).await {
             Ok(s) => Some(Arc::new(s)),
             Err(e) => panic!("Error initiating jira session: {}", e),
         };

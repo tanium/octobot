@@ -20,24 +20,24 @@ fn new_commit(msg: &str) -> github::Commit {
 
 fn expect_pass(git: &MockGithub, pr: &github::PullRequest) {
     git.mock_create_check_run(
-        &pr,
-        &github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Success),
+        pr,
+        &github::CheckRun::new("jira", pr, None).completed(github::Conclusion::Success),
         Ok(1),
     );
 }
 
 fn expect_failure(git: &MockGithub, pr: &github::PullRequest) {
-    let mut run = github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Neutral);
+    let mut run = github::CheckRun::new("jira", pr, None).completed(github::Conclusion::Neutral);
     run.output = Some(github::CheckOutput::new("Missing JIRA reference", ""));
 
-    git.mock_create_check_run(&pr, &run, Ok(1));
+    git.mock_create_check_run(pr, &run, Ok(1));
 }
 
 fn expect_skip(git: &MockGithub, pr: &github::PullRequest) {
-    let mut run = github::CheckRun::new("jira", &pr, None).completed(github::Conclusion::Neutral);
+    let mut run = github::CheckRun::new("jira", pr, None).completed(github::Conclusion::Neutral);
     run.output = Some(github::CheckOutput::new("Skipped JIRA check", ""));
 
-    git.mock_create_check_run(&pr, &run, Ok(1));
+    git.mock_create_check_run(pr, &run, Ok(1));
 }
 
 #[tokio::test]

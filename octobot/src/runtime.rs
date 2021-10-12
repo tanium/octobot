@@ -30,7 +30,7 @@ pub fn new(
             }
         })
         .on_thread_stop({
-            let running_count = running_count.clone();
+            let running_count = running_count;
             move || {
                 running_count.dec();
             }
@@ -42,7 +42,7 @@ pub fn new(
             }
         })
         .on_thread_unpark({
-            let parked_count = parked_count.clone();
+            let parked_count = parked_count;
             move || {
                 parked_count.dec();
             }
@@ -51,7 +51,7 @@ pub fn new(
         .unwrap()
 }
 
-pub fn run<T>(num_threads: usize, metrics: Arc<Metrics>, fut: T) -> ()
+pub fn run<T>(num_threads: usize, metrics: Arc<Metrics>, fut: T)
 where
     T: std::future::Future + Send + 'static,
     T::Output: Send + 'static,

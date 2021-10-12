@@ -14,7 +14,7 @@ pub struct Messenger {
 pub fn new(config: Arc<Config>, slack: Arc<dyn Worker<SlackRequest>>) -> Messenger {
     Messenger {
         slack: slack.clone(),
-        config: config.clone(),
+        config,
     }
 }
 
@@ -37,8 +37,7 @@ impl Messenger {
         slackbots.extend(
             participants
                 .iter()
-                .filter(|a| a.login != item_owner.login)
-                .map(|a| a.clone()),
+                .filter(|a| a.login != item_owner.login).cloned(),
         );
 
         // make sure we do not send private message to author of that message
@@ -90,7 +89,7 @@ impl Messenger {
         attachments: &Vec<SlackAttachment>,
     ) {
         for user in users {
-            if let Some(slack_ref) = self.config.users().slack_user_mention(&user.login()) {
+            if let Some(slack_ref) = self.config.users().slack_user_mention(user.login()) {
                 self.send_to_slack(&slack_ref, msg, attachments);
             }
         }

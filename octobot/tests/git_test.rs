@@ -135,13 +135,13 @@ fn test_find_base_commit() {
 
     // multiple commits back
     assert_eq!(
-        base_commit.clone(),
+        base_commit,
         git.git
             .find_base_branch_commit(&falcon_commit, "master")
             .unwrap()
     );
     assert_eq!(
-        base_commit.clone(),
+        base_commit,
         git.git
             .find_base_branch_commit("origin/falcon", "master")
             .unwrap()
@@ -149,13 +149,13 @@ fn test_find_base_commit() {
 
     // single commit back
     assert_eq!(
-        base_commit.clone(),
+        base_commit,
         git.git
             .find_base_branch_commit(&horses_commit, "master")
             .unwrap()
     );
     assert_eq!(
-        base_commit.clone(),
+        base_commit,
         git.git
             .find_base_branch_commit("origin/horses", "master")
             .unwrap()
@@ -167,19 +167,19 @@ fn test_find_base_commit() {
     git.run_git(&["push", "-f"]);
     let new_falcon_commit = git.run_git(&["rev-parse", "HEAD"]);
     assert_eq!(
-        base_commit.clone(),
+        base_commit,
         git.git
             .find_base_branch_commit(&falcon_commit, "master")
             .unwrap()
     );
     assert_eq!(
-        new_base_commit.clone(),
+        new_base_commit,
         git.git
             .find_base_branch_commit(&new_falcon_commit, "master")
             .unwrap()
     );
     assert_eq!(
-        new_base_commit.clone(),
+        new_base_commit,
         git.git.find_base_branch_commit("falcon", "master").unwrap()
     );
 
@@ -192,13 +192,13 @@ fn test_find_base_commit() {
     git.run_git(&["checkout", "master"]);
     let new_falcon_commit = git.run_git(&["rev-parse", "HEAD"]);
     assert_eq!(
-        new_base_commit.clone(),
+        new_base_commit,
         git.git
             .find_base_branch_commit(&new_falcon_commit, "master")
             .unwrap()
     );
     assert_eq!(
-        new_base_commit.clone(),
+        new_base_commit,
         git.git.find_base_branch_commit("falcon", "master").unwrap()
     );
 
@@ -213,7 +213,7 @@ fn test_find_base_commit() {
     let some_commit_1 = git.run_git(&["rev-parse", "HEAD^1"]);
     // --fork-point here knows that the base actually new_base_commit.
     assert_eq!(
-        new_base_commit.clone(),
+        new_base_commit,
         git.git
             .find_base_branch_commit(&new_falcon_commit, "master")
             .unwrap()
@@ -223,7 +223,7 @@ fn test_find_base_commit() {
     // regular merge-base is now be the one commit before the rewritten one.
     git.reclone();
     assert_eq!(
-        some_commit_1.clone(),
+        some_commit_1,
         git.git
             .find_base_branch_commit(&new_falcon_commit, "master")
             .unwrap()

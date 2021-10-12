@@ -2,7 +2,7 @@ use log::error;
 use ring::{digest, pbkdf2};
 use rustc_serialize::hex::{FromHex, ToHex};
 
-static DIGEST_ALG: &'static pbkdf2::Algorithm = &pbkdf2::PBKDF2_HMAC_SHA256;
+static DIGEST_ALG: &pbkdf2::Algorithm = &pbkdf2::PBKDF2_HMAC_SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
 
 fn pbdkf2_iterations() -> std::num::NonZeroU32 {

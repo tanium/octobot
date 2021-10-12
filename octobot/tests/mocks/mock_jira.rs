@@ -30,7 +30,7 @@ struct MockCall<T> {
 impl<T> MockCall<T> {
     pub fn new(ret: Result<T>, args: Vec<&str>) -> MockCall<T> {
         MockCall {
-            ret: ret,
+            ret,
             args: args.iter().map(|a| a.to_string()).collect(),
         }
     }

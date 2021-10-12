@@ -43,14 +43,14 @@ pub async fn comment_repo_version(
     let held_clone_dir = clone_mgr.clone(owner, repo).await?;
     let clone_dir = held_clone_dir.dir();
 
-    let git = Git::new(github.github_host(), github.github_token(), &clone_dir);
+    let git = Git::new(github.github_host(), github.github_token(), clone_dir);
 
     // setup branch
     git.checkout_branch(branch_name, commit_hash)?;
 
     let version = run_script(version_script, clone_dir)?;
 
-    let maybe_version = if version.len() > 0 {
+    let maybe_version = if !version.is_empty() {
         Some(version.as_str())
     } else {
         None
@@ -215,11 +215,11 @@ pub fn new_runner(
     metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<RepoVersionRequest>> {
     Arc::new(Runner {
-        config: config,
-        github_app: github_app,
-        jira_session: jira_session,
-        clone_mgr: clone_mgr,
-        slack: slack,
+        config,
+        github_app,
+        jira_session,
+        clone_mgr,
+        slack,
         metrics,
     })
 }
@@ -255,7 +255,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             jira,
                             self.github_app.borrow(),
                             self.clone_mgr.borrow(),
-                            &req.repo.owner.login(),
+                            req.repo.owner.login(),
                             &req.repo.name,
                             &req.branch,
                             &req.commit_hash,

@@ -27,7 +27,7 @@ impl MetricsScrapeHandler {
 
         let parts = match headers.get(hyper::header::AUTHORIZATION) {
             Some(v) => match v.to_str() {
-                Ok(v) => v.splitn(2, " ").collect::<Vec<_>>(),
+                Ok(v) => v.splitn(2, ' ').collect::<Vec<_>>(),
                 Err(e) => {
                     return Some((
                         StatusCode::BAD_REQUEST,
@@ -46,16 +46,16 @@ impl MetricsScrapeHandler {
         }
 
         if let Some(config) = &self.config.metrics {
-            if passwd::verify_password(&parts[1], &config.salt, &config.pass_hash) {
-                return None;
+            if passwd::verify_password(parts[1], &config.salt, &config.pass_hash) {
+                None
             } else {
-                return Some((StatusCode::FORBIDDEN, "Invalid password".into()));
+                Some((StatusCode::FORBIDDEN, "Invalid password".into()))
             }
         } else {
-            return Some((
+            Some((
                 StatusCode::FORBIDDEN,
                 "No metrics authorization configured".into(),
-            ));
+            ))
         }
     }
 }

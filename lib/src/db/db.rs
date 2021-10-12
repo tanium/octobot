@@ -55,13 +55,12 @@ impl Columns {
             cols.insert(name.to_string(), index);
         }
 
-        Ok(Columns { cols: cols })
+        Ok(Columns { cols })
     }
 
     pub fn get_index(&self, col: &str) -> Result<usize> {
         self.cols
-            .get(col)
-            .map(|i| i.clone())
+            .get(col).copied()
             .ok_or(format_err!("Invalid column '{}'", col))
     }
 
@@ -80,7 +79,7 @@ pub fn to_string_vec(val: String) -> Vec<String> {
     if val.is_empty() {
         vec![]
     } else {
-        val.split(",")
+        val.split(',')
             .map(|s| s.trim().to_string())
             .collect::<Vec<_>>()
     }

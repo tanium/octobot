@@ -32,7 +32,7 @@ impl ArcDirPool {
     }
 
     pub fn take_directory(&self, host: &str, owner: &str, repo: &str) -> HeldDir {
-        return DirPool::take_directory(self.pool.clone(), host, owner, repo);
+        DirPool::take_directory(self.pool.clone(), host, owner, repo)
     }
 }
 
@@ -58,7 +58,7 @@ impl DirPool {
         HeldDir::new(id, repo_root, pool)
     }
 
-    fn return_dir(&self, id: u32, repo_root: &PathBuf) -> () {
+    fn return_dir(&self, id: u32, repo_root: &PathBuf) {
         let key = repo_root.to_string_lossy().into_owned();
         {
             let mut dirs = self.available_dirs.lock().unwrap();

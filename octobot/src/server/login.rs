@@ -34,27 +34,27 @@ pub struct LoginSessionFilter {
 impl LoginHandler {
     pub fn new(sessions: Arc<Sessions>, config: Arc<Config>) -> Box<LoginHandler> {
         Box::new(LoginHandler {
-            sessions: sessions,
-            config: config,
+            sessions,
+            config,
         })
     }
 }
 
 impl LogoutHandler {
     pub fn new(sessions: Arc<Sessions>) -> Box<LogoutHandler> {
-        Box::new(LogoutHandler { sessions: sessions })
+        Box::new(LogoutHandler { sessions })
     }
 }
 
 impl SessionCheckHandler {
     pub fn new(sessions: Arc<Sessions>) -> Box<SessionCheckHandler> {
-        Box::new(SessionCheckHandler { sessions: sessions })
+        Box::new(SessionCheckHandler { sessions })
     }
 }
 
 impl LoginSessionFilter {
     pub fn new(sessions: Arc<Sessions>) -> Box<LoginSessionFilter> {
-        Box::new(LoginSessionFilter { sessions: sessions })
+        Box::new(LoginSessionFilter { sessions })
     }
 }
 
@@ -125,7 +125,7 @@ fn invalid_session() -> Response<Body> {
 impl Handler for LogoutHandler {
     async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
         let sess: String = match get_session(&req) {
-            Some(s) => s.to_string(),
+            Some(s) => s,
             None => return Ok(invalid_session()),
         };
 
@@ -138,7 +138,7 @@ impl Handler for LogoutHandler {
 impl Handler for SessionCheckHandler {
     async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
         let sess: String = match get_session(&req) {
-            Some(s) => s.to_string(),
+            Some(s) => s,
             None => return Ok(invalid_session()),
         };
 
@@ -153,7 +153,7 @@ impl Handler for SessionCheckHandler {
 impl Filter for LoginSessionFilter {
     fn filter(&self, req: Request<Body>) -> FilterResult {
         let sess: String = match get_session(&req) {
-            Some(s) => s.to_string(),
+            Some(s) => s,
             None => return FilterResult::Halt(invalid_session()),
         };
 

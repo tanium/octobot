@@ -53,7 +53,7 @@ impl Sessions {
         self.prune(); // maybe prune out old sessions first
 
         let sessions = self.sessions.read().unwrap();
-        sessions.iter().find(|s| s.id == sess_id).is_some()
+        sessions.iter().any(|s| s.id == sess_id)
     }
 
     fn needs_prune(&self) -> bool {

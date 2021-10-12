@@ -25,7 +25,7 @@ use mocks::mock_slack::MockSlack;
 use mocks::mock_worker::LockedMockWorker;
 
 // this message gets appended only to review channel messages, not to slackbots
-const REPO_MSG: &'static str = "(<http://the-github-host/some-user/some-repo|some-user/some-repo>)";
+const REPO_MSG: &str = "(<http://the-github-host/some-user/some-repo|some-user/some-repo>)";
 
 fn the_repo() -> Repo {
     Repo::parse("http://the-github-host/some-user/some-repo").unwrap()
@@ -174,21 +174,21 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
 
     GithubHandlerTest {
         github: github.clone(),
-        slack: slack,
+        slack,
         jira: None,
         _temp_dir: temp_dir,
         config: config.clone(),
-        pr_merge: pr_merge,
-        repo_version: repo_version,
-        force_push: force_push,
+        pr_merge,
+        repo_version,
+        force_push,
         handler: GithubEventHandler {
             event: "ping".to_string(),
-            data: data.clone(),
-            repository: repository,
+            data,
+            repository,
             action: "".to_string(),
             config: config.clone(),
-            messenger: messenger::new(config.clone(), slack_sender),
-            github_session: github.clone(),
+            messenger: messenger::new(config, slack_sender),
+            github_session: github,
             jira_session: None,
             pr_merge: pr_merge_sender,
             repo_version: repo_version_sender,
@@ -215,7 +215,7 @@ fn new_test_with_jira() -> GithubHandlerTest {
 
     let jira = Arc::new(MockJira::new());
     test.jira = Some(jira.clone());
-    test.handler.jira_session = Some(jira.clone());
+    test.handler.jira_session = Some(jira);
 
     test
 }
@@ -276,10 +276,10 @@ fn expect_jira_ref_fail(git: &MockGithub) {
 }
 
 fn expect_jira_ref_fail_pr(git: &MockGithub, pr: &PullRequest) {
-    let mut run = CheckRun::new("jira", &pr, None).completed(Conclusion::Neutral);
+    let mut run = CheckRun::new("jira", pr, None).completed(Conclusion::Neutral);
     run.output = Some(CheckOutput::new("Missing JIRA reference", ""));
 
-    git.mock_create_check_run(&pr, &run, Ok(1));
+    git.mock_create_check_run(pr, &run, Ok(1));
 }
 
 fn expect_jira_ref_pass(git: &MockGithub) {
@@ -288,8 +288,8 @@ fn expect_jira_ref_pass(git: &MockGithub) {
 
 fn expect_jira_ref_pass_pr(git: &MockGithub, pr: &PullRequest) {
     git.mock_create_check_run(
-        &pr,
-        &CheckRun::new("jira", &pr, None).completed(Conclusion::Success),
+        pr,
+        &CheckRun::new("jira", pr, None).completed(Conclusion::Success),
         Ok(1),
     );
 }
@@ -1220,7 +1220,7 @@ async fn test_push_no_pr() {
     test.github.mock_get_pull_requests(
         "some-user",
         "some-repo",
-        Some("open".into()),
+        Some("open"),
         None,
         Ok(vec![]),
     );
@@ -1276,7 +1276,7 @@ async fn test_push_with_pr() {
     test.github.mock_get_pull_requests(
         "some-user",
         "some-repo",
-        Some("open".into()),
+        Some("open"),
         None,
         Ok(vec![pr1, pr2]),
     );
@@ -1339,7 +1339,7 @@ async fn test_push_force_notify() {
     test.github.mock_get_pull_requests(
         "some-user",
         "some-repo",
-        Some("open".into()),
+        Some("open"),
         None,
         Ok(vec![pr.clone()]),
     );
@@ -1387,7 +1387,7 @@ async fn test_push_force_notify_wip() {
     test.github.mock_get_pull_requests(
         "some-user",
         "some-repo",
-        Some("open".into()),
+        Some("open"),
         None,
         Ok(vec![pr]),
     );
@@ -1501,11 +1501,11 @@ fn many_jira_commits() -> Vec<Commit> {
         },
     };
 
-    return (0..21)
+    (0..21)
         .collect::<Vec<u32>>()
         .into_iter()
         .map(|_| commit.clone())
-        .collect();
+        .collect()
 }
 
 fn some_jira_push_commits() -> Vec<PushCommit> {
@@ -1604,7 +1604,7 @@ async fn test_jira_pull_request_opened_too_many_commits() {
         ),
         slack::req(
             "@the.pr.owner",
-            &format!("Too many commits on Pull Request #32. Ignoring JIRAs."),
+            &"Too many commits on Pull Request #32. Ignoring JIRAs.".to_string(),
             attach.clone(),
         ),
     ]);
@@ -1676,7 +1676,7 @@ async fn test_jira_push_other_branch() {
     test.github.mock_get_pull_requests(
         "some-user",
         "some-repo",
-        Some("open".into()),
+        Some("open"),
         None,
         Ok(vec![]),
     );

@@ -14,7 +14,7 @@ impl Version {
             .split('.')
             .map(|p| p.parse::<u32>())
             .collect::<Vec<_>>();
-        if parts.iter().any(|ref p| p.is_err()) {
+        if parts.iter().any(|p| p.is_err()) {
             return None;
         }
         let mut parts: Vec<u32> = parts.into_iter().map(|p| p.unwrap()).collect();
@@ -22,7 +22,7 @@ impl Version {
             parts.push(0)
         }
 
-        Some(Version { parts: parts })
+        Some(Version { parts })
     }
 
     pub fn to_string(&self) -> String {
@@ -52,7 +52,7 @@ impl fmt::Display for Version {
 
 impl PartialEq for Version {
     fn eq(&self, other: &Version) -> bool {
-        self.cmp(&other) == Ordering::Equal
+        self.cmp(other) == Ordering::Equal
     }
 }
 
@@ -91,7 +91,7 @@ impl PartialOrd for Version {
             }
         }
 
-        return Some(Ordering::Equal);
+        Some(Ordering::Equal)
     }
 }
 
