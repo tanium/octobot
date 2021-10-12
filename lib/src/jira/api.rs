@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::collections::HashMap;
 
 use async_trait::async_trait;
@@ -15,6 +16,7 @@ use crate::errors::*;
 use crate::http_client::HTTPClient;
 use crate::jira::models::*;
 use crate::version;
+use crate::metrics::Metrics;
 
 #[async_trait]
 pub trait Session: Send + Sync {
@@ -46,7 +48,7 @@ pub struct JiraSession {
     fix_versions_field: String,
     pending_versions_field: Option<String>,
     pending_versions_field_id: Option<String>,
-    restrict_comment_visibility_to_role: Option<String>
+    restrict_comment_visibility_to_role: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -64,7 +66,7 @@ fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String> {
 }
 
 impl JiraSession {
-    pub async fn new(config: &JiraConfig) -> Result<JiraSession> {
+    pub async fn new(config: &JiraConfig, metrics: Option<Arc<Metrics>>) -> Result<JiraSession> {
         let jira_base = config.base_url();
         let api_base = format!("{}/rest/api/2", jira_base);
 
@@ -78,6 +80,10 @@ impl JiraSession {
         );
 
         let client = HTTPClient::new_with_headers(&api_base, headers)?;
+        let client = match metrics {
+            None => client,
+            Some(ref m) => client.with_metrics(m.jira_api_responses.clone(), m.jira_api_duration.clone()),
+        };
 
         let auth_resp = client.get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base)).await.map_err(
             |e| format_err!("Error authenticating to JIRA: {}", e),

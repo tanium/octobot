@@ -243,7 +243,7 @@ impl MergeVersions {
             }
         }
 
-        let jira_sess = match jira::api::JiraSession::new(&jira_config).await {
+        let jira_sess = match jira::api::JiraSession::new(&jira_config, None).await {
             Ok(j) => j,
             Err(e) => return http_util::new_bad_req_resp(format!("Error creating JIRA session: {}", e)),
         };

@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use reqwest;
 use serde_derive::Serialize;
-use tokio;
 use log::{error, info};
 
+use octobot_lib::http_client::HTTPClient;
+use octobot_lib::metrics::Metrics;
 use crate::util;
 use crate::worker;
 
@@ -71,7 +71,7 @@ struct SlackMessage {
 
 // the main object for sending messages to slack
 struct Slack {
-    client: reqwest::Client,
+    client: Arc<HTTPClient>,
     webhook_url: String,
     recent_messages: Mutex<Vec<SlackMessage>>,
 }
@@ -80,15 +80,17 @@ const TRIM_MESSAGES_AT: usize = 200;
 const TRIM_MESSAGES_TO: usize = 20;
 
 impl Slack {
-    pub fn new(webhook_url: Option<String>) -> Slack {
+    pub fn new(webhook_url: Option<String>, metrics: Arc<Metrics>) -> Slack {
+        let webhook_url = webhook_url.unwrap_or(String::new());
+        let client = Arc::new(HTTPClient::new("").unwrap().with_secret_path(webhook_url.clone()).with_metrics(metrics.slack_api_responses.clone(), metrics.slack_api_duration.clone()));
         Slack {
-            client: reqwest::Client::new(),
-            webhook_url: webhook_url.unwrap_or(String::new()),
+            client,
+            webhook_url,
             recent_messages: Mutex::new(Vec::new()),
         }
     }
 
-    fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
+    async fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
         if self.webhook_url.is_empty() {
             return
         }
@@ -107,16 +109,15 @@ impl Slack {
         info!("Sending message to #{}", channel);
         let webhook_url = self.webhook_url.clone();
         let client = self.client.clone();
-        tokio::spawn(async move {
-            let res = client.post(&webhook_url).json(&slack_msg).send().await;
-            match res {
-                Ok(_) => info!("Successfully sent slack message"),
-                Err(e) => {
-                    let msg = format!("{}", e).replace(&webhook_url, "<webhook url>");
-                    error!("Error sending slack message: {}", msg);
-                }
-            };
-        });
+
+        let res = client.post_void(&webhook_url, &slack_msg).await;
+        match res {
+            Ok(_) => info!("Successfully sent slack message"),
+            Err(e) => {
+                let msg = format!("{}", e).replace(&webhook_url, "<webhook url>");
+                error!("Error sending slack message: {}", msg);
+            }
+        }
     }
 
     fn is_unique(&self, req: &SlackMessage) -> bool {
@@ -144,15 +145,15 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
     }
 }
 
-pub fn new_runner(webhook_url: Option<String>) -> Arc<dyn worker::Runner<SlackRequest>> {
+pub fn new_runner(webhook_url: Option<String>, metrics: Arc<Metrics>) -> Arc<dyn worker::Runner<SlackRequest>> {
     Arc::new(Runner {
-        slack: Arc::new(Slack::new(webhook_url)),
+        slack: Arc::new(Slack::new(webhook_url, metrics)),
     })
 }
 
 #[async_trait::async_trait]
 impl worker::Runner<SlackRequest> for Runner {
     async fn handle(&self, req: SlackRequest) {
-        self.slack.send(&req.channel, &req.msg, req.attachments);
+        self.slack.send(&req.channel, &req.msg, req.attachments).await;
     }
 }
