@@ -133,14 +133,16 @@ fn are_patch_lines_equal(line0: &Line, line1: &Line) -> bool {
     line0.line_type == line1.line_type && line0.value == line1.value
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_non_diff_contents() {
-        assert_eq!(true, DiffOfDiffs::new("some-non-diff", "some-non-diff").are_equal());
+        assert_eq!(
+            true,
+            DiffOfDiffs::new("some-non-diff", "some-non-diff").are_equal()
+        );
 
         let diffs = DiffOfDiffs::new("some-non-diff", "some-other-non-diff");
         assert_eq!(false, diffs.are_equal());

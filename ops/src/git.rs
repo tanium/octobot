@@ -3,8 +3,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use log::debug;
 use failure::format_err;
+use log::debug;
 
 use octobot_lib::errors::*;
 
@@ -34,9 +34,12 @@ impl Git {
     fn ask_pass_path(&self) -> String {
         let ask_pass = "octobot-ask-pass";
         match env::current_exe() {
-            Ok(ref exe) if exe.parent().is_some() => {
-                exe.parent().unwrap().join(ask_pass).to_string_lossy().into_owned()
-            }
+            Ok(ref exe) if exe.parent().is_some() => exe
+                .parent()
+                .unwrap()
+                .join(ask_pass)
+                .to_string_lossy()
+                .into_owned(),
             _ => ask_pass.to_string(),
         }
     }
@@ -62,7 +65,9 @@ impl Git {
     fn branches_output_contains(output: &str, branch: &str) -> bool {
         // Output is trimmed, so first entry (if not current branch) won't have an asterisk.
         // Otherwise, skip two characters to account for alignment w/ asterisk.
-        output.lines().any(|b| b == branch || b.len() > 2 && branch == &b[2..])
+        output
+            .lines()
+            .any(|b| b == branch || b.len() > 2 && branch == &b[2..])
     }
 
     // Find the commit at which |leaf_ref| forked from |base_branch|.
@@ -129,21 +134,21 @@ impl Git {
             .env("OCTOBOT_HOST", &self.host)
             .env("OCTOBOT_PASS", &self.token);
 
-        let mut child = cmd.spawn().map_err(
-            |e| format_err!("Error starting git (args: {:?}): {}", args, e),
-        )?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format_err!("Error starting git (args: {:?}): {}", args, e))?;
 
         if let Some(ref stdin) = stdin {
             if let Some(ref mut child_stdin) = child.stdin {
-                child_stdin.write_all(stdin.as_bytes()).map_err(|e| {
-                    format_err!("Error writing to stdin: {}", e)
-                })?;
+                child_stdin
+                    .write_all(stdin.as_bytes())
+                    .map_err(|e| format_err!("Error writing to stdin: {}", e))?;
             }
         }
 
-        let result = child.wait_with_output().map_err(|e| {
-            format_err!("Error running git (args: {:?}): {}", args, e)
-        })?;
+        let result = child
+            .wait_with_output()
+            .map_err(|e| format_err!("Error running git (args: {:?}): {}", args, e))?;
 
         let mut output = String::new();
         if result.stdout.len() > 0 {
@@ -154,14 +159,12 @@ impl Git {
             if result.stderr.len() > 0 {
                 output += String::from_utf8_lossy(&result.stderr).as_ref();
             }
-            Err(
-                format_err!(
-                    "Error running git (exit code {}, args: {:?}):\n{}",
-                    result.status.code().unwrap_or(-1),
-                    args,
-                    output
-                ),
-            )
+            Err(format_err!(
+                "Error running git (exit code {}, args: {:?}):\n{}",
+                result.status.code().unwrap_or(-1),
+                args,
+                output
+            ))
         } else {
             Ok(output.trim().to_string())
         }

@@ -11,17 +11,17 @@ use log;
 use log::debug;
 use log::error;
 
-use octobot_lib::config::{Config, JiraConfig};
-use octobot_lib::errors::*;
-use octobot_lib::metrics::{self, Metrics};
 use crate::git::Git;
 use crate::git_clone_manager::GitCloneManager;
-use octobot_lib::github;
-use octobot_lib::github::api::{GithubSessionFactory, Session};
-use octobot_lib::jira;
 use crate::messenger;
 use crate::slack::{SlackAttachmentBuilder, SlackRequest};
 use crate::worker;
+use octobot_lib::config::{Config, JiraConfig};
+use octobot_lib::errors::*;
+use octobot_lib::github;
+use octobot_lib::github::api::{GithubSessionFactory, Session};
+use octobot_lib::jira;
+use octobot_lib::metrics::{self, Metrics};
 
 #[cfg(target_os = "linux")]
 use crate::docker;
@@ -57,7 +57,15 @@ pub async fn comment_repo_version(
     };
 
     // resolve with version
-    jira::workflow::resolve_issue(branch_name, maybe_version, commits, jira_projects, jira, jira_config).await;
+    jira::workflow::resolve_issue(
+        branch_name,
+        maybe_version,
+        commits,
+        jira_projects,
+        jira,
+        jira_config,
+    )
+    .await;
 
     jira::workflow::add_pending_version(maybe_version, commits, jira_projects, jira).await;
 
@@ -68,7 +76,9 @@ pub async fn comment_repo_version(
 // seem like a good idea to allow generic code execution without any containerization.
 #[cfg(not(target_os = "linux"))]
 fn run_script(_: &str, _: &Path) -> Result<String> {
-    return Err(format_err!("Version scripts only supported when running Linux."));
+    return Err(format_err!(
+        "Version scripts only supported when running Linux."
+    ));
 }
 
 #[cfg(target_os = "linux")]
@@ -97,14 +107,26 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
         .stderr(Stdio::piped())
         .stdout(Stdio::piped());
 
-    log::info!("Running version script {:?} from {:?}", version_script, clone_dir);
+    log::info!(
+        "Running version script {:?} from {:?}",
+        version_script,
+        clone_dir
+    );
 
-    let child = cmd
-        .spawn()
-        .map_err(|e| format_err!("Error starting version script (script: {}): {}", version_script, e))?;
-    let result = child
-        .wait_with_output()
-        .map_err(|e| format_err!("Error running version script (script: {}): {}", version_script, e))?;
+    let child = cmd.spawn().map_err(|e| {
+        format_err!(
+            "Error starting version script (script: {}): {}",
+            version_script,
+            e
+        )
+    })?;
+    let result = child.wait_with_output().map_err(|e| {
+        format_err!(
+            "Error running version script (script: {}): {}",
+            version_script,
+            e
+        )
+    })?;
 
     let mut output = String::new();
     if result.stdout.len() > 0 {
@@ -143,7 +165,10 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
         ))
     } else {
         if !stderr.is_empty() {
-            log::info!("Version script succeeded, but printed to stderr: {}", stderr);
+            log::info!(
+                "Version script succeeded, but printed to stderr: {}",
+                stderr
+            );
         }
 
         Ok(output)
@@ -236,8 +261,13 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             &req.commit_hash,
                             &req.commits,
                             &jira_projects,
-                        ).await {
-                            error!("Error running version script {}: {}", config.version_script, e);
+                        )
+                        .await
+                        {
+                            error!(
+                                "Error running version script {}: {}",
+                                config.version_script, e
+                            );
                             let messenger = messenger::new(self.config.clone(), self.slack.clone());
 
                             let attach = SlackAttachmentBuilder::new(&format!("{}", e))
@@ -246,7 +276,10 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                 .build();
 
                             messenger.send_to_channel(
-                                &format!("Error running version script for [{}]", config.jira_project),
+                                &format!(
+                                    "Error running version script for [{}]",
+                                    config.jira_project
+                                ),
                                 &vec![attach],
                                 &req.repo,
                                 &req.branch,
@@ -266,7 +299,8 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             &jira_projects,
                             jira,
                             jira_config,
-                        ).await;
+                        )
+                        .await;
                     }
                 }
             }
@@ -285,7 +319,8 @@ mod tests {
 
     #[test]
     fn test_run_script() {
-        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir =
+            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
 
         let sub_dir = dir.path().join("subdir");
         fs::create_dir(&sub_dir).expect("create subdir");
@@ -301,7 +336,8 @@ mod tests {
 
     #[test]
     fn test_run_script_failure() {
-        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir =
+            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
 
         let sub_dir = dir.path().join("subdir");
         fs::create_dir(&sub_dir).expect("create subdir");
@@ -321,7 +357,8 @@ mod tests {
 
     #[test]
     fn test_run_script_failure_firejail_error() {
-        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir =
+            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
 
         let sub_dir = dir.path().join("subdir");
         fs::create_dir(&sub_dir).expect("create subdir");
@@ -339,7 +376,8 @@ mod tests {
 
     #[test]
     fn test_run_python_script() {
-        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir =
+            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
 
         let sub_dir = dir.path().join("subdir");
         fs::create_dir(&sub_dir).expect("create subdir");
@@ -350,7 +388,10 @@ mod tests {
             file.write_all(b"print('1.2.3.4')").expect("write file");
         }
 
-        assert_eq!("1.2.3.4", run_script("python version.py", &sub_dir).unwrap());
+        assert_eq!(
+            "1.2.3.4",
+            run_script("python version.py", &sub_dir).unwrap()
+        );
     }
 
     #[test]
@@ -360,7 +401,8 @@ mod tests {
             return;
         }
 
-        let dir = TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir =
+            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
 
         let parent_file = dir.path().join("private.txt");
         {

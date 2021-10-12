@@ -17,21 +17,20 @@ pub struct TokioWorker<T: Send + Sync + 'static> {
 }
 
 impl<T: Send + Sync + 'static> TokioWorker<T> {
-    pub fn new(runtime: Arc<Mutex<tokio::runtime::Runtime>>, runner: Arc<dyn Runner<T>>) -> Arc<dyn Worker<T>> {
-        Arc::new(TokioWorker {
-            runner,
-            runtime,
-        })
+    pub fn new(
+        runtime: Arc<Mutex<tokio::runtime::Runtime>>,
+        runner: Arc<dyn Runner<T>>,
+    ) -> Arc<dyn Worker<T>> {
+        Arc::new(TokioWorker { runner, runtime })
     }
 }
 
 impl<T: Send + Sync + 'static> Worker<T> for TokioWorker<T> {
     fn send(&self, req: T) -> () {
         let runner = self.runner.clone();
-        self.runtime.lock().unwrap().spawn(async move {
-            runner.handle(req).await
-        });
-
+        self.runtime
+            .lock()
+            .unwrap()
+            .spawn(async move { runner.handle(req).await });
     }
 }
-

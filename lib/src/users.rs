@@ -43,8 +43,13 @@ impl UserConfig {
         let conn = self.db.connect()?;
         conn.execute(
             "INSERT INTO users (github_name, slack_name, mute_direct_messages) VALUES (?1, ?2, ?3)",
-            &[&user.github, &user.slack, &db::to_tinyint(user.mute_direct_messages) as &dyn ToSql],
-        ).map_err(|e| format_err!("Error inserting user {}: {}", user.github, e))?;
+            &[
+                &user.github,
+                &user.slack,
+                &db::to_tinyint(user.mute_direct_messages) as &dyn ToSql,
+            ],
+        )
+        .map_err(|e| format_err!("Error inserting user {}: {}", user.github, e))?;
 
         Ok(())
     }
@@ -61,9 +66,8 @@ impl UserConfig {
 
     pub fn delete(&mut self, user_id: i32) -> Result<()> {
         let conn = self.db.connect()?;
-        conn.execute("DELETE from users where id = ?1", &[&user_id]).map_err(|e| {
-            format_err!("Error deleting user {}: {}", user_id, e)
-        })?;
+        conn.execute("DELETE from users where id = ?1", &[&user_id])
+            .map_err(|e| format_err!("Error deleting user {}: {}", user_id, e))?;
 
         Ok(())
     }
@@ -73,10 +77,12 @@ impl UserConfig {
     }
 
     pub fn slack_user_mention(&self, github_name: &str) -> Option<String> {
-        self.lookup_info(github_name).and_then(|u| if u.mute_direct_messages {
-            None
-        } else {
-            Some(mention(&u.slack))
+        self.lookup_info(github_name).and_then(|u| {
+            if u.mute_direct_messages {
+                None
+            } else {
+                Some(mention(&u.slack))
+            }
         })
     }
 
@@ -145,8 +151,8 @@ pub fn mention(username: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use tempdir::TempDir;
     use super::*;
+    use tempdir::TempDir;
 
     fn new_test() -> (UserConfig, TempDir) {
         let temp_dir = TempDir::new("users.rs").unwrap();
@@ -170,8 +176,14 @@ mod tests {
 
         users.insert("some-git-user", "the-slacker").unwrap();
 
-        assert_eq!(Some("the-slacker".into()), users.slack_user_name("some-git-user"));
-        assert_eq!(Some("@the-slacker".into()), users.slack_user_mention("some-git-user"));
+        assert_eq!(
+            Some("the-slacker".into()),
+            users.slack_user_name("some-git-user")
+        );
+        assert_eq!(
+            Some("@the-slacker".into()),
+            users.slack_user_mention("some-git-user")
+        );
         assert_eq!(None, users.slack_user_name("some.other.user"));
         assert_eq!(None, users.slack_user_mention("some.other.user"));
     }

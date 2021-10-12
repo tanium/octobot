@@ -64,7 +64,9 @@ fn new_push_commit(msg: &str, hash: &str) -> github::PushCommit {
 fn new_issue(key: &str, status: Option<&str>) -> Issue {
     Issue {
         key: key.into(),
-        status: status.map(|s| Status { name: s.to_string() }),
+        status: status.map(|s| Status {
+            name: s.to_string(),
+        }),
     }
 }
 
@@ -95,7 +97,10 @@ async fn test_submit_for_review() {
     let test = new_test();
     let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
-    let commit = new_commit("Fix [SER-1] I fixed it. And also relates to [CLI-9999][OTHER-999]", "aabbccddee");
+    let commit = new_commit(
+        "Fix [SER-1] I fixed it. And also relates to [CLI-9999][OTHER-999]",
+        "aabbccddee",
+    );
 
     test.jira.mock_comment_issue(
         "SER-1",
@@ -108,27 +113,39 @@ async fn test_submit_for_review() {
         Ok(()),
     );
 
-    test.jira.mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
-    test.jira.mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", None)));
+    test.jira
+        .mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
+    test.jira
+        .mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", None)));
 
-    test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
-    test.jira.mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
 
-    test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
-    test.jira.mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
 
     // mentioned JIRAs should go to in-progress but not "pending review"
-    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
-    test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
+    test.jira
+        .mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
+    test.jira
+        .mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config).await;
+    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config)
+        .await;
 }
 
 #[tokio::test]
 async fn test_resolve_issue_no_resolution() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
-    let commit1 = new_push_commit("Fix [SER-1] I fixed it. And also fix [CLI-9999][OTHER-999]\n\n\n\n", "aabbccddee");
+    let commit1 = new_push_commit(
+        "Fix [SER-1] I fixed it. And also fix [CLI-9999][OTHER-999]\n\n\n\n",
+        "aabbccddee",
+    );
     let commit2 = new_push_commit("Really fix [CLI-9999]\n\n\n\n", "ffbbccddee");
 
     let comment1 = "Merged into branch master: [aabbccd|http://the-commit/aabbccddee]\n\
@@ -141,26 +158,43 @@ async fn test_resolve_issue_no_resolution() {
     test.jira.mock_comment_issue("CLI-9999", comment2, Ok(()));
 
     // commit 1
-    test.jira.mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", None)));
-    test.jira.mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
-    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("004", "resolved2")]));
-    test.jira.mock_transition_issue("CLI-9999", &new_transition_req("004"), Ok(()));
-    test.jira.mock_get_transitions("SER-1", Ok(vec![new_transition("003", "resolved1")]));
-    test.jira.mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
+    test.jira
+        .mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", None)));
+    test.jira
+        .mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
+    test.jira
+        .mock_get_transitions("CLI-9999", Ok(vec![new_transition("004", "resolved2")]));
+    test.jira
+        .mock_transition_issue("CLI-9999", &new_transition_req("004"), Ok(()));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("003", "resolved1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
 
     // commit 2
     // should only transition if necessary
-    test.jira.mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", Some("resolved2"))));
+    test.jira
+        .mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", Some("resolved2"))));
 
-    jira::workflow::resolve_issue("master", None, &vec![commit1, commit2], &projects, &test.jira, &test.config).await;
+    jira::workflow::resolve_issue(
+        "master",
+        None,
+        &vec![commit1, commit2],
+        &projects,
+        &test.jira,
+        &test.config,
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn test_resolve_issue_with_resolution() {
     let test = new_test();
     let projects = vec!["SER2".to_string(), "CLI".to_string()];
-    let commit =
-        new_push_commit("Fix [SER2-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
+    let commit = new_push_commit(
+        "Fix [SER2-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]",
+        "aabbccddee",
+    );
 
     let comment1 = "Merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
                    {quote}Fix [SER2-1] I fixed it.{quote}\n\
@@ -196,13 +230,21 @@ async fn test_resolve_issue_with_resolution() {
         }),
     });
 
-
-    test.jira.mock_get_issue("SER2-1", Ok(new_issue("SER-1", None)));
+    test.jira
+        .mock_get_issue("SER2-1", Ok(new_issue("SER-1", None)));
 
     test.jira.mock_get_transitions("SER2-1", Ok(vec![trans]));
     test.jira.mock_transition_issue("SER2-1", &req, Ok(()));
 
-    jira::workflow::resolve_issue("release/99", Some("5.6.7"), &vec![commit], &projects, &test.jira, &test.config).await;
+    jira::workflow::resolve_issue(
+        "release/99",
+        Some("5.6.7"),
+        &vec![commit],
+        &projects,
+        &test.jira,
+        &test.config,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -247,35 +289,52 @@ async fn test_transition_issues_only_if_necessary() {
         Ok(()),
     );
 
-    test.jira.mock_get_issue("SER-1", Ok(new_issue("SER-1", Some("reviewing1"))));
-    test.jira.mock_get_issue("SER-2", Ok(new_issue("SER-2", Some("progress1"))));
-    test.jira.mock_get_issue("SER-3", Ok(new_issue("SER-3", None)));
-    test.jira.mock_get_issue("CLI-9998", Ok(new_issue("CLI-9998", Some("progress1"))));
-    test.jira.mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", None)));
+    test.jira
+        .mock_get_issue("SER-1", Ok(new_issue("SER-1", Some("reviewing1"))));
+    test.jira
+        .mock_get_issue("SER-2", Ok(new_issue("SER-2", Some("progress1"))));
+    test.jira
+        .mock_get_issue("SER-3", Ok(new_issue("SER-3", None)));
+    test.jira
+        .mock_get_issue("CLI-9998", Ok(new_issue("CLI-9998", Some("progress1"))));
+    test.jira
+        .mock_get_issue("CLI-9999", Ok(new_issue("CLI-9999", None)));
 
-    test.jira.mock_get_transitions("SER-2", Ok(vec![new_transition("002", "reviewing1")]));
-    test.jira.mock_transition_issue("SER-2", &new_transition_req("002"), Ok(()));
+    test.jira
+        .mock_get_transitions("SER-2", Ok(vec![new_transition("002", "reviewing1")]));
+    test.jira
+        .mock_transition_issue("SER-2", &new_transition_req("002"), Ok(()));
 
-    test.jira.mock_get_transitions("SER-3", Ok(vec![new_transition("001", "progress1")]));
-    test.jira.mock_transition_issue("SER-3", &new_transition_req("001"), Ok(()));
-    test.jira.mock_get_transitions("SER-3", Ok(vec![new_transition("002", "reviewing1")]));
-    test.jira.mock_transition_issue("SER-3", &new_transition_req("002"), Ok(()));
+    test.jira
+        .mock_get_transitions("SER-3", Ok(vec![new_transition("001", "progress1")]));
+    test.jira
+        .mock_transition_issue("SER-3", &new_transition_req("001"), Ok(()));
+    test.jira
+        .mock_get_transitions("SER-3", Ok(vec![new_transition("002", "reviewing1")]));
+    test.jira
+        .mock_transition_issue("SER-3", &new_transition_req("002"), Ok(()));
 
     // mentioned JIRAs should go to in-progress but not "pending review"
-    test.jira.mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
-    test.jira.mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
+    test.jira
+        .mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
+    test.jira
+        .mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config).await;
+    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config)
+        .await;
 }
 
 #[tokio::test]
 async fn test_add_pending_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
-    let commit =
-        new_push_commit("Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]", "aabbccddee");
+    let commit = new_push_commit(
+        "Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]",
+        "aabbccddee",
+    );
 
-    test.jira.mock_add_pending_version("CLI-45", "5.6.7", Ok(()));
+    test.jira
+        .mock_add_pending_version("CLI-45", "5.6.7", Ok(()));
     test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
 
     jira::workflow::add_pending_version(Some("5.6.7"), &vec![commit], &projects, &test.jira).await;
@@ -292,20 +351,20 @@ async fn test_merge_pending_versions_for_real() {
     );
     test.jira.mock_find_pending_versions(
         "SER",
-        Ok(hashmap!{
-        "SER-1".to_string() => vec![
-            version::Version::parse("1.2.0.50").unwrap(),
-            version::Version::parse("1.2.0.200").unwrap()
-        ],
-        "SER-2".to_string() => vec![],
-        "SER-3".to_string() => vec![
-            version::Version::parse("9.9.9.9").unwrap()
-        ],
-        "SER-4".to_string() => vec![
-            version::Version::parse("1.2.0.700").unwrap(),
-            version::Version::parse("1.2.0.300").unwrap()
-        ],
-    }),
+        Ok(hashmap! {
+            "SER-1".to_string() => vec![
+                version::Version::parse("1.2.0.50").unwrap(),
+                version::Version::parse("1.2.0.200").unwrap()
+            ],
+            "SER-2".to_string() => vec![],
+            "SER-3".to_string() => vec![
+                version::Version::parse("9.9.9.9").unwrap()
+            ],
+            "SER-4".to_string() => vec![
+                version::Version::parse("1.2.0.700").unwrap(),
+                version::Version::parse("1.2.0.300").unwrap()
+            ],
+        }),
     );
 
     test.jira.mock_add_version("SER", new_version, Ok(()));
@@ -321,20 +380,26 @@ async fn test_merge_pending_versions_for_real() {
         Ok(()),
     );
 
-    test.jira.mock_assign_fix_version("SER-1", new_version, Ok(()));
-    test.jira.mock_assign_fix_version("SER-4", new_version, Ok(()));
+    test.jira
+        .mock_assign_fix_version("SER-1", new_version, Ok(()));
+    test.jira
+        .mock_assign_fix_version("SER-4", new_version, Ok(()));
 
-    let res =
-        hashmap! {
+    let res = hashmap! {
         "SER-1".to_string() => vec![version::Version::parse("1.2.0.200").unwrap()],
         "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()],
     };
 
     assert_eq!(
         res,
-        jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal)
-            .await
-            .unwrap()
+        jira::workflow::merge_pending_versions(
+            new_version,
+            "SER",
+            &test.jira,
+            jira::workflow::DryRunMode::ForReal
+        )
+        .await
+        .unwrap()
     );
 }
 
@@ -349,35 +414,39 @@ async fn test_merge_pending_versions_dry_run() {
     );
     test.jira.mock_find_pending_versions(
         "SER",
-        Ok(hashmap!{
-        "SER-1".to_string() => vec![
-            version::Version::parse("1.2.0.50").unwrap(),
-            version::Version::parse("1.2.0.200").unwrap()
-        ],
-        "SER-2".to_string() => vec![],
-        "SER-3".to_string() => vec![
-            version::Version::parse("9.9.9.9").unwrap()
-        ],
-        "SER-4".to_string() => vec![
-            version::Version::parse("1.2.0.700").unwrap(),
-            version::Version::parse("1.2.0.300").unwrap()
-        ],
-    }),
+        Ok(hashmap! {
+            "SER-1".to_string() => vec![
+                version::Version::parse("1.2.0.50").unwrap(),
+                version::Version::parse("1.2.0.200").unwrap()
+            ],
+            "SER-2".to_string() => vec![],
+            "SER-3".to_string() => vec![
+                version::Version::parse("9.9.9.9").unwrap()
+            ],
+            "SER-4".to_string() => vec![
+                version::Version::parse("1.2.0.700").unwrap(),
+                version::Version::parse("1.2.0.300").unwrap()
+            ],
+        }),
     );
 
     // Don't expect the other state-changing functions to get called
 
-    let res =
-        hashmap! {
+    let res = hashmap! {
         "SER-1".to_string() => vec![version::Version::parse("1.2.0.200").unwrap()],
         "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()],
     };
 
     assert_eq!(
         res,
-        jira::workflow::merge_pending_versions(new_version, "SER", &test.jira, jira::workflow::DryRunMode::DryRun)
-            .await
-            .unwrap()
+        jira::workflow::merge_pending_versions(
+            new_version,
+            "SER",
+            &test.jira,
+            jira::workflow::DryRunMode::DryRun
+        )
+        .await
+        .unwrap()
     );
 }
 
@@ -388,17 +457,21 @@ async fn test_merge_pending_versions_missed_versions() {
     let missed_version = "1.2.0.500";
     test.jira.mock_get_versions(
         "SER",
-        Ok(vec![Version::new("1.2.0.100"), Version::new("1.2.0.500"), Version::new("1.2.0.600")]),
+        Ok(vec![
+            Version::new("1.2.0.100"),
+            Version::new("1.2.0.500"),
+            Version::new("1.2.0.600"),
+        ]),
     );
     test.jira.mock_find_pending_versions(
         "SER",
-        Ok(hashmap!{
-        "SER-1".to_string() => vec![
-            version::Version::parse("1.2.0.50").unwrap(),
-            version::Version::parse("1.2.0.150").unwrap(),
-            version::Version::parse("1.2.0.600").unwrap(),
-        ],
-    }),
+        Ok(hashmap! {
+            "SER-1".to_string() => vec![
+                version::Version::parse("1.2.0.50").unwrap(),
+                version::Version::parse("1.2.0.150").unwrap(),
+                version::Version::parse("1.2.0.600").unwrap(),
+            ],
+        }),
     );
 
     // Note: don't mock `add_version` since the version already exists
@@ -408,18 +481,23 @@ async fn test_merge_pending_versions_missed_versions() {
         &vec![version::Version::parse("1.2.0.150").unwrap()],
         Ok(()),
     );
-    test.jira.mock_assign_fix_version("SER-1", missed_version, Ok(()));
+    test.jira
+        .mock_assign_fix_version("SER-1", missed_version, Ok(()));
 
-    let res =
-        hashmap! {
+    let res = hashmap! {
         "SER-1".to_string() => vec![version::Version::parse("1.2.0.150").unwrap()],
     };
 
     assert_eq!(
         res,
-        jira::workflow::merge_pending_versions(missed_version, "SER", &test.jira, jira::workflow::DryRunMode::ForReal)
-            .await
-            .unwrap()
+        jira::workflow::merge_pending_versions(
+            missed_version,
+            "SER",
+            &test.jira,
+            jira::workflow::DryRunMode::ForReal
+        )
+        .await
+        .unwrap()
     );
 }
 
@@ -439,10 +517,19 @@ async fn test_sort_versions() {
         Ok(vec![v0.clone(), v1.clone(), v2.clone(), v3.clone()]),
     );
 
-    test.jira.mock_reorder_version(&v2, JiraVersionPosition::First, Ok(()));
-    test.jira.mock_reorder_version(&v1, JiraVersionPosition::After(v2.clone()), Ok(()));
-    test.jira.mock_reorder_version(&v3, JiraVersionPosition::After(v1.clone()), Ok(()));
-    test.jira.mock_reorder_version(&v0, JiraVersionPosition::After(v3.clone()), Ok(()));
+    test.jira
+        .mock_reorder_version(&v2, JiraVersionPosition::First, Ok(()));
+    test.jira
+        .mock_reorder_version(&v1, JiraVersionPosition::After(v2.clone()), Ok(()));
+    test.jira
+        .mock_reorder_version(&v3, JiraVersionPosition::After(v1.clone()), Ok(()));
+    test.jira
+        .mock_reorder_version(&v0, JiraVersionPosition::After(v3.clone()), Ok(()));
 
-    assert_eq!((), jira::workflow::sort_versions("SER", &test.jira).await.unwrap());
+    assert_eq!(
+        (),
+        jira::workflow::sort_versions("SER", &test.jira)
+            .await
+            .unwrap()
+    );
 }

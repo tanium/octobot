@@ -80,7 +80,9 @@ pub fn to_string_vec(val: String) -> Vec<String> {
     if val.is_empty() {
         vec![]
     } else {
-        val.split(",").map(|s| s.trim().to_string()).collect::<Vec<_>>()
+        val.split(",")
+            .map(|s| s.trim().to_string())
+            .collect::<Vec<_>>()
     }
 }
 
@@ -110,7 +112,10 @@ mod tests {
 
     #[test]
     fn test_vecs() {
-        assert_eq!("hello,world", from_string_vec(&vec!["hello".into(), "world".into()]));
+        assert_eq!(
+            "hello,world",
+            from_string_vec(&vec!["hello".into(), "world".into()])
+        );
         assert_eq!(
             vec!["hello".to_string(), "world".to_string()],
             to_string_vec("hello,world".into())

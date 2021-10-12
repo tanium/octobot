@@ -2,14 +2,14 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use hyper::{Body, Request, Response};
 use hyper::StatusCode;
-use serde_json;
-use serde_derive::{Deserialize, Serialize};
+use hyper::{Body, Request, Response};
 use log::error;
+use serde_derive::{Deserialize, Serialize};
+use serde_json;
 
-use octobot_lib::errors::*;
 use octobot_lib::config::{Config, JiraConfig};
+use octobot_lib::errors::*;
 use octobot_lib::jira;
 use octobot_lib::repos::RepoInfo;
 use octobot_lib::users::UserInfo;
@@ -17,7 +17,7 @@ use octobot_lib::version;
 use octobot_ops::util;
 
 use crate::http_util;
-use crate::server::http::{Handler, parse_json};
+use crate::server::http::{parse_json, Handler};
 
 pub enum Op {
     List,
@@ -35,7 +35,6 @@ pub struct RepoAdmin {
     config: Arc<Config>,
     op: Op,
 }
-
 
 impl UserAdmin {
     pub fn new(config: Arc<Config>, op: Op) -> Box<UserAdmin> {
@@ -105,7 +104,9 @@ impl UserAdmin {
         let query = util::parse_query(req.uri().query());
 
         let user_id = match query.get("id").map(|id| id.parse::<i32>()) {
-            None | Some(Err(_)) => return Ok(http_util::new_bad_req_resp("No `id` param specified")),
+            None | Some(Err(_)) => {
+                return Ok(http_util::new_bad_req_resp("No `id` param specified"))
+            }
             Some(Ok(id)) => id,
         };
 
@@ -177,7 +178,9 @@ impl RepoAdmin {
         let query = util::parse_query(req.uri().query());
 
         let repo_id = match query.get("id").map(|id| id.parse::<i32>()) {
-            None | Some(Err(_)) => return Ok(http_util::new_bad_req_resp("No `id` param specified")),
+            None | Some(Err(_)) => {
+                return Ok(http_util::new_bad_req_resp("No `id` param specified"))
+            }
             Some(Ok(id)) => id,
         };
 
@@ -245,7 +248,9 @@ impl MergeVersions {
 
         let jira_sess = match jira::api::JiraSession::new(&jira_config, None).await {
             Ok(j) => j,
-            Err(e) => return http_util::new_bad_req_resp(format!("Error creating JIRA session: {}", e)),
+            Err(e) => {
+                return http_util::new_bad_req_resp(format!("Error creating JIRA session: {}", e))
+            }
         };
 
         let dry_run_mode = if merge_req.dry_run {
@@ -259,7 +264,9 @@ impl MergeVersions {
             &merge_req.project,
             jira_sess.borrow(),
             dry_run_mode,
-        ).await {
+        )
+        .await
+        {
             Ok(v) => v,
             Err(e) => {
                 error!("Error merging pending versions: {}", e);
@@ -268,7 +275,9 @@ impl MergeVersions {
         };
 
         if !merge_req.dry_run {
-            if let Err(e) = jira::workflow::sort_versions(&merge_req.project, jira_sess.borrow()).await {
+            if let Err(e) =
+                jira::workflow::sort_versions(&merge_req.project, jira_sess.borrow()).await
+            {
                 error!("Error sorting versions: {}", e);
             }
         }
@@ -283,7 +292,10 @@ impl MergeVersions {
             Ok(r) => r,
             Err(e) => {
                 error!("Error serializing versions: {}", e);
-                return http_util::new_error_resp(format!("Error serializing pending versions: {}", e));
+                return http_util::new_error_resp(format!(
+                    "Error serializing pending versions: {}",
+                    e
+                ));
             }
         };
 

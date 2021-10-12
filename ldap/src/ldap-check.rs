@@ -28,7 +28,6 @@ fn main() {
             Err(e) => println!("Failed authentication: {}", e),
         }
     } else if command == "search" {
-
         let max = 1000;
         match octobot_ldap::search(&ldap_config, None, max) {
             Err(e) => println!("Failed search: {}", e),

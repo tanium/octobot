@@ -1,27 +1,21 @@
-use log;
 use conventional::{Commit, Simple as _};
+use log;
 
 use crate::errors::*;
-use crate::jira;
 use crate::github;
+use crate::jira;
 
 const JIRA_REF_CONTEXT: &'static str = "jira";
 
-const ALLOWED_SKIP_TYPES : &'static [&'static str] = &[
-    "build",
-    "chore",
-    "docs",
-    "refactor",
-    "style",
-    "test",
-];
+const ALLOWED_SKIP_TYPES: &'static [&'static str] =
+    &["build", "chore", "docs", "refactor", "style", "test"];
 
 pub async fn check_jira_refs(
     pull_request: &github::PullRequest,
     commits: &Vec<github::Commit>,
     projects: &Vec<String>,
-    github: &dyn github::api::Session) {
-
+    github: &dyn github::api::Session,
+) {
     // Always skip projects with no JIRAs configured
     if projects.is_empty() {
         return;
@@ -46,15 +40,18 @@ async fn do_check_jira_refs(
     pull_request: &github::PullRequest,
     commits: &Vec<github::Commit>,
     projects: &Vec<String>,
-    github: &dyn github::api::Session) -> Result<()> {
-
+    github: &dyn github::api::Session,
+) -> Result<()> {
     let mut run = github::CheckRun::new(JIRA_REF_CONTEXT, pull_request, None);
     if jira::workflow::get_all_jira_keys(commits, projects).is_empty() {
         run = run.completed(github::Conclusion::Neutral);
 
         let msg: String;
         if projects.len() == 1 {
-            msg = format!("Expected a JIRA reference in a commit message for the project {}", projects[0]);
+            msg = format!(
+                "Expected a JIRA reference in a commit message for the project {}",
+                projects[0]
+            );
         } else {
             msg = format!("Expected a JIRA reference in a commit message for at least one of the following projects: {}", projects.join(", "))
         }
@@ -73,7 +70,7 @@ fn conventional_commit_jira_skip_type(title: &str) -> Option<&str> {
         Ok(commit) => {
             for t in ALLOWED_SKIP_TYPES {
                 if *t == commit.type_() {
-                    return Some(t)
+                    return Some(t);
                 }
             }
 
@@ -82,15 +79,15 @@ fn conventional_commit_jira_skip_type(title: &str) -> Option<&str> {
         Err(_) => {
             // no conventional commit: require jira
             None
-        },
+        }
     }
 }
 
 async fn do_skip_jira_check(
     pull_request: &github::PullRequest,
     commit_type: &str,
-    github: &dyn github::api::Session) -> Result<()> {
-
+    github: &dyn github::api::Session,
+) -> Result<()> {
     let msg = "Skipped JIRA check";
     let body = format!("Skipped JIRA check for commit type: {}", commit_type);
 

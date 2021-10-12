@@ -109,7 +109,8 @@ mod tests {
 
         // reset only last prune time and last accessed time
         *sessions.last_pruned.write().unwrap() -= Duration::from_secs(PRUNE_SECS + 1);
-        sessions.sessions.write().unwrap()[0].created_at -= Duration::from_secs(SESSION_EXPIRY_SECS + 1);
+        sessions.sessions.write().unwrap()[0].created_at -=
+            Duration::from_secs(SESSION_EXPIRY_SECS + 1);
         assert_eq!(false, sessions.is_valid_session(&sess));
     }
 }

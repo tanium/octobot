@@ -1,19 +1,19 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use log::{error, info};
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
+use log::{error, info};
 
+use crate::runtime;
+use crate::server::github_handler::GithubHandlerState;
+use crate::server::octobot_service::OctobotService;
+use crate::server::sessions::Sessions;
 use octobot_lib::config::Config;
 use octobot_lib::github;
 use octobot_lib::jira;
 use octobot_lib::jira::api::JiraSession;
 use octobot_lib::metrics;
-use crate::runtime;
-use crate::server::github_handler::GithubHandlerState;
-use crate::server::octobot_service::OctobotService;
-use crate::server::sessions::Sessions;
 
 pub fn start(config: Config) {
     let num_http_threads = config.main.num_http_threads.unwrap_or(20);
@@ -35,16 +35,24 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
             config.github.app_id.expect("expected an app_id"),
             &config.github.app_key().expect("expected an app_key"),
             Some(metrics.clone()),
-        ).await {
+        )
+        .await
+        {
             Ok(s) => Arc::new(s),
             Err(e) => panic!("Error initiating github session: {}", e),
         };
     } else {
         github = match github::api::GithubOauthApp::new(
             &config.github.host,
-            &config.github.api_token.as_ref().expect("expected an api_token"),
-            Some(metrics.clone())
-        ).await {
+            &config
+                .github
+                .api_token
+                .as_ref()
+                .expect("expected an api_token"),
+            Some(metrics.clone()),
+        )
+        .await
+        {
             Ok(s) => Arc::new(s),
             Err(e) => panic!("Error initiating github session: {}", e),
         };
@@ -66,8 +74,18 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     };
 
     let ui_sessions = Arc::new(Sessions::new());
-    let github_handler_state = Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone(), metrics.clone()));
-    let octobot = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone(), metrics.clone());
+    let github_handler_state = Arc::new(GithubHandlerState::new(
+        config.clone(),
+        github.clone(),
+        jira.clone(),
+        metrics.clone(),
+    ));
+    let octobot = OctobotService::new(
+        config.clone(),
+        ui_sessions.clone(),
+        github_handler_state.clone(),
+        metrics.clone(),
+    );
 
     let main_service = make_service_fn(move |_| {
         let metrics = metrics.clone();

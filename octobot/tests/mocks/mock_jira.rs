@@ -3,8 +3,8 @@ use std::sync::Mutex;
 use std::thread;
 
 use octobot_lib::errors::*;
-use octobot_lib::jira::*;
 use octobot_lib::jira::api::{JiraVersionPosition, Session};
+use octobot_lib::jira::*;
 use octobot_lib::version;
 
 pub struct MockJira {
@@ -184,7 +184,11 @@ impl Session for MockJira {
         call.ret
     }
 
-    async fn reorder_version(&self, version: &Version, position: JiraVersionPosition) -> Result<()> {
+    async fn reorder_version(
+        &self,
+        version: &Version,
+        position: JiraVersionPosition,
+    ) -> Result<()> {
         let mut calls = self.reorder_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to reorder_version");
         let call = calls.remove(0);
@@ -204,9 +208,16 @@ impl Session for MockJira {
         call.ret
     }
 
-    async fn remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>) -> Result<()> {
+    async fn remove_pending_versions(
+        &self,
+        key: &str,
+        versions: &Vec<version::Version>,
+    ) -> Result<()> {
         let mut calls = self.remove_pending_versions_calls.lock().unwrap();
-        assert!(calls.len() > 0, "Unexpected call to remove_pending_versions");
+        assert!(
+            calls.len() > 0,
+            "Unexpected call to remove_pending_versions"
+        );
         let call = calls.remove(0);
         assert_eq!(call.args[0], key);
         assert_eq!(call.args[1], format!("{:?}", versions));
@@ -214,7 +225,10 @@ impl Session for MockJira {
         call.ret
     }
 
-    async fn find_pending_versions(&self, proj: &str) -> Result<HashMap<String, Vec<version::Version>>> {
+    async fn find_pending_versions(
+        &self,
+        proj: &str,
+    ) -> Result<HashMap<String, Vec<version::Version>>> {
         let mut calls = self.find_pending_versions_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to find_pending_versions");
         let call = calls.remove(0);
@@ -226,60 +240,96 @@ impl Session for MockJira {
 
 impl MockJira {
     pub fn mock_get_issue(&self, key: &str, ret: Result<Issue>) {
-        self.get_issue_calls.lock().unwrap().push(MockCall::new(ret, vec![key]));
+        self.get_issue_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key]));
     }
 
     pub fn mock_get_transitions(&self, key: &str, ret: Result<Vec<Transition>>) {
-        self.get_transitions_calls.lock().unwrap().push(MockCall::new(ret, vec![key]));
+        self.get_transitions_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key]));
     }
 
     pub fn mock_transition_issue(&self, key: &str, req: &TransitionRequest, ret: Result<()>) {
-        self.transition_issue_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![key, &format!("{:?}", req)],
-        ));
+        self.transition_issue_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key, &format!("{:?}", req)]));
     }
 
     pub fn mock_comment_issue(&self, key: &str, comment: &str, ret: Result<()>) {
-        self.comment_issue_calls.lock().unwrap().push(MockCall::new(ret, vec![key, comment]));
+        self.comment_issue_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key, comment]));
     }
 
     pub fn mock_add_version(&self, proj: &str, version: &str, ret: Result<()>) {
-        self.add_version_calls.lock().unwrap().push(MockCall::new(ret, vec![proj, version]));
+        self.add_version_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![proj, version]));
     }
 
     pub fn mock_get_versions(&self, proj: &str, ret: Result<Vec<Version>>) {
-        self.get_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![proj]));
+        self.get_versions_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![proj]));
     }
 
     pub fn mock_assign_fix_version(&self, key: &str, version: &str, ret: Result<()>) {
-        self.assign_fix_version_calls.lock().unwrap().push(MockCall::new(ret, vec![key, version]));
+        self.assign_fix_version_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key, version]));
     }
 
-    pub fn mock_reorder_version(&self, version: &Version, position: JiraVersionPosition, ret: Result<()>) {
-        self.reorder_version_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![
-                &format!("{:?}", version),
-                &format!("{:?}", position),
-            ],
-        ));
+    pub fn mock_reorder_version(
+        &self,
+        version: &Version,
+        position: JiraVersionPosition,
+        ret: Result<()>,
+    ) {
+        self.reorder_version_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(
+                ret,
+                vec![&format!("{:?}", version), &format!("{:?}", position)],
+            ));
     }
 
     pub fn mock_add_pending_version(&self, key: &str, version: &str, ret: Result<()>) {
-        self.add_pending_version_calls.lock().unwrap().push(
-            MockCall::new(ret, vec![key, version]),
-        );
+        self.add_pending_version_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key, version]));
     }
 
-    pub fn mock_remove_pending_versions(&self, key: &str, versions: &Vec<version::Version>, ret: Result<()>) {
-        self.remove_pending_versions_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![key, &format!("{:?}", versions)],
-        ));
+    pub fn mock_remove_pending_versions(
+        &self,
+        key: &str,
+        versions: &Vec<version::Version>,
+        ret: Result<()>,
+    ) {
+        self.remove_pending_versions_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key, &format!("{:?}", versions)]));
     }
 
-    pub fn mock_find_pending_versions(&self, proj: &str, ret: Result<HashMap<String, Vec<version::Version>>>) {
-        self.find_pending_versions_calls.lock().unwrap().push(MockCall::new(ret, vec![proj]));
+    pub fn mock_find_pending_versions(
+        &self,
+        proj: &str,
+        ret: Result<HashMap<String, Vec<version::Version>>>,
+    ) {
+        self.find_pending_versions_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![proj]));
     }
 }

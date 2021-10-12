@@ -9,7 +9,10 @@ pub struct GithubWebhookVerifier {
 
 impl GithubWebhookVerifier {
     pub fn is_req_valid(&self, headers: &HeaderMap, data: &[u8]) -> bool {
-        let values = headers.get_all("x-hub-signature").iter().collect::<Vec<_>>();
+        let values = headers
+            .get_all("x-hub-signature")
+            .iter()
+            .collect::<Vec<_>>();
 
         if values.len() != 1 {
             error!("Expected to find exactly one signature header");
@@ -69,7 +72,9 @@ mod tests {
         let signature = hmac::sign(&key, msg.as_bytes());
         let signature_hex = "sha1=".to_string() + signature.as_ref().to_hex().as_str();
 
-        let verifier = GithubWebhookVerifier { secret: key_value.clone() };
+        let verifier = GithubWebhookVerifier {
+            secret: key_value.clone(),
+        };
 
         assert!(verifier.is_valid(msg.as_bytes(), &signature_hex));
     }
@@ -83,7 +88,9 @@ mod tests {
         let signature = hmac::sign(&key, msg.as_bytes());
         let signature_hex = "sha9=".to_string() + signature.as_ref().to_hex().as_str();
 
-        let verifier = GithubWebhookVerifier { secret: key_value.clone() };
+        let verifier = GithubWebhookVerifier {
+            secret: key_value.clone(),
+        };
 
         assert!(!verifier.is_valid(msg.as_bytes(), &signature_hex));
     }
@@ -97,7 +104,9 @@ mod tests {
         let signature = hmac::sign(&key, msg.as_bytes());
         let signature_hex = signature.as_ref().to_hex();
 
-        let verifier = GithubWebhookVerifier { secret: key_value.clone() };
+        let verifier = GithubWebhookVerifier {
+            secret: key_value.clone(),
+        };
 
         assert!(!verifier.is_valid(msg.as_bytes(), &signature_hex));
     }

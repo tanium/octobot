@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use jsonwebtoken::{self, Algorithm, Header, EncodingKey};
+use jsonwebtoken::{self, Algorithm, EncodingKey, Header};
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -11,7 +11,10 @@ struct Claims {
 }
 
 pub fn new_token(app_id: u32, app_key_der: &[u8]) -> String {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let claims = Claims {
         iat: now,
         exp: now + (9 * 60),

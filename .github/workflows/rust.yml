@@ -23,6 +23,7 @@ jobs:
         profile: minimal
         toolchain: stable
         override: true
+        components: rustfmt
 
     - name: Build
       uses: actions-rs/cargo@v1
@@ -33,3 +34,9 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: test
+
+    - name: Lint
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --all -- --check

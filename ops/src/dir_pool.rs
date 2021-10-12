@@ -27,15 +27,14 @@ pub struct ArcDirPool {
 impl ArcDirPool {
     pub fn new(root_dir: &str) -> ArcDirPool {
         ArcDirPool {
-            pool: Arc::new(DirPool::new(root_dir))
+            pool: Arc::new(DirPool::new(root_dir)),
         }
     }
 
     pub fn take_directory(&self, host: &str, owner: &str, repo: &str) -> HeldDir {
-        return DirPool::take_directory(self.pool.clone(), host, owner, repo)
+        return DirPool::take_directory(self.pool.clone(), host, owner, repo);
     }
 }
-
 
 impl DirPool {
     pub fn new(root_dir: &str) -> DirPool {
@@ -92,7 +91,6 @@ impl AvailableDirs {
     }
 }
 
-
 impl HeldDir {
     fn new(id: u32, repo_root: PathBuf, pool: Arc<DirPool>) -> HeldDir {
         HeldDir {
@@ -116,8 +114,8 @@ impl Drop for HeldDir {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::AvailableDirs;
+    use super::*;
 
     #[test]
     fn test_available_dirs() {
@@ -151,7 +149,9 @@ mod tests {
 
         // going out of scope should return it to the pool
         let dir_a1_again = dir_pool.take_directory("h1", "o1", "repo-A");
-        assert_eq!("<root>/h1/o1/repo-A/1", dir_a1_again.dir().to_string_lossy());
+        assert_eq!(
+            "<root>/h1/o1/repo-A/1",
+            dir_a1_again.dir().to_string_lossy()
+        );
     }
-
 }

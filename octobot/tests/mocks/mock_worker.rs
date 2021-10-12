@@ -45,7 +45,9 @@ impl<T: PartialEq + Debug + Send + Sync + 'static> LockedMockWorker<T> {
     }
 
     pub fn from(worker: MockWorker<T>) -> Self {
-        LockedMockWorker { worker: Mutex::new(Arc::new(worker)) }
+        LockedMockWorker {
+            worker: Mutex::new(Arc::new(worker)),
+        }
     }
 
     pub fn expect_req(&self, req: T) {
@@ -67,11 +69,14 @@ impl<T: PartialEq + Debug + Send + Sync + 'static> Worker<T> for MockWorker<T> {
     }
 }
 
-
 impl<T: PartialEq + Debug + Send + Sync + 'static> Drop for MockWorker<T> {
     fn drop(&mut self) {
         if !thread::panicking() {
-            assert!(self.reqs.lock().unwrap().len() == 0, "Unmet requests: {:?}", *self.reqs.lock().unwrap());
+            assert!(
+                self.reqs.lock().unwrap().len() == 0,
+                "Unmet requests: {:?}",
+                *self.reqs.lock().unwrap()
+            );
         }
     }
 }

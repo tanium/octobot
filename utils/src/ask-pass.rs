@@ -15,7 +15,6 @@ fn main() {
     // only care about a single host for now, but keep this logic just incase...
     if host != octobot_host {
         println!("this is the wrong password");
-
     } else {
         println!("{}", octobot_pass);
     }

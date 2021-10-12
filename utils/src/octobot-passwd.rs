@@ -24,16 +24,15 @@ fn main() {
     }
 
     let mut salt_bytes: [u8; 32] = [0; 32];
-    SystemRandom::new().fill(&mut salt_bytes).expect("get random");
+    SystemRandom::new()
+        .fill(&mut salt_bytes)
+        .expect("get random");
     let salt: String = salt_bytes.to_hex().to_string();
 
     let pass_hash = passwd::store_password(&pass1, &salt);
 
     if admin_name == "--metrics" {
-        config.metrics = Some(config::MetricsConfig {
-            salt,
-            pass_hash,
-        });
+        config.metrics = Some(config::MetricsConfig { salt, pass_hash });
     } else {
         config.admin = Some(config::AdminConfig {
             name: admin_name,

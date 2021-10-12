@@ -16,7 +16,9 @@ pub struct TempGit {
 
 impl TempGit {
     pub fn new() -> TempGit {
-        let home = TempDir::new("home").expect("create fake home dir for configs").into_path();
+        let home = TempDir::new("home")
+            .expect("create fake home dir for configs")
+            .into_path();
         std::env::set_var("HOME", &home);
         std::env::set_var("XDG_CONFIG_HOME", &home);
 
@@ -59,7 +61,9 @@ impl TempGit {
         let email = format!("user.email={}", self.user_email());
         let mut full_args = vec!["-c", &user, "-c", &email];
         full_args.extend(args.iter());
-        self.git.run(&full_args).expect(&format!("Failed running git: `{:?}`", args))
+        self.git
+            .run(&full_args)
+            .expect(&format!("Failed running git: `{:?}`", args))
     }
 
     pub fn reclone(&self) {
@@ -70,8 +74,12 @@ impl TempGit {
             std::fs::create_dir(&self.repo_dir).expect("create clone dir");
         }
 
-        self.git.run(&["clone", "../remote", "."]).expect("clone from bare repo");
-        self.git.run(&["config", "commit.gpgsign", "false"]).expect("turn off gpg signing");
+        self.git
+            .run(&["clone", "../remote", "."])
+            .expect("clone from bare repo");
+        self.git
+            .run(&["config", "commit.gpgsign", "false"])
+            .expect("turn off gpg signing");
     }
 
     pub fn add_repo_file(&self, path: &str, contents: &str, msg: &str) {
@@ -87,14 +95,16 @@ impl TempGit {
         }
 
         let mut file = File::create(path).expect("create file");
-        file.write_all(contents.as_bytes()).expect("write contents to file");
+        file.write_all(contents.as_bytes())
+            .expect("write contents to file");
     }
 
     pub fn read_file(&self, path: &str) -> String {
         let path = self.repo_dir.join(path);
         let mut f = std::fs::File::open(&path).expect(&format!("unable to open file {:?}", path));
         let mut contents = String::new();
-        f.read_to_string(&mut contents).expect(&format!("error reading file {:?}", path));
+        f.read_to_string(&mut contents)
+            .expect(&format!("error reading file {:?}", path));
         return contents;
     }
 }

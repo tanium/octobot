@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use hyper::{Body, Request, Response, HeaderMap, StatusCode};
+use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 
-use octobot_lib::metrics::Metrics;
-use octobot_lib::errors::Result;
 use octobot_lib::config::Config;
+use octobot_lib::errors::Result;
+use octobot_lib::metrics::Metrics;
 use octobot_lib::passwd;
 
-use crate::server::http::Handler;
 use crate::http_util;
+use crate::server::http::Handler;
 
 pub struct MetricsScrapeHandler {
     config: Arc<Config>,
@@ -17,10 +17,7 @@ pub struct MetricsScrapeHandler {
 
 impl MetricsScrapeHandler {
     pub fn new(config: Arc<Config>, registry: Arc<Metrics>) -> Box<MetricsScrapeHandler> {
-        Box::new(MetricsScrapeHandler {
-            config,
-            registry,
-        })
+        Box::new(MetricsScrapeHandler { config, registry })
     }
 
     fn validate(&self, headers: &HeaderMap) -> Option<(StatusCode, String)> {
@@ -31,23 +28,34 @@ impl MetricsScrapeHandler {
         let parts = match headers.get(hyper::header::AUTHORIZATION) {
             Some(v) => match v.to_str() {
                 Ok(v) => v.splitn(2, " ").collect::<Vec<_>>(),
-                Err(e) => return Some((StatusCode::BAD_REQUEST, format!("Invalid authorization header: {}", e))),
+                Err(e) => {
+                    return Some((
+                        StatusCode::BAD_REQUEST,
+                        format!("Invalid authorization header: {}", e),
+                    ))
+                }
             },
             None => return Some((StatusCode::UNAUTHORIZED, "No authorization header".into())),
         };
 
         if parts.len() != 2 || (parts[0] != "Bearer" && parts[0] != "Token") {
-            return Some((StatusCode::BAD_REQUEST, "Invalid authorization header type".into()));
+            return Some((
+                StatusCode::BAD_REQUEST,
+                "Invalid authorization header type".into(),
+            ));
         }
 
         if let Some(config) = &self.config.metrics {
             if passwd::verify_password(&parts[1], &config.salt, &config.pass_hash) {
-                return None
+                return None;
             } else {
                 return Some((StatusCode::FORBIDDEN, "Invalid password".into()));
             }
         } else {
-            return Some((StatusCode::FORBIDDEN, "No metrics authorization configured".into()));
+            return Some((
+                StatusCode::FORBIDDEN,
+                "No metrics authorization configured".into(),
+            ));
         }
     }
 }

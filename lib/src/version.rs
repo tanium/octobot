@@ -10,7 +10,10 @@ pub struct Version {
 
 impl Version {
     pub fn parse(version_str: &str) -> Option<Version> {
-        let parts = version_str.split('.').map(|p| p.parse::<u32>()).collect::<Vec<_>>();
+        let parts = version_str
+            .split('.')
+            .map(|p| p.parse::<u32>())
+            .collect::<Vec<_>>();
         if parts.iter().any(|ref p| p.is_err()) {
             return None;
         }
@@ -23,7 +26,11 @@ impl Version {
     }
 
     pub fn to_string(&self) -> String {
-        self.parts.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(".")
+        self.parts
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(".")
     }
 
     pub fn major(&self) -> u32 {
@@ -110,7 +117,10 @@ mod tests {
 
     #[test]
     fn test_version_parse() {
-        assert_eq!("1.2.3.4.5", Version::parse("1.2.3.4.5").unwrap().to_string());
+        assert_eq!(
+            "1.2.3.4.5",
+            Version::parse("1.2.3.4.5").unwrap().to_string()
+        );
         assert_eq!("1.2.3.4", Version::parse("1.2.3.4").unwrap().to_string());
         assert_eq!("1.2.3", Version::parse("1.2.3").unwrap().to_string());
         assert_eq!("1.2.0", Version::parse("1.2").unwrap().to_string());
@@ -195,8 +205,17 @@ mod tests {
 
     #[test]
     fn test_version_max() {
-        let versions = vec![Version::parse("1.0.0.0").unwrap(), Version::parse("2.0.0.0").unwrap()];
-        assert_eq!(&Version::parse("2.0.0.0").unwrap(), versions.iter().max().unwrap());
-        assert_eq!(&Version::parse("1.0.0.0").unwrap(), versions.iter().min().unwrap());
+        let versions = vec![
+            Version::parse("1.0.0.0").unwrap(),
+            Version::parse("2.0.0.0").unwrap(),
+        ];
+        assert_eq!(
+            &Version::parse("2.0.0.0").unwrap(),
+            versions.iter().max().unwrap()
+        );
+        assert_eq!(
+            &Version::parse("1.0.0.0").unwrap(),
+            versions.iter().min().unwrap()
+        );
     }
 }

@@ -1,12 +1,12 @@
 use std::fs::File;
 use std::io::Read;
 
-use hyper::{Body, Request, Response};
 use hyper::header::CONTENT_TYPE;
+use hyper::{Body, Request, Response};
 
-use octobot_lib::errors::Result;
-use crate::server::http::Handler;
 use crate::http_util;
+use crate::server::http::Handler;
+use octobot_lib::errors::Result;
 
 pub struct HtmlHandler {
     path: String,
@@ -43,7 +43,8 @@ impl HtmlHandler {
 impl Handler for HtmlHandler {
     async fn handle(&self, _: Request<Body>) -> Result<Response<Body>> {
         let mut resp = Response::new(Body::from(self.contents()));
-        resp.headers_mut().insert(CONTENT_TYPE, "text/html".parse().unwrap());
+        resp.headers_mut()
+            .insert(CONTENT_TYPE, "text/html".parse().unwrap());
 
         Ok(resp)
     }

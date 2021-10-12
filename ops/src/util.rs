@@ -7,7 +7,9 @@ use failure::format_err;
 use octobot_lib::errors::*;
 
 fn escape_for_slack(str: &str) -> String {
-    str.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    str.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
 }
 
 pub fn make_link(url: &str, text: &str) -> String {
@@ -97,24 +99,21 @@ pub fn recv_timeout<T>(rx: &Receiver<T>, timeout: std::time::Duration) -> Result
             Ok(r) => {
                 return Ok(r);
             }
-            Err(mpsc::TryRecvError::Empty) => {
-                match time_left.checked_sub(sleep_time) {
-                    Some(sub) => {
-                        time_left = sub;
-                        thread::sleep(sleep_time);
-                    }
-                    None => {
-                        return Err(format_err!("Timed out waiting"));
-                    }
+            Err(mpsc::TryRecvError::Empty) => match time_left.checked_sub(sleep_time) {
+                Some(sub) => {
+                    time_left = sub;
+                    thread::sleep(sleep_time);
                 }
-            }
+                None => {
+                    return Err(format_err!("Timed out waiting"));
+                }
+            },
             Err(mpsc::TryRecvError::Disconnected) => {
                 return Err(format_err!("Channel disconnected!"));
             }
         };
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -123,7 +122,10 @@ mod tests {
 
     #[test]
     fn test_make_link() {
-        assert_eq!("<http://the-url|the text>", make_link("http://the-url", "the text"));
+        assert_eq!(
+            "<http://the-url|the text>",
+            make_link("http://the-url", "the text")
+        );
     }
 
     #[test]
@@ -149,10 +151,14 @@ mod tests {
     fn test_mentioned_users() {
         assert_eq!(
             vec!["mentioned-user", "other-mentioned-user"],
-            get_mentioned_usernames("Hey @mentioned-user, let me know what @other-mentioned-user thinks")
+            get_mentioned_usernames(
+                "Hey @mentioned-user, let me know what @other-mentioned-user thinks"
+            )
         );
-        assert_eq!(Vec::<&str>::new(), get_mentioned_usernames("This won't count as a mention@notamention"));
-
+        assert_eq!(
+            Vec::<&str>::new(),
+            get_mentioned_usernames("This won't count as a mention@notamention")
+        );
     }
 
     #[test]
@@ -161,28 +167,62 @@ mod tests {
         let trim_to = 2;
         let mut events: Vec<String> = vec![];
 
-        assert!(check_unique_event("A".into(), &mut events, trim_at, trim_to));
+        assert!(check_unique_event(
+            "A".into(),
+            &mut events,
+            trim_at,
+            trim_to
+        ));
         assert_eq!(vec!["A"], events);
 
-        assert!(check_unique_event("B".into(), &mut events, trim_at, trim_to));
+        assert!(check_unique_event(
+            "B".into(),
+            &mut events,
+            trim_at,
+            trim_to
+        ));
         assert_eq!(vec!["A", "B"], events);
-        assert!(!check_unique_event("B".into(), &mut events, trim_at, trim_to));
+        assert!(!check_unique_event(
+            "B".into(),
+            &mut events,
+            trim_at,
+            trim_to
+        ));
         assert_eq!(vec!["A", "B"], events);
 
-        assert!(check_unique_event("C".into(), &mut events, trim_at, trim_to));
-        assert!(check_unique_event("D".into(), &mut events, trim_at, trim_to));
-        assert!(check_unique_event("E".into(), &mut events, trim_at, trim_to));
+        assert!(check_unique_event(
+            "C".into(),
+            &mut events,
+            trim_at,
+            trim_to
+        ));
+        assert!(check_unique_event(
+            "D".into(),
+            &mut events,
+            trim_at,
+            trim_to
+        ));
+        assert!(check_unique_event(
+            "E".into(),
+            &mut events,
+            trim_at,
+            trim_to
+        ));
         assert_eq!(vec!["A", "B", "C", "D", "E"], events);
 
         // next one should trigger a trim!
-        assert!(check_unique_event("F".into(), &mut events, trim_at, trim_to));
+        assert!(check_unique_event(
+            "F".into(),
+            &mut events,
+            trim_at,
+            trim_to
+        ));
         assert_eq!(vec!["E", "F"], events);
     }
 
     #[test]
     fn test_parse_query() {
-        let map =
-            hashmap!{
+        let map = hashmap! {
             "A".to_string() => "1".to_string(),
             "B".to_string() => "Hello%20There".to_string(),
         };
