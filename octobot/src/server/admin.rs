@@ -38,19 +38,13 @@ pub struct RepoAdmin {
 
 impl UserAdmin {
     pub fn new(config: Arc<Config>, op: Op) -> Box<UserAdmin> {
-        Box::new(UserAdmin {
-            config,
-            op,
-        })
+        Box::new(UserAdmin { config, op })
     }
 }
 
 impl RepoAdmin {
     pub fn new(config: Arc<Config>, op: Op) -> Box<RepoAdmin> {
-        Box::new(RepoAdmin {
-            config,
-            op,
-        })
+        Box::new(RepoAdmin { config, op })
     }
 }
 

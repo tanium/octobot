@@ -150,7 +150,8 @@ pub fn search(
                 .unwrap_or(&vec![])
                 .iter()
                 .next()
-                .map(|s| s.to_string()).unwrap_or_default();
+                .map(|s| s.to_string())
+                .unwrap_or_default();
             if dn.is_empty() {
                 warn!("Found entry with empty DN! Skipping.");
                 None

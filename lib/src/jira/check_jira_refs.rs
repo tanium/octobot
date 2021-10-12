@@ -7,8 +7,7 @@ use crate::jira;
 
 const JIRA_REF_CONTEXT: &str = "jira";
 
-const ALLOWED_SKIP_TYPES: &[&str] =
-    &["build", "chore", "docs", "refactor", "style", "test"];
+const ALLOWED_SKIP_TYPES: &[&str] = &["build", "chore", "docs", "refactor", "style", "test"];
 
 pub async fn check_jira_refs(
     pull_request: &github::PullRequest,

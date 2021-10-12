@@ -60,7 +60,8 @@ impl Columns {
 
     pub fn get_index(&self, col: &str) -> Result<usize> {
         self.cols
-            .get(col).copied()
+            .get(col)
+            .copied()
             .ok_or(format_err!("Invalid column '{}'", col))
     }
 

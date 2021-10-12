@@ -251,8 +251,7 @@ pub fn cherry_pick(
             );
 
             whitespace_mode = "ignore-all-space";
-            if let Err(e) = do_cherry_pick(git, commit_hash, &["-X", whitespace_mode], &user_opts)
-            {
+            if let Err(e) = do_cherry_pick(git, commit_hash, &["-X", whitespace_mode], &user_opts) {
                 info!("Could not cherry-pick with `-X {}`: {}", whitespace_mode, e);
                 return Err(e);
             }

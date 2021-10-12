@@ -72,9 +72,7 @@ mod tests {
         let signature = hmac::sign(&key, msg.as_bytes());
         let signature_hex = "sha1=".to_string() + signature.as_ref().to_hex().as_str();
 
-        let verifier = GithubWebhookVerifier {
-            secret: key_value,
-        };
+        let verifier = GithubWebhookVerifier { secret: key_value };
 
         assert!(verifier.is_valid(msg.as_bytes(), &signature_hex));
     }
@@ -88,9 +86,7 @@ mod tests {
         let signature = hmac::sign(&key, msg.as_bytes());
         let signature_hex = "sha9=".to_string() + signature.as_ref().to_hex().as_str();
 
-        let verifier = GithubWebhookVerifier {
-            secret: key_value,
-        };
+        let verifier = GithubWebhookVerifier { secret: key_value };
 
         assert!(!verifier.is_valid(msg.as_bytes(), &signature_hex));
     }
@@ -104,9 +100,7 @@ mod tests {
         let signature = hmac::sign(&key, msg.as_bytes());
         let signature_hex = signature.as_ref().to_hex();
 
-        let verifier = GithubWebhookVerifier {
-            secret: key_value,
-        };
+        let verifier = GithubWebhookVerifier { secret: key_value };
 
         assert!(!verifier.is_valid(msg.as_bytes(), &signature_hex));
     }

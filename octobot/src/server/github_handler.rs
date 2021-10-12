@@ -104,11 +104,7 @@ impl GithubHandlerState {
         );
         let force_push_worker = TokioWorker::new(
             runtime.clone(),
-            force_push::new_runner(
-                github_app.clone(),
-                git_clone_manager,
-                metrics.clone(),
-            ),
+            force_push::new_runner(github_app.clone(), git_clone_manager, metrics.clone()),
         );
 
         GithubHandlerState {

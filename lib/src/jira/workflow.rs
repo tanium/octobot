@@ -396,7 +396,8 @@ fn find_relevant_versions(
                 && v.minor() == target_version.minor()
                 && v < &target_version
         })
-        .max().cloned()
+        .max()
+        .cloned()
         .unwrap_or(version::Version::parse("0.0.0.0").unwrap());
 
     pending_versions
@@ -598,10 +599,7 @@ mod tests {
         );
         assert_eq!(
             None,
-            pick_transition(
-                &vec!["something-else".into()],
-                &vec![t1, t2]
-            )
+            pick_transition(&vec!["something-else".into()], &vec![t1, t2])
         );
     }
 

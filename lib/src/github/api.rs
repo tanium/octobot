@@ -297,7 +297,8 @@ impl GithubSessionFactory for GithubOauthApp {
     fn bot_name(&self) -> String {
         self.user
             .clone()
-            .map(|a| a.login().into()).unwrap_or_default()
+            .map(|a| a.login().into())
+            .unwrap_or_default()
     }
 
     async fn get_token_org(&self, _org: &str) -> Result<String> {
@@ -607,9 +608,7 @@ impl Session for GithubSession {
             assignees: Vec<String>,
         }
 
-        let body = AssignPR {
-            assignees,
-        };
+        let body = AssignPR { assignees };
 
         self.client
             .post_void(
@@ -632,9 +631,7 @@ impl Session for GithubSession {
             reviewers: Vec<String>,
         }
 
-        let body = ReviewPR {
-            reviewers,
-        };
+        let body = ReviewPR { reviewers };
 
         self.client
             .post_void(

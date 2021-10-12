@@ -258,7 +258,8 @@ impl RepoConfig {
     pub fn jira_configs(&self, repo: &github::Repo, branch: &str) -> Vec<RepoJiraConfig> {
         let configs = self
             .lookup_info(repo)
-            .map(|r| r.jira_config).unwrap_or_default();
+            .map(|r| r.jira_config)
+            .unwrap_or_default();
 
         self.filter_configs(configs, branch)
     }
@@ -524,11 +525,7 @@ mod tests {
         );
         assert_eq!(
             vec!["client-reviews", "server-reviews"],
-            repos.lookup_channels(
-                &repo,
-                "main",
-                &vec![client_commit, server_commit]
-            )
+            repos.lookup_channels(&repo, "main", &vec![client_commit, server_commit])
         );
 
         // both jiras - release branch

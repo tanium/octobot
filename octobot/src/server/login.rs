@@ -33,10 +33,7 @@ pub struct LoginSessionFilter {
 
 impl LoginHandler {
     pub fn new(sessions: Arc<Sessions>, config: Arc<Config>) -> Box<LoginHandler> {
-        Box::new(LoginHandler {
-            sessions,
-            config,
-        })
+        Box::new(LoginHandler { sessions, config })
     }
 }
 

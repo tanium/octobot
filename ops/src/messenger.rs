@@ -37,7 +37,8 @@ impl Messenger {
         slackbots.extend(
             participants
                 .iter()
-                .filter(|a| a.login != item_owner.login).cloned(),
+                .filter(|a| a.login != item_owner.login)
+                .cloned(),
         );
 
         // make sure we do not send private message to author of that message

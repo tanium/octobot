@@ -1217,13 +1217,8 @@ async fn test_push_no_pr() {
     test.handler.data.before = Some("abcdef0000".into());
     test.handler.data.after = Some("1111abcdef".into());
 
-    test.github.mock_get_pull_requests(
-        "some-user",
-        "some-repo",
-        Some("open"),
-        None,
-        Ok(vec![]),
-    );
+    test.github
+        .mock_get_pull_requests("some-user", "some-repo", Some("open"), None, Ok(vec![]));
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
@@ -1384,13 +1379,8 @@ async fn test_push_force_notify_wip() {
     let mut pr = some_pr().unwrap();
     pr.head.sha = "abcdef0000".into();
     pr.title = "WIP: Awesome new feature".into();
-    test.github.mock_get_pull_requests(
-        "some-user",
-        "some-repo",
-        Some("open"),
-        None,
-        Ok(vec![pr]),
-    );
+    test.github
+        .mock_get_pull_requests("some-user", "some-repo", Some("open"), None, Ok(vec![pr]));
     test.mock_pull_request_commits();
 
     // Note: no expectations here.
@@ -1673,13 +1663,8 @@ async fn test_jira_push_other_branch() {
 
     test.handler.data.commits = Some(some_jira_push_commits());
 
-    test.github.mock_get_pull_requests(
-        "some-user",
-        "some-repo",
-        Some("open"),
-        None,
-        Ok(vec![]),
-    );
+    test.github
+        .mock_get_pull_requests("some-user", "some-repo", Some("open"), None, Ok(vec![]));
 
     // no jira mocks: will fail if called
 
