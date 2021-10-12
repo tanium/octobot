@@ -9,6 +9,7 @@ use octobot_lib::config::Config;
 use octobot_lib::github;
 use octobot_lib::jira;
 use octobot_lib::jira::api::JiraSession;
+use octobot_lib::metrics;
 use crate::runtime;
 use crate::server::github_handler::GithubHandlerState;
 use crate::server::octobot_service::OctobotService;
@@ -62,8 +63,9 @@ async fn run_server(config: Config) {
     };
 
     let ui_sessions = Arc::new(Sessions::new());
+    let metrics = metrics::Metrics::new();
     let github_handler_state = Arc::new(GithubHandlerState::new(config.clone(), github.clone(), jira.clone()));
-    let octobot = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone());
+    let octobot = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone(), metrics.clone());
 
     let main_service = make_service_fn(move |_| {
         let octobot = octobot.clone();

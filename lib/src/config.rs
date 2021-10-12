@@ -15,6 +15,7 @@ use crate::users;
 pub struct Config {
     pub main: MainConfig,
     pub admin: Option<AdminConfig>,
+    pub metrics: Option<MetricsConfig>,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
     pub ldap: Option<LdapConfig>,
@@ -27,6 +28,7 @@ pub struct Config {
 pub struct ConfigModel {
     pub main: MainConfig,
     pub admin: Option<AdminConfig>,
+    pub metrics: Option<MetricsConfig>,
     pub github: GithubConfig,
     pub jira: Option<JiraConfig>,
     pub ldap: Option<LdapConfig>,
@@ -43,6 +45,12 @@ pub struct MainConfig {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AdminConfig {
     pub name: String,
+    pub salt: String,
+    pub pass_hash: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MetricsConfig {
     pub salt: String,
     pub pass_hash: String,
 }
@@ -107,6 +115,7 @@ impl Config {
         Config {
             main: config.main,
             admin: config.admin,
+            metrics: config.metrics,
             github: config.github,
             jira: config.jira,
             ldap: config.ldap,
@@ -119,6 +128,7 @@ impl Config {
         let model = ConfigModel {
             main: self.main.clone(),
             admin: self.admin.clone(),
+            metrics: self.metrics.clone(),
             github: self.github.clone(),
             jira: self.jira.clone(),
             ldap: self.ldap.clone(),
@@ -168,6 +178,7 @@ impl ConfigModel {
                 num_http_threads: None,
             },
             admin: None,
+            metrics: None,
             github: GithubConfig {
                 webhook_secret: String::new(),
                 host: String::new(),

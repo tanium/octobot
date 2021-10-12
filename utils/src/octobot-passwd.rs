@@ -29,11 +29,18 @@ fn main() {
 
     let pass_hash = passwd::store_password(&pass1, &salt);
 
-    config.admin = Some(config::AdminConfig {
-        name: admin_name,
-        salt: salt,
-        pass_hash: pass_hash,
-    });
+    if admin_name == "--metrics" {
+        config.metrics = Some(config::MetricsConfig {
+            salt,
+            pass_hash,
+        });
+    } else {
+        config.admin = Some(config::AdminConfig {
+            name: admin_name,
+            salt,
+            pass_hash,
+        });
+    }
 
     config.save(&config_file).expect("save config file");
 

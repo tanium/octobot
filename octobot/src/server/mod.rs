@@ -7,3 +7,4 @@ mod octobot_service;
 pub mod login;
 mod sessions;
 pub mod main;
+pub mod metrics;

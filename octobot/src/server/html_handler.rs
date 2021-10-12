@@ -1,4 +1,3 @@
-use std::env;
 use std::fs::File;
 use std::io::Read;
 
@@ -7,10 +6,7 @@ use hyper::header::CONTENT_TYPE;
 
 use octobot_lib::errors::Result;
 use crate::server::http::Handler;
-
-fn is_dev_mode() -> bool {
-    env::var("DEVMODE").is_ok()
-}
+use crate::http_util;
 
 pub struct HtmlHandler {
     path: String,
@@ -26,7 +22,7 @@ impl HtmlHandler {
     }
 
     pub fn contents(&self) -> String {
-        if is_dev_mode() && self.path.len() > 0 {
+        if http_util::is_dev_mode() && self.path.len() > 0 {
             let mut file_contents = String::new();
             let mut file = match File::open(format!("src/assets/{}", self.path)) {
                 Ok(f) => f,

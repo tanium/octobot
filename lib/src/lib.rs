@@ -4,6 +4,7 @@ pub mod github;
 pub mod http_client;
 pub mod jira;
 pub mod jwt;
+pub mod metrics;
 pub mod passwd;
 pub mod repos;
 pub mod users;
