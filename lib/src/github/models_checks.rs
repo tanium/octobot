@@ -5,7 +5,6 @@ use serde_derive::{Deserialize, Serialize};
 use serde;
 use serde::de::{self, Deserialize as Deserialize2, Deserializer, Visitor};
 use serde::ser::{Serialize as Serialize2, Serializer};
-use time;
 
 use crate::github::models;
 
@@ -102,7 +101,7 @@ impl CheckRun {
     pub fn completed(mut self, conclusion: Conclusion) -> CheckRun {
         self.status = CheckStatus::Completed;
         self.conclusion = Some(conclusion);
-        self.completed_at = Some(time::now_utc().rfc3339().to_string());
+        self.completed_at = Some(chrono::Utc::now().to_rfc3339());
         self
     }
 }

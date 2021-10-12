@@ -18,24 +18,24 @@ path = "src/lib.rs"
 octobot_lib = { "path" = "../lib" }
 octobot_ldap = { "path" = "../ldap" }
 octobot_ops = { "path" = "../ops" }
-env_logger = "0.6.1"
-failure = "0.1.5"
-http = "0.1.16"
-hyper = { version = "0.14.13", features = ["server"]}
-log = "0.4.6"
-regex = "1.1.2"
+env_logger = "0.9.0"
+failure = "0.1.8"
+http = "0.2.5"
+hyper = { version = "0.14.13", features = ["server"] }
+log = "0.4.14"
+regex = "1.5.4"
 ring = "0.16.20"
 rustc-serialize = "0.3.24"
-serde = "1.0.89"
-serde_derive = "1.0.89"
-serde_json = "1.0.39"
-thread-id = "3.3.0"
-time = "0.1.42"
-tokio = { version = "1.12.0", features = ["rt", "rt-multi-thread", "macros"]}
-tokio-core = "0.1.17"
-tokio-threadpool = "0.1.12"
+serde = "1.0.130"
+serde_derive = "1.0.130"
+serde_json = "1.0.68"
+thread-id = "4.0.0"
+tokio = { version = "1.12.0", features = ["rt", "rt-multi-thread", "macros"] }
+tokio-core = "0.1.18"
+tokio-threadpool = "0.1.18"
 async-trait = "0.1.51"
+chrono = "0.4.19"
 
 [dev-dependencies]
-maplit = "1.0.1"
+maplit = "1.0.2"
 tempdir = "0.3.7"

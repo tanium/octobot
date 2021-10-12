@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use hyper::{self, Body, Method, Request, Response};
-use time;
 use log::{debug, info};
 
 use octobot_lib::config::Config;
@@ -37,7 +36,7 @@ impl OctobotService {
 
 impl OctobotService {
     pub async fn call(self, req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
-        let start = time::now();
+        let start = std::time::Instant::now();
 
         let method = req.method().clone();
         let path = req.uri().path().to_string();
@@ -45,7 +44,7 @@ impl OctobotService {
 
         let handler = self.route(&req);
         let res = handler.handle_ok(req).await;
-        info!("{} {} {} ({})", method, path, res.status(), util::format_duration(time::now() - start));
+        info!("{} {} {} ({})", method, path, res.status(), util::format_duration(std::time::Instant::now() - start));
         Ok(res)
     }
 

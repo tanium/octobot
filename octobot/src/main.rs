@@ -53,12 +53,12 @@ fn run() -> Result<()> {
 
 fn setup_logging() {
     let formatter = |buf: &mut env_logger::fmt::Formatter, record: &log::Record| {
-        let t = time::now();
+        let now = chrono::Local::now();
         write!(
             buf,
             "[{},{:03}][{}:{}] - {} - {}\n",
-            time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
-            t.tm_nsec / 1000_000,
+            now.format("%Y-%m-%d %H:%M:%S"),
+            now.timestamp_subsec_millis(),
             thread_id::get(),
             std::thread::current().name().unwrap_or(""),
             record.level(),

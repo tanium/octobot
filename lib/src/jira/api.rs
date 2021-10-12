@@ -8,7 +8,7 @@ use regex::Regex;
 use serde_json;
 use serde_json::json;
 use serde_derive::{Deserialize, Serialize};
-use url::percent_encoding::{DEFAULT_ENCODE_SET, utf8_percent_encode};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 
 use crate::config::JiraConfig;
 use crate::errors::*;
@@ -288,7 +288,7 @@ impl Session for JiraSession {
                 let search =
                     self.client
                         .get::<serde_json::Value>(
-                            &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, DEFAULT_ENCODE_SET)),
+                            &format!("/search?maxResults=5000&jql={}", utf8_percent_encode(&jql, NON_ALPHANUMERIC)),
                         )
                         .await
                         .map_err(|e| {

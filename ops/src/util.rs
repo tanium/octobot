@@ -3,7 +3,6 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
 use failure::format_err;
-use time;
 
 use octobot_lib::errors::*;
 
@@ -42,15 +41,11 @@ pub fn get_mentioned_usernames(body: &str) -> Vec<&str> {
     mentions
 }
 
-pub fn format_duration(dur: time::Duration) -> String {
-    let seconds = dur.num_seconds();
-    // get ms as a float
-    let ms = match dur.num_microseconds() {
-        Some(micro) => micro as f64 / 1000 as f64,
-        None => dur.num_milliseconds() as f64,
-    };
+pub fn format_duration(dur: std::time::Duration) -> String {
+    let seconds = dur.as_secs();
+    let ms = (dur.subsec_micros() as f64) / 1000 as f64;
     if seconds > 0 {
-        format!("{} s, {:.4} ms", seconds, (ms - (1000 * seconds) as f64))
+        format!("{} s, {:.4} ms", seconds, ms)
     } else {
         format!("{:.4} ms", ms)
     }
