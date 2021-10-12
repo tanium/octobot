@@ -79,7 +79,7 @@ impl GithubHandlerState {
 
         let slack_worker = TokioWorker::new(
             runtime.clone(),
-            slack::new_runner(config.main.slack_webhook_url.clone(), metrics.clone()),
+            slack::new_runner(config.slack.bot_token.clone(), metrics.clone()),
         );
         let pr_merge_worker = TokioWorker::new(
             runtime.clone(),
