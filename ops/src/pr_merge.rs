@@ -8,6 +8,7 @@ use regex::Regex;
 
 use octobot_lib::config::Config;
 use octobot_lib::errors::*;
+use octobot_lib::metrics::{self, Metrics};
 use crate::git::Git;
 use crate::git_clone_manager::GitCloneManager;
 use octobot_lib::github;
@@ -287,6 +288,7 @@ struct Runner {
     github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
     slack: Arc<dyn worker::Worker<SlackRequest>>,
+    metrics: Arc<Metrics>,
 }
 
 pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str, release_branch_prefix: &str, commits: Vec<github::Commit>) -> PRMergeRequest {
@@ -304,18 +306,24 @@ pub fn new_runner(
     github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
     slack: Arc<dyn worker::Worker<SlackRequest>>,
+    metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<PRMergeRequest>> {
+
     Arc::new(Runner {
         config: config,
         github_app: github_app,
         clone_mgr: clone_mgr.clone(),
         slack: slack,
+        metrics,
     })
 }
 
 #[async_trait::async_trait]
 impl worker::Runner<PRMergeRequest> for Runner {
     async fn handle(&self, req: PRMergeRequest) {
+        let _scoped_count = metrics::scoped_inc(&self.metrics.current_backport_count);
+        let _scoped_timer = self.metrics.backport_duration.start_timer();
+
         clone_and_merge_pull_request(
             self.github_app.borrow(),
             self.clone_mgr.borrow(),

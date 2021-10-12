@@ -1,7 +1,10 @@
 use prometheus::process_collector::ProcessCollector;
 use prometheus::Registry;
 use prometheus::{register_histogram_vec_with_registry, HistogramVec};
+use prometheus::{register_histogram_with_registry, Histogram};
 use prometheus::{register_int_counter_vec_with_registry, IntCounterVec};
+use prometheus::{register_gauge_with_registry, Gauge};
+use prometheus::{register_gauge_vec_with_registry, GaugeVec};
 use std::sync::Arc;
 
 pub struct Metrics {
@@ -18,10 +21,28 @@ pub struct Metrics {
 
     pub github_api_responses: IntCounterVec,
     pub github_api_duration: HistogramVec,
+
+    pub current_connection_count: Gauge,
+    pub current_webhook_count: Gauge,
+
+    pub current_backport_count: Gauge,
+    pub current_force_push_count: Gauge,
+    pub current_repo_version_count: Gauge,
+
+    pub backport_duration: Histogram,
+    pub force_push_duration: Histogram,
+    pub repo_version_duration: Histogram,
+
+    pub tokio_running_thread_count: GaugeVec,
+    pub tokio_parked_thread_count: GaugeVec,
 }
 
 fn http_duration_buckets() -> Vec<f64> {
     vec![0.005, 0.1, 0.5, 1.0, 2.0, 10.0, 30.0, 60.0]
+}
+
+fn job_duration_buckets() -> Vec<f64> {
+    vec![0.1, 0.5, 1.0, 2.0, 10.0, 30.0, 60.0, 300.0]
 }
 
 impl Metrics {
@@ -100,7 +121,72 @@ impl Metrics {
                 registry.as_ref()
             )
             .unwrap(),
-        })
+
+            current_connection_count: register_gauge_with_registry!(
+                "current_connection_count",
+                "The number of current http connections",
+                registry.as_ref(),
+            ).unwrap(),
+
+            current_webhook_count: register_gauge_with_registry!(
+                "current_webhook_count",
+                "The number of current webhooks being handled",
+                registry.as_ref(),
+            ).unwrap(),
+
+            current_backport_count: register_gauge_with_registry!(
+                "current_backport_count",
+                "The number of current backport jobs being run",
+                registry.as_ref(),
+            ).unwrap(),
+
+            current_force_push_count: register_gauge_with_registry!(
+                "current_force_push_count",
+                "The number of current force-push jobs being run",
+                registry.as_ref(),
+            ).unwrap(),
+
+            current_repo_version_count: register_gauge_with_registry!(
+                "current_repo_version_count",
+                "The number of current repo version jobs being run",
+                registry.as_ref(),
+            ).unwrap(),
+
+            backport_duration: register_histogram_with_registry!(
+                "backport_duration",
+                "Duration of backport job",
+                job_duration_buckets(),
+                registry.as_ref(),
+            ).unwrap(),
+
+            force_push_duration: register_histogram_with_registry!(
+                "force_push_duration",
+                "Duration of force-push job",
+                job_duration_buckets(),
+                registry.as_ref(),
+            ).unwrap(),
+
+             repo_version_duration: register_histogram_with_registry!(
+                "repo_version_duration",
+                "Duration of repo-version job",
+                job_duration_buckets(),
+                registry.as_ref(),
+            ).unwrap(),
+
+            tokio_running_thread_count: register_gauge_vec_with_registry!(
+                "tokio_running_thread_count",
+                "Tokio running thread counts per runtime",
+                &["runtime"],
+                registry.as_ref()
+            ).unwrap(),
+
+            tokio_parked_thread_count: register_gauge_vec_with_registry!(
+                "tokio_parked_thread_count",
+                "Tokio parked thread counts per runtime",
+                &["runtime"],
+                registry.as_ref()
+            ).unwrap(),
+       })
     }
 
     #[cfg(target_os = "linux")]
@@ -133,5 +219,23 @@ pub fn cleanup_path(path: &str) -> String {
             .collect::<Vec<_>>()
             .join("/"),
         Some(_) => "<static>".to_string(),
+    }
+}
+
+pub struct ScopedGaugeCounter {
+    gauge: Gauge
+}
+
+pub fn scoped_inc(gauge: &Gauge) -> ScopedGaugeCounter {
+    let scoped = ScopedGaugeCounter {
+        gauge: gauge.clone(),
+    };
+    scoped.gauge.inc();
+    scoped
+}
+
+impl Drop for ScopedGaugeCounter {
+    fn drop(&mut self) {
+       self.gauge.dec()
     }
 }

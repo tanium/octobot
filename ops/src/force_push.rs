@@ -4,6 +4,7 @@ use log::{error, info};
 
 use crate::diffs::DiffOfDiffs;
 use octobot_lib::errors::*;
+use octobot_lib::metrics::{self, Metrics};
 use crate::git::Git;
 use crate::git_clone_manager::GitCloneManager;
 use octobot_lib::github;
@@ -158,8 +159,8 @@ pub struct ForcePushRequest {
 struct Runner {
     github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
+    metrics: Arc<Metrics>,
 }
-
 
 pub fn req(
     repo: &github::Repo,
@@ -178,16 +179,21 @@ pub fn req(
 pub fn new_runner(
     github_app: Arc<dyn GithubSessionFactory>,
     clone_mgr: Arc<GitCloneManager>,
+    metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<ForcePushRequest>> {
     Arc::new(Runner {
         github_app: github_app,
         clone_mgr: clone_mgr,
+        metrics,
     })
 }
 
 #[async_trait::async_trait]
 impl worker::Runner<ForcePushRequest> for Runner {
     async fn handle(&self, req: ForcePushRequest) {
+        let _scoped_count = metrics::scoped_inc(&self.metrics.current_force_push_count);
+        let _scoped_timer = self.metrics.force_push_duration.start_timer();
+
         let github = match self.github_app.new_session(&req.repo.owner.login(), &req.repo.name).await {
             Ok(g) => g,
             Err(e) => {

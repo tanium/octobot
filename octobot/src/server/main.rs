@@ -17,15 +17,15 @@ use crate::server::sessions::Sessions;
 
 pub fn start(config: Config) {
     let num_http_threads = config.main.num_http_threads.unwrap_or(20);
+    let metrics = metrics::Metrics::new();
 
-    runtime::run(num_http_threads, async move {
-        run_server(config).await
+    runtime::run(num_http_threads, metrics.clone(), async move {
+        run_server(config, metrics).await
     });
 }
 
-async fn run_server(config: Config) {
+async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     let config = Arc::new(config);
-    let metrics = metrics::Metrics::new();
 
     let github: Arc<dyn github::api::GithubSessionFactory>;
 
@@ -70,8 +70,15 @@ async fn run_server(config: Config) {
     let octobot = OctobotService::new(config.clone(), ui_sessions.clone(), github_handler_state.clone(), metrics.clone());
 
     let main_service = make_service_fn(move |_| {
+        let metrics = metrics.clone();
+        let _scoped_count = metrics::scoped_inc(&metrics.current_connection_count);
+
         let octobot = octobot.clone();
+
         async move {
+            // move the scoped count inside the future
+            let _scoped_count = _scoped_count;
+
             let octobot = octobot.clone();
             Ok::<_, hyper::Error>(service_fn(move |req| {
                 let octobot = octobot.clone();
