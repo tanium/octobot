@@ -31,20 +31,29 @@ fn new_test() -> (PRMergeTest, TempDir) {
     let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
 
     let config = Arc::new(Config::new(db));
-    config.users_write().insert("the-pr-owner", "the.pr.owner").unwrap();
+    config
+        .users_write()
+        .insert("the-pr-owner", "the.pr.owner")
+        .unwrap();
     config
         .repos_write()
-        .insert_info(&repos::RepoInfo::new("the-owner/the-repo", "the-review-channel")
-            .with_jira("SER").with_jira("CLI")
-            .with_force_push(true))
+        .insert_info(
+            &repos::RepoInfo::new("the-owner/the-repo", "the-review-channel")
+                .with_jira("SER")
+                .with_jira("CLI")
+                .with_force_push(true),
+        )
         .expect("Failed to add some-user/some-repo");
 
-    (PRMergeTest{
-        git: TempGit::new(),
-        github: MockGithub::new(),
-        config,
-        slack: MockSlack::new(vec![]),
-    }, temp_dir)
+    (
+        PRMergeTest {
+            git: TempGit::new(),
+            github: MockGithub::new(),
+            config,
+            slack: MockSlack::new(vec![]),
+        },
+        temp_dir,
+    )
 }
 
 #[tokio::test]
@@ -56,7 +65,8 @@ async fn test_pr_merge_basic() {
 
     // make a new commit on master
     test.git.run_git(&["checkout", "master"]);
-    test.git.add_repo_file("file.txt", "contents1", "I made a change");
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
     let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
@@ -66,11 +76,18 @@ async fn test_pr_merge_basic() {
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
     pr.base = github::BranchRef::new("master");
-    pr.assignees = vec![github::User::new("user1"), github::User::new("user2"), github::User::new("the-pr-author")];
+    pr.assignees = vec![
+        github::User::new("user1"),
+        github::User::new("user2"),
+        github::User::new("the-pr-author"),
+    ];
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
     pr.reviews = Some(vec![
         github::Review::new("fantastic change", github::User::new("reviewer2")),
-        github::Review::new("i like to comment on my own PRs", github::User::new("the-pr-author")),
+        github::Review::new(
+            "i like to comment on my own PRs",
+            github::User::new("the-pr-author"),
+        ),
     ]);
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
@@ -107,14 +124,29 @@ async fn test_pr_merge_basic() {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
 
-    let (user, email) = test.git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
+    let (user, email) = test
+        .git
+        .git
+        .get_commit_author("origin/my-feature-branch-1.0")
+        .unwrap();
 
     assert_eq!(user, test.git.user_name());
     assert_eq!(email, test.git.user_email());
 
-    assert_eq!("", test.git.run_git(&["diff", "master", "origin/my-feature-branch-1.0"]));
+    assert_eq!(
+        "",
+        test.git
+            .run_git(&["diff", "master", "origin/my-feature-branch-1.0"])
+    );
 }
 
 #[tokio::test]
@@ -154,12 +186,14 @@ if (true)    {
 
     // setup a release branch: make change in space length
     test.git.run_git(&["checkout", "-b", "release/1.0"]);
-    test.git.add_repo_file("file.cpp", contents_10, "a change on 1.0");
+    test.git
+        .add_repo_file("file.cpp", contents_10, "a change on 1.0");
     test.git.run_git(&["push", "-u", "origin", "release/1.0"]);
 
     // make a new commit on master
     test.git.run_git(&["checkout", "master"]);
-    test.git.add_repo_file("file.cpp", contents_master, "final change");
+    test.git
+        .add_repo_file("file.cpp", contents_master, "final change");
     let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
@@ -204,9 +238,20 @@ if (true)    {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
 
-    assert_eq!(contents_10_final, test.git.run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"]));
+    assert_eq!(
+        contents_10_final,
+        test.git
+            .run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"])
+    );
 }
 
 #[tokio::test]
@@ -245,12 +290,14 @@ if (true) {
 
     // setup a release branch: make a change
     test.git.run_git(&["checkout", "-b", "release/1.0"]);
-    test.git.add_repo_file("file.cpp", contents_10, "a change on 1.0");
+    test.git
+        .add_repo_file("file.cpp", contents_10, "a change on 1.0");
     test.git.run_git(&["push", "-u", "origin", "release/1.0"]);
 
     // make a new commit on master
     test.git.run_git(&["checkout", "master"]);
-    test.git.add_repo_file("file.cpp", contents_master, "final change");
+    test.git
+        .add_repo_file("file.cpp", contents_master, "final change");
     let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
@@ -295,9 +342,20 @@ if (true) {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
 
-    assert_eq!(contents_10_final, test.git.run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"]));
+    assert_eq!(
+        contents_10_final,
+        test.git
+            .run_git(&["cat-file", "blob", "my-feature-branch-1.0:file.cpp"])
+    );
 }
 
 #[tokio::test]
@@ -309,7 +367,8 @@ async fn test_pr_merge_conventional_commit() {
 
     // make a new commit on master
     test.git.run_git(&["checkout", "master"]);
-    test.git.add_repo_file("file.txt", "contents1", "fix(thing)!: I made a change");
+    test.git
+        .add_repo_file("file.txt", "contents1", "fix(thing)!: I made a change");
     let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
@@ -319,11 +378,18 @@ async fn test_pr_merge_conventional_commit() {
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
     pr.base = github::BranchRef::new("master");
-    pr.assignees = vec![github::User::new("user1"), github::User::new("user2"), github::User::new("the-pr-author")];
+    pr.assignees = vec![
+        github::User::new("user1"),
+        github::User::new("user2"),
+        github::User::new("the-pr-author"),
+    ];
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
     pr.reviews = Some(vec![
         github::Review::new("fantastic change", github::User::new("reviewer2")),
-        github::Review::new("i like to comment on my own PRs", github::User::new("the-pr-author")),
+        github::Review::new(
+            "i like to comment on my own PRs",
+            github::User::new("the-pr-author"),
+        ),
     ]);
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
@@ -360,14 +426,29 @@ async fn test_pr_merge_conventional_commit() {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
 
-    let (user, email) = test.git.git.get_commit_author("origin/my-feature-branch-1.0").unwrap();
+    let (user, email) = test
+        .git
+        .git
+        .get_commit_author("origin/my-feature-branch-1.0")
+        .unwrap();
 
     assert_eq!(user, test.git.user_name());
     assert_eq!(email, test.git.user_email());
 
-    assert_eq!("", test.git.run_git(&["diff", "master", "origin/my-feature-branch-1.0"]));
+    assert_eq!(
+        "",
+        test.git
+            .run_git(&["diff", "master", "origin/my-feature-branch-1.0"])
+    );
 }
 
 #[tokio::test]
@@ -379,7 +460,8 @@ async fn test_pr_merge_backport_failure() {
 
     // make a new commit on master
     test.git.run_git(&["checkout", "master"]);
-    test.git.add_repo_file("file.txt", "contents1", "I made a change");
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
     let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
@@ -390,11 +472,18 @@ async fn test_pr_merge_backport_failure() {
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
     pr.base = github::BranchRef::new("master");
-    pr.assignees = vec![github::User::new("user1"), github::User::new("user2"), github::User::new("the-pr-author")];
+    pr.assignees = vec![
+        github::User::new("user1"),
+        github::User::new("user2"),
+        github::User::new("the-pr-author"),
+    ];
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
     pr.reviews = Some(vec![
         github::Review::new("fantastic change", github::User::new("reviewer2")),
-        github::Review::new("i like to comment on my own PRs", github::User::new("the-pr-author")),
+        github::Review::new(
+            "i like to comment on my own PRs",
+            github::User::new("the-pr-author"),
+        ),
     ]);
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
@@ -439,5 +528,12 @@ async fn test_pr_merge_backport_failure() {
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
     let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
-    pr_merge::merge_pull_request(&test.git.git, &test.github, &req, test.config, test.slack.new_sender()).await;
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
 }

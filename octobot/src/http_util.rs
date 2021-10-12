@@ -1,5 +1,5 @@
-use std::env;
 use hyper::{self, Body, Response, StatusCode};
+use std::env;
 
 pub fn is_dev_mode() -> bool {
     env::var("DEVMODE").is_ok()

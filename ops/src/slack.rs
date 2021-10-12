@@ -1,12 +1,12 @@
 use std::sync::{Arc, Mutex};
 
-use serde_derive::Serialize;
 use log::{error, info};
+use serde_derive::Serialize;
 
-use octobot_lib::http_client::HTTPClient;
-use octobot_lib::metrics::Metrics;
 use crate::util;
 use crate::worker;
+use octobot_lib::http_client::HTTPClient;
+use octobot_lib::metrics::Metrics;
 
 #[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct SlackAttachment {
@@ -82,7 +82,15 @@ const TRIM_MESSAGES_TO: usize = 20;
 impl Slack {
     pub fn new(webhook_url: Option<String>, metrics: Arc<Metrics>) -> Slack {
         let webhook_url = webhook_url.unwrap_or(String::new());
-        let client = Arc::new(HTTPClient::new("").unwrap().with_secret_path(webhook_url.clone()).with_metrics(metrics.slack_api_responses.clone(), metrics.slack_api_duration.clone()));
+        let client = Arc::new(
+            HTTPClient::new("")
+                .unwrap()
+                .with_secret_path(webhook_url.clone())
+                .with_metrics(
+                    metrics.slack_api_responses.clone(),
+                    metrics.slack_api_duration.clone(),
+                ),
+        );
         Slack {
             client,
             webhook_url,
@@ -92,7 +100,7 @@ impl Slack {
 
     async fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
         if self.webhook_url.is_empty() {
-            return
+            return;
         }
 
         let slack_msg = SlackMessage {
@@ -122,7 +130,12 @@ impl Slack {
 
     fn is_unique(&self, req: &SlackMessage) -> bool {
         let mut recent_messages = self.recent_messages.lock().unwrap();
-        util::check_unique_event(req.clone(), &mut *recent_messages, TRIM_MESSAGES_AT, TRIM_MESSAGES_TO)
+        util::check_unique_event(
+            req.clone(),
+            &mut *recent_messages,
+            TRIM_MESSAGES_AT,
+            TRIM_MESSAGES_TO,
+        )
     }
 }
 
@@ -145,7 +158,10 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
     }
 }
 
-pub fn new_runner(webhook_url: Option<String>, metrics: Arc<Metrics>) -> Arc<dyn worker::Runner<SlackRequest>> {
+pub fn new_runner(
+    webhook_url: Option<String>,
+    metrics: Arc<Metrics>,
+) -> Arc<dyn worker::Runner<SlackRequest>> {
     Arc::new(Runner {
         slack: Arc::new(Slack::new(webhook_url, metrics)),
     })
@@ -154,6 +170,8 @@ pub fn new_runner(webhook_url: Option<String>, metrics: Arc<Metrics>) -> Arc<dyn
 #[async_trait::async_trait]
 impl worker::Runner<SlackRequest> for Runner {
     async fn handle(&self, req: SlackRequest) {
-        self.slack.send(&req.channel, &req.msg, req.attachments).await;
+        self.slack
+            .send(&req.channel, &req.msg, req.attachments)
+            .await;
     }
 }

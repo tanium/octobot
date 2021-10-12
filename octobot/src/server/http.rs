@@ -4,11 +4,11 @@ use log::error;
 use serde::de::DeserializeOwned;
 use serde_json;
 
-use octobot_lib::errors::*;
 use crate::http_util;
+use octobot_lib::errors::*;
 
 #[async_trait]
-pub trait Handler : Send + Sync {
+pub trait Handler: Send + Sync {
     async fn handle_ok(&self, req: Request<Body>) -> Response<Body> {
         match self.handle(req).await {
             Ok(r) => r,
@@ -31,7 +31,7 @@ pub trait Handler : Send + Sync {
     }
 }
 
-pub trait Filter : Send + Sync {
+pub trait Filter: Send + Sync {
     fn filter(&self, req: Request<Body>) -> FilterResult;
 }
 
@@ -49,10 +49,7 @@ pub struct NotFoundHandler;
 
 impl FilteredHandler {
     pub fn new(filter: Box<dyn Filter>, handler: Box<dyn Handler>) -> Box<FilteredHandler> {
-        Box::new(FilteredHandler {
-            filter,
-            handler,
-        })
+        Box::new(FilteredHandler { filter, handler })
     }
 }
 

@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use octobot_lib::config::Config;
-use octobot_lib::github;
 use crate::slack::{self, SlackAttachment, SlackRequest};
 use crate::util;
 use crate::worker::Worker;
+use octobot_lib::config::Config;
+use octobot_lib::github;
 
 pub struct Messenger {
     config: Arc<Config>,
@@ -69,16 +69,26 @@ impl Messenger {
         commits: &Vec<T>,
     ) {
         for channel in self.config.repos().lookup_channels(repo, branch, commits) {
-            let channel_msg = format!("{} ({})", msg, util::make_link(&repo.html_url, &repo.full_name));
+            let channel_msg = format!(
+                "{} ({})",
+                msg,
+                util::make_link(&repo.html_url, &repo.full_name)
+            );
             self.send_to_slack(channel.as_str(), &channel_msg, attachments);
         }
     }
 
     fn send_to_slack(&self, channel: &str, msg: &str, attachments: &Vec<SlackAttachment>) {
-        self.slack.send(slack::req(channel, msg, attachments.clone()));
+        self.slack
+            .send(slack::req(channel, msg, attachments.clone()));
     }
 
-    fn send_to_slackbots(&self, users: Vec<github::User>, msg: &str, attachments: &Vec<SlackAttachment>) {
+    fn send_to_slackbots(
+        &self,
+        users: Vec<github::User>,
+        msg: &str,
+        attachments: &Vec<SlackAttachment>,
+    ) {
         for user in users {
             if let Some(slack_ref) = self.config.users().slack_user_mention(&user.login()) {
                 self.send_to_slack(&slack_ref, msg, attachments);

@@ -1,5 +1,5 @@
-use ring::{digest, pbkdf2};
 use log::error;
+use ring::{digest, pbkdf2};
 use rustc_serialize::hex::{FromHex, ToHex};
 
 static DIGEST_ALG: &'static pbkdf2::Algorithm = &pbkdf2::PBKDF2_HMAC_SHA256;
@@ -21,7 +21,6 @@ pub fn store_password(pass: &str, salt: &str) -> String {
 
     pass_hash.to_hex()
 }
-
 
 pub fn verify_password(pass: &str, salt: &str, pass_hash: &str) -> bool {
     let pass_hash = match pass_hash.from_hex() {

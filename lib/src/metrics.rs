@@ -1,10 +1,10 @@
 use prometheus::process_collector::ProcessCollector;
 use prometheus::Registry;
+use prometheus::{register_gauge_vec_with_registry, GaugeVec};
+use prometheus::{register_gauge_with_registry, Gauge};
 use prometheus::{register_histogram_vec_with_registry, HistogramVec};
 use prometheus::{register_histogram_with_registry, Histogram};
 use prometheus::{register_int_counter_vec_with_registry, IntCounterVec};
-use prometheus::{register_gauge_with_registry, Gauge};
-use prometheus::{register_gauge_vec_with_registry, GaugeVec};
 use std::sync::Arc;
 
 pub struct Metrics {
@@ -47,8 +47,9 @@ fn job_duration_buckets() -> Vec<f64> {
 
 impl Metrics {
     pub fn new() -> Arc<Metrics> {
-        let registry =
-            Arc::new(Registry::new_custom(Some("octobot".into()), None).expect("create prometheus registry"));
+        let registry = Arc::new(
+            Registry::new_custom(Some("octobot".into()), None).expect("create prometheus registry"),
+        );
         Metrics::register_default(&registry);
 
         Arc::new(Metrics {
@@ -126,67 +127,77 @@ impl Metrics {
                 "current_connection_count",
                 "The number of current http connections",
                 registry.as_ref(),
-            ).unwrap(),
+            )
+            .unwrap(),
 
             current_webhook_count: register_gauge_with_registry!(
                 "current_webhook_count",
                 "The number of current webhooks being handled",
                 registry.as_ref(),
-            ).unwrap(),
+            )
+            .unwrap(),
 
             current_backport_count: register_gauge_with_registry!(
                 "current_backport_count",
                 "The number of current backport jobs being run",
                 registry.as_ref(),
-            ).unwrap(),
+            )
+            .unwrap(),
 
             current_force_push_count: register_gauge_with_registry!(
                 "current_force_push_count",
                 "The number of current force-push jobs being run",
                 registry.as_ref(),
-            ).unwrap(),
+            )
+            .unwrap(),
 
             current_repo_version_count: register_gauge_with_registry!(
                 "current_repo_version_count",
                 "The number of current repo version jobs being run",
                 registry.as_ref(),
-            ).unwrap(),
+            )
+            .unwrap(),
 
             backport_duration: register_histogram_with_registry!(
                 "backport_duration",
                 "Duration of backport job",
                 job_duration_buckets(),
                 registry.as_ref(),
-            ).unwrap(),
+            )
+            .unwrap(),
 
             force_push_duration: register_histogram_with_registry!(
                 "force_push_duration",
                 "Duration of force-push job",
                 job_duration_buckets(),
                 registry.as_ref(),
-            ).unwrap(),
+            )
+            .unwrap(),
 
-             repo_version_duration: register_histogram_with_registry!(
+            repo_version_duration: register_histogram_with_registry!(
                 "repo_version_duration",
                 "Duration of repo-version job",
                 job_duration_buckets(),
                 registry.as_ref(),
-            ).unwrap(),
+            )
+            .unwrap(),
 
             tokio_running_thread_count: register_gauge_vec_with_registry!(
                 "tokio_running_thread_count",
                 "Tokio running thread counts per runtime",
                 &["runtime"],
                 registry.as_ref()
-            ).unwrap(),
+            )
+            .unwrap(),
 
             tokio_parked_thread_count: register_gauge_vec_with_registry!(
                 "tokio_parked_thread_count",
                 "Tokio parked thread counts per runtime",
                 &["runtime"],
                 registry.as_ref()
-            ).unwrap(),
-       })
+            )
+            .unwrap(),
+        })
     }
 
     #[cfg(target_os = "linux")]
@@ -213,7 +224,8 @@ pub fn cleanup_path(path: &str) -> String {
     }
 
     match path.find(".") {
-        None => path.split("/")
+        None => path
+            .split("/")
             .filter(|p| p.find(".").is_none())
             .take(3)
             .collect::<Vec<_>>()
@@ -223,7 +235,7 @@ pub fn cleanup_path(path: &str) -> String {
 }
 
 pub struct ScopedGaugeCounter {
-    gauge: Gauge
+    gauge: Gauge,
 }
 
 pub fn scoped_inc(gauge: &Gauge) -> ScopedGaugeCounter {
@@ -236,6 +248,6 @@ pub fn scoped_inc(gauge: &Gauge) -> ScopedGaugeCounter {
 
 impl Drop for ScopedGaugeCounter {
     fn drop(&mut self) {
-       self.gauge.dec()
+        self.gauge.dec()
     }
 }

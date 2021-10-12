@@ -134,9 +134,8 @@ impl Config {
             ldap: self.ldap.clone(),
         };
 
-        let serialized = toml::to_string(&model).map_err(
-            |e| format_err!("Error serializing config: {}", e)
-        )?;
+        let serialized =
+            toml::to_string(&model).map_err(|e| format_err!("Error serializing config: {}", e))?;
 
         let tmp_file = config_file.to_string() + ".tmp";
         let bak_file = config_file.to_string() + ".bak";
@@ -194,7 +193,10 @@ impl ConfigModel {
 
 impl GithubConfig {
     pub fn app_key(&self) -> Result<Vec<u8>> {
-        let key_file = &self.app_key_file.as_ref().expect("expected an app_key_file");
+        let key_file = &self
+            .app_key_file
+            .as_ref()
+            .expect("expected an app_key_file");
 
         let mut file_open = fs::File::open(key_file)?;
 
@@ -278,11 +280,9 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
 }
 
 fn parse_string(config_contents: &str) -> Result<ConfigModel> {
-    toml::from_str::<ConfigModel>(config_contents).map_err(|e| {
-        format_err!("Error parsing config: {}", e)
-    })
+    toml::from_str::<ConfigModel>(config_contents)
+        .map_err(|e| format_err!("Error parsing config: {}", e))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -303,7 +303,9 @@ app_key_file = "some-file.key"
 "#;
         let config = parse_string(config_str).unwrap();
 
-        assert_eq!(Some(String::from("https://hooks.slack.com/foo")), config.main.slack_webhook_url);
-
+        assert_eq!(
+            Some(String::from("https://hooks.slack.com/foo")),
+            config.main.slack_webhook_url
+        );
     }
 }

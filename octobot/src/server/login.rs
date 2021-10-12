@@ -10,9 +10,9 @@ use octobot_lib::config::Config;
 use octobot_lib::errors::*;
 use octobot_lib::passwd;
 
+use crate::http_util;
 use crate::server::http::{parse_json, Filter, FilterResult, Handler};
 use crate::server::sessions::Sessions;
-use crate::http_util;
 
 pub struct LoginHandler {
     sessions: Arc<Sessions>,

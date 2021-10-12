@@ -194,7 +194,7 @@ impl BranchRef {
     }
 }
 
-pub trait PullRequestLike : Send + Sync {
+pub trait PullRequestLike: Send + Sync {
     fn user(&self) -> &User;
     fn assignees(&self) -> Vec<User>;
     fn title(&self) -> &str;
@@ -342,13 +342,11 @@ impl Label {
     }
 }
 
-
-pub trait CommentLike : Send + Sync {
+pub trait CommentLike: Send + Sync {
     fn user(&self) -> &User;
     fn body(&self) -> &str;
     fn html_url(&self) -> &str;
 }
-
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Review {
@@ -386,7 +384,6 @@ impl<'a> CommentLike for &'a Review {
     }
 }
 
-
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Comment {
     pub commit_id: Option<String>,
@@ -413,7 +410,7 @@ impl<'a> CommentLike for &'a Comment {
     }
 }
 
-pub trait CommitLike : Send + Sync {
+pub trait CommitLike: Send + Sync {
     fn sha(&self) -> &str;
     fn html_url(&self) -> &str;
     fn message(&self) -> &str;
@@ -484,7 +481,6 @@ impl CommitLike for Commit {
     }
 }
 
-
 impl<'a> CommitLike for &'a Commit {
     fn sha(&self) -> &str {
         &self.sha
@@ -505,7 +501,9 @@ impl Commit {
             sha: String::new(),
             html_url: String::new(),
             author: None,
-            commit: CommitDetails { message: String::new() },
+            commit: CommitDetails {
+                message: String::new(),
+            },
         }
     }
 
@@ -514,7 +512,11 @@ impl Commit {
     }
 
     pub fn short_hash_str(hash: &str) -> &str {
-        if hash.len() < 7 { hash } else { &hash[0..7] }
+        if hash.len() < 7 {
+            hash
+        } else {
+            &hash[0..7]
+        }
     }
 
     pub fn title(commit: &dyn CommitLike) -> String {
@@ -522,7 +524,12 @@ impl Commit {
     }
 
     pub fn body(commit: &dyn CommitLike) -> String {
-        let lines: Vec<&str> = commit.message().lines().skip(1).skip_while(|ref l| l.trim().len() == 0).collect();
+        let lines: Vec<&str> = commit
+            .message()
+            .lines()
+            .skip(1)
+            .skip_while(|ref l| l.trim().len() == 0)
+            .collect();
         lines.join("\n")
     }
 }
@@ -755,13 +762,21 @@ mod tests {
         assert_eq!("3 Hello there", Commit::title(&commit));
         assert_eq!("", Commit::body(&commit));
 
-        commit.commit.message = "4 Hello there\n\nand then some more\nwith\nmultiple\n\nlines".into();
+        commit.commit.message =
+            "4 Hello there\n\nand then some more\nwith\nmultiple\n\nlines".into();
         assert_eq!("4 Hello there", Commit::title(&commit));
-        assert_eq!("and then some more\nwith\nmultiple\n\nlines", Commit::body(&commit));
+        assert_eq!(
+            "and then some more\nwith\nmultiple\n\nlines",
+            Commit::body(&commit)
+        );
 
-        commit.commit.message = "5 Hello there\r\n\r\nmaybe also support\r\ncarriage\r\nreturns?".into();
+        commit.commit.message =
+            "5 Hello there\r\n\r\nmaybe also support\r\ncarriage\r\nreturns?".into();
         assert_eq!("5 Hello there", Commit::title(&commit));
-        assert_eq!("maybe also support\ncarriage\nreturns?", Commit::body(&commit));
+        assert_eq!(
+            "maybe also support\ncarriage\nreturns?",
+            Commit::body(&commit)
+        );
     }
 
     #[test]
@@ -797,10 +812,18 @@ mod tests {
         let reviewers = vec![User::new("userC"), User::new("userD")];
         pr.requested_reviewers = Some(reviewers.clone());
 
-        let all_users = vec![User::new("user1"), User::new("user2"), User::new("userC"), User::new("userD")];
+        let all_users = vec![
+            User::new("user1"),
+            User::new("user2"),
+            User::new("userC"),
+            User::new("userD"),
+        ];
         assert_eq!(all_users, (&pr).assignees());
 
-        let reviews = vec![Review::new("i like it", User::new("userE")), Review::new("i like it", User::new("userF"))];
+        let reviews = vec![
+            Review::new("i like it", User::new("userE")),
+            Review::new("i like it", User::new("userF")),
+        ];
         pr.reviews = Some(reviews);
 
         let even_more_users = vec![

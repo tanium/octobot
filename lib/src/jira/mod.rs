@@ -1,7 +1,7 @@
 pub mod api;
+mod check_jira_refs;
 mod models;
 pub mod workflow;
-mod check_jira_refs;
 
 pub use self::models::*;
 

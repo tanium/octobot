@@ -44,7 +44,8 @@ fn run() -> Result<()> {
 
     let config_file = std::env::args().nth(1).unwrap();
 
-    let config = config::new(config_file.into()).map_err(|e| format_err!("Error parsing config: {}", e))?;
+    let config =
+        config::new(config_file.into()).map_err(|e| format_err!("Error parsing config: {}", e))?;
 
     server::main::start(config);
 
@@ -67,7 +68,9 @@ fn setup_logging() {
     };
 
     let mut builder = env_logger::Builder::from_default_env();
-    builder.format(formatter).filter(None, log::LevelFilter::Info);
+    builder
+        .format(formatter)
+        .filter(None, log::LevelFilter::Info);
 
     let is_info;
     if let Ok(ref env_log) = std::env::var("RUST_LOG") {

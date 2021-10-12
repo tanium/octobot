@@ -1,9 +1,9 @@
 use failure::bail;
+use maplit::hashmap;
+use prometheus::{HistogramTimer, HistogramVec, IntCounterVec};
 use reqwest;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
-use prometheus::{HistogramVec, IntCounterVec, HistogramTimer};
-use maplit::hashmap;
 
 use crate::errors::*;
 use crate::metrics;
@@ -50,11 +50,15 @@ impl HTTPClient {
         })
     }
 
-    pub fn with_metrics(mut self, responses: IntCounterVec, request_duration: HistogramVec) -> Self {
+    pub fn with_metrics(
+        mut self,
+        responses: IntCounterVec,
+        request_duration: HistogramVec,
+    ) -> Self {
         self.metric_api_responses = Some(responses);
         self.metric_api_duration = Some(request_duration);
 
-        return self
+        return self;
     }
 
     pub fn with_secret_path(mut self, path: String) -> Self {
@@ -92,7 +96,12 @@ impl HTTPClient {
         T: DeserializeOwned + Send + 'static,
     {
         let _timer = self.maybe_start_timer("post", path);
-        let res = self.client.post(&self.make_url(path)).json(body).send().await;
+        let res = self
+            .client
+            .post(&self.make_url(path))
+            .json(body)
+            .send()
+            .await;
         let res = self.process_resp(res).await?;
         let res = self.parse_json(res).await?;
 
@@ -102,7 +111,12 @@ impl HTTPClient {
 
     pub async fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
         let _timer = self.maybe_start_timer("post", path);
-        let res = self.client.post(&self.make_url(path)).json(body).send().await;
+        let res = self
+            .client
+            .post(&self.make_url(path))
+            .json(body)
+            .send()
+            .await;
         self.process_resp(res).await?;
 
         self.maybe_record_ok();
@@ -114,7 +128,12 @@ impl HTTPClient {
         T: DeserializeOwned + Send + 'static,
     {
         let _timer = self.maybe_start_timer("put", path);
-        let res = self.client.put(&self.make_url(path)).json(body).send().await;
+        let res = self
+            .client
+            .put(&self.make_url(path))
+            .json(body)
+            .send()
+            .await;
         let res = self.process_resp(res).await?;
         let res = self.parse_json(res).await?;
 
@@ -124,7 +143,12 @@ impl HTTPClient {
 
     pub async fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
         let _timer = self.maybe_start_timer("put", path);
-        let res = self.client.put(&self.make_url(path)).json(body).send().await;
+        let res = self
+            .client
+            .put(&self.make_url(path))
+            .json(body)
+            .send()
+            .await;
         self.process_resp(res).await?;
 
         self.maybe_record_ok();
@@ -142,7 +166,7 @@ impl HTTPClient {
 
     fn maybe_record_status(&self, status: &str) {
         if let Some(ref m) = self.metric_api_responses {
-            m.with(&hashmap!{"status" => status}).inc();
+            m.with(&hashmap! {"status" => status}).inc();
         }
     }
 
@@ -157,10 +181,11 @@ impl HTTPClient {
             } else {
                 metrics::cleanup_path(path)
             };
-            m.with(&hashmap!{
+            m.with(&hashmap! {
                 "method" => method,
                 "path" => &path,
-            }).start_timer()
+            })
+            .start_timer()
         })
     }
 

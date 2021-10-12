@@ -3,14 +3,14 @@ use std::sync::Arc;
 use log::{error, info};
 
 use crate::diffs::DiffOfDiffs;
-use octobot_lib::errors::*;
-use octobot_lib::metrics::{self, Metrics};
 use crate::git::Git;
 use crate::git_clone_manager::GitCloneManager;
-use octobot_lib::github;
-use octobot_lib::github::Commit;
-use octobot_lib::github::api::GithubSessionFactory;
 use crate::worker;
+use octobot_lib::errors::*;
+use octobot_lib::github;
+use octobot_lib::github::api::GithubSessionFactory;
+use octobot_lib::github::Commit;
+use octobot_lib::metrics::{self, Metrics};
 
 pub async fn comment_force_push(
     diffs: Result<DiffOfDiffs>,
@@ -60,7 +60,10 @@ pub async fn comment_force_push(
         let timeline = match github.get_timeline(owner, repo, pull_request.number).await {
             Ok(t) => t,
             Err(e) => {
-                error!("Error fetching timeline for PR #{}: {}", pull_request.number, e);
+                error!(
+                    "Error fetching timeline for PR #{}: {}",
+                    pull_request.number, e
+                );
                 vec![]
             }
         };
@@ -86,10 +89,7 @@ pub async fn comment_force_push(
                     reapprove = true;
                     info!(
                         "Reapproving PR {}/{} #{} based on review #{:?}",
-                        owner,
-                        repo,
-                        pull_request.number,
-                        review_id,
+                        owner, repo, pull_request.number, review_id,
                     );
                     break;
                 }
@@ -97,16 +97,28 @@ pub async fn comment_force_push(
         }
 
         if reapprove {
-            let msg = format!("{}\n\nReapproved based on review by {}", comment, review_msg);
-            if let Err(e) = github.approve_pull_request(owner, repo, pull_request.number, after_hash, Some(&msg)).await {
-                error!("Error reapproving pull request #{}: {}", pull_request.number, e);
+            let msg = format!(
+                "{}\n\nReapproved based on review by {}",
+                comment, review_msg
+            );
+            if let Err(e) = github
+                .approve_pull_request(owner, repo, pull_request.number, after_hash, Some(&msg))
+                .await
+            {
+                error!(
+                    "Error reapproving pull request #{}: {}",
+                    pull_request.number, e
+                );
             }
         }
     }
 
     // Only comment if not reapproved since reapproval already includes the "identical diff" comment.
     if !reapprove {
-        if let Err(e) = github.comment_pull_request(owner, repo, pull_request.number, &comment).await {
+        if let Err(e) = github
+            .comment_pull_request(owner, repo, pull_request.number, &comment)
+            .await
+        {
             error!("Error sending github PR comment: {}", e);
         }
     }
@@ -134,7 +146,9 @@ pub async fn diff_force_push(
 
     // create a branch for the before hash then fetch, then delete it to get the ref
     let temp_branch = format!("octobot-{}-{}", pull_request.head.ref_name, before_hash);
-    github.create_branch(owner, repo, &temp_branch, before_hash).await?;
+    github
+        .create_branch(owner, repo, &temp_branch, before_hash)
+        .await?;
     git.run(&["fetch"])?;
     github.delete_branch(owner, repo, &temp_branch).await?;
 
@@ -194,7 +208,11 @@ impl worker::Runner<ForcePushRequest> for Runner {
         let _scoped_count = metrics::scoped_inc(&self.metrics.current_force_push_count);
         let _scoped_timer = self.metrics.force_push_duration.start_timer();
 
-        let github = match self.github_app.new_session(&req.repo.owner.login(), &req.repo.name).await {
+        let github = match self
+            .github_app
+            .new_session(&req.repo.owner.login(), &req.repo.name)
+            .await
+        {
             Ok(g) => g,
             Err(e) => {
                 error!("Error getting new session: {}", e);
@@ -210,7 +228,8 @@ impl worker::Runner<ForcePushRequest> for Runner {
             &req.pull_request,
             &req.before_hash,
             &req.after_hash,
-        ).await;
+        )
+        .await;
 
         let comment = comment_force_push(
             diffs,
@@ -220,7 +239,8 @@ impl worker::Runner<ForcePushRequest> for Runner {
             &req.pull_request,
             &req.before_hash,
             &req.after_hash,
-        ).await;
+        )
+        .await;
         if let Err(e) = comment {
             error!("Error diffing force push: {}", e);
         }

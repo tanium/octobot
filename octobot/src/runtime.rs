@@ -5,8 +5,14 @@ use tokio;
 
 use octobot_lib::metrics::Metrics;
 
-pub fn new(num_threads: usize, name: &'static str, metrics: Arc<Metrics>) -> tokio::runtime::Runtime {
-    let running_count = metrics.tokio_running_thread_count.with_label_values(&[name]);
+pub fn new(
+    num_threads: usize,
+    name: &'static str,
+    metrics: Arc<Metrics>,
+) -> tokio::runtime::Runtime {
+    let running_count = metrics
+        .tokio_running_thread_count
+        .with_label_values(&[name]);
     let parked_count = metrics.tokio_parked_thread_count.with_label_values(&[name]);
 
     tokio::runtime::Builder::new_multi_thread()

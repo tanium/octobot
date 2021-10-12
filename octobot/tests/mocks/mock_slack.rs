@@ -11,7 +11,9 @@ pub struct MockSlack {
 
 impl MockSlack {
     pub fn new(expected_calls: Vec<SlackRequest>) -> MockSlack {
-        MockSlack { worker: LockedMockWorker::from_reqs("slack", expected_calls) }
+        MockSlack {
+            worker: LockedMockWorker::from_reqs("slack", expected_calls),
+        }
     }
 
     pub fn expect(&mut self, reqs: Vec<SlackRequest>) {

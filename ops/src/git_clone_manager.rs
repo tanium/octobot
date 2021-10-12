@@ -2,13 +2,13 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use log::info;
 use failure::format_err;
+use log::info;
 
-use octobot_lib::config::Config;
 use crate::dir_pool::{ArcDirPool, HeldDir};
-use octobot_lib::errors::*;
 use crate::git::Git;
+use octobot_lib::config::Config;
+use octobot_lib::errors::*;
 use octobot_lib::github;
 use octobot_lib::github::api::Session;
 
@@ -19,7 +19,10 @@ pub struct GitCloneManager {
 }
 
 impl GitCloneManager {
-    pub fn new(github_app: Arc<dyn github::api::GithubSessionFactory>, config: Arc<Config>) -> GitCloneManager {
+    pub fn new(
+        github_app: Arc<dyn github::api::GithubSessionFactory>,
+        config: Arc<Config>,
+    ) -> GitCloneManager {
         let clone_root_dir = config.main.clone_root_dir.to_string();
 
         GitCloneManager {
@@ -31,13 +34,21 @@ impl GitCloneManager {
     pub async fn clone(&self, owner: &str, repo: &str) -> Result<HeldDir> {
         let session = self.github_app.new_session(owner, repo).await?;
 
-        let held_clone_dir = self.dir_pool.take_directory(session.github_host(), owner, repo);
+        let held_clone_dir = self
+            .dir_pool
+            .take_directory(session.github_host(), owner, repo);
         self.clone_repo(&session, owner, repo, &held_clone_dir.dir())?;
 
         Ok(held_clone_dir)
     }
 
-    fn clone_repo(&self, session: &dyn github::api::Session, owner: &str, repo: &str, clone_dir: &PathBuf) -> Result<()> {
+    fn clone_repo(
+        &self,
+        session: &dyn github::api::Session,
+        owner: &str,
+        repo: &str,
+        clone_dir: &PathBuf,
+    ) -> Result<()> {
         let url = format!(
             "https://x-access-token@{}/{}/{}",
             session.github_host(),
@@ -66,7 +77,11 @@ impl GitCloneManager {
                 clone_dir
             );
             if let Err(e) = fs::create_dir_all(&clone_dir) {
-                return Err(format_err!("Error creating clone directory '{:?}': {}", clone_dir, e));
+                return Err(format_err!(
+                    "Error creating clone directory '{:?}': {}",
+                    clone_dir,
+                    e
+                ));
             }
             git.run(&["clone", &url, "."])?;
         }

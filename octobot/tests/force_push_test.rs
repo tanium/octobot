@@ -4,9 +4,9 @@ use failure::format_err;
 
 use mocks::mock_github::MockGithub;
 
+use octobot_lib::github;
 use octobot_ops::diffs::DiffOfDiffs;
 use octobot_ops::force_push;
-use octobot_lib::github;
 
 #[tokio::test]
 async fn test_force_push_identical() {
@@ -36,7 +36,9 @@ async fn test_force_push_identical() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -63,7 +65,9 @@ async fn test_force_push_different() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -196,7 +200,9 @@ index 33667da..3503c28 100644
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -221,7 +227,9 @@ async fn test_force_push_error() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -254,7 +262,9 @@ async fn test_force_push_identical_no_previous_approve_dismissal() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -280,11 +290,9 @@ async fn test_force_push_identical_no_previous_approval() {
         "some-user",
         "some-repo",
         32,
-        Ok(vec![
-            github::TimelineEvent::new_dismissed_review(
-                github::DismissedReview::by_commit("approved", "abcdef0999999", 1234)
-            ),
-        ]),
+        Ok(vec![github::TimelineEvent::new_dismissed_review(
+            github::DismissedReview::by_commit("approved", "abcdef0999999", 1234),
+        )]),
     );
 
     // Do not mock approve_pull_request: Should not re-approve
@@ -297,7 +305,9 @@ async fn test_force_push_identical_no_previous_approval() {
         &pr,
         "abcdef0999999",
         "1111abc9999999",
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -321,9 +331,10 @@ async fn test_force_push_identical_reapprove() {
         "some-repo",
         32,
         Ok(vec![
-            github::TimelineEvent::new_dismissed_review(
-                github::DismissedReview::by_user("approved", "I don't like this")
-            ),
+            github::TimelineEvent::new_dismissed_review(github::DismissedReview::by_user(
+                "approved",
+                "I don't like this",
+            )),
             github::TimelineEvent::new("some"),
             github::TimelineEvent::new("other"),
             github::TimelineEvent::new("event"),
@@ -331,11 +342,11 @@ async fn test_force_push_identical_reapprove() {
                 before_hash,
                 1234,
                 github::User::new("joe-reviewer"),
-                "http://the-review-url"
+                "http://the-review-url",
             ),
-            github::TimelineEvent::new_dismissed_review(
-                github::DismissedReview::by_commit("approved", after_hash, 1234)
-            ),
+            github::TimelineEvent::new_dismissed_review(github::DismissedReview::by_commit(
+                "approved", after_hash, 1234,
+            )),
         ]),
     );
 
@@ -351,9 +362,17 @@ async fn test_force_push_identical_reapprove() {
         Ok(()),
     );
 
-    force_push::comment_force_push(diffs, &github, "some-user", "some-repo", &pr, before_hash, after_hash)
-        .await
-        .unwrap();
+    force_push::comment_force_push(
+        diffs,
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        before_hash,
+        after_hash,
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -386,21 +405,30 @@ async fn test_force_push_identical_wrong_previous_approval() {
                 before_hash,
                 1234,
                 github::User::new("joe-reviewer"),
-                "http://the-review-url"
+                "http://the-review-url",
             ),
-            github::TimelineEvent::new_dismissed_review(
-                github::DismissedReview::by_commit("approved", after_hash, 1234)
-            ),
+            github::TimelineEvent::new_dismissed_review(github::DismissedReview::by_commit(
+                "approved", after_hash, 1234,
+            )),
             // The latest dismissal is *not* by commit id, so don't reapprove
-            github::TimelineEvent::new_dismissed_review(
-                github::DismissedReview::by_user("approved", "I don't like this")
-            ),
+            github::TimelineEvent::new_dismissed_review(github::DismissedReview::by_user(
+                "approved",
+                "I don't like this",
+            )),
         ]),
     );
 
     // Do not mock approve_pull_request: Should not re-approve
 
-    force_push::comment_force_push(diffs, &github, "some-user", "some-repo", &pr, before_hash, after_hash)
-        .await
-        .unwrap();
+    force_push::comment_force_push(
+        diffs,
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        before_hash,
+        after_hash,
+    )
+    .await
+    .unwrap();
 }

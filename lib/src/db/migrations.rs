@@ -19,8 +19,13 @@ struct SQLMigration {
 
 impl Migration for SQLMigration {
     fn run(&self, tx: &Transaction) -> Result<()> {
-        tx.execute_batch(self.sql)
-            .map_err(|e| format_err!("Error running migration: \n---\n{}\n---\n. Error: {}", self.sql, e))
+        tx.execute_batch(self.sql).map_err(|e| {
+            format_err!(
+                "Error running migration: \n---\n{}\n---\n. Error: {}",
+                self.sql,
+                e
+            )
+        })
     }
 }
 
@@ -130,7 +135,10 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         if next_version == 0 {
             tx.execute("INSERT INTO __version VALUES (?1)", &[&next_version])
         } else {
-            tx.execute("UPDATE __version set current_version = ?1", &[&next_version])
+            tx.execute(
+                "UPDATE __version set current_version = ?1",
+                &[&next_version],
+            )
         }
         .map_err(|e| format_err!("Error updating version: {}", e))?;
 
@@ -155,7 +163,10 @@ mod tests {
 
         migrate(&mut conn).unwrap();
 
-        assert_eq!(Some((all_migrations().len() as i32) - 1), current_version(&conn).unwrap());
+        assert_eq!(
+            Some((all_migrations().len() as i32) - 1),
+            current_version(&conn).unwrap()
+        );
     }
 
     #[test]

@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use tempdir::TempDir;
 
+use mocks::mock_slack::MockSlack;
 use octobot_lib::config::Config;
 use octobot_lib::db::Database;
 use octobot_lib::github;
 use octobot_ops::messenger;
 use octobot_ops::slack;
-use mocks::mock_slack::MockSlack;
 
 fn new_test() -> (Arc<Config>, TempDir) {
     let temp_dir = TempDir::new("repos.rs").unwrap();
@@ -17,8 +17,14 @@ fn new_test() -> (Arc<Config>, TempDir) {
     let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
 
     let config = Arc::new(Config::new(db));
-    config.users_write().insert("the-owner", "the.owner").unwrap();
-    config.users_write().insert("the-sender", "the.sender").unwrap();
+    config
+        .users_write()
+        .insert("the-owner", "the.owner")
+        .unwrap();
+    config
+        .users_write()
+        .insert("the-sender", "the.sender")
+        .unwrap();
 
     (config, temp_dir)
 }
@@ -64,14 +70,17 @@ fn test_sends_to_mapped_usernames() {
 fn test_sends_to_owner_with_channel() {
     let (config, _temp) = new_test();
 
-    config.repos_write().insert("the-owner/the-repo", "the-review-channel").unwrap();
+    config
+        .repos_write()
+        .insert("the-owner/the-repo", "the-review-channel")
+        .unwrap();
 
     // Note: it should put the repo name w/ link in the message
     let slack = MockSlack::new(vec![
         slack::req(
             "the-review-channel",
             "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
-            vec![]
+            vec![],
         ),
         slack::req("@the.owner", "hello there", vec![]),
     ]);

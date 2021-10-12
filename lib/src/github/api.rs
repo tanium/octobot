@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use failure::format_err;
-use log::{info, error};
+use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::errors::*;
 use crate::github::models::*;
@@ -37,20 +37,65 @@ pub trait Session: Send + Sync {
         base: &str,
     ) -> Result<PullRequest>;
 
-    async fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>>;
+    async fn get_pull_request_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<Label>>;
 
-    async fn add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>) -> Result<()>;
+    async fn add_pull_request_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        labels: Vec<String>,
+    ) -> Result<()>;
 
-    async fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>>;
+    async fn get_pull_request_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<Commit>>;
 
-    async fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>>;
+    async fn get_pull_request_reviews(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<Review>>;
 
-    async fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<()>;
+    async fn assign_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        assignees: Vec<String>,
+    ) -> Result<()>;
 
-    async fn request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>) -> Result<()>;
+    async fn request_review(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        reviewers: Vec<String>,
+    ) -> Result<()>;
 
-    async fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()>;
-    async fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()>;
+    async fn comment_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        comment: &str,
+    ) -> Result<()>;
+    async fn create_branch(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch_name: &str,
+        sha: &str,
+    ) -> Result<()>;
     async fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()>;
     async fn approve_pull_request(
         &self,
@@ -60,13 +105,23 @@ pub trait Session: Send + Sync {
         commit_hash: &str,
         comment: Option<&str>,
     ) -> Result<()>;
-    async fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>>;
+    async fn get_timeline(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<TimelineEvent>>;
 
     // checks api
     async fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>>;
     async fn get_check_run(&self, pr: &PullRequest, id: u32) -> Result<CheckRun>;
     async fn create_check_run(&self, pr: &PullRequest, run: &CheckRun) -> Result<u32>;
-    async fn update_check_run(&self, pr: &PullRequest, check_run_id: u32, run: &CheckRun) -> Result<()>;
+    async fn update_check_run(
+        &self,
+        pr: &PullRequest,
+        check_run_id: u32,
+        run: &CheckRun,
+    ) -> Result<()>;
 }
 
 #[async_trait]
@@ -102,7 +157,12 @@ pub struct GithubOauthApp {
 }
 
 impl GithubApp {
-    pub async fn new(host: &str, app_id: u32, app_key: &[u8], metrics: Option<Arc<Metrics>>) -> Result<GithubApp> {
+    pub async fn new(
+        host: &str,
+        app_id: u32,
+        app_key: &[u8],
+        metrics: Option<Arc<Metrics>>,
+    ) -> Result<GithubApp> {
         let mut github = GithubApp {
             host: host.into(),
             app_id,
@@ -139,7 +199,10 @@ impl GithubApp {
 
         let client = HTTPClient::new_with_headers(&api_base(&self.host), headers)?;
         if let Some(ref m) = self.metrics {
-            Ok(client.with_metrics(m.github_api_responses.clone(), m.github_api_duration.clone()))
+            Ok(client.with_metrics(
+                m.github_api_responses.clone(),
+                m.github_api_duration.clone(),
+            ))
         } else {
             Ok(client)
         }
@@ -161,10 +224,12 @@ impl GithubApp {
         // Lookup the installation id for this org/repo
         let installation: Installation = client.get(installation_url).await?;
         // Get a new access token for this id
-        let token: AccessToken = client.post(
-            &format!("/app/installations/{}/access_tokens", installation.id),
-            &String::new(),
-        ).await?;
+        let token: AccessToken = client
+            .post(
+                &format!("/app/installations/{}/access_tokens", installation.id),
+                &String::new(),
+            )
+            .await?;
         Ok(token.token)
     }
 }
@@ -172,7 +237,10 @@ impl GithubApp {
 #[async_trait]
 impl GithubSessionFactory for GithubApp {
     fn bot_name(&self) -> String {
-        format!("{}[bot]", self.app.clone().map(|a| a.name).unwrap_or(String::new()))
+        format!(
+            "{}[bot]",
+            self.app.clone().map(|a| a.name).unwrap_or(String::new())
+        )
     }
 
     async fn get_token_org(&self, org: &str) -> Result<String> {
@@ -180,16 +248,27 @@ impl GithubSessionFactory for GithubApp {
     }
 
     async fn get_token_repo(&self, owner: &str, repo: &str) -> Result<String> {
-        self.new_token(&format!("/repos/{}/{}/installation", owner, repo)).await
+        self.new_token(&format!("/repos/{}/{}/installation", owner, repo))
+            .await
     }
 
     async fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession> {
-        GithubSession::new(&self.host, &self.bot_name(), &self.get_token_repo(owner, repo).await?, Some(self.app_id), self.metrics.clone())
+        GithubSession::new(
+            &self.host,
+            &self.bot_name(),
+            &self.get_token_repo(owner, repo).await?,
+            Some(self.app_id),
+            self.metrics.clone(),
+        )
     }
 }
 
 impl GithubOauthApp {
-    pub async fn new(host: &str, api_token: &str, metrics: Option<Arc<Metrics>>) -> Result<GithubOauthApp> {
+    pub async fn new(
+        host: &str,
+        api_token: &str,
+        metrics: Option<Arc<Metrics>>,
+    ) -> Result<GithubOauthApp> {
         let mut github = GithubOauthApp {
             host: host.into(),
             api_token: api_token.into(),
@@ -199,7 +278,8 @@ impl GithubOauthApp {
 
         github.user = Some(
             github
-                .new_session("", "").await?
+                .new_session("", "")
+                .await?
                 .client
                 .get::<User>("/user")
                 .await
@@ -215,7 +295,10 @@ impl GithubOauthApp {
 #[async_trait]
 impl GithubSessionFactory for GithubOauthApp {
     fn bot_name(&self) -> String {
-        self.user.clone().map(|a| a.login().into()).unwrap_or(String::new())
+        self.user
+            .clone()
+            .map(|a| a.login().into())
+            .unwrap_or(String::new())
     }
 
     async fn get_token_org(&self, _org: &str) -> Result<String> {
@@ -227,7 +310,13 @@ impl GithubSessionFactory for GithubOauthApp {
     }
 
     async fn new_session(&self, _owner: &str, _repo: &str) -> Result<GithubSession> {
-        GithubSession::new(&self.host, &self.bot_name(), &self.api_token, None, self.metrics.clone())
+        GithubSession::new(
+            &self.host,
+            &self.bot_name(),
+            &self.api_token,
+            None,
+            self.metrics.clone(),
+        )
     }
 }
 
@@ -240,7 +329,13 @@ pub struct GithubSession {
 }
 
 impl GithubSession {
-    pub fn new(host: &str, bot_name: &str, token: &str, app_id: Option<u32>, metrics: Option<Arc<Metrics>>) -> Result<GithubSession> {
+    pub fn new(
+        host: &str,
+        bot_name: &str,
+        token: &str,
+        app_id: Option<u32>,
+        metrics: Option<Arc<Metrics>>,
+    ) -> Result<GithubSession> {
         let mut headers = reqwest::header::HeaderMap::new();
 
         let accept_headers = vec![
@@ -252,7 +347,8 @@ impl GithubSession {
             "application/vnd.github.shadow-cat-preview+json",
             // checks API
             "application/vnd.github.antiope-preview+json",
-        ].join(",");
+        ]
+        .join(",");
 
         headers.append(
             reqwest::header::ACCEPT,
@@ -266,7 +362,10 @@ impl GithubSession {
         let client = HTTPClient::new_with_headers(&api_base(host), headers)?;
         let client = match metrics {
             None => client,
-            Some(ref m) => client.with_metrics(m.github_api_responses.clone(), m.github_api_duration.clone())
+            Some(ref m) => client.with_metrics(
+                m.github_api_responses.clone(),
+                m.github_api_duration.clone(),
+            ),
         };
 
         Ok(GithubSession {
@@ -360,7 +459,10 @@ impl Session for GithubSession {
 
             for pull_request in &mut next_prs {
                 if pull_request.reviews.is_none() {
-                    match self.get_pull_request_reviews(owner, repo, pull_request.number).await {
+                    match self
+                        .get_pull_request_reviews(owner, repo, pull_request.number)
+                        .await
+                    {
                         Ok(r) => pull_request.reviews = Some(r),
                         Err(e) => error!("Error refetching pull request reviews: {}", e),
                     };
@@ -397,77 +499,171 @@ impl Session for GithubSession {
             base: base.to_string(),
         };
 
-        self.client.post(&format!("repos/{}/{}/pulls", owner, repo), &pr).await
-    }
-
-    async fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>> {
         self.client
-            .get(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number))
+            .post(&format!("repos/{}/{}/pulls", owner, repo), &pr)
             .await
-            .map_err(|e| format_err!("error looking up pr labels: {}/{} #{}: {}", owner, repo, number, e))
     }
 
-    async fn add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>) -> Result<()> {
+    async fn get_pull_request_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<Label>> {
+        self.client
+            .get(&format!(
+                "repos/{}/{}/issues/{}/labels",
+                owner, repo, number
+            ))
+            .await
+            .map_err(|e| {
+                format_err!(
+                    "error looking up pr labels: {}/{} #{}: {}",
+                    owner,
+                    repo,
+                    number,
+                    e
+                )
+            })
+    }
+
+    async fn add_pull_request_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        labels: Vec<String>,
+    ) -> Result<()> {
         #[derive(Serialize)]
         struct AddLabels {
             labels: Vec<String>,
         }
 
-        let body = AddLabels {
-            labels: labels,
-        };
+        let body = AddLabels { labels: labels };
 
-        self.client.post_void(&format!("repos/{}/{}/issues/{}/labels", owner, repo, number), &body)
+        self.client
+            .post_void(
+                &format!("repos/{}/{}/issues/{}/labels", owner, repo, number),
+                &body,
+            )
             .await
             .map_err(|e| format_err!("Error adding label: {}/{} #{}: {}", owner, repo, number, e))
     }
 
-    async fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>> {
+    async fn get_pull_request_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<Commit>> {
         self.client
-            .get(&format!("repos/{}/{}/pulls/{}/commits", owner, repo, number))
+            .get(&format!(
+                "repos/{}/{}/pulls/{}/commits",
+                owner, repo, number
+            ))
             .await
-            .map_err(|e| format_err!("Error looking up PR commits: {}/{} #{}: {}", owner, repo, number, e))
+            .map_err(|e| {
+                format_err!(
+                    "Error looking up PR commits: {}/{} #{}: {}",
+                    owner,
+                    repo,
+                    number,
+                    e
+                )
+            })
     }
 
-    async fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>> {
+    async fn get_pull_request_reviews(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<Review>> {
         self.client
-            .get(&format!("repos/{}/{}/pulls/{}/reviews", owner, repo, number))
+            .get(&format!(
+                "repos/{}/{}/pulls/{}/reviews",
+                owner, repo, number
+            ))
             .await
-            .map_err(|e| format_err!("Error looking up PR reviews: {}/{} #{}: {}", owner, repo, number, e))
+            .map_err(|e| {
+                format_err!(
+                    "Error looking up PR reviews: {}/{} #{}: {}",
+                    owner,
+                    repo,
+                    number,
+                    e
+                )
+            })
     }
 
-    async fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<()> {
+    async fn assign_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        assignees: Vec<String>,
+    ) -> Result<()> {
         #[derive(Serialize)]
         struct AssignPR {
             assignees: Vec<String>,
         }
 
-        let body = AssignPR { assignees: assignees };
+        let body = AssignPR {
+            assignees: assignees,
+        };
 
         self.client
-            .post_void(&format!("repos/{}/{}/issues/{}/assignees", owner, repo, number), &body)
+            .post_void(
+                &format!("repos/{}/{}/issues/{}/assignees", owner, repo, number),
+                &body,
+            )
             .await
             .map_err(|e| format_err!("Error assigning PR: {}/{} #{}: {}", owner, repo, number, e))
     }
 
-    async fn request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>) -> Result<()> {
+    async fn request_review(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        reviewers: Vec<String>,
+    ) -> Result<()> {
         #[derive(Serialize)]
         struct ReviewPR {
             reviewers: Vec<String>,
         }
 
-        let body = ReviewPR { reviewers: reviewers };
+        let body = ReviewPR {
+            reviewers: reviewers,
+        };
 
         self.client
             .post_void(
-                &format!("repos/{}/{}/pulls/{}/requested_reviewers", owner, repo, number),
+                &format!(
+                    "repos/{}/{}/pulls/{}/requested_reviewers",
+                    owner, repo, number
+                ),
                 &body,
             )
             .await
-            .map_err(|e| format_err!("Error requesting review for PR: {}/{} #{}: {}", owner, repo, number, e))
+            .map_err(|e| {
+                format_err!(
+                    "Error requesting review for PR: {}/{} #{}: {}",
+                    owner,
+                    repo,
+                    number,
+                    e
+                )
+            })
     }
 
-    async fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()> {
+    async fn comment_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        comment: &str,
+    ) -> Result<()> {
         #[derive(Serialize)]
         struct CommentPR {
             body: String,
@@ -477,12 +673,29 @@ impl Session for GithubSession {
         };
 
         self.client
-            .post_void(&format!("repos/{}/{}/issues/{}/comments", owner, repo, number), &body)
+            .post_void(
+                &format!("repos/{}/{}/issues/{}/comments", owner, repo, number),
+                &body,
+            )
             .await
-            .map_err(|e| format_err!("Error commenting on PR: {}/{} #{}: {}", owner, repo, number, e))
+            .map_err(|e| {
+                format_err!(
+                    "Error commenting on PR: {}/{} #{}: {}",
+                    owner,
+                    repo,
+                    number,
+                    e
+                )
+            })
     }
 
-    async fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()> {
+    async fn create_branch(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch_name: &str,
+        sha: &str,
+    ) -> Result<()> {
         #[derive(Serialize)]
         struct CreateRef {
             #[serde(rename = "ref")]
@@ -501,16 +714,31 @@ impl Session for GithubSession {
             .map_err(|e| {
                 format_err!(
                     "Error creating branch {}/{} {}, {}: {}",
-                    owner, repo, branch_name, sha, e
+                    owner,
+                    repo,
+                    branch_name,
+                    sha,
+                    e
                 )
             })
     }
 
     async fn delete_branch(&self, owner: &str, repo: &str, branch_name: &str) -> Result<()> {
         self.client
-            .delete_void(&format!("repos/{}/{}/git/refs/heads/{}", owner, repo, branch_name))
+            .delete_void(&format!(
+                "repos/{}/{}/git/refs/heads/{}",
+                owner, repo, branch_name
+            ))
             .await
-            .map_err(|e| format_err!("Error deleting branch {}/{} {}: {}", owner, repo, branch_name, e))
+            .map_err(|e| {
+                format_err!(
+                    "Error deleting branch {}/{} {}: {}",
+                    owner,
+                    repo,
+                    branch_name,
+                    e
+                )
+            })
     }
 
     async fn approve_pull_request(
@@ -537,12 +765,20 @@ impl Session for GithubSession {
         };
 
         self.client
-            .post_void(&format!("repos/{}/{}/pulls/{}/reviews", owner, repo, number), &body)
+            .post_void(
+                &format!("repos/{}/{}/pulls/{}/reviews", owner, repo, number),
+                &body,
+            )
             .await
             .map_err(|e| format_err!("Error approving PR {}/{} #{}: {}", owner, repo, number, e))
     }
 
-    async fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>> {
+    async fn get_timeline(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<TimelineEvent>> {
         let mut events = vec![];
         let mut page = 1;
         loop {
@@ -550,12 +786,15 @@ impl Session for GithubSession {
                 "repos/{}/{}/issues/{}/timeline?per_page=100&page={}",
                 owner, repo, number, page
             );
-            let next_events: Vec<TimelineEvent> = match self
-                .client
-                .get(&url)
-                .await
-                .map_err(|e| format_err!("Error getting timeline for PR: {}/{} #{}: {}", owner, repo, number, e))
-            {
+            let next_events: Vec<TimelineEvent> = match self.client.get(&url).await.map_err(|e| {
+                format_err!(
+                    "Error getting timeline for PR: {}/{} #{}: {}",
+                    owner,
+                    repo,
+                    number,
+                    e
+                )
+            }) {
                 Ok(r) => r,
                 Err(e) => return Err(e),
             };
@@ -595,7 +834,9 @@ impl Session for GithubSession {
             .map_err(|e| {
                 format_err!(
                     "Error getting suites for {} {}: {}",
-                    pr.base.repo.full_name, pr.head.sha, e
+                    pr.base.repo.full_name,
+                    pr.head.sha,
+                    e
                 )
             })
     }
@@ -610,7 +851,9 @@ impl Session for GithubSession {
             .map_err(|e| {
                 format_err!(
                     "Error getting check run #{} for {}: {}",
-                    id, pr.base.repo.full_name, e
+                    id,
+                    pr.base.repo.full_name,
+                    e
                 )
             })
     }
@@ -630,7 +873,8 @@ impl Session for GithubSession {
             .map_err(|e| {
                 format_err!(
                     "Error creating check run for {}: {}",
-                    pr.base.repo.full_name, e
+                    pr.base.repo.full_name,
+                    e
                 )
             })
             .map(|r| r.id)
@@ -654,7 +898,10 @@ impl Session for GithubSession {
             .map_err(|e| {
                 format_err!(
                     "Error updating check run #{} for {}: {}\n\nPayload: {:#?}",
-                    check_run_id, pr.base.repo.full_name, e, run
+                    check_run_id,
+                    pr.base.repo.full_name,
+                    e,
+                    run
                 )
             })?
             .error_for_status()?;

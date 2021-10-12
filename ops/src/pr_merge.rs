@@ -6,16 +6,16 @@ use failure::format_err;
 use log::{error, info};
 use regex::Regex;
 
-use octobot_lib::config::Config;
-use octobot_lib::errors::*;
-use octobot_lib::metrics::{self, Metrics};
 use crate::git::Git;
 use crate::git_clone_manager::GitCloneManager;
-use octobot_lib::github;
-use octobot_lib::github::api::{GithubSessionFactory, Session};
 use crate::messenger;
 use crate::slack::{SlackAttachmentBuilder, SlackRequest};
 use crate::worker;
+use octobot_lib::config::Config;
+use octobot_lib::errors::*;
+use octobot_lib::github;
+use octobot_lib::github::api::{GithubSessionFactory, Session};
+use octobot_lib::metrics::{self, Metrics};
 
 async fn clone_and_merge_pull_request<'a>(
     github_app: &'a dyn GithubSessionFactory,
@@ -57,8 +57,11 @@ pub async fn merge_pull_request<'a>(
     if let Err(e) = try_merge_pull_request(git, session, req).await {
         let attach = SlackAttachmentBuilder::new(&format!("{}", e))
             .title(
-                format!("Source PR: #{}: \"{}\"", req.pull_request.number, req.pull_request.title)
-                    .as_str(),
+                format!(
+                    "Source PR: #{}: \"{}\"",
+                    req.pull_request.number, req.pull_request.title
+                )
+                .as_str(),
             )
             .title_link(req.pull_request.html_url.clone())
             .color("danger")
@@ -66,8 +69,7 @@ pub async fn merge_pull_request<'a>(
 
         let msg = format!(
             "Error backporting PR from {} to {}",
-            req.pull_request.head.ref_name,
-            req.target_branch
+            req.pull_request.head.ref_name, req.target_branch
         );
         let msg_full = format!("{}: {}", msg, e);
         error!("{}", msg_full);
@@ -82,11 +84,30 @@ pub async fn merge_pull_request<'a>(
             &req.commits,
         );
 
-        if let Err(e) = session.comment_pull_request(req.repo.owner.login(), &req.repo.name, req.pull_request.number, &msg_full).await {
-            error!("Error making backport failure comment on pull request: {}", e);
+        if let Err(e) = session
+            .comment_pull_request(
+                req.repo.owner.login(),
+                &req.repo.name,
+                req.pull_request.number,
+                &msg_full,
+            )
+            .await
+        {
+            error!(
+                "Error making backport failure comment on pull request: {}",
+                e
+            );
         }
 
-        if let Err(e) = session.add_pull_request_labels(req.repo.owner.login(), &req.repo.name, req.pull_request.number, vec!["failed-backport".to_string()]).await {
+        if let Err(e) = session
+            .add_pull_request_labels(
+                req.repo.owner.login(),
+                &req.repo.name,
+                req.pull_request.number,
+                vec!["failed-backport".to_string()],
+            )
+            .await
+        {
             error!("Error adding failed-backport label on pull request: {}", e);
         }
     }
@@ -99,25 +120,37 @@ pub async fn try_merge_pull_request(
 ) -> Result<github::PullRequest> {
     let pull_request = &req.pull_request;
     if !pull_request.is_merged() {
-        return Err(format_err!("Pull Request #{} is not yet merged.", pull_request.number));
+        return Err(format_err!(
+            "Pull Request #{} is not yet merged.",
+            pull_request.number
+        ));
     }
 
     let merge_commit_sha;
     if let Some(ref sha) = pull_request.merge_commit_sha {
         merge_commit_sha = sha;
     } else {
-        return Err(format_err!("Pull Request #{} has no merge commit.", pull_request.number));
+        return Err(format_err!(
+            "Pull Request #{} has no merge commit.",
+            pull_request.number
+        ));
     }
 
     // strip everything before last slash
     let regex = Regex::new(r".*/").unwrap();
-    let pr_branch_name =
-        format!("{}-{}", regex.replace(&pull_request.head.ref_name, ""), regex.replace(&req.target_branch, ""));
+    let pr_branch_name = format!(
+        "{}-{}",
+        regex.replace(&pull_request.head.ref_name, ""),
+        regex.replace(&req.target_branch, "")
+    );
 
     // make sure there isn't already such a branch
     let current_remotes = git.run(&["ls-remote", "--heads"])?;
     if current_remotes.contains(&format!("refs/heads/{}", pr_branch_name)) {
-        return Err(format_err!("PR branch already exists on origin: '{}'", pr_branch_name));
+        return Err(format_err!(
+            "PR branch already exists on origin: '{}'",
+            pr_branch_name
+        ));
     }
 
     let (title, body, whitespace_mode) = cherry_pick(
@@ -134,23 +167,50 @@ pub async fn try_merge_pull_request(
 
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
-    let new_pr = session.create_pull_request(owner, repo, &title, &body, &pr_branch_name, &req.target_branch).await?;
+    let new_pr = session
+        .create_pull_request(
+            owner,
+            repo,
+            &title,
+            &body,
+            &pr_branch_name,
+            &req.target_branch,
+        )
+        .await?;
 
-    let mut assignees: Vec<String> = pull_request.assignees.iter().map(|a| a.login().to_string()).collect();
+    let mut assignees: Vec<String> = pull_request
+        .assignees
+        .iter()
+        .map(|a| a.login().to_string())
+        .collect();
     assignees.retain(|r| r != pull_request.user.login());
     if !assignees.is_empty() {
-        session.assign_pull_request(owner, repo, new_pr.number, assignees).await?;
+        session
+            .assign_pull_request(owner, repo, new_pr.number, assignees)
+            .await?;
     }
 
-    let mut reviewers: Vec<String> = pull_request.all_reviewers().into_iter().map(|a| a.login().to_string()).collect();
+    let mut reviewers: Vec<String> = pull_request
+        .all_reviewers()
+        .into_iter()
+        .map(|a| a.login().to_string())
+        .collect();
     reviewers.retain(|r| r != pull_request.user.login());
     if !reviewers.is_empty() {
-        session.request_review(owner, repo, new_pr.number, reviewers).await?;
+        session
+            .request_review(owner, repo, new_pr.number, reviewers)
+            .await?;
     }
 
     if whitespace_mode.len() > 0 {
-        let msg = format!("Cherry-pick required option `{}`. Please verify correctness.", whitespace_mode);
-        if let Err(e) = session.comment_pull_request(owner, repo, new_pr.number, &msg).await {
+        let msg = format!(
+            "Cherry-pick required option `{}`. Please verify correctness.",
+            whitespace_mode
+        );
+        if let Err(e) = session
+            .comment_pull_request(owner, repo, new_pr.number, &msg)
+            .await
+        {
             error!("Error making whitespace comment on pull request: {}", e);
         }
     }
@@ -178,14 +238,21 @@ pub fn cherry_pick(
 
     let mut whitespace_mode = "";
     if let Err(e) = do_cherry_pick(git, &commit_hash, &[], &user_opts) {
-        info!("Could not cherry-pick normally. Ignoring changed whitespace. {}", e);
+        info!(
+            "Could not cherry-pick normally. Ignoring changed whitespace. {}",
+            e
+        );
 
         whitespace_mode = "ignore-space-change";
         if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode], &user_opts) {
-            info!("Could not cherry-pick with `-X {}`. Ignoring all whitespace. {}", whitespace_mode, e);
+            info!(
+                "Could not cherry-pick with `-X {}`. Ignoring all whitespace. {}",
+                whitespace_mode, e
+            );
 
             whitespace_mode = "ignore-all-space";
-            if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode], &user_opts) {
+            if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode], &user_opts)
+            {
                 info!("Could not cherry-pick with `-X {}`: {}", whitespace_mode, e);
                 return Err(e);
             }
@@ -193,7 +260,14 @@ pub fn cherry_pick(
     }
 
     let desc = git.get_commit_desc(commit_hash)?;
-    let (title, body) = make_merge_desc(desc, commit_hash, pr_number, target_branch, orig_base_branch, release_branch_prefix);
+    let (title, body) = make_merge_desc(
+        desc,
+        commit_hash,
+        pr_number,
+        target_branch,
+        orig_base_branch,
+        release_branch_prefix,
+    );
 
     // change commit message
     let mut amend_args = vec![];
@@ -204,7 +278,12 @@ pub fn cherry_pick(
     Ok((title, body, whitespace_mode.into()))
 }
 
-fn do_cherry_pick(git: &Git, commit_hash: &str, opts: &[&str], user_opts: &[&str]) -> Result<String> {
+fn do_cherry_pick(
+    git: &Git,
+    commit_hash: &str,
+    opts: &[&str],
+    user_opts: &[&str],
+) -> Result<String> {
     git.run(&vec!["reset", "--hard"])?;
 
     let mut args = vec!["-c", "merge.renameLimit=999999"];
@@ -234,7 +313,10 @@ fn make_merge_desc(
     // strip out PR from title
     let orig_title = pr_regex.replace(&orig_desc.0, "");
     // strip out previous merge title prefixes
-    let mut orig_title = prev_merge_regex.replace(&orig_title, "").to_owned().to_string();
+    let mut orig_title = prev_merge_regex
+        .replace(&orig_title, "")
+        .to_owned()
+        .to_string();
 
     // strip out conventional commit prefix
     let mut prefix = String::new();
@@ -263,7 +345,10 @@ fn make_merge_desc(
         orig_base_branch = orig_base_branch.replacen(release_branch_prefix, "", 1);
     }
 
-    let title = format!("{}{}->{}: {}", prefix, orig_base_branch, target_branch, orig_title);
+    let title = format!(
+        "{}{}->{}: {}",
+        prefix, orig_base_branch, target_branch, orig_title
+    );
     let mut body = orig_desc.1;
 
     if body.len() != 0 {
@@ -291,7 +376,13 @@ struct Runner {
     metrics: Arc<Metrics>,
 }
 
-pub fn req(repo: &github::Repo, pull_request: &github::PullRequest, target_branch: &str, release_branch_prefix: &str, commits: Vec<github::Commit>) -> PRMergeRequest {
+pub fn req(
+    repo: &github::Repo,
+    pull_request: &github::PullRequest,
+    target_branch: &str,
+    release_branch_prefix: &str,
+    commits: Vec<github::Commit>,
+) -> PRMergeRequest {
     PRMergeRequest {
         repo: repo.clone(),
         pull_request: pull_request.clone(),
@@ -308,7 +399,6 @@ pub fn new_runner(
     slack: Arc<dyn worker::Worker<SlackRequest>>,
     metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<PRMergeRequest>> {
-
     Arc::new(Runner {
         config: config,
         github_app: github_app,
@@ -330,7 +420,8 @@ impl worker::Runner<PRMergeRequest> for Runner {
             &req,
             self.config.clone(),
             self.slack.clone(),
-        ).await;
+        )
+        .await;
     }
 }
 
@@ -341,7 +432,10 @@ mod tests {
     #[test]
     fn test_make_merge_desc() {
         let desc = make_merge_desc(
-            (String::from("Yay, I made a change (#99)"), String::from("here is more data about it")),
+            (
+                String::from("Yay, I made a change (#99)"),
+                String::from("here is more data about it"),
+            ),
             "abcdef",
             99,
             "release/target_branch",
@@ -350,7 +444,10 @@ mod tests {
         );
 
         assert_eq!(desc.0, "source_branch->target_branch: Yay, I made a change");
-        assert_eq!(desc.1, "here is more data about it\n\n(cherry-picked from abcdef, PR #99)");
+        assert_eq!(
+            desc.1,
+            "here is more data about it\n\n(cherry-picked from abcdef, PR #99)"
+        );
     }
 
     #[test]
@@ -401,7 +498,10 @@ mod tests {
     #[test]
     fn test_make_merge_desc_multi1() {
         let desc = make_merge_desc(
-            (String::from("prev_branch->source_branch: Yay, I made a change (#99)"), String::from("")),
+            (
+                String::from("prev_branch->source_branch: Yay, I made a change (#99)"),
+                String::from(""),
+            ),
             "abcdef",
             99,
             "other_branch",

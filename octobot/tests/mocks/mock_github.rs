@@ -2,8 +2,8 @@ use std::sync::Mutex;
 use std::thread;
 
 use octobot_lib::errors::*;
-use octobot_lib::github::*;
 use octobot_lib::github::api::Session;
+use octobot_lib::github::*;
 
 pub struct MockGithub {
     host: String,
@@ -210,9 +210,17 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn get_pull_request_labels(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Label>> {
+    async fn get_pull_request_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<Label>> {
         let mut calls = self.get_pr_labels_calls.lock().unwrap();
-        assert!(calls.len() > 0, "Unexpected call to get_pull_request_labels");
+        assert!(
+            calls.len() > 0,
+            "Unexpected call to get_pull_request_labels"
+        );
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -221,9 +229,18 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>) -> Result<()> {
+    async fn add_pull_request_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        labels: Vec<String>,
+    ) -> Result<()> {
         let mut calls = self.add_pr_labels_calls.lock().unwrap();
-        assert!(calls.len() > 0, "Unexpected call to add_pull_request_labels");
+        assert!(
+            calls.len() > 0,
+            "Unexpected call to add_pull_request_labels"
+        );
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -233,9 +250,17 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn get_pull_request_commits(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Commit>> {
+    async fn get_pull_request_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<Commit>> {
         let mut calls = self.get_pr_commits_calls.lock().unwrap();
-        assert!(calls.len() > 0, "Unexpected call to get_pull_request_commits");
+        assert!(
+            calls.len() > 0,
+            "Unexpected call to get_pull_request_commits"
+        );
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -244,9 +269,17 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<Review>> {
+    async fn get_pull_request_reviews(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<Review>> {
         let mut calls = self.get_pr_reviews_calls.lock().unwrap();
-        assert!(calls.len() > 0, "Unexpected call to get_pull_request_reviews");
+        assert!(
+            calls.len() > 0,
+            "Unexpected call to get_pull_request_reviews"
+        );
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -255,7 +288,13 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn assign_pull_request(&self, owner: &str, repo: &str, number: u32, assignees: Vec<String>) -> Result<()> {
+    async fn assign_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        assignees: Vec<String>,
+    ) -> Result<()> {
         let mut calls = self.assign_pr_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to assign_pull_request");
         let call = calls.remove(0);
@@ -267,7 +306,13 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>) -> Result<()> {
+    async fn request_review(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        reviewers: Vec<String>,
+    ) -> Result<()> {
         let mut calls = self.request_review_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to request_review");
         let call = calls.remove(0);
@@ -279,7 +324,13 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str) -> Result<()> {
+    async fn comment_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        comment: &str,
+    ) -> Result<()> {
         let mut calls = self.comment_pr_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to comment_pull_request");
         let call = calls.remove(0);
@@ -291,7 +342,13 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str) -> Result<()> {
+    async fn create_branch(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch_name: &str,
+        sha: &str,
+    ) -> Result<()> {
         let mut calls = self.create_branch_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to create_branch");
         let call = calls.remove(0);
@@ -334,7 +391,12 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn get_timeline(&self, owner: &str, repo: &str, number: u32) -> Result<Vec<TimelineEvent>> {
+    async fn get_timeline(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<TimelineEvent>> {
         let mut calls = self.get_timeline_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_timeline");
         let call = calls.remove(0);
@@ -373,7 +435,12 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn update_check_run(&self, pr: &PullRequest, check_run_id: u32, run: &CheckRun) -> Result<()> {
+    async fn update_check_run(
+        &self,
+        pr: &PullRequest,
+        check_run_id: u32,
+        run: &CheckRun,
+    ) -> Result<()> {
         let mut calls = self.update_check_run_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to update_check_run");
         let call = calls.remove(0);
@@ -387,10 +454,10 @@ impl Session for MockGithub {
 
 impl MockGithub {
     pub fn get_pull_request(&self, owner: &str, repo: &str, number: u32, ret: Result<PullRequest>) {
-        self.get_pr_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![owner, repo, &number.to_string()],
-        ));
+        self.get_pr_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![owner, repo, &number.to_string()]));
     }
 
     pub fn mock_get_pull_requests(
@@ -403,12 +470,7 @@ impl MockGithub {
     ) {
         self.get_prs_calls.lock().unwrap().push(MockCall::new(
             ret,
-            vec![
-                owner,
-                repo,
-                state.unwrap_or(""),
-                head.unwrap_or(""),
-            ],
+            vec![owner, repo, state.unwrap_or(""), head.unwrap_or("")],
         ));
     }
 
@@ -428,35 +490,67 @@ impl MockGithub {
         ));
     }
 
-    pub fn mock_get_pull_request_labels(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<Label>>) {
-        self.get_pr_labels_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![owner, repo, &number.to_string()],
-        ));
+    pub fn mock_get_pull_request_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        ret: Result<Vec<Label>>,
+    ) {
+        self.get_pr_labels_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![owner, repo, &number.to_string()]));
     }
 
-    pub fn mock_add_pull_request_labels(&self, owner: &str, repo: &str, number: u32, labels: Vec<String>, ret: Result<()>) {
+    pub fn mock_add_pull_request_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        labels: Vec<String>,
+        ret: Result<()>,
+    ) {
         self.add_pr_labels_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, &number.to_string(), &labels.join(",")],
         ));
     }
 
-    pub fn mock_get_pull_request_commits(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<Commit>>) {
-        self.get_pr_commits_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![owner, repo, &number.to_string()],
-        ));
+    pub fn mock_get_pull_request_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        ret: Result<Vec<Commit>>,
+    ) {
+        self.get_pr_commits_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![owner, repo, &number.to_string()]));
     }
 
-    pub fn mock_get_pull_request_reviews(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<Review>>) {
-        self.get_pr_reviews_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![owner, repo, &number.to_string()],
-        ));
+    pub fn mock_get_pull_request_reviews(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        ret: Result<Vec<Review>>,
+    ) {
+        self.get_pr_reviews_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![owner, repo, &number.to_string()]));
     }
 
-    pub fn mock_comment_pull_request(&self, owner: &str, repo: &str, number: u32, comment: &str, ret: Result<()>) {
+    pub fn mock_comment_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        comment: &str,
+        ret: Result<()>,
+    ) {
         self.comment_pr_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, &number.to_string(), comment],
@@ -473,38 +567,46 @@ impl MockGithub {
     ) {
         self.assign_pr_calls.lock().unwrap().push(MockCall::new(
             ret,
-            vec![
-                owner,
-                repo,
-                &number.to_string(),
-                &assignees.join(","),
-            ],
+            vec![owner, repo, &number.to_string(), &assignees.join(",")],
         ));
     }
 
-    pub fn mock_request_review(&self, owner: &str, repo: &str, number: u32, reviewers: Vec<String>, ret: Result<()>) {
-        self.request_review_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![
-                owner,
-                repo,
-                &number.to_string(),
-                &reviewers.join(","),
-            ],
-        ));
+    pub fn mock_request_review(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        reviewers: Vec<String>,
+        ret: Result<()>,
+    ) {
+        self.request_review_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(
+                ret,
+                vec![owner, repo, &number.to_string(), &reviewers.join(",")],
+            ));
     }
 
-    pub fn mock_create_branch(&self, owner: &str, repo: &str, branch_name: &str, sha: &str, ret: Result<()>) {
-        self.create_branch_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![owner, repo, branch_name, sha],
-        ));
+    pub fn mock_create_branch(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch_name: &str,
+        sha: &str,
+        ret: Result<()>,
+    ) {
+        self.create_branch_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![owner, repo, branch_name, sha]));
     }
 
     pub fn mock_delete_branch(&self, owner: &str, repo: &str, branch_name: &str, ret: Result<()>) {
-        self.delete_branch_calls.lock().unwrap().push(
-            MockCall::new(ret, vec![owner, repo, branch_name]),
-        );
+        self.delete_branch_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![owner, repo, branch_name]));
     }
 
     pub fn mock_approve_pull_request(
@@ -516,30 +618,42 @@ impl MockGithub {
         comment: Option<&str>,
         ret: Result<()>,
     ) {
-        self.approve_pull_request_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![
-                owner,
-                repo,
-                &number.to_string(),
-                commit_hash,
-                comment.unwrap_or(""),
-            ],
-        ));
+        self.approve_pull_request_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(
+                ret,
+                vec![
+                    owner,
+                    repo,
+                    &number.to_string(),
+                    commit_hash,
+                    comment.unwrap_or(""),
+                ],
+            ));
     }
 
-    pub fn mock_get_timeline(&self, owner: &str, repo: &str, number: u32, ret: Result<Vec<TimelineEvent>>) {
-        self.get_timeline_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![owner, repo, &number.to_string()],
-        ));
+    pub fn mock_get_timeline(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        ret: Result<Vec<TimelineEvent>>,
+    ) {
+        self.get_timeline_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![owner, repo, &number.to_string()]));
     }
 
     pub fn mock_create_check_run(&self, pr: &PullRequest, run: &CheckRun, ret: Result<u32>) {
-        self.create_check_run_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![&pr.number.to_string(), &format_check_run(run)],
-        ));
+        self.create_check_run_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(
+                ret,
+                vec![&pr.number.to_string(), &format_check_run(run)],
+            ));
     }
 }
 
@@ -549,5 +663,12 @@ fn format_check_run(run: &CheckRun) -> String {
         None => String::new(),
     };
 
-    format!("{}, {:?}, {}", run.name, run.conclusion.as_ref().unwrap_or(&Conclusion::ActionRequired), output)
+    format!(
+        "{}, {:?}, {}",
+        run.name,
+        run.conclusion
+            .as_ref()
+            .unwrap_or(&Conclusion::ActionRequired),
+        output
+    )
 }
