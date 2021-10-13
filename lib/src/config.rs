@@ -17,6 +17,7 @@ pub struct Config {
     pub admin: Option<AdminConfig>,
     pub metrics: Option<MetricsConfig>,
     pub github: GithubConfig,
+    pub slack: SlackConfig,
     pub jira: Option<JiraConfig>,
     pub ldap: Option<LdapConfig>,
 
@@ -30,13 +31,13 @@ pub struct ConfigModel {
     pub admin: Option<AdminConfig>,
     pub metrics: Option<MetricsConfig>,
     pub github: GithubConfig,
+    pub slack: SlackConfig,
     pub jira: Option<JiraConfig>,
     pub ldap: Option<LdapConfig>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MainConfig {
-    pub slack_webhook_url: Option<String>,
     pub listen_addr: Option<String>,
     pub clone_root_dir: String,
     pub num_http_threads: Option<usize>,
@@ -53,6 +54,11 @@ pub struct AdminConfig {
 pub struct MetricsConfig {
     pub salt: String,
     pub pass_hash: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SlackConfig {
+    pub bot_token: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -117,6 +123,7 @@ impl Config {
             admin: config.admin,
             metrics: config.metrics,
             github: config.github,
+            slack: config.slack,
             jira: config.jira,
             ldap: config.ldap,
             users: RwLock::new(users::UserConfig::new(db.clone())),
@@ -130,6 +137,7 @@ impl Config {
             admin: self.admin.clone(),
             metrics: self.metrics.clone(),
             github: self.github.clone(),
+            slack: self.slack.clone(),
             jira: self.jira.clone(),
             ldap: self.ldap.clone(),
         };
@@ -171,7 +179,6 @@ impl ConfigModel {
     pub fn new() -> ConfigModel {
         ConfigModel {
             main: MainConfig {
-                slack_webhook_url: None,
                 listen_addr: None,
                 clone_root_dir: String::new(),
                 num_http_threads: None,
@@ -184,6 +191,9 @@ impl ConfigModel {
                 api_token: None,
                 app_id: None,
                 app_key_file: None,
+            },
+            slack: SlackConfig {
+                bot_token: String::new(),
             },
             jira: None,
             ldap: None,
@@ -292,8 +302,10 @@ mod tests {
     fn test_parse() {
         let config_str = r#"
 [main]
-slack_webhook_url = "https://hooks.slack.com/foo"
 clone_root_dir = "./repos"
+
+[slack]
+bot_token = "foo"
 
 [github]
 webhook_secret = "abcd"
@@ -302,10 +314,6 @@ app_id = 2
 app_key_file = "some-file.key"
 "#;
         let config = parse_string(config_str).unwrap();
-
-        assert_eq!(
-            Some(String::from("https://hooks.slack.com/foo")),
-            config.main.slack_webhook_url
-        );
+        assert_eq!("foo", config.slack.bot_token);
     }
 }

@@ -1,10 +1,11 @@
 use std::sync::{Arc, Mutex};
 
 use log::{error, info};
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 
 use crate::util;
 use crate::worker;
+use octobot_lib::errors::*;
 use octobot_lib::http_client::HTTPClient;
 use octobot_lib::metrics::Metrics;
 
@@ -14,6 +15,12 @@ pub struct SlackAttachment {
     pub title: Option<String>,
     pub title_link: Option<String>,
     pub color: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SlackResponse {
+    ok: bool,
+    error: Option<String>,
 }
 
 impl SlackAttachment {
@@ -72,7 +79,6 @@ struct SlackMessage {
 // the main object for sending messages to slack
 struct Slack {
     client: Arc<HTTPClient>,
-    webhook_url: String,
     recent_messages: Mutex<Vec<SlackMessage>>,
 }
 
@@ -80,29 +86,29 @@ const TRIM_MESSAGES_AT: usize = 200;
 const TRIM_MESSAGES_TO: usize = 20;
 
 impl Slack {
-    pub fn new(webhook_url: Option<String>, metrics: Arc<Metrics>) -> Slack {
-        let webhook_url = webhook_url.unwrap_or_default();
+    pub fn new(bot_token: String, metrics: Arc<Metrics>) -> Slack {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.append(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", bot_token).parse().unwrap(),
+        );
+
         let client = Arc::new(
-            HTTPClient::new("")
+            HTTPClient::new_with_headers("https://slack.com/api", headers)
                 .unwrap()
-                .with_secret_path(webhook_url.clone())
                 .with_metrics(
                     metrics.slack_api_responses.clone(),
                     metrics.slack_api_duration.clone(),
                 ),
         );
+
         Slack {
             client,
-            webhook_url,
             recent_messages: Mutex::new(Vec::new()),
         }
     }
 
     async fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
-        if self.webhook_url.is_empty() {
-            return;
-        }
-
         let slack_msg = SlackMessage {
             text: msg.to_string(),
             attachments,
@@ -115,16 +121,20 @@ impl Slack {
         }
 
         info!("Sending message to #{}", channel);
-        let webhook_url = self.webhook_url.clone();
-        let client = self.client.clone();
 
-        let res = client.post_void(&webhook_url, &slack_msg).await;
+        let res: Result<SlackResponse> = self.client.post("/chat.postMessage", &slack_msg).await;
         match res {
-            Ok(_) => info!("Successfully sent slack message"),
-            Err(e) => {
-                let msg = format!("{}", e).replace(&webhook_url, "<webhook url>");
-                error!("Error sending slack message: {}", msg);
+            Ok(r) => {
+                if r.ok {
+                    info!("Successfully sent slack message")
+                } else {
+                    error!(
+                        "Error sending slack message: {}",
+                        r.error.unwrap_or(String::new())
+                    )
+                }
             }
+            Err(e) => error!("Error sending slack message: {}", e),
         }
     }
 
@@ -159,11 +169,11 @@ pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> Slack
 }
 
 pub fn new_runner(
-    webhook_url: Option<String>,
+    bot_token: String,
     metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<SlackRequest>> {
     Arc::new(Runner {
-        slack: Arc::new(Slack::new(webhook_url, metrics)),
+        slack: Arc::new(Slack::new(bot_token, metrics)),
     })
 }
 
