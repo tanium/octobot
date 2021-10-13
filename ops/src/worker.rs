@@ -17,7 +17,7 @@ pub struct TokioWorker<T: Send + Sync + 'static> {
 }
 
 impl<T: Send + Sync + 'static> TokioWorker<T> {
-    pub fn new(
+    pub fn new_worker(
         runtime: Arc<Mutex<tokio::runtime::Runtime>>,
         runner: Arc<dyn Runner<T>>,
     ) -> Arc<dyn Worker<T>> {

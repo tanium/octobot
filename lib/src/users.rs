@@ -133,14 +133,7 @@ impl UserConfig {
             })
         })?;
 
-        // kinda ugly....
-        let mut user = None;
-        for u in found {
-            if let Ok(u) = u {
-                user = Some(u);
-                break;
-            }
-        }
+        let user = found.into_iter().flatten().next();
         Ok(user)
     }
 }

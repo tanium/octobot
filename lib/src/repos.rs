@@ -191,7 +191,7 @@ impl RepoConfig {
         &mut self,
         tx: &Transaction,
         id: i64,
-        jira_config: &Vec<RepoJiraConfig>,
+        jira_config: &[RepoJiraConfig],
     ) -> Result<()> {
         for config in jira_config {
             tx.execute(
@@ -223,7 +223,7 @@ impl RepoConfig {
         &self,
         repo: &github::Repo,
         branch: &str,
-        commits: &Vec<T>,
+        commits: &[T],
     ) -> Vec<String> {
         let info = match self.lookup_info(repo) {
             None => return vec![],

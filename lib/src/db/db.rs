@@ -62,7 +62,7 @@ impl Columns {
         self.cols
             .get(col)
             .copied()
-            .ok_or(format_err!("Invalid column '{}'", col))
+            .ok_or_else(|| format_err!("Invalid column '{}'", col))
     }
 
     pub fn get<T: FromSql>(&self, row: &Row, col: &str) -> Result<T> {
@@ -72,7 +72,7 @@ impl Columns {
     }
 }
 
-pub fn from_string_vec(val: &Vec<String>) -> String {
+pub fn from_string_vec(val: &[String]) -> String {
     val.join(",")
 }
 

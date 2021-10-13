@@ -19,16 +19,18 @@ pub fn new(config: Arc<Config>, slack: Arc<dyn Worker<SlackRequest>>) -> Messeng
 }
 
 impl Messenger {
+    // TODO
+    #[allow(clippy::too_many_arguments)]
     pub fn send_to_all<T: github::CommitLike>(
         &self,
         msg: &str,
-        attachments: &Vec<SlackAttachment>,
+        attachments: &[SlackAttachment],
         item_owner: &github::User,
         sender: &github::User,
         repo: &github::Repo,
-        participants: &Vec<github::User>,
+        participants: &[github::User],
         branch: &str,
-        commits: &Vec<T>,
+        commits: &[T],
     ) {
         self.send_to_channel(msg, attachments, repo, branch, commits);
 
@@ -50,11 +52,11 @@ impl Messenger {
     pub fn send_to_owner<T: github::CommitLike>(
         &self,
         msg: &str,
-        attachments: &Vec<SlackAttachment>,
+        attachments: &[SlackAttachment],
         item_owner: &github::User,
         repo: &github::Repo,
         branch: &str,
-        commits: &Vec<T>,
+        commits: &[T],
     ) {
         self.send_to_channel(msg, attachments, repo, branch, commits);
         self.send_to_slackbots(vec![item_owner.clone()], msg, attachments);
@@ -63,10 +65,10 @@ impl Messenger {
     pub fn send_to_channel<T: github::CommitLike>(
         &self,
         msg: &str,
-        attachments: &Vec<SlackAttachment>,
+        attachments: &[SlackAttachment],
         repo: &github::Repo,
         branch: &str,
-        commits: &Vec<T>,
+        commits: &[T],
     ) {
         for channel in self.config.repos().lookup_channels(repo, branch, commits) {
             let channel_msg = format!(
@@ -78,16 +80,16 @@ impl Messenger {
         }
     }
 
-    fn send_to_slack(&self, channel: &str, msg: &str, attachments: &Vec<SlackAttachment>) {
+    fn send_to_slack(&self, channel: &str, msg: &str, attachments: &[SlackAttachment]) {
         self.slack
-            .send(slack::req(channel, msg, attachments.clone()));
+            .send(slack::req(channel, msg, attachments));
     }
 
     fn send_to_slackbots(
         &self,
         users: Vec<github::User>,
         msg: &str,
-        attachments: &Vec<SlackAttachment>,
+        attachments: &[SlackAttachment],
     ) {
         for user in users {
             if let Some(slack_ref) = self.config.users().slack_user_mention(user.login()) {

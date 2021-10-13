@@ -52,10 +52,10 @@ impl RepoAdmin {
 impl Handler for UserAdmin {
     async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
         match &self.op {
-            &Op::List => self.get_all(req).await,
-            &Op::Create => self.create(req).await,
-            &Op::Update => self.update(req).await,
-            &Op::Delete => self.delete(req).await,
+            Op::List => self.get_all(req).await,
+            Op::Create => self.create(req).await,
+            Op::Update => self.update(req).await,
+            Op::Delete => self.delete(req).await,
         }
     }
 }
@@ -116,10 +116,10 @@ impl UserAdmin {
 impl Handler for RepoAdmin {
     async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
         match &self.op {
-            &Op::List => self.get_all(req).await,
-            &Op::Create => self.create(req).await,
-            &Op::Update => self.update(req).await,
-            &Op::Delete => self.delete(req).await,
+            Op::List => self.get_all(req).await,
+            Op::Create => self.create(req).await,
+            Op::Update => self.update(req).await,
+            Op::Delete => self.delete(req).await,
         }
     }
 }

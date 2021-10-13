@@ -37,7 +37,7 @@ pub trait Session: Send + Sync {
     async fn remove_pending_versions(
         &self,
         key: &str,
-        versions: &Vec<version::Version>,
+        versions: &[version::Version],
     ) -> Result<()>;
     async fn find_pending_versions(
         &self,
@@ -64,12 +64,12 @@ struct AuthResp {
     pub name: String,
 }
 
-fn lookup_field(field: &str, fields: &Vec<Field>) -> Result<String> {
+fn lookup_field(field: &str, fields: &[Field]) -> Result<String> {
     fields
         .iter()
         .find(|f| field == f.id || field == f.name)
         .map(|f| f.id.clone())
-        .ok_or(format_err!("Error: Invalid JIRA field: {}", field))
+        .ok_or_else(|| format_err!("Error: Invalid JIRA field: {}", field))
 }
 
 impl JiraSession {
@@ -310,7 +310,7 @@ impl Session for JiraSession {
     async fn remove_pending_versions(
         &self,
         key: &str,
-        versions: &Vec<version::Version>,
+        versions: &[version::Version],
     ) -> Result<()> {
         if let Some(ref field_id) = self.pending_versions_field_id.clone() {
             let issue = self

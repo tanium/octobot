@@ -77,11 +77,11 @@ impl GithubHandlerState {
             metrics.clone(),
         )));
 
-        let slack_worker = TokioWorker::new(
+        let slack_worker = TokioWorker::new_worker(
             runtime.clone(),
             slack::new_runner(config.slack.bot_token.clone(), metrics.clone()),
         );
-        let pr_merge_worker = TokioWorker::new(
+        let pr_merge_worker = TokioWorker::new_worker(
             runtime.clone(),
             pr_merge::new_runner(
                 config.clone(),
@@ -91,7 +91,7 @@ impl GithubHandlerState {
                 metrics.clone(),
             ),
         );
-        let repo_version_worker = TokioWorker::new(
+        let repo_version_worker = TokioWorker::new_worker(
             runtime.clone(),
             repo_version::new_runner(
                 config.clone(),
@@ -102,7 +102,7 @@ impl GithubHandlerState {
                 metrics.clone(),
             ),
         );
-        let force_push_worker = TokioWorker::new(
+        let force_push_worker = TokioWorker::new_worker(
             runtime.clone(),
             force_push::new_runner(github_app.clone(), git_clone_manager, metrics.clone()),
         );
@@ -347,7 +347,7 @@ impl GithubEventHandler {
         }
     }
 
-    fn slack_user_names(&self, users: &Vec<github::User>) -> Vec<String> {
+    fn slack_user_names(&self, users: &[github::User]) -> Vec<String> {
         users.iter().map(|u| self.slack_user_name(u)).collect()
     }
 
@@ -379,7 +379,7 @@ impl GithubEventHandler {
     fn all_participants(
         &self,
         pull_request: &dyn github::PullRequestLike,
-        pr_commits: &Vec<github::Commit>,
+        pr_commits: &[github::Commit],
     ) -> Vec<github::User> {
         // start with the assignees
         let mut participants = pull_request.assignees();
@@ -403,9 +403,9 @@ impl GithubEventHandler {
 
     async fn handle_pr(&self) -> EventResponse {
         enum NotifyMode {
-            NotifyAll,
-            NotifyChannel,
-            NotifyNone,
+            All,
+            Channel,
+            None,
         }
 
         if let Some(ref pull_request) = self.data.pull_request {
@@ -416,30 +416,30 @@ impl GithubEventHandler {
                     "opened by {}",
                     self.slack_user_name(&pull_request.user)
                 ));
-                notify_mode = NotifyMode::NotifyChannel;
+                notify_mode = NotifyMode::Channel;
             } else if self.action == "closed" {
                 if pull_request.merged == Some(true) {
                     verb = Some("merged".to_string());
                 } else {
                     verb = Some("closed".to_string());
                 }
-                notify_mode = NotifyMode::NotifyAll;
+                notify_mode = NotifyMode::All;
             } else if self.action == "reopened" {
                 verb = Some("reopened".to_string());
-                notify_mode = NotifyMode::NotifyChannel;
+                notify_mode = NotifyMode::Channel;
             } else if self.action == "edited" {
                 verb = Some("edited".to_string());
-                notify_mode = NotifyMode::NotifyNone;
+                notify_mode = NotifyMode::None;
             } else if self.action == "ready_for_review" {
                 verb = Some("is ready for review".to_string());
-                notify_mode = NotifyMode::NotifyAll;
+                notify_mode = NotifyMode::All;
             } else if self.action == "assigned" {
                 let assignees_str = self.slack_user_names(&pull_request.assignees).join(", ");
                 verb = Some(format!("assigned to {}", assignees_str));
-                notify_mode = NotifyMode::NotifyAll;
+                notify_mode = NotifyMode::All;
             } else if self.action == "unassigned" {
                 verb = Some("unassigned".to_string());
-                notify_mode = NotifyMode::NotifyChannel;
+                notify_mode = NotifyMode::Channel;
             } else if self.action == "review_requested" {
                 if let Some(ref reviewers) = pull_request.requested_reviewers {
                     let assignees_str = self.slack_user_names(reviewers).join(", ");
@@ -447,10 +447,10 @@ impl GithubEventHandler {
                 } else {
                     verb = None;
                 }
-                notify_mode = NotifyMode::NotifyAll;
+                notify_mode = NotifyMode::All;
             } else {
                 verb = None;
-                notify_mode = NotifyMode::NotifyNone;
+                notify_mode = NotifyMode::None;
             }
 
             // early exit if we have nothing to do here.
@@ -476,7 +476,7 @@ impl GithubEventHandler {
                     let msg = format!("Pull Request {}", verb);
 
                     match notify_mode {
-                        NotifyMode::NotifyChannel => self.messenger.send_to_channel(
+                        NotifyMode::Channel => self.messenger.send_to_channel(
                             &msg,
                             &attachments,
                             &self.repository,
@@ -484,7 +484,7 @@ impl GithubEventHandler {
                             &commits,
                         ),
 
-                        NotifyMode::NotifyAll => self.messenger.send_to_all(
+                        NotifyMode::All => self.messenger.send_to_all(
                             &msg,
                             &attachments,
                             &pull_request.user,
@@ -495,7 +495,7 @@ impl GithubEventHandler {
                             &commits,
                         ),
 
-                        NotifyMode::NotifyNone => (),
+                        NotifyMode::None => (),
                     };
                 }
 
@@ -652,7 +652,7 @@ impl GithubEventHandler {
         pull_request: &dyn github::PullRequestLike,
         comment: &dyn github::CommentLike,
         branch_name: &str,
-        commits: &Vec<github::Commit>,
+        commits: &[github::Commit],
     ) {
         if comment.body().trim().is_empty() {
             return;
@@ -728,7 +728,7 @@ impl GithubEventHandler {
                         &comment.user,
                         &self.data.sender,
                         &self.repository,
-                        &vec![],
+                        &[],
                         branch_name,
                         &commits,
                     );
@@ -925,7 +925,7 @@ impl GithubEventHandler {
         &self,
         pull_request: &github::PullRequest,
         release_branch_prefix: &str,
-        commits: &Vec<github::Commit>,
+        commits: &[github::Commit],
     ) {
         if !pull_request.is_merged() {
             return;
@@ -946,7 +946,7 @@ impl GithubEventHandler {
             Err(e) => {
                 self.messenger.send_to_owner(
                     "Error getting Pull Request labels",
-                    &vec![SlackAttachmentBuilder::new(&format!("{}", e))
+                    &[SlackAttachmentBuilder::new(&format!("{}", e))
                         .color("danger")
                         .build()],
                     &pull_request.user,
@@ -968,7 +968,7 @@ impl GithubEventHandler {
         pull_request: &github::PullRequest,
         label: &github::Label,
         release_branch_prefix: &str,
-        commits: &Vec<github::Commit>,
+        commits: &[github::Commit],
     ) {
         if !pull_request.is_merged() {
             return;
@@ -990,7 +990,7 @@ impl GithubEventHandler {
             pull_request,
             &target_branch,
             release_branch_prefix,
-            commits.clone(),
+            commits,
         );
         self.pr_merge.send(req);
     }

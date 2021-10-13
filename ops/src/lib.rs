@@ -1,3 +1,5 @@
+#![allow(clippy::new_without_default)]
+
 pub mod diffs;
 pub mod dir_pool;
 #[cfg(target_os = "linux")]

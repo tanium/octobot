@@ -12,7 +12,7 @@ use crate::jira;
 use crate::jira::Transition;
 use crate::version;
 
-fn get_jira_keys(strings: Vec<String>, projects: &Vec<String>) -> Vec<String> {
+fn get_jira_keys(strings: Vec<String>, projects: &[String]) -> Vec<String> {
     let re = Regex::new(r"\b([A-Z0-9]+-[0-9]+)\b").unwrap();
 
     let mut all_keys = vec![];
@@ -33,7 +33,7 @@ fn get_jira_keys(strings: Vec<String>, projects: &Vec<String>) -> Vec<String> {
     all_keys
 }
 
-fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
+fn get_fixed_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
     // Fix [ABC-123][OTHER-567], [YEAH-999]
     let re =
         Regex::new(r"(?i)(?:Fix(?:es|ed)?):?\s*(?-i)((\[?([A-Z0-9]+-[0-9]+)(?:\]|\b)[\s,]*)+)")
@@ -48,7 +48,7 @@ fn get_fixed_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) 
     get_jira_keys(all_refs, projects)
 }
 
-fn get_mentioned_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<String>) -> Vec<String> {
+fn get_mentioned_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
     // See [ABC-123][OTHER-567], [YEAH-999]
     let re = Regex::new(r"(?i)(?:See):?\s*(?-i)((\[?([A-Z0-9]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
 
@@ -62,8 +62,8 @@ fn get_mentioned_jira_keys<T: CommitLike>(commits: &Vec<T>, projects: &Vec<Strin
 }
 
 fn get_referenced_jira_keys<T: CommitLike>(
-    commits: &Vec<T>,
-    projects: &Vec<String>,
+    commits: &[T],
+    projects: &[String],
 ) -> Vec<String> {
     let fixed = get_fixed_jira_keys(commits, projects);
 
@@ -75,8 +75,8 @@ fn get_referenced_jira_keys<T: CommitLike>(
 }
 
 pub(crate) fn get_all_jira_keys<T: CommitLike>(
-    commits: &Vec<T>,
-    projects: &Vec<String>,
+    commits: &[T],
+    projects: &[String],
 ) -> Vec<String> {
     get_jira_keys(
         commits.iter().map(|c| c.message().to_string()).collect(),
@@ -84,7 +84,7 @@ pub(crate) fn get_all_jira_keys<T: CommitLike>(
     )
 }
 
-pub fn references_jira<T: CommitLike>(commits: &Vec<T>, project: &str) -> bool {
+pub fn references_jira<T: CommitLike>(commits: &[T], project: &str) -> bool {
     let projects = vec![project.to_owned()];
 
     !get_all_jira_keys(commits, &projects).is_empty()
@@ -99,8 +99,8 @@ fn get_jira_project(jira_key: &str) -> &str {
     }
 }
 
-fn needs_transition(state: &Option<jira::Status>, target: &Vec<String>) -> bool {
-    if let &Some(ref state) = state {
+fn needs_transition(state: &Option<jira::Status>, target: &[String]) -> bool {
+    if let Some(ref state) = state {
         !target.contains(&state.name)
     } else {
         true
@@ -109,8 +109,8 @@ fn needs_transition(state: &Option<jira::Status>, target: &Vec<String>) -> bool 
 
 pub async fn submit_for_review(
     pr: &PullRequest,
-    commits: &Vec<Commit>,
-    projects: &Vec<String>,
+    commits: &[Commit],
+    projects: &[String],
     jira: &dyn jira::api::Session,
     config: &JiraConfig,
 ) {
@@ -183,8 +183,8 @@ pub async fn submit_for_review(
 pub async fn resolve_issue(
     branch: &str,
     version: Option<&str>,
-    commits: &Vec<PushCommit>,
-    projects: &Vec<String>,
+    commits: &[PushCommit],
+    projects: &[String],
     jira: &dyn jira::api::Session,
     config: &JiraConfig,
 ) {
@@ -208,7 +208,7 @@ pub async fn resolve_issue(
         );
         let resolved_states = config.resolved_states();
 
-        for key in get_fixed_jira_keys(&vec![commit], projects) {
+        for key in get_fixed_jira_keys(&[commit], projects) {
             if let Err(e) = jira.comment_issue(&key, &fix_msg).await {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
@@ -262,7 +262,7 @@ pub async fn resolve_issue(
         }
 
         // add comment only to referenced jiras
-        for key in get_referenced_jira_keys(&vec![commit], projects) {
+        for key in get_referenced_jira_keys(&[commit], projects) {
             if let Err(e) = jira.comment_issue(&key, &ref_msg).await {
                 error!("Error commenting on key [{}]: {}", key, e);
             }
@@ -272,8 +272,8 @@ pub async fn resolve_issue(
 
 pub async fn add_pending_version(
     maybe_version: Option<&str>,
-    commits: &Vec<PushCommit>,
-    projects: &Vec<String>,
+    commits: &[PushCommit],
+    projects: &[String],
     jira: &dyn jira::api::Session,
 ) {
     if let Some(version) = maybe_version {
@@ -289,7 +289,7 @@ pub async fn add_pending_version(
     }
 }
 
-fn parse_jira_versions(versions: &Vec<jira::Version>) -> Vec<version::Version> {
+fn parse_jira_versions(versions: &[jira::Version]) -> Vec<version::Version> {
     versions
         .iter()
         .filter_map(|v| version::Version::parse(&v.name))
@@ -386,8 +386,8 @@ pub async fn merge_pending_versions(
 
 fn find_relevant_versions(
     target_version: &version::Version,
-    pending_versions: &Vec<version::Version>,
-    real_versions: &Vec<jira::Version>,
+    pending_versions: &[version::Version],
+    real_versions: &[jira::Version],
 ) -> Vec<version::Version> {
     let latest_prior_real_version = parse_jira_versions(real_versions)
         .iter()
@@ -398,7 +398,7 @@ fn find_relevant_versions(
         })
         .max()
         .cloned()
-        .unwrap_or(version::Version::parse("0.0.0.0").unwrap());
+        .unwrap_or_else(|| version::Version::parse("0.0.0.0").unwrap());
 
     pending_versions
         .iter()
@@ -426,7 +426,7 @@ async fn try_get_issue_state(key: &str, jira: &dyn jira::api::Session) -> Option
     }
 }
 
-async fn try_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Session) {
+async fn try_transition(key: &str, to: &[String], jira: &dyn jira::api::Session) {
     match find_transition(key, to, jira).await {
         Ok(Some(transition)) => {
             let req = transition.new_request();
@@ -446,7 +446,7 @@ async fn try_transition(key: &str, to: &Vec<String>, jira: &dyn jira::api::Sessi
 
 async fn find_transition(
     key: &str,
-    to: &Vec<String>,
+    to: &[String],
     jira: &dyn jira::api::Session,
 ) -> Result<Option<Transition>> {
     let transitions = jira.get_transitions(key).await?;
@@ -454,7 +454,7 @@ async fn find_transition(
     Ok(pick_transition(to, &transitions))
 }
 
-fn pick_transition(to: &Vec<String>, choices: &Vec<Transition>) -> Option<Transition> {
+fn pick_transition(to: &[String], choices: &[Transition]) -> Option<Transition> {
     for t in choices {
         for name in to {
             if &t.name == name || &t.to.name == name {
@@ -472,14 +472,11 @@ pub async fn sort_versions(project: &str, jira: &dyn jira::api::Session) -> Resu
     versions.sort_by(|a, b| {
         let v1 = version::Version::parse(&a.name);
         let v2 = version::Version::parse(&b.name);
-        if v1.is_none() && v2.is_none() {
-            a.name.cmp(&b.name)
-        } else if v1.is_none() {
-            Ordering::Greater
-        } else if v2.is_none() {
-            Ordering::Less
-        } else {
-            v1.unwrap().cmp(&v2.unwrap())
+        match (v1, v2) {
+            (None, None) => a.name.cmp(&b.name),
+            (None, Some(_)) => Ordering::Greater,
+            (Some(_), None) => Ordering::Less,
+            (Some(v1), Some(v2)) => v1.cmp(&v2),
         }
     });
 
@@ -509,29 +506,29 @@ mod tests {
         let mut commit = Commit::new();
         assert_eq!(
             Vec::<String>::new(),
-            get_fixed_jira_keys(&vec![commit.clone()], &projects)
+            get_fixed_jira_keys(&[commit.clone()], &projects)
         );
         assert_eq!(
             Vec::<String>::new(),
-            get_referenced_jira_keys(&vec![commit.clone()], &projects)
+            get_referenced_jira_keys(&[commit.clone()], &projects)
         );
 
         commit.commit.message = "Fix [KEY-1][KEY-2], [KEY-3] Some thing that also fixed [KEY-4] which somehow fixes KEY-5"
             .into();
         assert_eq!(
             vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5"],
-            get_fixed_jira_keys(&vec![commit.clone()], &projects)
+            get_fixed_jira_keys(&[commit.clone()], &projects)
         );
 
         commit.commit.message +=
             "\n\nFix: [KEY-6], and also mentions [KEY-6], [KEY-7] but not [lowercase-99]";
         assert_eq!(
             vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5", "KEY-6"],
-            get_fixed_jira_keys(&vec![commit.clone()], &projects)
+            get_fixed_jira_keys(&[commit.clone()], &projects)
         );
         assert_eq!(
             vec!["KEY-7"],
-            get_referenced_jira_keys(&vec![commit.clone()], &projects)
+            get_referenced_jira_keys(&[commit.clone()], &projects)
         );
     }
 
@@ -543,11 +540,11 @@ mod tests {
             "KEY-1, KEY-2:Some thing that also fixed\n\nAlso [KEY-3], OTHER-5".into();
         assert_eq!(
             Vec::<String>::new(),
-            get_fixed_jira_keys(&vec![commit.clone()], &projects)
+            get_fixed_jira_keys(&[commit.clone()], &projects)
         );
         assert_eq!(
             vec!["KEY-1", "KEY-2", "KEY-3", "OTHER-5"],
-            get_referenced_jira_keys(&vec![commit], &projects)
+            get_referenced_jira_keys(&[commit], &projects)
         );
     }
 
@@ -558,7 +555,7 @@ mod tests {
         commit.commit.message = "KEY-1, OTHER-2:Fixed stuff".into();
         assert_eq!(
             vec!["KEY-1"],
-            get_referenced_jira_keys(&vec![commit], &projects)
+            get_referenced_jira_keys(&[commit], &projects)
         );
     }
 
@@ -584,22 +581,22 @@ mod tests {
         };
         assert_eq!(
             Some(t1.clone()),
-            pick_transition(&vec!["t1".into()], &vec![t1.clone(), t2.clone()])
+            pick_transition(&["t1".into()], &[t1.clone(), t2.clone()])
         );
         assert_eq!(
             Some(t1.clone()),
             pick_transition(
-                &vec!["inside-t1".into(), "t2".into()],
-                &vec![t1.clone(), t2.clone()]
+                &["inside-t1".into(), "t2".into()],
+                &[t1.clone(), t2.clone()]
             )
         );
         assert_eq!(
             Some(t2.clone()),
-            pick_transition(&vec!["inside-t2".into()], &vec![t1.clone(), t2.clone()])
+            pick_transition(&["inside-t2".into()], &[t1.clone(), t2.clone()])
         );
         assert_eq!(
             None,
-            pick_transition(&vec!["something-else".into()], &vec![t1, t2])
+            pick_transition(&["something-else".into()], &[t1, t2])
         );
     }
 

@@ -130,7 +130,7 @@ impl Slack {
                 } else {
                     error!(
                         "Error sending slack message: {}",
-                        r.error.unwrap_or(String::new())
+                        r.error.unwrap_or_default(),
                     )
                 }
             }
@@ -160,11 +160,11 @@ struct Runner {
     slack: Arc<Slack>,
 }
 
-pub fn req(channel: &str, msg: &str, attachments: Vec<SlackAttachment>) -> SlackRequest {
+pub fn req(channel: &str, msg: &str, attachments: &[SlackAttachment]) -> SlackRequest {
     SlackRequest {
         channel: channel.into(),
         msg: msg.into(),
-        attachments,
+        attachments: attachments.into(),
     }
 }
 

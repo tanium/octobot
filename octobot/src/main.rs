@@ -1,3 +1,5 @@
+#![allow(clippy::new_without_default)]
+
 use std::io::Write;
 
 use failure::format_err;

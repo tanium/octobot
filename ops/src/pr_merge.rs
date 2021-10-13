@@ -77,7 +77,7 @@ pub async fn merge_pull_request<'a>(
         let messenger = messenger::new(config.clone(), slack.clone());
         messenger.send_to_owner(
             &msg,
-            &vec![attach],
+            &[attach],
             &req.pull_request.user,
             &req.repo,
             &req.target_branch,
@@ -288,10 +288,7 @@ fn do_cherry_pick(
     let mut args = vec!["-c", "merge.renameLimit=999999"];
     args.extend(user_opts.iter());
     args.extend(vec!["cherry-pick", "--allow-empty"].iter());
-
-    for i in 0..opts.len() {
-        args.push(opts[i]);
-    }
+    args.extend(opts);
     args.push(commit_hash);
 
     git.run(&args)
@@ -319,20 +316,17 @@ fn make_merge_desc(
 
     // strip out conventional commit prefix
     let mut prefix = String::new();
-    match Commit::new(&orig_title) {
-        Ok(commit) => {
-            prefix = commit.type_().to_owned();
-            if let Some(s) = commit.scope() {
-                prefix += &format!("({})", s);
-            }
-            if commit.breaking() {
-                prefix += "!";
-            }
-            prefix += ": ";
-            orig_title = commit.description().to_owned();
+    if let Ok(commit) = Commit::new(&orig_title) {
+        prefix = commit.type_().to_owned();
+        if let Some(s) = commit.scope() {
+            prefix += &format!("({})", s);
         }
-        Err(_) => (),
-    };
+        if commit.breaking() {
+            prefix += "!";
+        }
+        prefix += ": ";
+        orig_title = commit.description().to_owned();
+    }
 
     // strip out 'release' from the prefix to keep titles shorter
     let mut target_branch = target_branch.to_owned();
@@ -380,14 +374,14 @@ pub fn req(
     pull_request: &github::PullRequest,
     target_branch: &str,
     release_branch_prefix: &str,
-    commits: Vec<github::Commit>,
+    commits: &[github::Commit],
 ) -> PRMergeRequest {
     PRMergeRequest {
         repo: repo.clone(),
         pull_request: pull_request.clone(),
         target_branch: target_branch.to_string(),
         release_branch_prefix: release_branch_prefix.to_string(),
-        commits,
+        commits: commits.into(),
     }
 }
 

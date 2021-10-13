@@ -11,8 +11,8 @@ const ALLOWED_SKIP_TYPES: &[&str] = &["build", "chore", "docs", "refactor", "sty
 
 pub async fn check_jira_refs(
     pull_request: &github::PullRequest,
-    commits: &Vec<github::Commit>,
-    projects: &Vec<String>,
+    commits: &[github::Commit],
+    projects: &[String],
     github: &dyn github::api::Session,
 ) {
     // Always skip projects with no JIRAs configured
@@ -37,8 +37,8 @@ pub async fn check_jira_refs(
 // consideration, not just what was recently pushed.
 async fn do_check_jira_refs(
     pull_request: &github::PullRequest,
-    commits: &Vec<github::Commit>,
-    projects: &Vec<String>,
+    commits: &[github::Commit],
+    projects: &[String],
     github: &dyn github::api::Session,
 ) -> Result<()> {
     let mut run = github::CheckRun::new(JIRA_REF_CONTEXT, pull_request, None);
