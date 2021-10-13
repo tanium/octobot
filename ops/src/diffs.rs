@@ -70,7 +70,8 @@ fn different_patch_files(patch0: &PatchSet, patch1: &PatchSet) -> Vec<PatchedFil
         if index >= patch0.len() {
             // a file in patch1 not in patch0
             different.push(patch1[index].clone())
-        } else if index >= patch1.len() || !are_patched_files_equal(&patch0[index], &patch1[index])  {
+        } else if index >= patch1.len() || !are_patched_files_equal(&patch0[index], &patch1[index])
+        {
             // a file in patch0 not in patch1
             // or:
             // a file in both patch sets but different

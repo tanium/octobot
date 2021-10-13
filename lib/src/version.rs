@@ -38,7 +38,8 @@ impl Version {
 
 impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let value = self.parts
+        let value = self
+            .parts
             .iter()
             .map(|p| p.to_string())
             .collect::<Vec<_>>()

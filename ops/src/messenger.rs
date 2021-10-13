@@ -81,8 +81,7 @@ impl Messenger {
     }
 
     fn send_to_slack(&self, channel: &str, msg: &str, attachments: &[SlackAttachment]) {
-        self.slack
-            .send(slack::req(channel, msg, attachments));
+        self.slack.send(slack::req(channel, msg, attachments));
     }
 
     fn send_to_slackbots(

@@ -34,11 +34,8 @@ pub trait Session: Send + Sync {
         -> Result<()>;
 
     async fn add_pending_version(&self, key: &str, version: &str) -> Result<()>;
-    async fn remove_pending_versions(
-        &self,
-        key: &str,
-        versions: &[version::Version],
-    ) -> Result<()>;
+    async fn remove_pending_versions(&self, key: &str, versions: &[version::Version])
+        -> Result<()>;
     async fn find_pending_versions(
         &self,
         proj: &str,

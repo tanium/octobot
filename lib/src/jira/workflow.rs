@@ -61,10 +61,7 @@ fn get_mentioned_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) ->
     get_jira_keys(all_refs, projects)
 }
 
-fn get_referenced_jira_keys<T: CommitLike>(
-    commits: &[T],
-    projects: &[String],
-) -> Vec<String> {
+fn get_referenced_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
     let fixed = get_fixed_jira_keys(commits, projects);
 
     let mut refd = get_all_jira_keys(commits, projects);
@@ -74,10 +71,7 @@ fn get_referenced_jira_keys<T: CommitLike>(
     refd
 }
 
-pub(crate) fn get_all_jira_keys<T: CommitLike>(
-    commits: &[T],
-    projects: &[String],
-) -> Vec<String> {
+pub(crate) fn get_all_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
     get_jira_keys(
         commits.iter().map(|c| c.message().to_string()).collect(),
         projects,
@@ -594,10 +588,7 @@ mod tests {
             Some(t2.clone()),
             pick_transition(&["inside-t2".into()], &[t1.clone(), t2.clone()])
         );
-        assert_eq!(
-            None,
-            pick_transition(&["something-else".into()], &[t1, t2])
-        );
+        assert_eq!(None, pick_transition(&["something-else".into()], &[t1, t2]));
     }
 
     #[test]

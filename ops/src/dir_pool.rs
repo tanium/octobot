@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 pub struct DirPool {
