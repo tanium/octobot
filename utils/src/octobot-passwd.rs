@@ -27,7 +27,7 @@ fn main() {
     SystemRandom::new()
         .fill(&mut salt_bytes)
         .expect("get random");
-    let salt: String = salt_bytes.to_hex().to_string();
+    let salt: String = salt_bytes.to_hex();
 
     let pass_hash = passwd::store_password(&pass1, &salt);
 

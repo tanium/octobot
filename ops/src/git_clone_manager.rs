@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use failure::format_err;
@@ -37,7 +37,7 @@ impl GitCloneManager {
         let held_clone_dir = self
             .dir_pool
             .take_directory(session.github_host(), owner, repo);
-        self.clone_repo(&session, owner, repo, &held_clone_dir.dir())?;
+        self.clone_repo(&session, owner, repo, held_clone_dir.dir())?;
 
         Ok(held_clone_dir)
     }
@@ -47,7 +47,7 @@ impl GitCloneManager {
         session: &dyn github::api::Session,
         owner: &str,
         repo: &str,
-        clone_dir: &PathBuf,
+        clone_dir: &Path,
     ) -> Result<()> {
         let url = format!(
             "https://x-access-token@{}/{}/{}",

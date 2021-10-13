@@ -30,7 +30,7 @@ struct MockCall<T> {
 impl<T> MockCall<T> {
     pub fn new(ret: Result<T>, args: Vec<&str>) -> MockCall<T> {
         MockCall {
-            ret: ret,
+            ret,
             args: args.iter().map(|a| a.to_string()).collect(),
         }
     }
@@ -211,7 +211,7 @@ impl Session for MockJira {
     async fn remove_pending_versions(
         &self,
         key: &str,
-        versions: &Vec<version::Version>,
+        versions: &[version::Version],
     ) -> Result<()> {
         let mut calls = self.remove_pending_versions_calls.lock().unwrap();
         assert!(
@@ -313,7 +313,7 @@ impl MockJira {
     pub fn mock_remove_pending_versions(
         &self,
         key: &str,
-        versions: &Vec<version::Version>,
+        versions: &[version::Version],
         ret: Result<()>,
     ) {
         self.remove_pending_versions_calls

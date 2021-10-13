@@ -23,5 +23,5 @@ pub fn new_token(app_id: u32, app_key_der: &[u8]) -> String {
 
     let key = EncodingKey::from_rsa_der(app_key_der);
 
-    return jsonwebtoken::encode(&Header::new(Algorithm::RS256), &claims, &key).unwrap();
+    jsonwebtoken::encode(&Header::new(Algorithm::RS256), &claims, &key).unwrap()
 }

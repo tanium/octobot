@@ -1,10 +1,7 @@
 use std::io::Read;
 
 pub fn in_docker() -> bool {
-    match do_in_docker() {
-        Ok(b) => b,
-        Err(_) => false,
-    }
+    do_in_docker().unwrap_or(false)
 }
 
 fn do_in_docker() -> std::io::Result<bool> {
@@ -12,5 +9,5 @@ fn do_in_docker() -> std::io::Result<bool> {
     let mut contents = String::new();
     f.read_to_string(&mut contents)?;
 
-    Ok(contents.find("docker").is_some())
+    Ok(contents.contains("docker"))
 }

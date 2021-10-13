@@ -22,7 +22,7 @@ impl HtmlHandler {
     }
 
     pub fn contents(&self) -> String {
-        if http_util::is_dev_mode() && self.path.len() > 0 {
+        if http_util::is_dev_mode() && !self.path.is_empty() {
             let mut file_contents = String::new();
             let mut file = match File::open(format!("octobot/src/assets/{}", self.path)) {
                 Ok(f) => f,

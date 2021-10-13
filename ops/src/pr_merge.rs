@@ -44,7 +44,7 @@ async fn clone_and_merge_pull_request<'a>(
     let clone_dir = held_clone_dir.dir();
     let git = Git::new(session.github_host(), session.github_token(), clone_dir);
 
-    merge_pull_request(&git, &session, &req, config, slack).await
+    merge_pull_request(&git, &session, req, config, slack).await
 }
 
 pub async fn merge_pull_request<'a>(
@@ -77,7 +77,7 @@ pub async fn merge_pull_request<'a>(
         let messenger = messenger::new(config.clone(), slack.clone());
         messenger.send_to_owner(
             &msg,
-            &vec![attach],
+            &[attach],
             &req.pull_request.user,
             &req.repo,
             &req.target_branch,
@@ -154,8 +154,8 @@ pub async fn try_merge_pull_request(
     }
 
     let (title, body, whitespace_mode) = cherry_pick(
-        &git,
-        &merge_commit_sha,
+        git,
+        merge_commit_sha,
         &pr_branch_name,
         pull_request.number,
         &req.target_branch,
@@ -202,7 +202,7 @@ pub async fn try_merge_pull_request(
             .await?;
     }
 
-    if whitespace_mode.len() > 0 {
+    if !whitespace_mode.is_empty() {
         let msg = format!(
             "Cherry-pick required option `{}`. Please verify correctness.",
             whitespace_mode
@@ -237,22 +237,21 @@ pub fn cherry_pick(
     // cherry-pick!
 
     let mut whitespace_mode = "";
-    if let Err(e) = do_cherry_pick(git, &commit_hash, &[], &user_opts) {
+    if let Err(e) = do_cherry_pick(git, commit_hash, &[], &user_opts) {
         info!(
             "Could not cherry-pick normally. Ignoring changed whitespace. {}",
             e
         );
 
         whitespace_mode = "ignore-space-change";
-        if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode], &user_opts) {
+        if let Err(e) = do_cherry_pick(git, commit_hash, &["-X", whitespace_mode], &user_opts) {
             info!(
                 "Could not cherry-pick with `-X {}`. Ignoring all whitespace. {}",
                 whitespace_mode, e
             );
 
             whitespace_mode = "ignore-all-space";
-            if let Err(e) = do_cherry_pick(git, &commit_hash, &["-X", whitespace_mode], &user_opts)
-            {
+            if let Err(e) = do_cherry_pick(git, commit_hash, &["-X", whitespace_mode], &user_opts) {
                 info!("Could not cherry-pick with `-X {}`: {}", whitespace_mode, e);
                 return Err(e);
             }
@@ -284,15 +283,12 @@ fn do_cherry_pick(
     opts: &[&str],
     user_opts: &[&str],
 ) -> Result<String> {
-    git.run(&vec!["reset", "--hard"])?;
+    git.run(&["reset", "--hard"])?;
 
     let mut args = vec!["-c", "merge.renameLimit=999999"];
     args.extend(user_opts.iter());
     args.extend(vec!["cherry-pick", "--allow-empty"].iter());
-
-    for i in 0..opts.len() {
-        args.push(opts[i]);
-    }
+    args.extend(opts);
     args.push(commit_hash);
 
     git.run(&args)
@@ -320,20 +316,17 @@ fn make_merge_desc(
 
     // strip out conventional commit prefix
     let mut prefix = String::new();
-    match Commit::new(&orig_title) {
-        Ok(commit) => {
-            prefix = commit.type_().to_owned();
-            if let Some(s) = commit.scope() {
-                prefix += &format!("({})", s);
-            }
-            if commit.breaking() {
-                prefix += "!";
-            }
-            prefix += ": ";
-            orig_title = commit.description().to_owned();
+    if let Ok(commit) = Commit::new(&orig_title) {
+        prefix = commit.type_().to_owned();
+        if let Some(s) = commit.scope() {
+            prefix += &format!("({})", s);
         }
-        Err(_) => (),
-    };
+        if commit.breaking() {
+            prefix += "!";
+        }
+        prefix += ": ";
+        orig_title = commit.description().to_owned();
+    }
 
     // strip out 'release' from the prefix to keep titles shorter
     let mut target_branch = target_branch.to_owned();
@@ -351,7 +344,7 @@ fn make_merge_desc(
     );
     let mut body = orig_desc.1;
 
-    if body.len() != 0 {
+    if !body.is_empty() {
         body += "\n\n";
     }
     body += format!("(cherry-picked from {}, PR #{})", commit_hash, pr_number).as_str();
@@ -381,14 +374,14 @@ pub fn req(
     pull_request: &github::PullRequest,
     target_branch: &str,
     release_branch_prefix: &str,
-    commits: Vec<github::Commit>,
+    commits: &[github::Commit],
 ) -> PRMergeRequest {
     PRMergeRequest {
         repo: repo.clone(),
         pull_request: pull_request.clone(),
         target_branch: target_branch.to_string(),
         release_branch_prefix: release_branch_prefix.to_string(),
-        commits: commits,
+        commits: commits.into(),
     }
 }
 
@@ -400,10 +393,10 @@ pub fn new_runner(
     metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<PRMergeRequest>> {
     Arc::new(Runner {
-        config: config,
-        github_app: github_app,
-        clone_mgr: clone_mgr.clone(),
-        slack: slack,
+        config,
+        github_app,
+        clone_mgr,
+        slack,
         metrics,
     })
 }

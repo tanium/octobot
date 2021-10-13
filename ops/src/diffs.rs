@@ -70,10 +70,10 @@ fn different_patch_files(patch0: &PatchSet, patch1: &PatchSet) -> Vec<PatchedFil
         if index >= patch0.len() {
             // a file in patch1 not in patch0
             different.push(patch1[index].clone())
-        } else if index >= patch1.len() {
+        } else if index >= patch1.len() || !are_patched_files_equal(&patch0[index], &patch1[index])
+        {
             // a file in patch0 not in patch1
-            different.push(patch0[index].clone())
-        } else if !are_patched_files_equal(&patch0[index], &patch1[index]) {
+            // or:
             // a file in both patch sets but different
             different.push(patch0[index].clone())
         }
@@ -185,7 +185,7 @@ index 4442a2c..007a2cf 100644
  pub mod force_push;
  pub mod git;"#;
 
-        let diffs = DiffOfDiffs::new(&diff0, &diff0);
+        let diffs = DiffOfDiffs::new(diff0, diff0);
         assert_eq!(true, diffs.are_equal());
         assert_eq!(Vec::<PatchedFile>::new(), diffs.different_patch_files());
 
@@ -224,7 +224,7 @@ index 4442a2c..007a2cf 100644
  pub mod force_push;
  pub mod git;"#;
 
-        assert_eq!(true, DiffOfDiffs::new(&diff0, &diff1).are_equal());
+        assert_eq!(true, DiffOfDiffs::new(diff0, diff1).are_equal());
     }
 
     #[test]
@@ -317,7 +317,7 @@ index 4442a2c..007a2cf 100644
  pub mod force_push;
  pub mod git;"#;
 
-        let diffs = DiffOfDiffs::new(&diff0, &diff1);
+        let diffs = DiffOfDiffs::new(diff0, diff1);
         assert_eq!(false, diffs.are_equal());
 
         let diff_files = diffs.different_patch_files();
@@ -339,7 +339,7 @@ index 06c9b9d..5007551 100644
 +two
 "#;
 
-        let diffs = DiffOfDiffs::new(&diff0, &diff0);
+        let diffs = DiffOfDiffs::new(diff0, diff0);
         assert_eq!(true, diffs.are_equal());
     }
 }

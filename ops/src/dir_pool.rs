@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 pub struct DirPool {
@@ -32,7 +32,7 @@ impl ArcDirPool {
     }
 
     pub fn take_directory(&self, host: &str, owner: &str, repo: &str) -> HeldDir {
-        return DirPool::take_directory(self.pool.clone(), host, owner, repo);
+        DirPool::take_directory(self.pool.clone(), host, owner, repo)
     }
 }
 
@@ -51,18 +51,18 @@ impl DirPool {
         let id;
         {
             let mut dirs = pool.available_dirs.lock().unwrap();
-            let entry = dirs.entry(key).or_insert(AvailableDirs::new());
+            let entry = dirs.entry(key).or_insert_with(AvailableDirs::new);
             id = entry.get_id();
         }
 
         HeldDir::new(id, repo_root, pool)
     }
 
-    fn return_dir(&self, id: u32, repo_root: &PathBuf) -> () {
+    fn return_dir(&self, id: u32, repo_root: &Path) {
         let key = repo_root.to_string_lossy().into_owned();
         {
             let mut dirs = self.available_dirs.lock().unwrap();
-            let entry = dirs.entry(key).or_insert(AvailableDirs::new());
+            let entry = dirs.entry(key).or_insert_with(AvailableDirs::new);
             entry.return_id(id);
         }
     }
@@ -101,7 +101,7 @@ impl HeldDir {
         }
     }
 
-    pub fn dir(&self) -> &PathBuf {
+    pub fn dir(&self) -> &Path {
         &self.dir
     }
 }

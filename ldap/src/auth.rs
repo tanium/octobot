@@ -40,7 +40,7 @@ pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> Result<bool> {
 
     // in the absence of `ldap_escape` from ldap3, just whitelist acceptable characters
     let re = Regex::new(r"([^A-Za-z0-9\.\-_@])").unwrap();
-    for cap in re.captures_iter(user) {
+    if let Some(cap) = re.captures(user) {
         info!(
             "Invalid username character in username: '{}', '{}'",
             &cap[1], user
@@ -55,7 +55,7 @@ pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> Result<bool> {
         .collect::<Vec<_>>();
 
     let user_filter;
-    if user_filters.len() == 0 {
+    if user_filters.is_empty() {
         info!("Cannot authenticate without userid attributes");
         return Ok(false);
     } else if user_filters.len() == 1 {
@@ -84,7 +84,7 @@ pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> Result<bool> {
 
     // now try to bind as the user
     let ldap = new_ldap(&config.url)?;
-    let res = ldap.simple_bind(&user_dn, &pass)?;
+    let res = ldap.simple_bind(user_dn, pass)?;
     if res == 0 {
         Ok(true)
     } else if res == 49 {
@@ -151,12 +151,12 @@ pub fn search(
                 .iter()
                 .next()
                 .map(|s| s.to_string())
-                .unwrap_or(String::new());
+                .unwrap_or_default();
             if dn.is_empty() {
                 warn!("Found entry with empty DN! Skipping.");
                 None
             } else {
-                Some(LDAPEntry { dn: dn })
+                Some(LDAPEntry { dn })
             }
         })
         .collect::<Vec<LDAPEntry>>();

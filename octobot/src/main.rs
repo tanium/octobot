@@ -1,3 +1,5 @@
+#![allow(clippy::new_without_default)]
+
 use std::io::Write;
 
 use failure::format_err;
@@ -55,9 +57,9 @@ fn run() -> Result<()> {
 fn setup_logging() {
     let formatter = |buf: &mut env_logger::fmt::Formatter, record: &log::Record| {
         let now = chrono::Local::now();
-        write!(
+        writeln!(
             buf,
-            "[{},{:03}][{}:{}] - {} - {}\n",
+            "[{},{:03}][{}:{}] - {} - {}",
             now.format("%Y-%m-%d %H:%M:%S"),
             now.timestamp_subsec_millis(),
             thread_id::get(),

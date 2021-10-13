@@ -38,19 +38,13 @@ pub struct RepoAdmin {
 
 impl UserAdmin {
     pub fn new(config: Arc<Config>, op: Op) -> Box<UserAdmin> {
-        Box::new(UserAdmin {
-            config: config,
-            op: op,
-        })
+        Box::new(UserAdmin { config, op })
     }
 }
 
 impl RepoAdmin {
     pub fn new(config: Arc<Config>, op: Op) -> Box<RepoAdmin> {
-        Box::new(RepoAdmin {
-            config: config,
-            op: op,
-        })
+        Box::new(RepoAdmin { config, op })
     }
 }
 
@@ -58,10 +52,10 @@ impl RepoAdmin {
 impl Handler for UserAdmin {
     async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
         match &self.op {
-            &Op::List => self.get_all(req).await,
-            &Op::Create => self.create(req).await,
-            &Op::Update => self.update(req).await,
-            &Op::Delete => self.delete(req).await,
+            Op::List => self.get_all(req).await,
+            Op::Create => self.create(req).await,
+            Op::Update => self.update(req).await,
+            Op::Delete => self.delete(req).await,
         }
     }
 }
@@ -74,7 +68,7 @@ impl UserAdmin {
         }
 
         let users = self.config.users().get_all()?;
-        let resp = UsersResp { users: users };
+        let resp = UsersResp { users };
 
         let users = serde_json::to_string(&resp)?;
 
@@ -122,10 +116,10 @@ impl UserAdmin {
 impl Handler for RepoAdmin {
     async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
         match &self.op {
-            &Op::List => self.get_all(req).await,
-            &Op::Create => self.create(req).await,
-            &Op::Update => self.update(req).await,
-            &Op::Delete => self.delete(req).await,
+            Op::List => self.get_all(req).await,
+            Op::Create => self.create(req).await,
+            Op::Update => self.update(req).await,
+            Op::Delete => self.delete(req).await,
         }
     }
 }
@@ -143,7 +137,7 @@ impl RepoAdmin {
                 return Ok(self.respond_error(&format!("{}", e)));
             }
         };
-        let resp = ReposResp { repos: repos };
+        let resp = ReposResp { repos };
 
         let repos = match serde_json::to_string(&resp) {
             Ok(u) => u,
@@ -198,7 +192,7 @@ pub struct MergeVersions {
 
 impl MergeVersions {
     pub fn new(config: Arc<Config>) -> Box<MergeVersions> {
-        Box::new(MergeVersions { config: config })
+        Box::new(MergeVersions { config })
     }
 }
 
@@ -238,8 +232,8 @@ impl MergeVersions {
         };
 
         if !merge_req.dry_run {
-            jira_config.username = merge_req.admin_user.unwrap_or(String::new());
-            jira_config.password = merge_req.admin_pass.unwrap_or(String::new());
+            jira_config.username = merge_req.admin_user.unwrap_or_default();
+            jira_config.password = merge_req.admin_pass.unwrap_or_default();
 
             if jira_config.username.is_empty() || jira_config.password.is_empty() {
                 return http_util::new_bad_req_resp("JIRA auth required for non dry-run");

@@ -35,8 +35,8 @@ impl TempGit {
 
         let test = TempGit {
             _dir: dir,
-            git: git,
-            repo_dir: repo_dir,
+            git,
+            repo_dir,
         };
 
         test.reclone();
@@ -63,7 +63,7 @@ impl TempGit {
         full_args.extend(args.iter());
         self.git
             .run(&full_args)
-            .expect(&format!("Failed running git: `{:?}`", args))
+            .unwrap_or_else(|_| panic!("Failed running git: `{:?}`", args))
     }
 
     pub fn reclone(&self) {
@@ -91,7 +91,7 @@ impl TempGit {
     fn write_file(&self, path: &str, contents: &str) {
         let path = self.repo_dir.join(path);
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect(&format!("create dir '{:?}'", parent));
+            std::fs::create_dir_all(parent).unwrap_or_else(|_| panic!("create dir '{:?}'", parent));
         }
 
         let mut file = File::create(path).expect("create file");
@@ -101,10 +101,11 @@ impl TempGit {
 
     pub fn read_file(&self, path: &str) -> String {
         let path = self.repo_dir.join(path);
-        let mut f = std::fs::File::open(&path).expect(&format!("unable to open file {:?}", path));
+        let mut f =
+            std::fs::File::open(&path).unwrap_or_else(|_| panic!("unable to open file {:?}", path));
         let mut contents = String::new();
         f.read_to_string(&mut contents)
-            .expect(&format!("error reading file {:?}", path));
-        return contents;
+            .unwrap_or_else(|_| panic!("error reading file {:?}", path));
+        contents
     }
 }

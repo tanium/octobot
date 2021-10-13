@@ -219,14 +219,14 @@ pub fn cleanup_path(path: &str) -> String {
         return path;
     }
 
-    if !path.starts_with("/") {
+    if !path.starts_with('/') {
         path = "/".to_string() + &path;
     }
 
-    match path.find(".") {
+    match path.find('.') {
         None => path
-            .split("/")
-            .filter(|p| p.find(".").is_none())
+            .split('/')
+            .filter(|p| p.find('.').is_none())
             .take(3)
             .collect::<Vec<_>>()
             .join("/"),

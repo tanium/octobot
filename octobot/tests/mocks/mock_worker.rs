@@ -61,7 +61,7 @@ impl<T: PartialEq + Debug + Send + Sync + 'static> LockedMockWorker<T> {
 }
 
 impl<T: PartialEq + Debug + Send + Sync + 'static> Worker<T> for MockWorker<T> {
-    fn send(&self, req: T) -> () {
+    fn send(&self, req: T) {
         let mut reqs = self.reqs.lock().unwrap();
         assert!(reqs.len() > 0, "Unexpected request to worker {}", self.name);
         let next_req = reqs.remove(0);

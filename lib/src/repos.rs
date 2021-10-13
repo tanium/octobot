@@ -120,7 +120,7 @@ impl RepoJiraConfig {
 
 impl RepoConfig {
     pub fn new(db: Database) -> RepoConfig {
-        RepoConfig { db: db }
+        RepoConfig { db }
     }
 
     pub fn insert(&mut self, repo: &str, channel: &str) -> Result<()> {
@@ -191,7 +191,7 @@ impl RepoConfig {
         &mut self,
         tx: &Transaction,
         id: i64,
-        jira_config: &Vec<RepoJiraConfig>,
+        jira_config: &[RepoJiraConfig],
     ) -> Result<()> {
         for config in jira_config {
             tx.execute(
@@ -223,7 +223,7 @@ impl RepoConfig {
         &self,
         repo: &github::Repo,
         branch: &str,
-        commits: &Vec<T>,
+        commits: &[T],
     ) -> Vec<String> {
         let info = match self.lookup_info(repo) {
             None => return vec![],
@@ -235,7 +235,7 @@ impl RepoConfig {
         let channels = configs
             .into_iter()
             .filter(|c| {
-                !c.channel.is_empty() && jira::workflow::references_jira(&commits, &c.jira_project)
+                !c.channel.is_empty() && jira::workflow::references_jira(commits, &c.jira_project)
             })
             .map(|c| c.channel)
             .collect::<Vec<_>>();
@@ -258,8 +258,8 @@ impl RepoConfig {
     pub fn jira_configs(&self, repo: &github::Repo, branch: &str) -> Vec<RepoJiraConfig> {
         let configs = self
             .lookup_info(repo)
-            .map(|r| r.jira_config.clone())
-            .unwrap_or(vec![]);
+            .map(|r| r.jira_config)
+            .unwrap_or_default();
 
         self.filter_configs(configs, branch)
     }
@@ -306,7 +306,7 @@ impl RepoConfig {
 
         let mut repos = vec![];
         while let Ok(Some(row)) = rows.next() {
-            repos.push(self.map_row(&conn, &row, &cols)?);
+            repos.push(self.map_row(&conn, row, &cols)?);
         }
 
         Ok(repos)
@@ -331,7 +331,7 @@ impl RepoConfig {
 
         let mut repos = Vec::new();
         while let Ok(Some(row)) = rows.next() {
-            repos.push(self.map_row(&conn, &row, &cols)?);
+            repos.push(self.map_row(&conn, row, &cols)?);
         }
 
         // try to match by org/repo
@@ -352,14 +352,14 @@ impl RepoConfig {
 
     fn map_row(&self, conn: &Connection, row: &Row, cols: &db::Columns) -> Result<RepoInfo> {
         let id = cols.get(row, "id")?;
-        let jira_config = self.load_jira_config(&conn, id)?;
+        let jira_config = self.load_jira_config(conn, id)?;
 
         Ok(RepoInfo {
             id: Some(id),
             repo: cols.get(row, "repo")?,
             channel: cols.get(row, "channel")?,
             force_push_notify: db::to_bool(cols.get(row, "force_push_notify")?),
-            jira_config: jira_config,
+            jira_config,
             release_branch_prefix: cols.get(row, "release_branch_prefix")?,
         })
     }
@@ -491,7 +491,7 @@ mod tests {
         // no matching jiras -> default
         assert_eq!(
             vec!["the-repo-reviews"],
-            repos.lookup_channels(&repo, "", &vec![none_commit.clone()])
+            repos.lookup_channels(&repo, "", &vec![none_commit])
         );
 
         // matching jiras, wrong branch -> default
@@ -525,11 +525,7 @@ mod tests {
         );
         assert_eq!(
             vec!["client-reviews", "server-reviews"],
-            repos.lookup_channels(
-                &repo,
-                "main",
-                &vec![client_commit.clone(), server_commit.clone()]
-            )
+            repos.lookup_channels(&repo, "main", &vec![client_commit, server_commit])
         );
 
         // both jiras - release branch
@@ -539,7 +535,7 @@ mod tests {
         );
         assert_eq!(
             vec!["client-reviews"],
-            repos.lookup_channels(&repo, "release/client-1.0", &vec![both_commit.clone()])
+            repos.lookup_channels(&repo, "release/client-1.0", &vec![both_commit])
         );
     }
 

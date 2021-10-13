@@ -103,7 +103,7 @@ impl Git {
 
         let mut lines = message.lines();
         let title: String = lines.next().unwrap_or("").into();
-        let body: Vec<&str> = lines.skip_while(|ref l| l.trim().len() == 0).collect();
+        let body: Vec<&str> = lines.skip_while(|l| l.trim().is_empty()).collect();
 
         Ok((title, body.join("\n")))
     }
@@ -138,7 +138,7 @@ impl Git {
             .spawn()
             .map_err(|e| format_err!("Error starting git (args: {:?}): {}", args, e))?;
 
-        if let Some(ref stdin) = stdin {
+        if let Some(stdin) = stdin {
             if let Some(ref mut child_stdin) = child.stdin {
                 child_stdin
                     .write_all(stdin.as_bytes())
@@ -151,12 +151,12 @@ impl Git {
             .map_err(|e| format_err!("Error running git (args: {:?}): {}", args, e))?;
 
         let mut output = String::new();
-        if result.stdout.len() > 0 {
+        if !result.stdout.is_empty() {
             output += String::from_utf8_lossy(&result.stdout).as_ref();
         }
 
         if !result.status.success() {
-            if result.stderr.len() > 0 {
+            if !result.stderr.is_empty() {
                 output += String::from_utf8_lossy(&result.stderr).as_ref();
             }
             Err(format_err!(

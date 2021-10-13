@@ -26,6 +26,7 @@ use octobot_lib::metrics::{self, Metrics};
 #[cfg(target_os = "linux")]
 use crate::docker;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn comment_repo_version(
     version_script: &str,
     jira_config: &JiraConfig,
@@ -36,21 +37,21 @@ pub async fn comment_repo_version(
     repo: &str,
     branch_name: &str,
     commit_hash: &str,
-    commits: &Vec<github::PushCommit>,
-    jira_projects: &Vec<String>,
+    commits: &[github::PushCommit],
+    jira_projects: &[String],
 ) -> Result<()> {
     let github = github_app.new_session(owner, repo).await?;
     let held_clone_dir = clone_mgr.clone(owner, repo).await?;
     let clone_dir = held_clone_dir.dir();
 
-    let git = Git::new(github.github_host(), github.github_token(), &clone_dir);
+    let git = Git::new(github.github_host(), github.github_token(), clone_dir);
 
     // setup branch
     git.checkout_branch(branch_name, commit_hash)?;
 
     let version = run_script(version_script, clone_dir)?;
 
-    let maybe_version = if version.len() > 0 {
+    let maybe_version = if !version.is_empty() {
         Some(version.as_str())
     } else {
         None
@@ -129,7 +130,7 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
     })?;
 
     let mut output = String::new();
-    if result.stdout.len() > 0 {
+    if !result.stdout.is_empty() {
         let stdout = String::from_utf8_lossy(&result.stdout).into_owned();
         debug!("Version script stdout: \n---\n{}\n---", stdout);
         output += &stdout;
@@ -138,7 +139,7 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
             let new_lines: Vec<String> = output
                 .lines()
                 .skip(1)
-                .skip_while(|s| s.trim().len() == 0)
+                .skip_while(|s| s.trim().is_empty())
                 .map(|s| s.into())
                 .collect();
             output = new_lines.join("\n");
@@ -146,7 +147,7 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
     }
 
     let mut stderr = String::new();
-    if result.stderr.len() > 0 {
+    if !result.stderr.is_empty() {
         stderr = String::from_utf8_lossy(&result.stderr).into_owned();
         debug!("Version script stderr: \n---\n{}\n---", stderr);
     }
@@ -196,13 +197,13 @@ pub fn req(
     repo: &github::Repo,
     branch: &str,
     commit_hash: &str,
-    commits: &Vec<github::PushCommit>,
+    commits: &[github::PushCommit],
 ) -> RepoVersionRequest {
     RepoVersionRequest {
         repo: repo.clone(),
         branch: branch.to_string(),
         commit_hash: commit_hash.to_string(),
-        commits: commits.clone(),
+        commits: commits.into(),
     }
 }
 
@@ -215,11 +216,11 @@ pub fn new_runner(
     metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<RepoVersionRequest>> {
     Arc::new(Runner {
-        config: config,
-        github_app: github_app,
-        jira_session: jira_session,
-        clone_mgr: clone_mgr,
-        slack: slack,
+        config,
+        github_app,
+        jira_session,
+        clone_mgr,
+        slack,
         metrics,
     })
 }
@@ -255,7 +256,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             jira,
                             self.github_app.borrow(),
                             self.clone_mgr.borrow(),
-                            &req.repo.owner.login(),
+                            req.repo.owner.login(),
                             &req.repo.name,
                             &req.branch,
                             &req.commit_hash,
@@ -280,7 +281,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                     "Error running version script for [{}]",
                                     config.jira_project
                                 ),
-                                &vec![attach],
+                                &[attach],
                                 &req.repo,
                                 &req.branch,
                                 &req.commits,

@@ -35,8 +35,14 @@ jobs:
       with:
         command: test
 
-    - name: Lint
+    - name: Format
       uses: actions-rs/cargo@v1
       with:
         command: fmt
         args: --all -- --check
+
+    - name: Lint
+      uses: actions-rs/cargo@v1
+      with:
+        command: clippy
+        args: -- -D warnings

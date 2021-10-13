@@ -5,7 +5,7 @@ use rusqlite::{Connection, Transaction};
 use crate::db::migrations_code;
 use crate::errors::*;
 
-const CREATE_VERSIONS: &'static str = r#"
+const CREATE_VERSIONS: &str = r#"
 create table __version ( current_version integer primary key )
 "#;
 

@@ -14,7 +14,7 @@ impl Version {
             .split('.')
             .map(|p| p.parse::<u32>())
             .collect::<Vec<_>>();
-        if parts.iter().any(|ref p| p.is_err()) {
+        if parts.iter().any(|p| p.is_err()) {
             return None;
         }
         let mut parts: Vec<u32> = parts.into_iter().map(|p| p.unwrap()).collect();
@@ -22,15 +22,7 @@ impl Version {
             parts.push(0)
         }
 
-        Some(Version { parts: parts })
-    }
-
-    pub fn to_string(&self) -> String {
-        self.parts
-            .iter()
-            .map(|p| p.to_string())
-            .collect::<Vec<_>>()
-            .join(".")
+        Some(Version { parts })
     }
 
     pub fn major(&self) -> u32 {
@@ -46,13 +38,19 @@ impl Version {
 
 impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        let value = self
+            .parts
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(".");
+        write!(f, "{}", value)
     }
 }
 
 impl PartialEq for Version {
     fn eq(&self, other: &Version) -> bool {
-        self.cmp(&other) == Ordering::Equal
+        self.cmp(other) == Ordering::Equal
     }
 }
 
@@ -63,10 +61,9 @@ impl PartialOrd for Version {
         // Note: this is always going to be at least 3.
         let min_len = cmp::min(self.parts.len(), other.parts.len());
         for i in 0..min_len {
-            if self.parts[i] < other.parts[i] {
-                return Some(Ordering::Less);
-            } else if self.parts[i] > other.parts[i] {
-                return Some(Ordering::Greater);
+            let result = self.parts[i].cmp(&other.parts[i]);
+            if !result.is_eq() {
+                return Some(result);
             }
         }
 
@@ -85,13 +82,13 @@ impl PartialOrd for Version {
             longer_parts = &other.parts;
             nonzero_answer = Ordering::Less;
         }
-        for i in min_len..longer_parts.len() {
-            if longer_parts[i] != 0 {
+        for part in longer_parts.iter().skip(min_len) {
+            if *part != 0 {
                 return Some(nonzero_answer);
             }
         }
 
-        return Some(Ordering::Equal);
+        Some(Ordering::Equal)
     }
 }
 

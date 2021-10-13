@@ -5,15 +5,14 @@ use crate::errors::*;
 use crate::github;
 use crate::jira;
 
-const JIRA_REF_CONTEXT: &'static str = "jira";
+const JIRA_REF_CONTEXT: &str = "jira";
 
-const ALLOWED_SKIP_TYPES: &'static [&'static str] =
-    &["build", "chore", "docs", "refactor", "style", "test"];
+const ALLOWED_SKIP_TYPES: &[&str] = &["build", "chore", "docs", "refactor", "style", "test"];
 
 pub async fn check_jira_refs(
     pull_request: &github::PullRequest,
-    commits: &Vec<github::Commit>,
-    projects: &Vec<String>,
+    commits: &[github::Commit],
+    projects: &[String],
     github: &dyn github::api::Session,
 ) {
     // Always skip projects with no JIRAs configured
@@ -38,8 +37,8 @@ pub async fn check_jira_refs(
 // consideration, not just what was recently pushed.
 async fn do_check_jira_refs(
     pull_request: &github::PullRequest,
-    commits: &Vec<github::Commit>,
-    projects: &Vec<String>,
+    commits: &[github::Commit],
+    projects: &[String],
     github: &dyn github::api::Session,
 ) -> Result<()> {
     let mut run = github::CheckRun::new(JIRA_REF_CONTEXT, pull_request, None);
@@ -74,7 +73,7 @@ fn conventional_commit_jira_skip_type(title: &str) -> Option<&str> {
                 }
             }
 
-            return None;
+            None
         }
         Err(_) => {
             // no conventional commit: require jira
@@ -93,7 +92,7 @@ async fn do_skip_jira_check(
 
     let mut run = github::CheckRun::new(JIRA_REF_CONTEXT, pull_request, None);
     run = run.completed(github::Conclusion::Neutral);
-    run.output = Some(github::CheckOutput::new(&msg, &body));
+    run.output = Some(github::CheckOutput::new(msg, &body));
 
     github.create_check_run(pull_request, &run).await?;
 

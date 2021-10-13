@@ -58,7 +58,7 @@ impl HTTPClient {
         self.metric_api_responses = Some(responses);
         self.metric_api_duration = Some(request_duration);
 
-        return self;
+        self
     }
 
     pub fn with_secret_path(mut self, path: String) -> Self {
@@ -71,7 +71,7 @@ impl HTTPClient {
             self.api_base.clone()
         } else if path.starts_with("http://") || path.starts_with("https://") {
             path.to_string()
-        } else if path.starts_with("/") {
+        } else if path.starts_with('/') {
             self.api_base.clone() + path
         } else {
             self.api_base.clone() + "/" + path
@@ -212,7 +212,7 @@ impl HTTPClient {
             Err(e) => {
                 self.maybe_record_status(res.status().as_str());
                 let err: Result<()> = self.make_clean_err(e);
-                let text = res.text().await.unwrap_or(String::new());
+                let text = res.text().await.unwrap_or_default();
                 bail!("{}. Response body: {}", err.unwrap_err(), text);
             }
         }
@@ -226,7 +226,7 @@ impl HTTPClient {
             Ok(r) => Ok(r),
             Err(e) => {
                 self.maybe_record_status("<invalid json>");
-                return self.make_clean_err(e);
+                self.make_clean_err(e)
             }
         }
     }

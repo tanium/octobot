@@ -17,7 +17,7 @@ pub fn make_link(url: &str, text: &str) -> String {
 }
 
 fn find_github_username(name: &str) -> Option<&str> {
-    if name.len() == 0 {
+    if name.is_empty() {
         return None;
     }
 
@@ -34,7 +34,7 @@ fn find_github_username(name: &str) -> Option<&str> {
 pub fn get_mentioned_usernames(body: &str) -> Vec<&str> {
     let mut mentions = Vec::new();
     for token in body.split_whitespace() {
-        if token.starts_with("@") && token.len() > 1 {
+        if token.starts_with('@') && token.len() > 1 {
             if let Some(username) = find_github_username(token.split_at(1).1) {
                 mentions.push(username);
             }
@@ -45,7 +45,7 @@ pub fn get_mentioned_usernames(body: &str) -> Vec<&str> {
 
 pub fn format_duration(dur: std::time::Duration) -> String {
     let seconds = dur.as_secs();
-    let ms = (dur.subsec_micros() as f64) / 1000 as f64;
+    let ms = (dur.subsec_micros() as f64) / 1000_f64;
     if seconds > 0 {
         format!("{} s, {:.4} ms", seconds, ms)
     } else {
@@ -78,9 +78,9 @@ pub fn parse_query(query_params: Option<&str>) -> HashMap<String, String> {
     }
     query_params
         .unwrap()
-        .split("&")
+        .split('&')
         .filter_map(|v| {
-            let parts = v.splitn(2, "=").collect::<Vec<_>>();
+            let parts = v.splitn(2, '=').collect::<Vec<_>>();
             if parts.len() != 2 {
                 None
             } else {

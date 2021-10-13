@@ -123,7 +123,7 @@ async fn test_pr_merge_basic() {
     );
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -237,7 +237,7 @@ if (true)    {
     );
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -341,7 +341,7 @@ if (true) {
     );
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -425,7 +425,7 @@ async fn test_pr_merge_conventional_commit() {
     );
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -518,7 +518,7 @@ async fn test_pr_merge_backport_failure() {
         slack::req(
             "the-review-channel",
             "Error backporting PR from my-feature-branch to release/1.0 (<http://the-github-host/the-owner/the-repo|the-owner/the-repo>)",
-            vec![SlackAttachmentBuilder::new("bad stuff")
+            &[SlackAttachmentBuilder::new("bad stuff")
                 .title("Source PR: #123: \"The Title\"")
                 .title_link("")
                 .color("danger")
@@ -527,7 +527,7 @@ async fn test_pr_merge_backport_failure() {
     ]);
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", vec![]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,

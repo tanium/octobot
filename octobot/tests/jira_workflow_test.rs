@@ -31,10 +31,7 @@ fn new_test() -> JiraWorkflowTest {
         login_suffix: None,
     };
 
-    JiraWorkflowTest {
-        jira: jira,
-        config: config,
-    }
+    JiraWorkflowTest { jira, config }
 }
 
 fn new_pr() -> github::PullRequest {

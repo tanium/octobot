@@ -54,7 +54,7 @@ impl OctobotService {
             .http_duration
             .with(&hashmap! {
                     "method" => req.method().as_str(),
-                    "path" => &metrics_path,
+                    "path" => metrics_path,
             })
             .start_timer();
 
