@@ -81,7 +81,7 @@ impl PartialOrd for Version {
             longer_parts = &other.parts;
             nonzero_answer = Ordering::Less;
         }
-        for part in longer_parts {
+        for part in longer_parts.iter().skip(min_len) {
             if *part != 0 {
                 return Some(nonzero_answer);
             }
