@@ -42,6 +42,17 @@ fn test_has_branch() {
 }
 
 #[test]
+fn test_has_remote_branch() {
+    let git = TempGit::new();
+
+    git.run_git(&["checkout", "-b", "release/1.0.1"]);
+    git.run_git(&["push", "origin", "release/1.0.1"]);
+
+    assert_eq!(true, git.git.has_remote_branch("release/1.0.1").unwrap());
+    assert_eq!(false, git.git.has_remote_branch("release/1.0").unwrap());
+}
+
+#[test]
 fn test_does_branch_contain() {
     let git = TempGit::new();
 
