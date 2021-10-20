@@ -49,6 +49,13 @@ impl Git {
         Ok(Git::branches_output_contains(&output, branch))
     }
 
+    pub fn has_remote_branch(&self, branch: &str) -> Result<bool> {
+        let branches = self.run(&["ls-remote", "--heads"])?;
+        Ok(branches
+            .lines()
+            .any(|l| l.ends_with(&format!("refs/heads/{}", branch))))
+    }
+
     pub fn current_branch(&self) -> Result<String> {
         self.run(&["rev-parse", "--abbrev-ref", "HEAD"])
     }

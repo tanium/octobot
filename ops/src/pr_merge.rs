@@ -145,8 +145,7 @@ pub async fn try_merge_pull_request(
     );
 
     // make sure there isn't already such a branch
-    let current_remotes = git.run(&["ls-remote", "--heads"])?;
-    if current_remotes.contains(&format!("refs/heads/{}", pr_branch_name)) {
+    if git.has_remote_branch(&pr_branch_name)? {
         return Err(format_err!(
             "PR branch already exists on origin: '{}'",
             pr_branch_name
