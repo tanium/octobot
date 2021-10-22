@@ -1,6 +1,5 @@
 #[cfg(target_os = "linux")]
 use prometheus::process_collector::ProcessCollector;
-
 use prometheus::Registry;
 use prometheus::{register_gauge_vec_with_registry, GaugeVec};
 use prometheus::{register_gauge_with_registry, Gauge};
