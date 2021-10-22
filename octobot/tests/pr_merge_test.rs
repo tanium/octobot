@@ -110,7 +110,7 @@ async fn test_pr_merge_basic() {
         "the-owner",
         "the-repo",
         456,
-        vec!["user1".into(), "user2".into()],
+        vec!["user1".into(), "user2".into(), "the-pr-author".into()],
         Ok(()),
     );
 
@@ -147,6 +147,63 @@ async fn test_pr_merge_basic() {
         test.git
             .run_git(&["diff", "master", "origin/my-feature-branch-1.0"])
     );
+}
+
+#[tokio::test]
+async fn test_pr_merge_author_is_assignee() {
+    let (test, _temp_dir) = new_test();
+
+    // setup a release branch
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    // make a new commit on master
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
+
+    // pretend this came from a PR
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(commit1.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.user = github::User::new("the-pr-author");
+    let pr = pr;
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 456;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: I made a change",
+        &format!("(cherry-picked from {}, PR #123)", commit1),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["the-pr-author".into()],
+        Ok(()),
+    );
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -412,7 +469,7 @@ async fn test_pr_merge_conventional_commit() {
         "the-owner",
         "the-repo",
         456,
-        vec!["user1".into(), "user2".into()],
+        vec!["user1".into(), "user2".into(), "the-pr-author".into()],
         Ok(()),
     );
 
