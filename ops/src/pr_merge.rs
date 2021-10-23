@@ -61,7 +61,10 @@ pub async fn merge_pull_request<'a>(
         );
         error!("{}: {}", msg, e);
 
-        let github_markdown = format!("{}\n<details>\n<summary>Details</summary>\n\n```\n{}\n```\n</details>", msg, e);
+        let github_markdown = format!(
+            "{}\n<details>\n<summary>Details</summary>\n\n```\n{}\n```\n</details>",
+            msg, e
+        );
         let slack_markdown = format!("{}\n\n```\n{}\n```", msg, e);
 
         let attach = SlackAttachmentBuilder::new("")
