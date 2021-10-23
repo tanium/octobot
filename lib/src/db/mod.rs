@@ -1,6 +1,5 @@
 #[allow(clippy::module_inception)]
 mod db;
-mod migrations;
-mod migrations_code;
+pub mod migrations;
 
 pub use self::db::*;
