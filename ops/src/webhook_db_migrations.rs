@@ -11,7 +11,7 @@ pub fn all_migrations() -> Vec<Box<dyn Migration>> {
     create table last_checked_webhook (
       id integer PRIMARY KEY CHECK (id = 0),
       guid varchar not null,
-      delivered_at integer not null,
+      delivered_at integer not null
     );
     "#)]
 }
