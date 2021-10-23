@@ -138,6 +138,8 @@ impl Git {
             .stdout(Stdio::piped())
             .args(args)
             .env("GIT_ASKPASS", &self.ask_pass_path())
+            // sadly this is the only way i could find to silence the cherry-pick advice.
+            .env("GIT_CHERRY_PICK_HELP", "")
             .env("OCTOBOT_HOST", &self.host)
             .env("OCTOBOT_PASS", &self.token);
 
@@ -166,6 +168,16 @@ impl Git {
             if !result.stderr.is_empty() {
                 output += String::from_utf8_lossy(&result.stderr).as_ref();
             }
+        }
+
+        // no configuration option I can find that removes these messages (which are more suited for a terminal)
+        output = output
+            .lines()
+            .filter(|l| !l.contains("Performing inexact rename detection: "))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if !result.status.success() {
             Err(format_err!(
                 "Error running git (exit code {}, args: {:?}):\n{}",
                 result.status.code().unwrap_or(-1),

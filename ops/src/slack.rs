@@ -15,6 +15,7 @@ pub struct SlackAttachment {
     pub title: Option<String>,
     pub title_link: Option<String>,
     pub color: Option<String>,
+    pub mrkdwn_in: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -30,6 +31,7 @@ impl SlackAttachment {
             title: None,
             title_link: None,
             color: None,
+            mrkdwn_in: None,
         }
     }
 }
@@ -50,10 +52,17 @@ impl SlackAttachmentBuilder {
         self
     }
 
+    pub fn markdown<S: Into<String>>(&mut self, value: S) -> &mut SlackAttachmentBuilder {
+        self.attachment.text = value.into();
+        self.attachment.mrkdwn_in = Some(vec!["text".into()]);
+        self
+    }
+
     pub fn title<S: Into<String>>(&mut self, value: S) -> &mut SlackAttachmentBuilder {
         self.attachment.title = Some(value.into());
         self
     }
+
     pub fn title_link<S: Into<String>>(&mut self, value: S) -> &mut SlackAttachmentBuilder {
         self.attachment.title_link = Some(value.into());
         self
