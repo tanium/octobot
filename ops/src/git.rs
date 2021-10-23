@@ -164,10 +164,8 @@ impl Git {
             output += String::from_utf8_lossy(&result.stdout).as_ref();
         }
 
-        if !result.status.success() {
-            if !result.stderr.is_empty() {
-                output += String::from_utf8_lossy(&result.stderr).as_ref();
-            }
+        if !result.status.success() && !result.stderr.is_empty() {
+            output += String::from_utf8_lossy(&result.stderr).as_ref();
         }
 
         // no configuration option I can find that removes these messages (which are more suited for a terminal)
