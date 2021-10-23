@@ -502,7 +502,7 @@ async fn test_pr_merge_backport_failure() {
         "the-owner",
         "the-repo",
         123,
-        "Error backporting PR from my-feature-branch to release/1.0: bad stuff",
+        "Error backporting PR from my-feature-branch to release/1.0\n<details>\n<summary>Details</summary>\n\n```\nbad stuff\n```\n</details>",
         Ok(()),
     );
 
@@ -518,7 +518,8 @@ async fn test_pr_merge_backport_failure() {
         slack::req(
             "the-review-channel",
             "Error backporting PR from my-feature-branch to release/1.0 (<http://the-github-host/the-owner/the-repo|the-owner/the-repo>)",
-            &[SlackAttachmentBuilder::new("bad stuff")
+            &[SlackAttachmentBuilder::new("")
+                .markdown("Error backporting PR from my-feature-branch to release/1.0\n\n```\nbad stuff\n```")
                 .title("Source PR: #123: \"The Title\"")
                 .title_link("")
                 .color("danger")
