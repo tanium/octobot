@@ -2,7 +2,7 @@
 
 pub mod config;
 pub mod config_db;
-pub mod config_db_migrations;
+mod config_db_migrations;
 pub mod db;
 pub mod github;
 pub mod http_client;
