@@ -55,7 +55,20 @@ pub async fn merge_pull_request<'a>(
     slack: Arc<dyn worker::Worker<SlackRequest>>,
 ) {
     if let Err(e) = try_merge_pull_request(git, session, req).await {
-        let attach = SlackAttachmentBuilder::new(&format!("{}", e))
+        let msg = format!(
+            "Error backporting PR from {} to {}",
+            req.pull_request.head.ref_name, req.target_branch
+        );
+        error!("{}: {}", msg, e);
+
+        let github_markdown = format!(
+            "{}\n<details>\n<summary>Details</summary>\n\n```\n{}\n```\n</details>",
+            msg, e
+        );
+        let slack_markdown = format!("{}\n\n```\n{}\n```", msg, e);
+
+        let attach = SlackAttachmentBuilder::new("")
+            .markdown(&slack_markdown)
             .title(
                 format!(
                     "Source PR: #{}: \"{}\"",
@@ -66,13 +79,6 @@ pub async fn merge_pull_request<'a>(
             .title_link(req.pull_request.html_url.clone())
             .color("danger")
             .build();
-
-        let msg = format!(
-            "Error backporting PR from {} to {}",
-            req.pull_request.head.ref_name, req.target_branch
-        );
-        let msg_full = format!("{}: {}", msg, e);
-        error!("{}", msg_full);
 
         let messenger = messenger::new(config.clone(), slack.clone());
         messenger.send_to_owner(
@@ -89,7 +95,7 @@ pub async fn merge_pull_request<'a>(
                 req.repo.owner.login(),
                 &req.repo.name,
                 req.pull_request.number,
-                &msg_full,
+                &github_markdown,
             )
             .await
         {
