@@ -187,7 +187,7 @@ pub async fn try_merge_pull_request(
     // the original author is not a reviewer nor attached to the new PR
     // in any way.  To raise the visibility, add the original PR author
     // to the list of assignees
-    if pull_request.user.login().len() > 0
+    if !pull_request.user.login().is_empty()
         && !assignees.contains(&pull_request.user.login().to_string())
     {
         assignees.push(pull_request.user.login().to_string());
