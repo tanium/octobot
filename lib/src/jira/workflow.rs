@@ -271,7 +271,12 @@ pub async fn add_pending_version(
     jira: &dyn jira::api::Session,
 ) {
     if let Some(version) = maybe_version {
+        let mentioned = get_mentioned_jira_keys(commits, projects);
         for key in get_all_jira_keys(commits, projects) {
+            if mentioned.contains(&key) {
+                // don't add a pending version
+                continue;
+            }
             if let Err(e) = jira.add_pending_version(&key, version).await {
                 error!(
                     "Error adding pending version {} to key{}: {}",
