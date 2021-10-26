@@ -326,7 +326,7 @@ async fn test_add_pending_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_push_commit(
-        "Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999]",
+        "Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999] (See: CLI-123)",
         "aabbccddee",
     );
 
