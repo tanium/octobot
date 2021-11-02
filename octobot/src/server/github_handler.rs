@@ -443,7 +443,11 @@ impl GithubEventHandler {
             } else if self.action == "review_requested" {
                 if let Some(ref reviewers) = pull_request.requested_reviewers {
                     let assignees_str = self.slack_user_names(reviewers).join(", ");
-                    verb = Some(format!("submitted for review to {}", assignees_str));
+                    verb = Some(format!(
+                        "by {} submitted for review to {}",
+                        self.slack_user_name(&pull_request.user),
+                        assignees_str
+                    ));
                 } else {
                     verb = None;
                 }

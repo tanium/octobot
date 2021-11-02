@@ -817,7 +817,7 @@ async fn test_pull_request_review_requested() {
         .title("Pull Request #32: \"The PR\"")
         .title_link("http://the-pr")
         .build()];
-    let msg = "Pull Request submitted for review to joe.reviewer, smith.reviewer";
+    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer, smith.reviewer";
 
     test.slack.expect(vec![
         slack::req(
@@ -852,7 +852,7 @@ async fn test_pull_request_review_no_username() {
         .title("Pull Request #32: \"The PR\"")
         .title_link("http://the-pr")
         .build()];
-    let msg = "Pull Request submitted for review to some-unknown-reviewer";
+    let msg = "Pull Request by the.pr.owner submitted for review to some-unknown-reviewer";
 
     test.slack.expect(vec![
         slack::req(
