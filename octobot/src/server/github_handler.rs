@@ -2,7 +2,7 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
 use hyper::{Body, Request, Response, StatusCode};
-use log::{error, info};
+use log::{error, info, warn};
 use regex::Regex;
 use serde_json;
 use tokio;
@@ -284,7 +284,16 @@ impl Handler for GithubHandler {
                     )
                     .await
                 {
-                    Ok(pr) => changed_pr = Some(pr),
+                    Ok(mut refetched_pr) => {
+                        if refetched_pr.draft != pull_request.draft {
+                            warn!(
+                                "Refetched pull request had mismatched draft: {:?} != {:?}",
+                                refetched_pr.draft, pull_request.draft
+                            );
+                            refetched_pr.draft = pull_request.draft;
+                        }
+                        changed_pr = Some(refetched_pr);
+                    }
                     Err(e) => error!("Error refetching pull request to get reviewers: {}", e),
                 };
             }
@@ -318,7 +327,12 @@ type EventResponse = (StatusCode, String);
 
 impl GithubEventHandler {
     pub async fn handle_event(&self) -> Option<EventResponse> {
-        info!("Received event: {}", self.event);
+        info!(
+            "Received event: {}{}{}",
+            self.event,
+            if self.action.is_empty() { "" } else { "." },
+            self.action
+        );
         if self.event == "ping" {
             Some(self.handle_ping())
         } else if self.event == "pull_request" {
