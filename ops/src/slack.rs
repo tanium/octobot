@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use log::{error, info};
+use log::{debug, error, info};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::util;
@@ -129,21 +129,22 @@ impl Slack {
             return;
         }
 
-        info!("Sending message to #{}", channel);
+        debug!("Sending message to #{}", channel);
 
         let res: Result<SlackResponse> = self.client.post("/chat.postMessage", &slack_msg).await;
         match res {
             Ok(r) => {
                 if r.ok {
-                    info!("Successfully sent slack message")
+                    info!("Successfully sent slack message to {}", channel)
                 } else {
                     error!(
-                        "Error sending slack message: {}",
+                        "Error sending slack message to {}: {}",
+                        channel,
                         r.error.unwrap_or_default(),
                     )
                 }
             }
-            Err(e) => error!("Error sending slack message: {}", e),
+            Err(e) => error!("Error sending slack message to {}: {}", channel, e),
         }
     }
 
