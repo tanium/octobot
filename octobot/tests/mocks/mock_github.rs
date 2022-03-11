@@ -664,11 +664,12 @@ fn format_check_run(run: &CheckRun) -> String {
     };
 
     format!(
-        "{}, {:?}, {}",
+        "{}, {:?}, {}, {}",
         run.name,
         run.conclusion
             .as_ref()
             .unwrap_or(&Conclusion::ActionRequired),
+        run.head_sha,
         output
     )
 }

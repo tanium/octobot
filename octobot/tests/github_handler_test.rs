@@ -272,24 +272,21 @@ fn some_commits() -> Vec<Commit> {
 }
 
 fn expect_jira_ref_fail(git: &MockGithub) {
-    expect_jira_ref_fail_pr(git, some_pr().as_ref().unwrap())
+    expect_jira_ref_fail_pr(git, some_pr().as_ref().unwrap(), &some_commits())
 }
 
-fn expect_jira_ref_fail_pr(git: &MockGithub, pr: &PullRequest) {
-    let mut run = CheckRun::new("jira", pr, None).completed(Conclusion::Neutral);
+fn expect_jira_ref_fail_pr(git: &MockGithub, pr: &PullRequest, commits: &[Commit]) {
+    let mut run =
+        CheckRun::new("jira", &commits.last().unwrap().sha, None).completed(Conclusion::Neutral);
     run.output = Some(CheckOutput::new("Missing JIRA reference", ""));
 
     git.mock_create_check_run(pr, &run, Ok(1));
 }
 
-fn expect_jira_ref_pass(git: &MockGithub) {
-    expect_jira_ref_pass_pr(git, some_pr().as_ref().unwrap())
-}
-
-fn expect_jira_ref_pass_pr(git: &MockGithub, pr: &PullRequest) {
+fn expect_jira_ref_pass_pr(git: &MockGithub, pr: &PullRequest, commits: &[Commit]) {
     git.mock_create_check_run(
         pr,
-        &CheckRun::new("jira", pr, None).completed(Conclusion::Success),
+        &CheckRun::new("jira", &commits.last().unwrap().sha, None).completed(Conclusion::Success),
         Ok(1),
     );
 }
@@ -1260,8 +1257,8 @@ async fn test_push_with_pr() {
     pr2.requested_reviewers = None;
 
     // no jira references here: should fail
-    expect_jira_ref_fail_pr(&test.github, &pr1);
-    expect_jira_ref_fail_pr(&test.github, &pr2);
+    expect_jira_ref_fail_pr(&test.github, &pr1, &some_commits());
+    expect_jira_ref_fail_pr(&test.github, &pr2, &some_commits());
 
     test.github
         .mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
@@ -1341,7 +1338,7 @@ async fn test_push_force_notify() {
 
     test.mock_pull_request_commits();
 
-    expect_jira_ref_fail_pr(&test.github, &pr);
+    expect_jira_ref_fail_pr(&test.github, &pr, &some_commits());
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![SlackAttachmentBuilder::new("")
@@ -1421,7 +1418,7 @@ async fn test_push_force_notify_ignored() {
         32,
         Ok(some_commits()),
     );
-    expect_jira_ref_fail_pr(&test.github, &pr);
+    expect_jira_ref_fail_pr(&test.github, &pr, &some_commits());
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
     let attach = vec![SlackAttachmentBuilder::new("")
@@ -1534,7 +1531,11 @@ async fn test_jira_pull_request_opened() {
         &attach,
     )]);
 
-    expect_jira_ref_pass(&test.github);
+    expect_jira_ref_pass_pr(
+        &test.github,
+        some_pr().as_ref().unwrap(),
+        &some_jira_commits(),
+    );
 
     if let Some(ref jira) = test.jira {
         jira.mock_comment_issue(
@@ -1571,7 +1572,11 @@ async fn test_jira_pull_request_opened_too_many_commits() {
         Ok(many_jira_commits()),
     );
 
-    expect_jira_ref_pass(&test.github);
+    expect_jira_ref_pass_pr(
+        &test.github,
+        some_pr().as_ref().unwrap(),
+        &some_jira_commits(),
+    );
 
     let attach = vec![SlackAttachmentBuilder::new("")
         .title("Pull Request #32: \"The PR\"")

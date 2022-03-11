@@ -132,15 +132,14 @@ pub async fn try_merge_pull_request(
         ));
     }
 
-    let merge_commit_sha;
-    if let Some(ref sha) = pull_request.merge_commit_sha {
-        merge_commit_sha = sha;
+    let merge_commit_sha = if let Some(ref sha) = pull_request.merge_commit_sha {
+        sha
     } else {
         return Err(format_err!(
             "Pull Request #{} has no merge commit.",
             pull_request.number
         ));
-    }
+    };
 
     // strip everything before last slash
     let regex = Regex::new(r".*/").unwrap();

@@ -74,12 +74,11 @@ fn setup_logging() {
         .format(formatter)
         .filter(None, log::LevelFilter::Info);
 
-    let is_info;
-    if let Ok(ref env_log) = std::env::var("RUST_LOG") {
-        is_info = env_log.is_empty() || env_log.to_lowercase() == "info";
+    let is_info = if let Ok(ref env_log) = std::env::var("RUST_LOG") {
+        env_log.is_empty() || env_log.to_lowercase() == "info"
     } else {
-        is_info = true;
-    }
+        true
+    };
 
     if is_info {
         builder.filter(Some("rustls"), log::LevelFilter::Warn);

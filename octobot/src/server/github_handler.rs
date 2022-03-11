@@ -718,12 +718,11 @@ impl GithubEventHandler {
                 if let Some(ref commit_id) = comment.commit_id {
                     let commit: &str = &commit_id[0..7];
                     let commit_url = format!("{}/commit/{}", self.repository.html_url, commit_id);
-                    let commit_path: String;
-                    if let Some(ref path) = comment.path {
-                        commit_path = path.to_string();
+                    let commit_path = if let Some(ref path) = comment.path {
+                        path.to_string()
                     } else {
-                        commit_path = commit.to_string();
-                    }
+                        commit.to_string()
+                    };
 
                     let msg = format!(
                         "Comment on \"{}\" ({})",
@@ -830,9 +829,8 @@ impl GithubEventHandler {
                 if prs.is_empty() {
                     info!("No PRs found for '{}' ({})", branch_name, self.data.after());
                 } else {
-                    let attachments: Vec<_>;
-                    if let Some(ref commits) = self.data.commits {
-                        attachments = commits
+                    let attachments: Vec<_> = if let Some(ref commits) = self.data.commits {
+                        commits
                             .iter()
                             .map(|commit| {
                                 let msg = commit.message.lines().next().unwrap_or("");
@@ -841,10 +839,10 @@ impl GithubEventHandler {
                                     format!("{}: {}", util::make_link(&commit.url, hash), msg);
                                 SlackAttachmentBuilder::new(&attach).build()
                             })
-                            .collect();
+                            .collect()
                     } else {
-                        attachments = vec![];
-                    }
+                        vec![]
+                    };
 
                     let message = format!(
                         "{} pushed {} commit(s) to branch {}",
