@@ -377,7 +377,7 @@ impl Session for JiraSession {
 fn parse_pending_version_field(field: &serde_json::Value) -> Vec<version::Version> {
     let re = Regex::new(r"\s*,\s*").unwrap();
     re.split(field.as_str().unwrap_or("").trim())
-        .filter_map(|s| version::Version::parse(s))
+        .filter_map(version::Version::parse)
         .collect::<Vec<_>>()
 }
 
