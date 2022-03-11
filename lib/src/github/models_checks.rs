@@ -85,10 +85,10 @@ pub enum CheckStatus {
 }
 
 impl CheckRun {
-    pub fn new(name: &str, pr: &models::PullRequest, url: Option<String>) -> CheckRun {
+    pub fn new(name: &str, commit_sha: &str, url: Option<String>) -> CheckRun {
         CheckRun {
             name: name.into(),
-            head_sha: pr.head.sha.clone(),
+            head_sha: commit_sha.to_string(),
             status: CheckStatus::InProgress,
             conclusion: None,
             completed_at: None,
