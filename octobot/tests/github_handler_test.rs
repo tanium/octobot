@@ -283,10 +283,6 @@ fn expect_jira_ref_fail_pr(git: &MockGithub, pr: &PullRequest, commits: &[Commit
     git.mock_create_check_run(pr, &run, Ok(1));
 }
 
-fn expect_jira_ref_pass(git: &MockGithub) {
-    expect_jira_ref_pass_pr(git, some_pr().as_ref().unwrap(), &some_commits())
-}
-
 fn expect_jira_ref_pass_pr(git: &MockGithub, pr: &PullRequest, commits: &[Commit]) {
     git.mock_create_check_run(
         pr,
@@ -1535,7 +1531,11 @@ async fn test_jira_pull_request_opened() {
         &attach,
     )]);
 
-    expect_jira_ref_pass(&test.github);
+    expect_jira_ref_pass_pr(
+        &test.github,
+        some_pr().as_ref().unwrap(),
+        &some_jira_commits(),
+    );
 
     if let Some(ref jira) = test.jira {
         jira.mock_comment_issue(
@@ -1572,7 +1572,11 @@ async fn test_jira_pull_request_opened_too_many_commits() {
         Ok(many_jira_commits()),
     );
 
-    expect_jira_ref_pass(&test.github);
+    expect_jira_ref_pass_pr(
+        &test.github,
+        some_pr().as_ref().unwrap(),
+        &some_jira_commits(),
+    );
 
     let attach = vec![SlackAttachmentBuilder::new("")
         .title("Pull Request #32: \"The PR\"")
