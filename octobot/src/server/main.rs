@@ -27,10 +27,8 @@ pub fn start(config: Config) {
 async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     let config = Arc::new(config);
 
-    let github: Arc<dyn github::api::GithubSessionFactory>;
-
-    if config.github.app_id.is_some() {
-        github = match github::api::GithubApp::new(
+    let github_api: Arc<dyn github::api::GithubSessionFactory> = if config.github.app_id.is_some() {
+        match github::api::GithubApp::new(
             &config.github.host,
             config.github.app_id.expect("expected an app_id"),
             &config.github.app_key().expect("expected an app_key"),
@@ -40,9 +38,9 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         {
             Ok(s) => Arc::new(s),
             Err(e) => panic!("Error initiating github session: {}", e),
-        };
+        }
     } else {
-        github = match github::api::GithubOauthApp::new(
+        match github::api::GithubOauthApp::new(
             &config.github.host,
             config
                 .github
@@ -55,18 +53,17 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         {
             Ok(s) => Arc::new(s),
             Err(e) => panic!("Error initiating github session: {}", e),
-        };
-    }
+        }
+    };
 
-    let jira: Option<Arc<dyn jira::api::Session>>;
-    if let Some(ref jira_config) = config.jira {
-        jira = match JiraSession::new(jira_config, Some(metrics.clone())).await {
+    let jira_api: Option<Arc<dyn jira::api::Session>> = if let Some(ref jira_config) = config.jira {
+        match JiraSession::new(jira_config, Some(metrics.clone())).await {
             Ok(s) => Some(Arc::new(s)),
             Err(e) => panic!("Error initiating jira session: {}", e),
-        };
+        }
     } else {
-        jira = None;
-    }
+        None
+    };
 
     let http_addr: SocketAddr = match config.main.listen_addr {
         Some(ref addr_and_port) => addr_and_port.parse().unwrap(),
@@ -76,8 +73,8 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     let ui_sessions = Arc::new(Sessions::new());
     let github_handler_state = Arc::new(GithubHandlerState::new(
         config.clone(),
-        github.clone(),
-        jira.clone(),
+        github_api.clone(),
+        jira_api.clone(),
         metrics.clone(),
     ));
     let octobot = OctobotService::new(
