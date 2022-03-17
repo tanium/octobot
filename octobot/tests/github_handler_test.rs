@@ -739,6 +739,23 @@ async fn test_pull_request_edited() {
 }
 
 #[tokio::test]
+async fn test_pull_request_synchronize() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "synchronize".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.mock_pull_request_commits();
+
+    expect_jira_ref_fail(&test.github);
+
+    // no slack mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+}
+
+#[tokio::test]
 async fn test_pull_request_assigned() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();

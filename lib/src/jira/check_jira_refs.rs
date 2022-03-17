@@ -63,6 +63,13 @@ async fn do_check_jira_refs(
         run = run.completed(github::Conclusion::Success);
     }
 
+    log::info!(
+        "Creating jira check: PR {}; head: {}; commit: {} -> {:?}",
+        pull_request.html_url,
+        pull_request.head.sha,
+        run.head_sha,
+        run.status,
+    );
     github.create_check_run(pull_request, &run).await?;
 
     Ok(())

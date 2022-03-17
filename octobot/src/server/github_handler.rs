@@ -292,6 +292,13 @@ impl Handler for GithubHandler {
                             );
                             refetched_pr.draft = pull_request.draft;
                         }
+                        if refetched_pr.head.sha != pull_request.head.sha {
+                            warn!(
+                                "Refetched pull request had different HEAD commit hash: {:?} != {:?}",
+                                refetched_pr.head.sha, pull_request.head.sha
+                            );
+                        }
+
                         changed_pr = Some(refetched_pr);
                     }
                     Err(e) => error!("Error refetching pull request to get reviewers: {}", e),
@@ -466,6 +473,9 @@ impl GithubEventHandler {
                     verb = None;
                 }
                 notify_mode = NotifyMode::All;
+            } else if self.action == "synchronize" {
+                verb = Some("synchronize".to_string());
+                notify_mode = NotifyMode::None;
             } else {
                 verb = None;
                 notify_mode = NotifyMode::None;
@@ -522,11 +532,11 @@ impl GithubEventHandler {
                     .repos()
                     .jira_projects(&self.repository, branch_name);
 
-                let is_pull_request_ready =
+                let is_pull_request_first_ready =
                     self.action == "opened" || self.action == "ready_for_review";
 
                 // Mark JIRAs in review for PR open
-                if is_pull_request_ready {
+                if is_pull_request_first_ready {
                     if let Some(ref jira_config) = self.config.jira {
                         if let Some(ref jira_session) = self.jira_session {
                             if commits.len() > MAX_COMMITS_FOR_JIRA_CONSIDERATION {
@@ -558,7 +568,10 @@ impl GithubEventHandler {
 
                 // Check for jira reference on ready for review and PR title rename
                 // (since JIRA check ignore is based on PR title)
-                if is_pull_request_ready || self.action == "edited" {
+                if is_pull_request_first_ready
+                    || self.action == "edited"
+                    || self.action == "synchronize"
+                {
                     // Mark if no JIRA references
                     jira::check_jira_refs(
                         pull_request,
