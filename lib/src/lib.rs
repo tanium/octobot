@@ -1,6 +1,8 @@
 #![allow(clippy::new_without_default)]
 
 pub mod config;
+pub mod config_db;
+mod config_db_migrations;
 pub mod db;
 pub mod github;
 pub mod http_client;

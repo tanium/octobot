@@ -8,7 +8,7 @@ use tempdir::TempDir;
 
 use octobot::server::github_handler::GithubEventHandler;
 use octobot_lib::config::{Config, JiraConfig};
-use octobot_lib::db::Database;
+use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github::api::Session;
 use octobot_lib::github::*;
 use octobot_lib::jira;
@@ -114,7 +114,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
 
     let temp_dir = TempDir::new("github_handler_test.rs").unwrap();
     let db_file = temp_dir.path().join("db.sqlite3");
-    let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
+    let db = ConfigDatabase::new(&db_file.to_string_lossy()).expect("create temp database");
 
     let mut data = HookBody::new();
 

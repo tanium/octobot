@@ -6,7 +6,7 @@ use tempdir::TempDir;
 
 use mocks::mock_slack::MockSlack;
 use octobot_lib::config::Config;
-use octobot_lib::db::Database;
+use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github;
 use octobot_ops::messenger;
 use octobot_ops::slack;
@@ -14,7 +14,7 @@ use octobot_ops::slack;
 fn new_test() -> (Arc<Config>, TempDir) {
     let temp_dir = TempDir::new("repos.rs").unwrap();
     let db_file = temp_dir.path().join("db.sqlite3");
-    let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
+    let db = ConfigDatabase::new(&db_file.to_string_lossy()).expect("create temp database");
 
     let config = Arc::new(Config::new(db));
     config

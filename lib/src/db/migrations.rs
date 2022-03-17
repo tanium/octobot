@@ -2,7 +2,6 @@ use failure::format_err;
 use log::info;
 use rusqlite::{Connection, Transaction};
 
-use crate::db::migrations_code;
 use crate::errors::*;
 
 const CREATE_VERSIONS: &str = r#"
@@ -29,75 +28,11 @@ impl Migration for SQLMigration {
     }
 }
 
-fn sql(s: &'static str) -> Box<dyn Migration> {
+pub fn sql(s: &'static str) -> Box<dyn Migration> {
     Box::new(SQLMigration { sql: s })
 }
 
-fn all_migrations() -> Vec<Box<dyn Migration>> {
-    vec![
-        sql(r#"
-    create table users (
-      id integer not null,
-      github_name varchar not null,
-      slack_name varchar not null,
-      UNIQUE( github_name ),
-      PRIMARY KEY( id )
-    );
-
-    create table repos (
-      id integer not null,
-      repo varchar not null,
-      channel varchar not null,
-      force_push_notify tinyint not null,
-      force_push_reapply_statuses varchar not null,
-      branches varchar not null,
-      jira_projects varchar not null,
-      jira_versions_enabled tinyint not null,
-      version_script varchar not null,
-      release_branch_prefix varchar not null,
-
-      UNIQUE( repo, branches ),
-      PRIMARY KEY( id )
-    );
-    "#),
-        sql(r#"alter table users add column mute_direct_messages tinyint not null default 0"#),
-        sql(r#"alter table repos add column next_branch_suffix varchar not null default ''"#),
-        sql(r#"
-    create table repos_jiras (
-        repo_id integer not null,
-        jira varchar not null,
-        channel varchar not null,
-        version_script varchar not null,
-        release_branch_regex varchar not null,
-
-        PRIMARY KEY( repo_id, jira )
-    );
-    "#),
-        Box::new(migrations_code::MigrationReposJiras {}),
-        sql(r#"
-    create table repos_new (
-      id integer not null,
-      repo varchar not null,
-      channel varchar not null,
-      force_push_notify tinyint not null,
-      release_branch_prefix varchar not null,
-
-      UNIQUE( repo ),
-      PRIMARY KEY( id )
-    );
-
-    insert into repos_new
-        select id, repo, channel, force_push_notify, release_branch_prefix
-        from repos;
-
-    drop table repos;
-
-    alter table repos_new rename to repos;
-    "#),
-    ]
-}
-
-fn current_version(conn: &Connection) -> Result<Option<i32>> {
+pub fn current_version(conn: &Connection) -> Result<Option<i32>> {
     let mut version: Option<i32> = None;
     conn.query_row("SELECT current_version from __version", [], |row| {
         version = row.get(0).ok();
@@ -108,7 +43,7 @@ fn current_version(conn: &Connection) -> Result<Option<i32>> {
     Ok(version)
 }
 
-pub fn migrate(conn: &mut Connection) -> Result<()> {
+pub fn migrate(conn: &mut Connection, migrations: &[Box<dyn Migration>]) -> Result<()> {
     let version: Option<i32> = match current_version(conn) {
         Ok(v) => v,
         Err(_) => {
@@ -120,8 +55,6 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
     };
 
     info!("Current schema version: {:?}", version);
-
-    let migrations = all_migrations();
 
     let mut next_version = version.map(|v| v + 1).unwrap_or(0);
     while next_version < migrations.len() as i32 {
@@ -148,39 +81,4 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempdir::TempDir;
-
-    #[test]
-    fn test_migration_versions() {
-        let temp_dir = TempDir::new("users.rs").unwrap();
-        let db_file = temp_dir.path().join("db.sqlite3");
-        let mut conn = Connection::open(&db_file).expect("create temp database");
-
-        migrate(&mut conn).unwrap();
-
-        assert_eq!(
-            Some((all_migrations().len() as i32) - 1),
-            current_version(&conn).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_multiple_migration() {
-        let temp_dir = TempDir::new("users.rs").unwrap();
-        let db_file = temp_dir.path().join("db.sqlite3");
-        let mut conn = Connection::open(&db_file).expect("create temp database");
-
-        // migration #1
-        migrate(&mut conn).unwrap();
-
-        // migration #2
-        if let Err(e) = migrate(&mut conn) {
-            panic!("Failed: expected second migration to be a noop: {}", e);
-        }
-    }
 }

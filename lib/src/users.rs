@@ -3,7 +3,8 @@ use log::error;
 use rusqlite::types::ToSql;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::db::{self, Database};
+use crate::config_db::ConfigDatabase;
+use crate::db;
 use crate::errors::*;
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -16,7 +17,7 @@ pub struct UserInfo {
 
 #[derive(Clone)]
 pub struct UserConfig {
-    db: Database,
+    db: ConfigDatabase,
 }
 
 impl UserInfo {
@@ -31,7 +32,7 @@ impl UserInfo {
 }
 
 impl UserConfig {
-    pub fn new(db: Database) -> UserConfig {
+    pub fn new(db: ConfigDatabase) -> UserConfig {
         UserConfig { db }
     }
 
@@ -150,7 +151,7 @@ mod tests {
     fn new_test() -> (UserConfig, TempDir) {
         let temp_dir = TempDir::new("users.rs").unwrap();
         let db_file = temp_dir.path().join("db.sqlite3");
-        let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
+        let db = ConfigDatabase::new(&db_file.to_string_lossy()).expect("create temp database");
 
         (UserConfig::new(db), temp_dir)
     }

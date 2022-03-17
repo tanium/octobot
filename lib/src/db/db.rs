@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use failure::format_err;
 use log::error;
 use rusqlite::types::FromSql;
-use rusqlite::{Connection, Row, Statement};
 
 use crate::errors::*;
 
@@ -12,23 +11,15 @@ pub struct Database {
     db_file: String,
 }
 
+pub use rusqlite::{Connection, Row, Statement, Transaction};
+
 impl Database {
     pub fn new(db_file: &str) -> Result<Database> {
-        let mut db = Database {
+        let db = Database {
             db_file: db_file.to_string(),
         };
 
-        db.migrate()?;
-        Ok(db)
-    }
-
-    pub fn connect(&self) -> Result<Connection> {
-        Connection::open(&self.db_file)
-            .map_err(|e| format_err!("Error opening database {}: {}", self.db_file, e))
-    }
-
-    fn migrate(&mut self) -> Result<()> {
-        let mut conn = self.connect()?;
+        let conn = db.connect()?;
         let mode: String = conn
             .query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))
             .map_err(|e| format_err!("Error turning on WAL mode: {}", e))?;
@@ -37,7 +28,12 @@ impl Database {
             error!("Error setting WAL mode. Result: {}", mode);
         }
 
-        crate::db::migrations::migrate(&mut conn)
+        Ok(db)
+    }
+
+    pub fn connect(&self) -> Result<Connection> {
+        Connection::open(&self.db_file)
+            .map_err(|e| format_err!("Error opening database {}: {}", self.db_file, e))
     }
 }
 

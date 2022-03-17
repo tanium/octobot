@@ -7,7 +7,7 @@ use failure::format_err;
 use serde_derive::{Deserialize, Serialize};
 use toml;
 
-use crate::db::Database;
+use crate::config_db::ConfigDatabase;
 use crate::errors::*;
 use crate::repos;
 use crate::users;
@@ -113,11 +113,11 @@ pub struct LdapConfig {
 
 impl Config {
     // TODO: weird that `new` is used only by tests and the actual `new` is below...
-    pub fn new(db: Database) -> Config {
+    pub fn new(db: ConfigDatabase) -> Config {
         Config::new_with_model(ConfigModel::new(), db)
     }
 
-    fn new_with_model(config: ConfigModel, db: Database) -> Config {
+    fn new_with_model(config: ConfigModel, db: ConfigDatabase) -> Config {
         Config {
             main: config.main,
             admin: config.admin,
@@ -279,7 +279,7 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
 
     let mut db_file = config_file.clone();
     db_file.set_file_name(db_file_name);
-    let db = Database::new(&db_file.to_string_lossy())?;
+    let db = ConfigDatabase::new(&db_file.to_string_lossy())?;
 
     let mut config_file_open = fs::File::open(&config_file)?;
     let mut config_contents = String::new();

@@ -4,7 +4,8 @@ use rusqlite::types::ToSql;
 use rusqlite::{named_params, Connection, Row, Transaction};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::db::{self, Database};
+use crate::config_db::ConfigDatabase;
+use crate::db;
 use crate::errors::*;
 use crate::github;
 use crate::jira;
@@ -50,7 +51,7 @@ pub struct RepoJiraConfig {
 
 #[derive(Clone)]
 pub struct RepoConfig {
-    db: Database,
+    db: ConfigDatabase,
 }
 
 impl RepoInfo {
@@ -119,7 +120,7 @@ impl RepoJiraConfig {
 }
 
 impl RepoConfig {
-    pub fn new(db: Database) -> RepoConfig {
+    pub fn new(db: ConfigDatabase) -> RepoConfig {
         RepoConfig { db }
     }
 
@@ -394,7 +395,7 @@ mod tests {
     fn new_test() -> (RepoConfig, TempDir) {
         let temp_dir = TempDir::new("repos.rs").unwrap();
         let db_file = temp_dir.path().join("db.sqlite3");
-        let db = Database::new(&db_file.to_string_lossy()).expect("create temp database");
+        let db = ConfigDatabase::new(&db_file.to_string_lossy()).expect("create temp database");
 
         (RepoConfig::new(db), temp_dir)
     }
