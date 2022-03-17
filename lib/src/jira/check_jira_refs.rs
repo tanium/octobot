@@ -64,8 +64,8 @@ async fn do_check_jira_refs(
     }
 
     log::info!(
-        "Creating jira check: PR #{}; head: {}; commit: {} -> {:?}",
-        pull_request.number,
+        "Creating jira check: PR {}; head: {}; commit: {} -> {:?}",
+        pull_request.html_url,
         pull_request.head.sha,
         run.head_sha,
         run.status,
