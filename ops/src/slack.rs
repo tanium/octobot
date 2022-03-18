@@ -263,6 +263,8 @@ pub struct User {
 pub struct UserProfile {
     #[serde(default)]
     pub email: String,
+    #[serde(default)]
+    pub display_name: String,
 }
 
 #[derive(Deserialize)]
