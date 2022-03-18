@@ -1,7 +1,7 @@
 use std::collections;
 use std::ops::{Add, Deref};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use hyper::{Body, Request, Response, StatusCode};
 use log::{error, info, warn};
@@ -23,6 +23,7 @@ use octobot_ops::pr_merge::{self, PRMergeRequest};
 use octobot_ops::repo_version::{self, RepoVersionRequest};
 use octobot_ops::slack::{self, SlackAttachmentBuilder, SlackRequest};
 use octobot_ops::util;
+use octobot_ops::webhook_db::WebhookDatabase;
 use octobot_ops::worker::{TokioWorker, Worker};
 
 use crate::http_util;
@@ -39,7 +40,7 @@ pub struct GithubHandlerState {
     repo_version_worker: Arc<dyn Worker<RepoVersionRequest>>,
     force_push_worker: Arc<dyn Worker<ForcePushRequest>>,
     slack_worker: Arc<dyn Worker<SlackRequest>>,
-    recent_events: Mutex<Vec<String>>,
+    webhook_db: Arc<WebhookDatabase>,
     metrics: Arc<Metrics>,
     git_clone_manager: Arc<GitCloneManager>,
 }
@@ -110,6 +111,7 @@ impl GithubHandlerState {
         config: Arc<Config>,
         github_app: Arc<dyn github::api::GithubSessionFactory>,
         jira_session: Option<Arc<dyn jira::api::Session>>,
+        webhook_db: Arc<WebhookDatabase>,
         metrics: Arc<Metrics>,
     ) -> GithubHandlerState {
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
@@ -163,15 +165,21 @@ impl GithubHandlerState {
             repo_version_worker,
             force_push_worker,
             slack_worker,
-            recent_events: Mutex::new(Vec::new()),
+            webhook_db,
             metrics,
             git_clone_manager,
         }
     }
 
     pub fn clean(&self) {
-        // Clean up repos not used in the past day
-        self.git_clone_manager.clean(Duration::from_secs(24 * 3600));
+        let hour = Duration::from_secs(3600);
+        let day = 24 * hour;
+
+        self.git_clone_manager.clean(1 * day);
+
+        if let Err(e) = self.webhook_db.clean(SystemTime::now() - (7 * day)) {
+            log::error!("Failed to clean webhook db: {}", e);
+        }
     }
 }
 
@@ -180,9 +188,10 @@ impl GithubHandler {
         config: Arc<Config>,
         github_app: Arc<dyn github::api::GithubSessionFactory>,
         jira_session: Option<Arc<dyn jira::api::Session>>,
+        webhook_db: Arc<WebhookDatabase>,
         metrics: Arc<Metrics>,
     ) -> Box<GithubHandler> {
-        let state = GithubHandlerState::new(config, github_app, jira_session, metrics);
+        let state = GithubHandlerState::new(config, github_app, jira_session, webhook_db, metrics);
         GithubHandler::from_state(Arc::new(state))
     }
 
@@ -217,14 +226,19 @@ impl Handler for GithubHandler {
         }
 
         // make sure event id is valid
-        {
-            let mut recent_events = self.state.recent_events.lock().unwrap();
-            if !util::check_unique_event(event_id.clone(), &mut *recent_events, 1000, 100) {
-                let msg = format!("Duplicate X-Github-Delivery header: {}", event_id);
+        match self.state.webhook_db.maybe_record(&event_id) {
+            Err(e) => {
+                error!("Failed to record webhook event guid {}: {}", event_id, e);
+            }
+            Ok(true) => {
+                log::trace!("Recorded new webhook event: {}", event_id);
+            }
+            Ok(false) => {
+                let msg = format!("Duplicate webhook event: {}", event_id);
                 error!("{}", msg);
                 return http_util::new_bad_req_resp(msg);
             }
-        }
+        };
 
         let event;
         {
