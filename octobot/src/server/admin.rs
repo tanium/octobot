@@ -132,16 +132,23 @@ impl UserAdmin {
         let slack = self.slack.clone();
         let user = slack.lookup_user_by_email(email).await?;
 
-        let resp = if let Some(user) = user {
-            Resp {
-                id: user.id,
-                name: user.name,
+        let resp = match user {
+            Some(user) => {
+                let name = if !user.profile.display_name.is_empty() {
+                    user.profile.display_name
+                } else {
+                    user.name
+                };
+
+                Resp {
+                    id: user.id,
+                    name: name,
+                }
             }
-        } else {
-            Resp {
+            None => Resp {
                 id: String::new(),
                 name: String::new(),
-            }
+            },
         };
 
         let resp_json = serde_json::to_string(&resp)?;
