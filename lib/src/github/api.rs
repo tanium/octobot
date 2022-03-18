@@ -556,21 +556,36 @@ impl Session for GithubSession {
         repo: &str,
         number: u32,
     ) -> Result<Vec<Commit>> {
-        self.client
-            .get(&format!(
-                "repos/{}/{}/pulls/{}/commits",
-                owner, repo, number
-            ))
-            .await
-            .map_err(|e| {
-                format_err!(
-                    "Error looking up PR commits: {}/{} #{}: {}",
-                    owner,
-                    repo,
-                    number,
-                    e
-                )
-            })
+        let mut result = vec![];
+        let mut page = 1;
+
+        loop {
+            let next: Vec<Commit> = self
+                .client
+                .get(&format!(
+                    "repos/{}/{}/pulls/{}/commits?per_page=100&page={}",
+                    owner, repo, number, page,
+                ))
+                .await
+                .map_err(|e| {
+                    format_err!(
+                        "Error looking up PR commits: {}/{} #{}: {}",
+                        owner,
+                        repo,
+                        number,
+                        e
+                    )
+                })?;
+
+            if next.is_empty() {
+                break;
+            }
+
+            result.extend(next.into_iter());
+            page += 1;
+        }
+
+        Ok(result)
     }
 
     async fn get_pull_request_reviews(
