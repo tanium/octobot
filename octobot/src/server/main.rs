@@ -38,7 +38,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         tokio::spawn(async move {
             let slack = slack.clone();
             let config = config.clone();
-            octobot_ops::users_migrate::migrate_slack_id(&config, &slack).await;
+            octobot_ops::migrate_slack::migrate_slack_id(&config, &slack).await;
         });
     }
 
