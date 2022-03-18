@@ -276,7 +276,7 @@ struct Runner {
 
 pub fn req(channel: SlackRecipient, msg: &str, attachments: &[SlackAttachment]) -> SlackRequest {
     SlackRequest {
-        channel: channel,
+        channel,
         msg: msg.into(),
         attachments: attachments.into(),
     }
