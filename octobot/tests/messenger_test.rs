@@ -8,7 +8,7 @@ use mocks::mock_slack::MockSlack;
 use octobot_lib::config::Config;
 use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github;
-use octobot_lib::slack::SlackChannel;
+use octobot_lib::slack::SlackRecipient;
 use octobot_ops::messenger;
 use octobot_ops::slack;
 
@@ -35,7 +35,7 @@ fn test_sends_to_owner() {
     let (config, _temp) = new_test();
 
     let slack = MockSlack::new(vec![slack::req(
-        SlackChannel::user_mention("the.owner"),
+        SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
     )]);
@@ -57,7 +57,7 @@ fn test_sends_to_mapped_usernames() {
     let (config, _temp) = new_test();
 
     let slack = MockSlack::new(vec![slack::req(
-        SlackChannel::user_mention("the.owner"),
+        SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
     )]);
@@ -87,11 +87,11 @@ fn test_sends_to_owner_with_channel() {
     // Note: it should put the repo name w/ link in the message
     let slack = MockSlack::new(vec![
         slack::req(
-            SlackChannel::by_name("the-review-channel"),
+            SlackRecipient::by_name("the-review-channel"),
             "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
             &[],
         ),
-        slack::req(SlackChannel::user_mention("the.owner"), "hello there", &[]),
+        slack::req(SlackRecipient::user_mention("the.owner"), "hello there", &[]),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
 
@@ -115,9 +115,9 @@ fn test_sends_to_assignees() {
     config.users_write().insert("assign2", "assign2").unwrap();
 
     let slack = MockSlack::new(vec![
-        slack::req(SlackChannel::user_mention("the.owner"), "hello there", &[]),
-        slack::req(SlackChannel::user_mention("assign1"), "hello there", &[]),
-        slack::req(SlackChannel::user_mention("assign2"), "hello there", &[]),
+        slack::req(SlackRecipient::user_mention("the.owner"), "hello there", &[]),
+        slack::req(SlackRecipient::user_mention("assign1"), "hello there", &[]),
+        slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[]),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
@@ -140,7 +140,7 @@ fn test_does_not_send_to_event_sender() {
     config.users_write().insert("userB", "userB").unwrap();
 
     let slack = MockSlack::new(vec![slack::req(
-        SlackChannel::user_mention("userB"),
+        SlackRecipient::user_mention("userB"),
         "hello there",
         &[],
     )]);
@@ -166,8 +166,8 @@ fn test_sends_only_once() {
     config.users_write().insert("assign2", "assign2").unwrap();
 
     let slack = MockSlack::new(vec![
-        slack::req(SlackChannel::user_mention("the.owner"), "hello there", &[]),
-        slack::req(SlackChannel::user_mention("assign2"), "hello there", &[]),
+        slack::req(SlackRecipient::user_mention("the.owner"), "hello there", &[]),
+        slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[]),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
     // Note: 'the-owner' is also assigned. Should only receive one slackbot message though.
@@ -195,7 +195,7 @@ fn test_peace_and_quiet() {
 
     // should not send to channel or to owner, only to asignee
     let slack = MockSlack::new(vec![slack::req(
-        SlackChannel::user_mention("assign2"),
+        SlackRecipient::user_mention("assign2"),
         "hello there",
         &[],
     )]);

@@ -9,7 +9,7 @@ use crate::worker;
 use octobot_lib::errors::*;
 use octobot_lib::http_client::HTTPClient;
 use octobot_lib::metrics::Metrics;
-use octobot_lib::slack::SlackChannel;
+use octobot_lib::slack::SlackRecipient;
 
 #[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct SlackAttachment {
@@ -247,7 +247,7 @@ impl Slack {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SlackRequest {
-    pub channel: SlackChannel,
+    pub channel: SlackRecipient,
     pub msg: String,
     pub attachments: Vec<SlackAttachment>,
 }
@@ -274,7 +274,7 @@ struct Runner {
     slack: Arc<Slack>,
 }
 
-pub fn req(channel: SlackChannel, msg: &str, attachments: &[SlackAttachment]) -> SlackRequest {
+pub fn req(channel: SlackRecipient, msg: &str, attachments: &[SlackAttachment]) -> SlackRequest {
     SlackRequest {
         channel: channel,
         msg: msg.into(),
