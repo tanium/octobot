@@ -187,7 +187,7 @@ mod tests {
             users.slack_user_name("some-git-user")
         );
         assert_eq!(
-            Some("@the-slacker".into()),
+            Some(("@the-slacker".into(), "the-slacker".into())),
             users.slack_direct_message("some-git-user")
         );
         assert_eq!(None, users.slack_user_name("some.other.user"));
@@ -206,7 +206,7 @@ mod tests {
             users.slack_user_name("some-git-user")
         );
         assert_eq!(
-            Some("1234".into()),
+            Some(("1234".into(), "the-slacker".into())),
             users.slack_direct_message("some-git-user")
         );
     }
