@@ -21,6 +21,7 @@ pub struct OctobotService {
     config: Arc<Config>,
     ui_sessions: Arc<Sessions>,
     github_handler_state: Arc<GithubHandlerState>,
+    slack: Arc<octobot_ops::slack::Slack>,
     metrics: Arc<metrics::Metrics>,
 }
 
@@ -29,12 +30,14 @@ impl OctobotService {
         config: Arc<Config>,
         ui_sessions: Arc<Sessions>,
         github_handler_state: Arc<GithubHandlerState>,
+        slack: Arc<octobot_ops::slack::Slack>,
         metrics: Arc<metrics::Metrics>,
     ) -> OctobotService {
         OctobotService {
             config,
             ui_sessions,
             github_handler_state,
+            slack,
             metrics,
         }
     }
@@ -80,13 +83,20 @@ impl OctobotService {
             return FilteredHandler::new(
                 filter,
                 match (req.method(), req.uri().path()) {
-                    (&Method::GET, "/api/users") => UserAdmin::new(self.config.clone(), Op::List),
-                    (&Method::PUT, "/api/user") => UserAdmin::new(self.config.clone(), Op::Update),
+                    (&Method::GET, "/api/users") => {
+                        UserAdmin::new(self.config.clone(), self.slack.clone(), Op::List)
+                    }
+                    (&Method::PUT, "/api/user") => {
+                        UserAdmin::new(self.config.clone(), self.slack.clone(), Op::Update)
+                    }
                     (&Method::POST, "/api/users") => {
-                        UserAdmin::new(self.config.clone(), Op::Create)
+                        UserAdmin::new(self.config.clone(), self.slack.clone(), Op::Create)
                     }
                     (&Method::DELETE, "/api/user") => {
-                        UserAdmin::new(self.config.clone(), Op::Delete)
+                        UserAdmin::new(self.config.clone(), self.slack.clone(), Op::Delete)
+                    }
+                    (&Method::POST, "/api/users/verify") => {
+                        UserAdmin::new(self.config.clone(), self.slack.clone(), Op::Verify)
                     }
 
                     (&Method::GET, "/api/repos") => RepoAdmin::new(self.config.clone(), Op::List),

@@ -14,6 +14,7 @@ use octobot_lib::jira;
 use octobot_lib::repos::RepoInfo;
 use octobot_lib::users::UserInfo;
 use octobot_lib::version;
+use octobot_ops::slack::Slack;
 use octobot_ops::util;
 
 use crate::http_util;
@@ -24,10 +25,12 @@ pub enum Op {
     Create,
     Update,
     Delete,
+    Verify,
 }
 
 pub struct UserAdmin {
     config: Arc<Config>,
+    slack: Arc<Slack>,
     op: Op,
 }
 
@@ -37,8 +40,8 @@ pub struct RepoAdmin {
 }
 
 impl UserAdmin {
-    pub fn new(config: Arc<Config>, op: Op) -> Box<UserAdmin> {
-        Box::new(UserAdmin { config, op })
+    pub fn new(config: Arc<Config>, slack: Arc<Slack>, op: Op) -> Box<UserAdmin> {
+        Box::new(UserAdmin { config, slack, op })
     }
 }
 
@@ -56,6 +59,7 @@ impl Handler for UserAdmin {
             Op::Create => self.create(req).await,
             Op::Update => self.update(req).await,
             Op::Delete => self.delete(req).await,
+            Op::Verify => self.verify(req).await,
         }
     }
 }
@@ -110,6 +114,39 @@ impl UserAdmin {
 
         Ok(http_util::new_empty_resp(StatusCode::OK))
     }
+
+    async fn verify(&self, req: Request<Body>) -> Result<Response<Body>> {
+        #[derive(Serialize)]
+        struct Resp {
+            id: String,
+            name: String,
+        }
+
+        let query = util::parse_query(req.uri().query());
+
+        let email = match query.get("email") {
+            Some(e) => e,
+            None => return Ok(http_util::new_bad_req_resp("No `email` param specified")),
+        };
+
+        let slack = self.slack.clone();
+        let user = slack.lookup_user_by_email(email).await?;
+
+        let resp = if let Some(user) = user {
+            Resp {
+                id: user.id,
+                name: user.name,
+            }
+        } else {
+            Resp {
+                id: String::new(),
+                name: String::new(),
+            }
+        };
+
+        let resp_json = serde_json::to_string(&resp)?;
+        Ok(http_util::new_json_resp(resp_json))
+    }
 }
 
 #[async_trait::async_trait]
@@ -120,6 +157,7 @@ impl Handler for RepoAdmin {
             Op::Create => self.create(req).await,
             Op::Update => self.update(req).await,
             Op::Delete => self.delete(req).await,
+            Op::Verify => Ok(http_util::new_error_resp("Invalid")),
         }
     }
 }

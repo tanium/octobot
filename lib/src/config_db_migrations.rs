@@ -67,6 +67,8 @@ pub fn all_migrations() -> Vec<Box<dyn Migration>> {
 
     alter table repos_new rename to repos;
     "#),
+        sql(r#"alter table users add column slack_id varchar not null default ''"#),
+        sql(r#"alter table users add column email varchar not null default ''"#),
     ]
 }
 

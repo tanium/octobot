@@ -11,6 +11,7 @@ use octobot_lib::config::Config;
 use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github;
 use octobot_lib::repos;
+use octobot_lib::slack::SlackRecipient;
 use octobot_ops::pr_merge;
 use octobot_ops::slack::{self, SlackAttachmentBuilder};
 
@@ -573,7 +574,7 @@ async fn test_pr_merge_backport_failure() {
 
     test.slack.expect(vec![
         slack::req(
-            "the-review-channel",
+            SlackRecipient::by_name("the-review-channel"),
             "Error backporting PR from my-feature-branch to release/1.0 (<http://the-github-host/the-owner/the-repo|the-owner/the-repo>)",
             &[SlackAttachmentBuilder::new("")
                 .markdown("Error backporting PR from my-feature-branch to release/1.0\n\n```\nbad stuff\n```")

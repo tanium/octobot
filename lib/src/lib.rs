@@ -11,6 +11,7 @@ pub mod jwt;
 pub mod metrics;
 pub mod passwd;
 pub mod repos;
+pub mod slack;
 pub mod users;
 pub mod version;
 

@@ -27,6 +27,21 @@ pub fn start(config: Config) {
 async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     let config = Arc::new(config);
 
+    let slack_api = Arc::new(octobot_ops::slack::Slack::new(
+        config.slack.bot_token.clone(),
+        metrics.clone(),
+    ));
+
+    {
+        let slack = slack_api.clone();
+        let config = config.clone();
+        tokio::spawn(async move {
+            let slack = slack.clone();
+            let config = config.clone();
+            octobot_ops::migrate_slack::migrate_slack_id(&config, &slack).await;
+        });
+    }
+
     let github_api: Arc<dyn github::api::GithubSessionFactory> = if config.github.app_id.is_some() {
         match github::api::GithubApp::new(
             &config.github.host,
@@ -81,6 +96,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         config.clone(),
         ui_sessions.clone(),
         github_handler_state.clone(),
+        slack_api.clone(),
         metrics.clone(),
     );
 
