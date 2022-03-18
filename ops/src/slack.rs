@@ -282,19 +282,6 @@ pub fn req(channel: SlackChannel, msg: &str, attachments: &[SlackAttachment]) ->
     }
 }
 
-pub fn req_id(
-    channel_id: &str,
-    channel_name: &str,
-    msg: &str,
-    attachments: &[SlackAttachment],
-) -> SlackRequest {
-    SlackRequest {
-        channel: SlackChannel::new(&channel_id, channel_name),
-        msg: msg.into(),
-        attachments: attachments.into(),
-    }
-}
-
 pub fn new_runner(
     bot_token: String,
     metrics: Arc<Metrics>,

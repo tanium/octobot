@@ -91,7 +91,7 @@ impl UserConfig {
             } else if !u.slack_id.is_empty() {
                 Some(SlackChannel::new(&u.slack_id, &u.slack_name))
             } else {
-                Some(SlackChannel::new(&mention(&u.slack_name), &u.slack_name))
+                Some(SlackChannel::user_mention(&u.slack_name))
             }
         })
     }
@@ -152,10 +152,6 @@ impl UserConfig {
     }
 }
 
-fn mention(username: &str) -> String {
-    format!("@{}", username)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,10 +206,5 @@ mod tests {
             Some(SlackChannel::new("1234", "the-slacker")),
             users.slack_direct_message("some-git-user")
         );
-    }
-
-    #[test]
-    fn test_mention() {
-        assert_eq!("@me", mention("me"));
     }
 }

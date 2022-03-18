@@ -18,4 +18,23 @@ impl SlackChannel {
             name: name.to_string(),
         }
     }
+
+    pub fn user_mention(name: &str) -> SlackChannel {
+        SlackChannel {
+            id: format!("@{}", name),
+            name: name.to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mention() {
+        let channel = SlackChannel::user_mention("me");
+        assert_eq!("@me", channel.id);
+        assert_eq!("me", channel.name);
+    }
 }
