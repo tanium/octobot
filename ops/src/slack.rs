@@ -118,11 +118,7 @@ impl Slack {
         }
     }
 
-    pub async fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
-        self.send_id(channel, channel, msg, attachments).await
-    }
-
-    pub async fn send_id(
+    pub async fn send(
         &self,
         channel_id: &str,
         channel_name: &str,
@@ -314,7 +310,7 @@ pub fn new_runner(
 impl worker::Runner<SlackRequest> for Runner {
     async fn handle(&self, req: SlackRequest) {
         self.slack
-            .send_id(
+            .send(
                 &req.channel_id,
                 &req.channel_name,
                 &req.msg,
