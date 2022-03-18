@@ -11,6 +11,7 @@ pub mod messenger;
 pub mod pr_merge;
 pub mod repo_version;
 pub mod slack;
+pub mod users_migrate;
 pub mod util;
 pub mod webhook_db;
 mod webhook_db_migrations;

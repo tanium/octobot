@@ -222,7 +222,11 @@ impl HTTPClient {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        match res.json::<T>().await {
+        let text = res.text().await.unwrap_or_default();
+        log::trace!("Response body: {}", text);
+
+        let result: serde_json::Result<T> = serde_json::from_str(&text);
+        match result {
             Ok(r) => Ok(r),
             Err(e) => {
                 self.maybe_record_status("<invalid json>");

@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use failure::bail;
 use log::{debug, error, info};
 use serde_derive::{Deserialize, Serialize};
 
@@ -86,7 +87,7 @@ struct SlackMessage {
 }
 
 // the main object for sending messages to slack
-struct Slack {
+pub struct Slack {
     client: Arc<HTTPClient>,
     recent_messages: Mutex<Vec<SlackMessage>>,
 }
@@ -117,34 +118,48 @@ impl Slack {
         }
     }
 
-    async fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
+    pub async fn send(&self, channel: &str, msg: &str, attachments: Vec<SlackAttachment>) {
+        self.send_id(channel, channel, msg, attachments).await
+    }
+
+    pub async fn send_id(
+        &self,
+        channel_id: &str,
+        channel_name: &str,
+        msg: &str,
+        attachments: Vec<SlackAttachment>,
+    ) {
         let slack_msg = SlackMessage {
             text: msg.to_string(),
             attachments,
-            channel: channel.to_string(),
+            channel: channel_id.to_string(),
         };
 
         if !self.is_unique(&slack_msg) {
-            info!("Skipping duplicate message to {}", channel);
+            info!("Skipping duplicate message to {}", channel_name);
             return;
         }
 
-        debug!("Sending message to #{}", channel);
+        debug!("Sending message to #{}", channel_name);
 
         let res: Result<SlackResponse> = self.client.post("/chat.postMessage", &slack_msg).await;
         match res {
             Ok(r) => {
                 if r.ok {
-                    info!("Successfully sent slack message to {}", channel)
+                    info!("Successfully sent slack message to {}", channel_name)
                 } else {
                     error!(
-                        "Error sending slack message to {}: {}",
-                        channel,
+                        "Error sending slack message to {}: {} ({})",
+                        channel_name,
+                        channel_id,
                         r.error.unwrap_or_default(),
                     )
                 }
             }
-            Err(e) => error!("Error sending slack message to {}: {}", channel, e),
+            Err(e) => error!(
+                "Error sending slack message to {} ({}): {}",
+                channel_name, channel_id, e
+            ),
         }
     }
 
@@ -157,13 +172,105 @@ impl Slack {
             TRIM_MESSAGES_TO,
         )
     }
+
+    pub async fn list_users(&self) -> Result<Vec<User>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            ok: bool,
+            error: Option<String>,
+            members: Option<Vec<User>>,
+            response_metadata: Option<ResponseMetadata>,
+        }
+
+        let mut result: Vec<User> = vec![];
+        let mut next_cursor = String::new();
+
+        loop {
+            let mut url = String::from("/users.list?limit=200");
+            if !next_cursor.is_empty() {
+                url += "&cursor=";
+                url += &next_cursor;
+            }
+
+            let res: Resp = self.client.get(&url).await?;
+
+            if !res.ok {
+                bail!(
+                    "Failed to list users: {}",
+                    res.error.unwrap_or(String::from("<unknown error>"))
+                );
+            }
+
+            if let Some(m) = res.members {
+                result.extend(m);
+            }
+
+            next_cursor = String::new();
+            if let Some(m) = res.response_metadata {
+                if let Some(c) = m.next_cursor {
+                    next_cursor = c;
+                }
+            }
+
+            if next_cursor.is_empty() {
+                break;
+            }
+        }
+
+        Ok(result)
+    }
+
+    pub async fn lookup_user_by_email(&self, email: &str) -> Result<Option<User>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            ok: bool,
+            error: Option<String>,
+            user: Option<User>,
+        }
+
+        let resp: Resp = self
+            .client
+            .get(&format!("/users.lookupByEmail?email={}", email))
+            .await?;
+
+        if !resp.ok {
+            if resp.error == Some(String::from("users_not_found")) {
+                return Ok(None);
+            }
+            bail!(
+                "Failed to lookup user: {}",
+                resp.error.unwrap_or(String::from("<unknown error>"))
+            );
+        }
+
+        Ok(resp.user)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SlackRequest {
-    pub channel: String,
+    pub channel_id: String,
+    pub channel_name: String,
     pub msg: String,
     pub attachments: Vec<SlackAttachment>,
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct User {
+    pub id: String,
+    pub name: String,
+    pub profile: UserProfile,
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct UserProfile {
+    #[serde(default)]
+    pub email: String,
+}
+
+#[derive(Deserialize)]
+struct ResponseMetadata {
+    next_cursor: Option<String>,
 }
 
 struct Runner {
@@ -172,7 +279,22 @@ struct Runner {
 
 pub fn req(channel: &str, msg: &str, attachments: &[SlackAttachment]) -> SlackRequest {
     SlackRequest {
-        channel: channel.into(),
+        channel_id: channel.into(),
+        channel_name: channel.into(),
+        msg: msg.into(),
+        attachments: attachments.into(),
+    }
+}
+
+pub fn req_id(
+    channel_id: &str,
+    channel_name: &str,
+    msg: &str,
+    attachments: &[SlackAttachment],
+) -> SlackRequest {
+    SlackRequest {
+        channel_id: channel_id.into(),
+        channel_name: channel_name.into(),
         msg: msg.into(),
         attachments: attachments.into(),
     }
@@ -191,7 +313,12 @@ pub fn new_runner(
 impl worker::Runner<SlackRequest> for Runner {
     async fn handle(&self, req: SlackRequest) {
         self.slack
-            .send(&req.channel, &req.msg, req.attachments)
+            .send_id(
+                &req.channel_id,
+                &req.channel_name,
+                &req.msg,
+                req.attachments,
+            )
             .await;
     }
 }

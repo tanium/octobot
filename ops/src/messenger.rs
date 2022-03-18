@@ -91,8 +91,11 @@ impl Messenger {
         attachments: &[SlackAttachment],
     ) {
         for user in users {
-            if let Some(slack_ref) = self.config.users().slack_user_mention(user.login()) {
-                self.send_to_slack(&slack_ref, msg, attachments);
+            if let Some((slack_id, slack_name)) =
+                self.config.users().slack_direct_message(user.login())
+            {
+                self.slack
+                    .send(slack::req_id(&slack_id, &slack_name, msg, attachments));
             }
         }
     }

@@ -213,6 +213,8 @@ function parseError(e) {
 app.controller('UsersController', function($scope, sessionHttp, notificationService)  {
 
   function init() {
+    $scope.errorMessage = "";
+
     $('#add-user-modal').on('shown.bs.modal', function () {
       $('#add-user-username').focus()
     });
@@ -245,13 +247,29 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
   }
 
   $scope.addUserSubmit = function() {
-    $('#add-user-modal').modal('hide');
     var editing = !!$scope.theUser.id;
-    if (editing) {
-      doEditUser();
-    } else {
-      doAddUser();
-    }
+    $scope.errorMessage = "";
+
+    sessionHttp.post('/api/users/verify?email=' + $scope.theUser.email).then(function(resp) {
+      if (!resp.data.id || !resp.data.name) {
+        $scope.errorMessage = 'Failed to lookup slack username for given email address';
+        return;
+      }
+
+      $('#add-user-modal').modal('hide');
+      $scope.theUser.slack_name = resp.data.name;
+      $scope.theUser.slack_id = resp.data.id;
+
+      if (editing) {
+        doEditUser();
+      } else {
+        doAddUser();
+      }
+
+    }).catch(function(e) {
+      $scope.errorMessage = 'Error verifying email address: ' + parseError(e);
+    });
+
   }
 
   function doAddUser() {
