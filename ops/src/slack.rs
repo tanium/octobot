@@ -197,7 +197,7 @@ impl Slack {
             if !res.ok {
                 bail!(
                     "Failed to list users: {}",
-                    res.error.unwrap_or(String::from("<unknown error>"))
+                    res.error.unwrap_or_else(|| String::from("<unknown error>"))
                 );
             }
 
@@ -239,7 +239,8 @@ impl Slack {
             }
             bail!(
                 "Failed to lookup user: {}",
-                resp.error.unwrap_or(String::from("<unknown error>"))
+                resp.error
+                    .unwrap_or_else(|| String::from("<unknown error>"))
             );
         }
 

@@ -88,7 +88,7 @@ impl UserConfig {
             if u.mute_direct_messages {
                 None
             } else if !u.slack_id.is_empty() {
-                Some((u.slack_id.clone(), u.slack_name.clone()))
+                Some((u.slack_id, u.slack_name))
             } else {
                 Some((mention(&u.slack_name), u.slack_name.clone()))
             }
