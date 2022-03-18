@@ -8,6 +8,7 @@ use mocks::mock_slack::MockSlack;
 use octobot_lib::config::Config;
 use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github;
+use octobot_lib::slack::SlackChannel;
 use octobot_ops::messenger;
 use octobot_ops::slack;
 
@@ -88,7 +89,7 @@ fn test_sends_to_owner_with_channel() {
     // Note: it should put the repo name w/ link in the message
     let slack = MockSlack::new(vec![
         slack::req(
-            "the-review-channel",
+            SlackChannel::by_name("the-review-channel"),
             "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
             &[],
         ),

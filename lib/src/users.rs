@@ -6,6 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::config_db::ConfigDatabase;
 use crate::db;
 use crate::errors::*;
+use crate::slack::SlackChannel;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct UserInfo {
@@ -83,14 +84,14 @@ impl UserConfig {
         self.lookup_info(github_name).map(|u| u.slack_name)
     }
 
-    pub fn slack_direct_message(&self, github_name: &str) -> Option<(String, String)> {
+    pub fn slack_direct_message(&self, github_name: &str) -> Option<SlackChannel> {
         self.lookup_info(github_name).and_then(|u| {
             if u.mute_direct_messages {
                 None
             } else if !u.slack_id.is_empty() {
-                Some((u.slack_id, u.slack_name))
+                Some(SlackChannel::new(&u.slack_id, &u.slack_name))
             } else {
-                Some((mention(&u.slack_name), u.slack_name.clone()))
+                Some(SlackChannel::new(&mention(&u.slack_name), &u.slack_name))
             }
         })
     }
@@ -187,7 +188,7 @@ mod tests {
             users.slack_user_name("some-git-user")
         );
         assert_eq!(
-            Some(("@the-slacker".into(), "the-slacker".into())),
+            Some(SlackChannel::new("@the-slacker", "the-slacker")),
             users.slack_direct_message("some-git-user")
         );
         assert_eq!(None, users.slack_user_name("some.other.user"));
@@ -206,7 +207,7 @@ mod tests {
             users.slack_user_name("some-git-user")
         );
         assert_eq!(
-            Some(("1234".into(), "the-slacker".into())),
+            Some(SlackChannel::new("1234", "the-slacker")),
             users.slack_direct_message("some-git-user")
         );
     }

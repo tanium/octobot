@@ -9,6 +9,7 @@ use crate::worker;
 use octobot_lib::errors::*;
 use octobot_lib::http_client::HTTPClient;
 use octobot_lib::metrics::Metrics;
+use octobot_lib::slack::SlackChannel;
 
 #[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct SlackAttachment {
@@ -246,8 +247,7 @@ impl Slack {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SlackRequest {
-    pub channel_id: String,
-    pub channel_name: String,
+    pub channel: SlackChannel,
     pub msg: String,
     pub attachments: Vec<SlackAttachment>,
 }
@@ -274,10 +274,9 @@ struct Runner {
     slack: Arc<Slack>,
 }
 
-pub fn req(channel: &str, msg: &str, attachments: &[SlackAttachment]) -> SlackRequest {
+pub fn req(channel: SlackChannel, msg: &str, attachments: &[SlackAttachment]) -> SlackRequest {
     SlackRequest {
-        channel_id: channel.into(),
-        channel_name: channel.into(),
+        channel: channel,
         msg: msg.into(),
         attachments: attachments.into(),
     }
@@ -290,8 +289,7 @@ pub fn req_id(
     attachments: &[SlackAttachment],
 ) -> SlackRequest {
     SlackRequest {
-        channel_id: channel_id.into(),
-        channel_name: channel_name.into(),
+        channel: SlackChannel::new(&channel_id, channel_name),
         msg: msg.into(),
         attachments: attachments.into(),
     }
@@ -311,8 +309,8 @@ impl worker::Runner<SlackRequest> for Runner {
     async fn handle(&self, req: SlackRequest) {
         self.slack
             .send(
-                &req.channel_id,
-                &req.channel_name,
+                &req.channel.id,
+                &req.channel.name,
                 &req.msg,
                 req.attachments,
             )

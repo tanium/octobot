@@ -5,6 +5,7 @@ use crate::util;
 use crate::worker::Worker;
 use octobot_lib::config::Config;
 use octobot_lib::github;
+use octobot_lib::slack::SlackChannel;
 
 pub struct Messenger {
     config: Arc<Config>,
@@ -76,12 +77,12 @@ impl Messenger {
                 msg,
                 util::make_link(&repo.html_url, &repo.full_name)
             );
-            self.send_to_slack(channel.as_str(), &channel_msg, attachments);
+            self.slack.send(slack::req(
+                SlackChannel::new(&channel, &channel),
+                &channel_msg,
+                attachments,
+            ));
         }
-    }
-
-    fn send_to_slack(&self, channel: &str, msg: &str, attachments: &[SlackAttachment]) {
-        self.slack.send(slack::req(channel, msg, attachments));
     }
 
     fn send_to_slackbots(
@@ -91,11 +92,8 @@ impl Messenger {
         attachments: &[SlackAttachment],
     ) {
         for user in users {
-            if let Some((slack_id, slack_name)) =
-                self.config.users().slack_direct_message(user.login())
-            {
-                self.slack
-                    .send(slack::req_id(&slack_id, &slack_name, msg, attachments));
+            if let Some(channel) = self.config.users().slack_direct_message(user.login()) {
+                self.slack.send(slack::req(channel, msg, attachments));
             }
         }
     }
