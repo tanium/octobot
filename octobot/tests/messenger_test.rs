@@ -91,7 +91,11 @@ fn test_sends_to_owner_with_channel() {
             "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
             &[],
         ),
-        slack::req(SlackRecipient::user_mention("the.owner"), "hello there", &[]),
+        slack::req(
+            SlackRecipient::user_mention("the.owner"),
+            "hello there",
+            &[],
+        ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
 
@@ -115,7 +119,11 @@ fn test_sends_to_assignees() {
     config.users_write().insert("assign2", "assign2").unwrap();
 
     let slack = MockSlack::new(vec![
-        slack::req(SlackRecipient::user_mention("the.owner"), "hello there", &[]),
+        slack::req(
+            SlackRecipient::user_mention("the.owner"),
+            "hello there",
+            &[],
+        ),
         slack::req(SlackRecipient::user_mention("assign1"), "hello there", &[]),
         slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[]),
     ]);
@@ -166,7 +174,11 @@ fn test_sends_only_once() {
     config.users_write().insert("assign2", "assign2").unwrap();
 
     let slack = MockSlack::new(vec![
-        slack::req(SlackRecipient::user_mention("the.owner"), "hello there", &[]),
+        slack::req(
+            SlackRecipient::user_mention("the.owner"),
+            "hello there",
+            &[],
+        ),
         slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[]),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
