@@ -140,10 +140,7 @@ impl UserAdmin {
                     user.name
                 };
 
-                Resp {
-                    id: user.id,
-                    name: name,
-                }
+                Resp { id: user.id, name }
             }
             None => Resp {
                 id: String::new(),
