@@ -1,4 +1,4 @@
-<h3>Repos</h3>
+<h3 xmlns="http://www.w3.org/1999/html">Repos</h3>
   <div style="margin: 10px; float: right">
     <button type="button" class="btn btn-sm btn-primary" ng-click="addRepo()">Add repo</button>
   </div>
@@ -45,7 +45,12 @@
           <h4>Git</h4>
           <div class="checkbox">
             <label>
-              <input type="checkbox" ng-model="theRepo.force_push_notify"> Force-push notification
+              <input type="checkbox" ng-model="theRepo.force_push_notify"/> Force-push notification
+            </label>
+          </div>
+          <div class="checkbox">
+            <label>
+              <input type="checkbox" ng-model="theRepo.use_threads"/> Use threads for PRs
             </label>
           </div>
           <div class="form-group">
