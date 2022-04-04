@@ -470,6 +470,9 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
       if (resp.data.login_suffix) {
         $scope.req.admin_user = loggedInUser() + resp.data.login_suffix;
       }
+      if (resp.data.error) {
+        notificationService.showError(resp.data.error);
+      }
       return resp;
     }).finally(function(e) {
       $scope.processing = false;

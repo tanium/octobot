@@ -252,6 +252,28 @@ struct MergeVersionsResp {
     jira_base: String,
     login_suffix: Option<String>,
     versions: HashMap<String, Vec<version::Version>>,
+    error: Option<String>,
+}
+
+impl MergeVersionsResp {
+    fn new(jira_config: &JiraConfig) -> Self {
+        Self {
+            jira_base: jira_config.base_url(),
+            login_suffix: jira_config.login_suffix.clone(),
+            versions: HashMap::new(),
+            error: None,
+        }
+    }
+
+    fn set_versions(mut self, versions: HashMap<String, Vec<version::Version>>) -> Self {
+        self.versions = versions;
+        self
+    }
+
+    fn set_error(mut self, e: &str) -> Self {
+        self.error = Some(e.to_string());
+        self
+    }
 }
 
 #[async_trait::async_trait]
@@ -273,19 +295,22 @@ impl MergeVersions {
             None => return http_util::new_bad_req_resp("No JIRA config"),
         };
 
+        let resp = MergeVersionsResp::new(&jira_config);
+
         if !merge_req.dry_run {
             jira_config.username = merge_req.admin_user.unwrap_or_default();
             jira_config.password = merge_req.admin_pass.unwrap_or_default();
 
             if jira_config.username.is_empty() || jira_config.password.is_empty() {
-                return http_util::new_bad_req_resp("JIRA auth required for non dry-run");
+                return self.make_resp(resp.set_error("JIRA auth required for non dry-run"));
             }
         }
 
         let jira_sess = match jira::api::JiraSession::new(&jira_config, None).await {
             Ok(j) => j,
             Err(e) => {
-                return http_util::new_bad_req_resp(format!("Error creating JIRA session: {}", e))
+                return self
+                    .make_resp(resp.set_error(&format!("Error creating JIRA session: {}", e)));
             }
         };
 
@@ -305,8 +330,9 @@ impl MergeVersions {
         {
             Ok(v) => v,
             Err(e) => {
-                error!("Error merging pending versions: {}", e);
-                return http_util::new_error_resp(format!("Error merging pending versions: {}", e));
+                let msg = format!("Error merging pending versions: {}", e);
+                error!("{}", msg);
+                return self.make_resp(resp.set_error(&msg));
             }
         };
 
@@ -318,23 +344,20 @@ impl MergeVersions {
             }
         }
 
-        let resp = MergeVersionsResp {
-            jira_base: jira_config.base_url(),
-            login_suffix: jira_config.login_suffix,
-            versions: all_relevant_versions,
-        };
+        self.make_resp(resp.set_versions(all_relevant_versions))
+    }
 
+    fn make_resp(&self, resp: MergeVersionsResp) -> Response<Body> {
         let resp_json = match serde_json::to_string(&resp) {
             Ok(r) => r,
             Err(e) => {
-                error!("Error serializing versions: {}", e);
+                error!("Error serializing response: {}", e);
                 return http_util::new_error_resp(format!(
-                    "Error serializing pending versions: {}",
+                    "Error serializing versions response: {}",
                     e
                 ));
             }
         };
-
         http_util::new_json_resp(resp_json)
     }
 }
