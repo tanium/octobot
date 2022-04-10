@@ -581,7 +581,9 @@ async fn test_pr_merge_backport_failure() {
                 .title("Source PR: #123: \"The Title\"")
                 .title_link("")
                 .color("danger")
-                .build()]
+                .build()],
+            false,
+            Some("".to_string()),
         )
     ]);
 

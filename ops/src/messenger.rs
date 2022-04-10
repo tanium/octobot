@@ -5,6 +5,7 @@ use crate::util;
 use crate::worker::Worker;
 use octobot_lib::config::Config;
 use octobot_lib::github;
+// use octobot_lib::github::{Repo, User};
 use octobot_lib::slack::SlackRecipient;
 
 pub struct Messenger {
@@ -32,8 +33,9 @@ impl Messenger {
         participants: &[github::User],
         branch: &str,
         commits: &[T],
+        thread_url: &str,
     ) {
-        self.send_to_channel(msg, attachments, repo, branch, commits);
+        self.send_to_channel(msg, attachments, repo, branch, commits, thread_url);
 
         let mut slackbots: Vec<github::User> = vec![item_owner.clone()];
 
@@ -59,7 +61,7 @@ impl Messenger {
         branch: &str,
         commits: &[T],
     ) {
-        self.send_to_channel(msg, attachments, repo, branch, commits);
+        self.send_to_channel(msg, attachments, repo, branch, commits, "");
         self.send_to_slackbots(vec![item_owner.clone()], msg, attachments);
     }
 
@@ -70,7 +72,12 @@ impl Messenger {
         repo: &github::Repo,
         branch: &str,
         commits: &[T],
+        thread_url: &str,
     ) {
+        // We could look at the thread_url to see if threads have been used in the past, but that
+        // wouldn't respect the users' choice if they change the setting later.
+        let use_threads = self.config.repos().notify_use_threads(repo);
+
         for channel in self.config.repos().lookup_channels(repo, branch, commits) {
             let channel_msg = format!(
                 "{} ({})",
@@ -81,6 +88,8 @@ impl Messenger {
                 SlackRecipient::new(&channel, &channel),
                 &channel_msg,
                 attachments,
+                use_threads,
+                Some(thread_url.to_owned()),
             ));
         }
     }
@@ -93,7 +102,7 @@ impl Messenger {
     ) {
         for user in users {
             if let Some(channel) = self.config.users().slack_direct_message(user.login()) {
-                self.slack.send(slack::req(channel, msg, attachments));
+                self.slack.send(slack::req(channel, msg, attachments, false, None));
             }
         }
     }

@@ -85,6 +85,7 @@ struct SlackMessage {
     text: String,
     attachments: Vec<SlackAttachment>,
     channel: String,
+    ts: Option<String>,
 }
 
 // the main object for sending messages to slack
@@ -125,11 +126,23 @@ impl Slack {
         channel_name: &str,
         msg: &str,
         attachments: Vec<SlackAttachment>,
+        use_threads: bool,
+        thread_url: &str,
     ) {
+        let mut parent_thread = None;
+        if use_threads {
+            let res = self.lookup_previous_post(thread_url.to_string(), channel_id.to_string()).await;
+            let option = res.unwrap();
+            if option != None {
+                 parent_thread = option
+            }
+        }
+
         let slack_msg = SlackMessage {
             text: msg.to_string(),
             attachments,
             channel: channel_id.to_string(),
+            ts: parent_thread,
         };
 
         if !self.is_unique(&slack_msg) {
@@ -243,11 +256,66 @@ impl Slack {
 
         Ok(resp.user)
     }
+
+    pub async fn lookup_previous_post(&self, thread_url: String, slack_channel: String) -> Result<Option<String>> {
+        // #[derive(Deserialize)]
+        // struct Channel {
+        //     id: Option<String>,
+        //     name: Option<String>,
+        // }
+        #[derive(Deserialize)]
+        struct SearchMatch {
+            // channel: Option<Channel>,
+            ts: Option<String>,
+            // user: Option<String>,
+            // username: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct Messages {
+            matches: Vec<SearchMatch>,
+            total: i32,
+        }
+        #[derive(Deserialize)]
+        struct Resp {
+            ok: bool,
+            error: Option<String>,
+            messages: Option<Messages>,
+        }
+
+        let resp: Resp = self
+            .client
+            .get(&format!("/search.messages?query='in:{} from:@octobot has:link {}'", slack_channel, thread_url))
+            .await?;
+
+        if !resp.ok {
+            if resp.error == Some(String::from("messages_not_found")) {
+                return Ok(None);
+            }
+            bail!(
+                "Failed to lookup messages: {}",
+                resp.error
+                    .unwrap_or_else(|| String::from("<unknown error>"))
+            );
+        }
+
+        let messages = resp.messages.unwrap();
+        if messages.total == 0 {
+            return Ok(None);
+        }
+
+        let mut result: Vec<SearchMatch> = vec![];
+        result.extend(messages.matches);
+        let x = result.first().unwrap();
+        let option = x.ts.clone();
+        Ok(option)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SlackRequest {
     pub channel: SlackRecipient,
+    pub use_threads: bool,
+    pub thread_url: Option<String>,
     pub msg: String,
     pub attachments: Vec<SlackAttachment>,
 }
@@ -276,9 +344,11 @@ struct Runner {
     slack: Arc<Slack>,
 }
 
-pub fn req(channel: SlackRecipient, msg: &str, attachments: &[SlackAttachment]) -> SlackRequest {
+pub fn req(channel: SlackRecipient, msg: &str, attachments: &[SlackAttachment], use_threads: bool, thread_url: Option<String>) -> SlackRequest {
     SlackRequest {
         channel,
+        use_threads,
+        thread_url: thread_url.into(),
         msg: msg.into(),
         attachments: attachments.into(),
     }
@@ -296,12 +366,18 @@ pub fn new_runner(
 #[async_trait::async_trait]
 impl worker::Runner<SlackRequest> for Runner {
     async fn handle(&self, req: SlackRequest) {
+        let url = match req.thread_url {
+            Some(ref a) => a.clone(),
+            None => String::new(),
+        };
         self.slack
             .send(
                 &req.channel.id,
                 &req.channel.name,
                 &req.msg,
                 req.attachments,
+                req.use_threads,
+                url.as_str(),
             )
             .await;
     }

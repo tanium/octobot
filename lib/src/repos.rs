@@ -267,6 +267,12 @@ impl RepoConfig {
             .unwrap_or(false)
     }
 
+    pub fn notify_use_threads(&self, repo: &github::Repo) -> bool {
+        self.lookup_info(repo)
+            .map(|r| r.use_threads)
+            .unwrap_or(false)
+    }
+
     pub fn jira_configs(&self, repo: &github::Repo, branch: &str) -> Vec<RepoJiraConfig> {
         let configs = self
             .lookup_info(repo)
@@ -583,6 +589,40 @@ mod tests {
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
             assert_eq!(false, repos.notify_force_push(&repo));
+        }
+    }
+
+    #[test]
+    fn test_notify_use_theads() {
+        let (mut repos, _temp) = new_test();
+        repos
+            .insert_info(&RepoInfo::new("some-user/the-default", "reviews"))
+            .unwrap();
+        repos
+            .insert_info(&RepoInfo::new("some-user/on-purpose", "reviews").with_use_threads(true))
+            .unwrap();
+        repos
+            .insert_info(&RepoInfo::new("some-user/quiet-repo", "reviews").with_use_threads(false))
+            .unwrap();
+        {
+            let repo =
+                github::Repo::parse("http://git.company.com/someone-else/some-other-repo").unwrap();
+            assert_eq!(false, repos.notify_use_threads(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/some-user/the-default").unwrap();
+            assert_eq!(false, repos.notify_use_threads(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/some-user/on-purpose").unwrap();
+            assert_eq!(true, repos.notify_use_threads(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
+            assert_eq!(false, repos.notify_use_threads(&repo));
         }
     }
 

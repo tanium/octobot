@@ -510,6 +510,7 @@ impl GithubEventHandler {
                             &self.repository,
                             branch_name,
                             &commits,
+                            pull_request.html_url.as_str(),
                         ),
 
                         NotifyMode::All => self.messenger.send_to_all(
@@ -521,6 +522,7 @@ impl GithubEventHandler {
                             &self.all_participants(&pull_request, &commits),
                             branch_name,
                             &commits,
+                            pull_request.html_url.as_str(),
                         ),
 
                         NotifyMode::None => (),
@@ -670,6 +672,7 @@ impl GithubEventHandler {
                         &participants,
                         branch_name,
                         &commits,
+                        pull_request.html_url.as_str(),
                     );
                 }
             }
@@ -722,6 +725,7 @@ impl GithubEventHandler {
             &participants,
             branch_name,
             commits,
+            pull_request.html_url()
         );
     }
 
@@ -761,6 +765,7 @@ impl GithubEventHandler {
                         &[],
                         branch_name,
                         &commits,
+                        &commit_url,
                     );
                 }
             }
@@ -894,6 +899,7 @@ impl GithubEventHandler {
                             &self.all_participants(&pull_request, &commits),
                             &branch_name,
                             &commits,
+                            pull_request.html_url.as_str(),
                         );
 
                         if self.data.forced()
