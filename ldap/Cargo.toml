@@ -14,5 +14,5 @@ octobot_lib = { path = "../lib" }
 failure = "0.1.8"
 log = "0.4.14"
 openldap = "1.2.2"
-regex = "1.5.4"
+regex = "1.5.5"
 rpassword = "5.0.1"

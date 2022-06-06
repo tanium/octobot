@@ -23,7 +23,7 @@ failure = "0.1.8"
 http = "0.2.5"
 hyper = { version = "0.14.13", features = ["server"] }
 log = "0.4.14"
-regex = "1.5.4"
+regex = "1.5.5"
 ring = "0.16.20"
 rustc-serialize = "0.3.24"
 serde = "1.0.130"
