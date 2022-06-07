@@ -314,7 +314,6 @@ impl Slack {
 #[derive(Debug, PartialEq, Clone)]
 pub struct SlackRequest {
     pub channel: SlackRecipient,
-    pub use_threads: bool,
     pub thread_url: Option<String>,
     pub msg: String,
     pub attachments: Vec<SlackAttachment>,
@@ -344,10 +343,9 @@ struct Runner {
     slack: Arc<Slack>,
 }
 
-pub fn req(channel: SlackRecipient, msg: &str, attachments: &[SlackAttachment], use_threads: bool, thread_url: Option<String>) -> SlackRequest {
+pub fn req(channel: SlackRecipient, msg: &str, attachments: &[SlackAttachment], thread_url: Option<String>) -> SlackRequest {
     SlackRequest {
         channel,
-        use_threads,
         thread_url: thread_url.into(),
         msg: msg.into(),
         attachments: attachments.into(),
@@ -376,7 +374,7 @@ impl worker::Runner<SlackRequest> for Runner {
                 &req.channel.name,
                 &req.msg,
                 req.attachments,
-                req.use_threads,
+                req.thread_url != None,
                 url.as_str(),
             )
             .await;

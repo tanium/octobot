@@ -38,7 +38,6 @@ fn test_sends_to_owner() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        false,
         None,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -63,7 +62,6 @@ fn test_sends_to_mapped_usernames() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        false,
         None,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -96,14 +94,12 @@ fn test_sends_to_owner_with_channel() {
             SlackRecipient::by_name("the-review-channel"),
             "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
             &[],
-            false,
             None,
         ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
-            false,
             None,
         ),
     ]);
@@ -134,11 +130,10 @@ fn test_sends_to_assignees() {
             SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
-            false,
             None,
         ),
-        slack::req(SlackRecipient::user_mention("assign1"), "hello there", &[], false, None),
-        slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[], false, None),
+        slack::req(SlackRecipient::user_mention("assign1"), "hello there", &[], None),
+        slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[], None),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
@@ -165,7 +160,6 @@ fn test_does_not_send_to_event_sender() {
         SlackRecipient::user_mention("userB"),
         "hello there",
         &[],
-        false,
         None,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -195,10 +189,9 @@ fn test_sends_only_once() {
             SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
-            false,
             None,
         ),
-        slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[], false, None),
+        slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[], None),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
     // Note: 'the-owner' is also assigned. Should only receive one slackbot message though.
@@ -230,7 +223,6 @@ fn test_peace_and_quiet() {
         SlackRecipient::user_mention("assign2"),
         "hello there",
         &[],
-        false,
         None,
     )]);
     let messenger = messenger::new(config, slack.new_sender());

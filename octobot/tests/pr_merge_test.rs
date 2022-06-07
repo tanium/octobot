@@ -582,7 +582,6 @@ async fn test_pr_merge_backport_failure() {
                 .title_link("")
                 .color("danger")
                 .build()],
-            false,
             None,
         )
     ]);

@@ -89,7 +89,6 @@ impl Messenger {
                     SlackRecipient::new(&channel, &channel),
                     &channel_msg,
                     attachments,
-                    use_threads,
                     None,
                 ));
             } else {
@@ -98,7 +97,6 @@ impl Messenger {
                         SlackRecipient::new(&channel, &channel),
                         &channel_msg,
                         attachments,
-                        use_threads,
                         Some(thread_url.to_owned()),
                     ));
                 }
@@ -114,7 +112,7 @@ impl Messenger {
     ) {
         for user in users {
             if let Some(channel) = self.config.users().slack_direct_message(user.login()) {
-                self.slack.send(slack::req(channel, msg, attachments, false, None));
+                self.slack.send(slack::req(channel, msg, attachments, None));
             }
         }
     }
