@@ -26,6 +26,13 @@ pub trait Session: Send + Sync {
         state: Option<&str>,
         head: Option<&str>,
     ) -> Result<Vec<PullRequest>>;
+    async fn get_pull_requests_by_commit(
+        &self,
+        owner: &str,
+        repo: &str,
+        commit: &str,
+        head: Option<&str>,
+    ) -> Result<Vec<PullRequest>>;
 
     async fn create_pull_request(
         &self,
@@ -438,6 +445,67 @@ impl Session for GithubSession {
                 ))
                 .await
                 .map_err(|e| format_err!("Error looking up PRs: {}/{}: {}", owner, repo, e))
+                .map(|prs| {
+                    prs.into_iter()
+                        .filter(|p| {
+                            if let Some(head) = head {
+                                p.head.ref_name == head || p.head.sha == head
+                            } else {
+                                true
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                }) {
+                Ok(r) => r,
+                Err(e) => return Err(e),
+            };
+
+            if next_prs.is_empty() {
+                break;
+            }
+
+            for pull_request in &mut next_prs {
+                if pull_request.reviews.is_none() {
+                    match self
+                        .get_pull_request_reviews(owner, repo, pull_request.number)
+                        .await
+                    {
+                        Ok(r) => pull_request.reviews = Some(r),
+                        Err(e) => error!("Error refetching pull request reviews: {}", e),
+                    };
+                }
+            }
+
+            pull_requests.extend(next_prs.into_iter());
+            page += 1;
+        }
+
+        Ok(pull_requests)
+    }
+
+    async fn get_pull_requests_by_commit(
+        &self,
+        owner: &str,
+        repo: &str,
+        commit: &str,
+        head: Option<&str>,
+    ) -> Result<Vec<PullRequest>> {
+        let mut pull_requests = vec![];
+        let mut page = 1;
+
+        loop {
+            let mut next_prs: Vec<PullRequest> = match self
+                .client
+                .get::<Vec<PullRequest>>(&format!(
+                    "repos/{}/{}/commits/{}/pulls?head={}&per_page=100&page={}",
+                    owner,
+                    repo,
+                    commit,
+                    head.unwrap_or(""),
+                    page
+                ))
+                .await
+                .map_err(|e| format_err!("Error looking up PRs for commit: {}/{}/{}: {}", owner, repo, commit, e))
                 .map(|prs| {
                     prs.into_iter()
                         .filter(|p| {

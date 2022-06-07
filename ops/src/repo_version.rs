@@ -286,7 +286,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                 &req.repo,
                                 &req.branch,
                                 &req.commits,
-                                &req.repo.html_url,
+                                vec![req.repo.html_url.to_string()], // Todo(NTD) - when does this get called???
                             );
                         } else {
                             resolved = true

@@ -11,6 +11,7 @@ pub struct MockGithub {
 
     get_pr_calls: Mutex<Vec<MockCall<PullRequest>>>,
     get_prs_calls: Mutex<Vec<MockCall<Vec<PullRequest>>>>,
+    get_prs_by_commit_calls: Mutex<Vec<MockCall<Vec<PullRequest>>>>,
     create_pr_calls: Mutex<Vec<MockCall<PullRequest>>>,
     get_pr_labels_calls: Mutex<Vec<MockCall<Vec<Label>>>>,
     add_pr_labels_calls: Mutex<Vec<MockCall<()>>>,
@@ -52,6 +53,7 @@ impl MockGithub {
 
             get_pr_calls: Mutex::new(vec![]),
             get_prs_calls: Mutex::new(vec![]),
+            get_prs_by_commit_calls: Mutex::new(vec![]),
             create_pr_calls: Mutex::new(vec![]),
             get_pr_labels_calls: Mutex::new(vec![]),
             add_pr_labels_calls: Mutex::new(vec![]),
@@ -183,6 +185,24 @@ impl Session for MockGithub {
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
         assert_eq!(call.args[2], state.unwrap_or(""));
+        assert_eq!(call.args[3], head.unwrap_or(""));
+
+        call.ret
+    }
+
+    async fn get_pull_requests_by_commit(
+        &self,
+        owner: &str,
+        repo: &str,
+        commit: &str,
+        head: Option<&str>,
+    ) -> Result<Vec<PullRequest>> {
+        let mut calls = self.get_prs_by_commit_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_pull_requests_by_commit");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], commit);
         assert_eq!(call.args[3], head.unwrap_or(""));
 
         call.ret
@@ -471,6 +491,20 @@ impl MockGithub {
         self.get_prs_calls.lock().unwrap().push(MockCall::new(
             ret,
             vec![owner, repo, state.unwrap_or(""), head.unwrap_or("")],
+        ));
+    }
+
+    pub fn mock_get_pull_requests_by_commit(
+        &self,
+        owner: &str,
+        repo: &str,
+        commit: &str,
+        head: Option<&str>,
+        ret: Result<Vec<PullRequest>>,
+    ) {
+        self.get_prs_by_commit_calls.lock().unwrap().push(MockCall::new(
+            ret,
+            vec![owner, repo, commit, "", head.unwrap_or("")],
         ));
     }
 

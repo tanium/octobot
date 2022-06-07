@@ -314,7 +314,16 @@ async fn test_commit_comment_with_path() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
+    let mut pr1 = some_pr().unwrap();
+    pr1.head.sha = "the-before-commit".into();
 
+    let mut pr2 = pr1.clone();
+    pr2.head.sha = "the-after-commit".into();
+    pr2.number = 99;
+    pr2.assignees = vec![User::new("assign2")];
+    pr2.requested_reviewers = None;
+    test.github
+        .mock_get_pull_requests_by_commit("some-user", "some-repo", "abcdef0", None, Ok(vec![pr1.clone(), pr2.clone()]));
     test.slack.expect(vec![
         slack::req(
             SlackRecipient::by_name("the-reviews-channel"),
@@ -324,7 +333,50 @@ async fn test_commit_comment_with_path() {
                 .title_link("http://the-comment")
                 .build()],
             true,
-            Some("http://the-github-host/some-user/some-repo/commit/abcdef00001111".to_string()),
+            Some(pr1.clone().html_url),
+        ),
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("Comment on \"src/main.rs\" (<http://the-github-host/some-user/some-repo/commit/abcdef00001111|abcdef0>) {}", REPO_MSG),
+            &[SlackAttachmentBuilder::new("I think this file should change")
+                .title("joe.reviewer said:")
+                .title_link("http://the-comment")
+                .build()],
+            true,
+            Some(pr2.clone().html_url),
+        )
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "commit_comment".into()), resp);
+}
+
+#[tokio::test]
+async fn test_commit_comment_with_path_that_is_included_in_multiple_prs() {
+    let mut test = new_test();
+    test.handler.event = "commit_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.comment = Some(Comment {
+        commit_id: Some("abcdef00001111".into()),
+        path: Some("src/main.rs".into()),
+        body: Some("I think this file should change".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    let pr = some_pr();
+    test.github
+        .mock_get_pull_requests_by_commit("some-user", "some-repo", "abcdef0", None, Ok(vec![pr.clone().unwrap()]));
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("Comment on \"src/main.rs\" (<http://the-github-host/some-user/some-repo/commit/abcdef00001111|abcdef0>) {}", REPO_MSG),
+            &[SlackAttachmentBuilder::new("I think this file should change")
+                .title("joe.reviewer said:")
+                .title_link("http://the-comment")
+                .build()],
+            true,
+            Some(pr.clone().unwrap().html_url),
         )
     ]);
 
@@ -346,6 +398,8 @@ async fn test_commit_comment_no_path() {
     });
     test.handler.data.sender = User::new("joe-reviewer");
 
+    test.github
+        .mock_get_pull_requests_by_commit("some-user", "some-repo", "abcdef0", None, Ok(vec![]));
     test.slack.expect(vec![
         slack::req(
             SlackRecipient::by_name("the-reviews-channel"),
@@ -354,8 +408,8 @@ async fn test_commit_comment_no_path() {
                 .title("joe.reviewer said:")
                 .title_link("http://the-comment")
                 .build()],
-            true,
-            Some("http://the-github-host/some-user/some-repo/commit/abcdef00001111".to_string()),
+            false,
+            None,
         )
     ]);
 
@@ -1022,8 +1076,8 @@ async fn test_pull_request_merged_error_getting_labels() {
             SlackRecipient::by_name("the-reviews-channel"),
             &format!("{} {}", msg2, REPO_MSG),
             &attach2,
-            true,
-            Some("".to_string()),
+            false,
+            None,
         ),
         slack::req(SlackRecipient::user_mention("the.pr.owner"), msg2, &attach2, false, None),
     ]);
@@ -1145,7 +1199,8 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
         .repos_write()
         .insert_info(
             &repos::RepoInfo::new("some-user/custom-branches-repo", "the-reviews-channel")
-                .with_release_branch_prefix("the-other-prefix-".into()),
+                .with_release_branch_prefix("the-other-prefix-".into())
+                .with_use_threads(true),
         )
         .expect("Failed to add repo");
 
@@ -1191,7 +1246,7 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
             SlackRecipient::by_name("the-reviews-channel"),
             &format!("{} {}", msg, repo_msg),
             &attach,
-            false,
+            true,
             Some(test.handler.data.pull_request.clone().unwrap().html_url),
         ),
         slack::req(SlackRecipient::user_mention("the.pr.owner"), msg, &attach, false, None),
@@ -1695,8 +1750,8 @@ async fn test_jira_pull_request_opened_too_many_commits() {
                 REPO_MSG
             ),
             &attach,
-            true,
-            Some("".to_string()),
+            false,
+            None,
         ),
         slack::req(
             SlackRecipient::user_mention("the.pr.owner"),

@@ -510,10 +510,11 @@ impl GithubEventHandler {
                             &self.repository,
                             branch_name,
                             &commits,
-                            pull_request.html_url.as_str(),
+                            vec![pull_request.html_url.to_string()],
                         ),
 
-                        NotifyMode::All => self.messenger.send_to_all(
+                        NotifyMode::All => self
+                            .messenger.send_to_all(
                             &msg,
                             &attachments,
                             &pull_request.user,
@@ -522,7 +523,7 @@ impl GithubEventHandler {
                             &self.all_participants(&pull_request, &commits),
                             branch_name,
                             &commits,
-                            pull_request.html_url.as_str(),
+                            vec![pull_request.html_url.as_str().to_string()],
                         ),
 
                         NotifyMode::None => (),
@@ -672,7 +673,7 @@ impl GithubEventHandler {
                         &participants,
                         branch_name,
                         &commits,
-                        pull_request.html_url.as_str(),
+                        vec![pull_request.html_url.as_str().to_string()],
                     );
                 }
             }
@@ -725,7 +726,7 @@ impl GithubEventHandler {
             &participants,
             branch_name,
             commits,
-            pull_request.html_url()
+            vec![pull_request.html_url().to_string()],
         );
     }
 
@@ -756,6 +757,28 @@ impl GithubEventHandler {
                     let branch_name = "";
                     let commits = Vec::<github::Commit>::new();
 
+                    let commit_prs = match self
+                        .github_session
+                        .get_pull_requests_by_commit(
+                            self.repository.owner.login(),
+                            &self.repository.name,
+                            commit,
+                            None,
+                        )
+                        .await
+                    {
+                        Ok(p) => p,
+                        Err(e) => {
+                            error!(
+                            "Error looking up PR for '{}' ({}): {}",
+                            branch_name,
+                            self.data.after(),
+                            e
+                        );
+                            return (StatusCode::OK, "push [no PR]".into());
+                        }
+                    };
+                    let thread_urls = commit_prs.into_iter().map(|pr| pr.clone().html_url).collect();
                     self.messenger.send_to_all(
                         &msg,
                         &attachments,
@@ -765,7 +788,7 @@ impl GithubEventHandler {
                         &[],
                         branch_name,
                         &commits,
-                        &commit_url,
+                        thread_urls,
                     );
                 }
             }
@@ -899,7 +922,7 @@ impl GithubEventHandler {
                             &self.all_participants(&pull_request, &commits),
                             &branch_name,
                             &commits,
-                            pull_request.html_url.as_str(),
+                            vec![pull_request.html_url.as_str().to_string()],
                         );
 
                         if self.data.forced()

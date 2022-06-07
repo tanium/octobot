@@ -33,9 +33,9 @@ impl Messenger {
         participants: &[github::User],
         branch: &str,
         commits: &[T],
-        thread_url: &str,
+        thread_urls: Vec<String>,
     ) {
-        self.send_to_channel(msg, attachments, repo, branch, commits, thread_url);
+        self.send_to_channel(msg, attachments, repo, branch, commits, thread_urls);
 
         let mut slackbots: Vec<github::User> = vec![item_owner.clone()];
 
@@ -61,7 +61,7 @@ impl Messenger {
         branch: &str,
         commits: &[T],
     ) {
-        self.send_to_channel(msg, attachments, repo, branch, commits, "");
+        self.send_to_channel(msg, attachments, repo, branch, commits, Vec::<String>::new());
         self.send_to_slackbots(vec![item_owner.clone()], msg, attachments);
     }
 
@@ -72,11 +72,11 @@ impl Messenger {
         repo: &github::Repo,
         branch: &str,
         commits: &[T],
-        thread_url: &str,
+        thread_urls: Vec<String>,
     ) {
         // We could look at the thread_url to see if threads have been used in the past, but that
         // wouldn't respect the users' choice if they change the setting later.
-        let use_threads = self.config.repos().notify_use_threads(repo);
+        let use_threads = self.config.repos().notify_use_threads(repo) && !thread_urls.clone().is_empty();
 
         for channel in self.config.repos().lookup_channels(repo, branch, commits) {
             let channel_msg = format!(
@@ -84,13 +84,25 @@ impl Messenger {
                 msg,
                 util::make_link(&repo.html_url, &repo.full_name)
             );
-            self.slack.send(slack::req(
-                SlackRecipient::new(&channel, &channel),
-                &channel_msg,
-                attachments,
-                use_threads,
-                Some(thread_url.to_owned()),
-            ));
+            if !use_threads {
+                self.slack.send(slack::req(
+                    SlackRecipient::new(&channel, &channel),
+                    &channel_msg,
+                    attachments,
+                    use_threads,
+                    None,
+                ));
+            } else {
+                for thread_url in thread_urls.clone() {
+                    self.slack.send(slack::req(
+                        SlackRecipient::new(&channel, &channel),
+                        &channel_msg,
+                        attachments,
+                        use_threads,
+                        Some(thread_url.to_owned()),
+                    ));
+                }
+            }
         }
     }
 

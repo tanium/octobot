@@ -583,7 +583,7 @@ async fn test_pr_merge_backport_failure() {
                 .color("danger")
                 .build()],
             false,
-            Some("".to_string()),
+            None,
         )
     ]);
 

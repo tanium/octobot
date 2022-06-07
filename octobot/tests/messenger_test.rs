@@ -51,7 +51,7 @@ fn test_sends_to_owner() {
         &[],
         "",
         &Vec::<github::Commit>::new(),
-        "http://the-github-host/some-user/some-repo/pulls/1",
+        vec!["http://the-github-host/some-user/some-repo/pulls/1".to_string()],
     );
 }
 
@@ -77,7 +77,7 @@ fn test_sends_to_mapped_usernames() {
         &[],
         "",
         &Vec::<github::Commit>::new(),
-        "http://the-github-host/some-user/some-repo/pulls/1",
+        vec!["http://the-github-host/some-user/some-repo/pulls/1".to_string()],
     );
 }
 
@@ -97,7 +97,7 @@ fn test_sends_to_owner_with_channel() {
             "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
             &[],
             false,
-            Some("http://the-github-host/some-user/some-repo/pulls/1".to_string()),
+            None,
         ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),
@@ -118,7 +118,7 @@ fn test_sends_to_owner_with_channel() {
         &[],
         "",
         &Vec::<github::Commit>::new(),
-        "http://the-github-host/some-user/some-repo/pulls/1",
+        vec!["http://the-github-host/some-user/some-repo/pulls/1".to_string()],
     );
 }
 
@@ -150,7 +150,7 @@ fn test_sends_to_assignees() {
         &[github::User::new("assign1"), github::User::new("assign2")],
         "",
         &Vec::<github::Commit>::new(),
-        "http://the-github-host/some-user/some-repo/pulls/1",
+        vec!["http://the-github-host/some-user/some-repo/pulls/1".to_string()],
     );
 }
 
@@ -180,7 +180,7 @@ fn test_does_not_send_to_event_sender() {
         &[github::User::new("userA"), github::User::new("userB")],
         "",
         &Vec::<github::Commit>::new(),
-        "http://the-github-host/some-user/some-repo/pulls/1",
+        vec!["http://the-github-host/some-user/some-repo/pulls/1".to_string()],
     );
 }
 
@@ -211,7 +211,7 @@ fn test_sends_only_once() {
         &[github::User::new("the-owner"), github::User::new("assign2")],
         "",
         &Vec::<github::Commit>::new(),
-        "http://the-github-host/some-user/some-repo/pulls/1",
+        vec!["http://the-github-host/some-user/some-repo/pulls/1".to_string()],
     );
 }
 
@@ -244,6 +244,6 @@ fn test_peace_and_quiet() {
         &[github::User::new("the-owner"), github::User::new("assign2")],
         "",
         &Vec::<github::Commit>::new(),
-        "http://the-github-host/some-user/some-repo/pulls/1",
+        vec!["http://the-github-host/some-user/some-repo/pulls/1".to_string()],
     );
 }
