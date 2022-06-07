@@ -132,7 +132,7 @@ impl Slack {
         let mut parent_thread = None;
         if use_threads {
             let res = self.lookup_previous_post(thread_url.to_string(), channel_id.to_string()).await;
-            let option = res.unwrap();
+            let option = res.unwrap_or(None);
             if option != None {
                  parent_thread = option
             }
@@ -258,17 +258,9 @@ impl Slack {
     }
 
     pub async fn lookup_previous_post(&self, thread_url: String, slack_channel: String) -> Result<Option<String>> {
-        // #[derive(Deserialize)]
-        // struct Channel {
-        //     id: Option<String>,
-        //     name: Option<String>,
-        // }
         #[derive(Deserialize)]
         struct SearchMatch {
-            // channel: Option<Channel>,
             ts: Option<String>,
-            // user: Option<String>,
-            // username: Option<String>,
         }
         #[derive(Deserialize)]
         struct Messages {
@@ -298,15 +290,13 @@ impl Slack {
             );
         }
 
-        let messages = resp.messages.unwrap();
+        let messages = resp.messages.unwrap_or(Messages{ total: 0, matches: vec![]});
         if messages.total == 0 {
             return Ok(None);
         }
 
-        let mut result: Vec<SearchMatch> = vec![];
-        result.extend(messages.matches);
-        let x = result.first().unwrap();
-        let option = x.ts.clone();
+        let search_match = messages.matches.first();
+        let option = search_match.unwrap_or(&SearchMatch{ ts: None }).ts.clone();
         Ok(option)
     }
 }
