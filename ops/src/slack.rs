@@ -353,7 +353,7 @@ pub fn req(
 ) -> SlackRequest {
     SlackRequest {
         channel,
-        thread_url: thread_url.into(),
+        thread_url,
         msg: msg.into(),
         attachments: attachments.into(),
     }
