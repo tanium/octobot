@@ -177,7 +177,7 @@ impl RepoConfig {
                     force_push_notify = ?3,
                     use_threads = ?4,
                     release_branch_prefix = ?5
-               WHERE id = ?5"#,
+               WHERE id = ?6"#,
             &[
                 &repo.repo,
                 &repo.channel,
