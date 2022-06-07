@@ -83,8 +83,7 @@ impl Messenger {
     ) {
         // We could look at the thread_url to see if threads have been used in the past, but that
         // wouldn't respect the users' choice if they change the setting later.
-        let use_threads =
-            self.config.repos().notify_use_threads(repo) && !thread_urls.is_empty();
+        let use_threads = self.config.repos().notify_use_threads(repo) && !thread_urls.is_empty();
 
         for channel in self.config.repos().lookup_channels(repo, branch, commits) {
             let channel_msg = format!(
