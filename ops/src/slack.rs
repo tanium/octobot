@@ -276,7 +276,7 @@ impl Slack {
 
         let resp: Resp = self
             .client
-            .get(&format!("/search.messages?query='in:{} from:@octobot has:link {}'", slack_channel, thread_url))
+            .get(&format!("/search.messages?query='in:{} from:@octobot has:link {}'&sort=timestamp", slack_channel, thread_url))
             .await?;
 
         if !resp.ok {
