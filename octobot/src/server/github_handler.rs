@@ -777,10 +777,7 @@ impl GithubEventHandler {
                             return (StatusCode::OK, "push [no PR]".into());
                         }
                     };
-                    let thread_urls = commit_prs
-                        .into_iter()
-                        .map(|pr| pr.clone().html_url)
-                        .collect();
+                    let thread_urls = commit_prs.into_iter().map(|pr| pr.html_url).collect();
                     self.messenger.send_to_all(
                         &msg,
                         &attachments,
