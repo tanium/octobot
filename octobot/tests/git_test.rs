@@ -361,7 +361,7 @@ fn test_get_commit_desc() {
     assert_eq!(
         (
             "I have a subject".into(),
-            "And I forgot to skip a line".into()
+            "And I forgot to skip a line".into(),
         ),
         git.git.get_commit_desc("HEAD").unwrap()
     );

@@ -505,7 +505,15 @@ impl Session for GithubSession {
                     page
                 ))
                 .await
-                .map_err(|e| format_err!("Error looking up PRs for commit: {}/{}/{}: {}", owner, repo, commit, e))
+                .map_err(|e| {
+                    format_err!(
+                        "Error looking up PRs for commit: {}/{}/{}: {}",
+                        owner,
+                        repo,
+                        commit,
+                        e
+                    )
+                })
                 .map(|prs| {
                     prs.into_iter()
                         .filter(|p| {

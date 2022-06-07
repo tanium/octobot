@@ -513,8 +513,7 @@ impl GithubEventHandler {
                             vec![pull_request.html_url.to_string()],
                         ),
 
-                        NotifyMode::All => self
-                            .messenger.send_to_all(
+                        NotifyMode::All => self.messenger.send_to_all(
                             &msg,
                             &attachments,
                             &pull_request.user,
@@ -770,15 +769,18 @@ impl GithubEventHandler {
                         Ok(p) => p,
                         Err(e) => {
                             error!(
-                            "Error looking up PR for '{}' ({}): {}",
-                            branch_name,
-                            self.data.after(),
-                            e
-                        );
+                                "Error looking up PR for '{}' ({}): {}",
+                                branch_name,
+                                self.data.after(),
+                                e
+                            );
                             return (StatusCode::OK, "push [no PR]".into());
                         }
                     };
-                    let thread_urls = commit_prs.into_iter().map(|pr| pr.clone().html_url).collect();
+                    let thread_urls = commit_prs
+                        .into_iter()
+                        .map(|pr| pr.clone().html_url)
+                        .collect();
                     self.messenger.send_to_all(
                         &msg,
                         &attachments,

@@ -131,10 +131,12 @@ impl Slack {
     ) {
         let mut parent_thread = None;
         if use_threads {
-            let res = self.lookup_previous_post(thread_url.to_string(), channel_id.to_string()).await;
+            let res = self
+                .lookup_previous_post(thread_url.to_string(), channel_id.to_string())
+                .await;
             let option = res.unwrap_or(None);
             if option.is_some() {
-                 parent_thread = option
+                parent_thread = option
             }
         }
 
@@ -257,7 +259,11 @@ impl Slack {
         Ok(resp.user)
     }
 
-    pub async fn lookup_previous_post(&self, thread_url: String, slack_channel: String) -> Result<Option<String>> {
+    pub async fn lookup_previous_post(
+        &self,
+        thread_url: String,
+        slack_channel: String,
+    ) -> Result<Option<String>> {
         #[derive(Deserialize)]
         struct SearchMatch {
             ts: Option<String>,
@@ -276,7 +282,10 @@ impl Slack {
 
         let resp: Resp = self
             .client
-            .get(&format!("/search.messages?query='in:{} from:@octobot has:link {}'&sort=timestamp", slack_channel, thread_url))
+            .get(&format!(
+                "/search.messages?query='in:{} from:@octobot has:link {}'&sort=timestamp",
+                slack_channel, thread_url
+            ))
             .await?;
 
         if !resp.ok {
@@ -290,13 +299,16 @@ impl Slack {
             );
         }
 
-        let messages = resp.messages.unwrap_or(Messages{ total: 0, matches: vec![]});
+        let messages = resp.messages.unwrap_or(Messages {
+            total: 0,
+            matches: vec![],
+        });
         if messages.total == 0 {
             return Ok(None);
         }
 
         let search_match = messages.matches.first();
-        let option = search_match.unwrap_or(&SearchMatch{ ts: None }).ts.clone();
+        let option = search_match.unwrap_or(&SearchMatch { ts: None }).ts.clone();
         Ok(option)
     }
 }
@@ -333,7 +345,12 @@ struct Runner {
     slack: Arc<Slack>,
 }
 
-pub fn req(channel: SlackRecipient, msg: &str, attachments: &[SlackAttachment], thread_url: Option<String>) -> SlackRequest {
+pub fn req(
+    channel: SlackRecipient,
+    msg: &str,
+    attachments: &[SlackAttachment],
+    thread_url: Option<String>,
+) -> SlackRequest {
     SlackRequest {
         channel,
         thread_url: thread_url.into(),

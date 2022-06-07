@@ -132,8 +132,18 @@ fn test_sends_to_assignees() {
             &[],
             None,
         ),
-        slack::req(SlackRecipient::user_mention("assign1"), "hello there", &[], None),
-        slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[], None),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            "hello there",
+            &[],
+            None,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign2"),
+            "hello there",
+            &[],
+            None,
+        ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
@@ -191,7 +201,12 @@ fn test_sends_only_once() {
             &[],
             None,
         ),
-        slack::req(SlackRecipient::user_mention("assign2"), "hello there", &[], None),
+        slack::req(
+            SlackRecipient::user_mention("assign2"),
+            "hello there",
+            &[],
+            None,
+        ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
     // Note: 'the-owner' is also assigned. Should only receive one slackbot message though.

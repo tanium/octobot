@@ -198,7 +198,10 @@ impl Session for MockGithub {
         head: Option<&str>,
     ) -> Result<Vec<PullRequest>> {
         let mut calls = self.get_prs_by_commit_calls.lock().unwrap();
-        assert!(calls.len() > 0, "Unexpected call to get_pull_requests_by_commit");
+        assert!(
+            calls.len() > 0,
+            "Unexpected call to get_pull_requests_by_commit"
+        );
         let call = calls.remove(0);
         assert_eq!(call.args[0], owner);
         assert_eq!(call.args[1], repo);
@@ -502,10 +505,13 @@ impl MockGithub {
         head: Option<&str>,
         ret: Result<Vec<PullRequest>>,
     ) {
-        self.get_prs_by_commit_calls.lock().unwrap().push(MockCall::new(
-            ret,
-            vec![owner, repo, commit, "", head.unwrap_or("")],
-        ));
+        self.get_prs_by_commit_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(
+                ret,
+                vec![owner, repo, commit, "", head.unwrap_or("")],
+            ));
     }
 
     pub fn mock_create_pull_request(
