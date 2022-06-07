@@ -133,7 +133,7 @@ impl Slack {
         if use_threads {
             let res = self.lookup_previous_post(thread_url.to_string(), channel_id.to_string()).await;
             let option = res.unwrap_or(None);
-            if option != None {
+            if option.is_some() {
                  parent_thread = option
             }
         }
@@ -364,7 +364,7 @@ impl worker::Runner<SlackRequest> for Runner {
                 &req.channel.name,
                 &req.msg,
                 req.attachments,
-                req.thread_url != None,
+                req.thread_url.is_some(),
                 url.as_str(),
             )
             .await;
