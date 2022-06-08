@@ -353,7 +353,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
   $scope.addRepo = function() {
     $scope.theRepo = {
       force_push_notify: true,
-      use_threads: false,
+      use_threads: true,
       jira_config: [],
     };
     $('#add-repo-modal').modal('show');

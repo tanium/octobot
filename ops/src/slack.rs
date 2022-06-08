@@ -371,10 +371,7 @@ pub fn new_runner(
 #[async_trait::async_trait]
 impl worker::Runner<SlackRequest> for Runner {
     async fn handle(&self, req: SlackRequest) {
-        let url = match req.thread_url {
-            Some(ref a) => a.clone(),
-            None => String::new(),
-        };
+        let url = req.thread_url.unwrap_or_default();
         self.slack
             .send(
                 &req.channel.id,

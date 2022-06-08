@@ -276,7 +276,6 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                 .color("danger")
                                 .build();
 
-                            // let commit_url = format!("{}/commit/{}", &req.repo.html_url, req.commit_hash);
                             messenger.send_to_channel(
                                 &format!(
                                     "Error running version script for [{}]",

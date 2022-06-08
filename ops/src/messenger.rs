@@ -99,7 +99,7 @@ impl Messenger {
                     None,
                 ));
             } else {
-                for thread_url in thread_urls.clone() {
+                for thread_url in &thread_urls {
                     self.slack.send(slack::req(
                         SlackRecipient::new(&channel, &channel),
                         &channel_msg,
