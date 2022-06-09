@@ -27,15 +27,15 @@ impl SlackDatabase {
 
     pub async fn lookup_previous_thread(
         &self,
-        thread_url: String,
+        thread_guid: String,
         slack_channel: String,
     ) -> Result<Option<String>> {
-        let result = self.connect()?;
+        let conn = self.connect()?;
 
-        let thread = result
+        let thread = conn
             .query_row(
                 "SELECT thread FROM pull_request_threads WHERE guid = ?1 AND channel = ?2 LIMIT 1",
-                &[&thread_url, &slack_channel],
+                &[&thread_guid, &slack_channel],
                 |row| row.get(0),
             )
             .map_or_else(|_| None, |r| r);
@@ -49,24 +49,28 @@ impl SlackDatabase {
         slack_channel: &str,
         thread: &str,
     ) -> Result<()> {
-        let result = self.connect()?;
-
-        result
-            .execute(
-                r#"INSERT INTO repos_jiras (guid, channel, thread, timestamp)
-                    VALUES (?1, ?2, ?3, '?4')"#,
-                &[thread_guid, slack_channel, thread, ""],
+        let mut conn = self.connect()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            r#"INSERT INTO pull_request_threads (guid, channel, thread, timestamp)
+                    VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)"#,
+            &[thread_guid, slack_channel, thread],
+        )
+        .map_err(|e| {
+            format_err!(
+                "Error inserting slack thread {} - {} - {}: {}",
+                thread_guid,
+                slack_channel,
+                thread,
+                e
             )
-            .map_err(|e| {
-                format_err!(
-                    "Error inserting slack thread {} - {} - {}: {}",
-                    thread_guid,
-                    slack_channel,
-                    thread,
-                    e
-                )
-            })?;
-
+        })?;
+        tx.execute(
+            "DELETE FROM pull_request_threads WHERE timestamp < datetime('now', '-1 year')",
+            [],
+        )
+        .map_err(|e| format_err!("Error cleaning old slack threads: {}", e))?;
+        tx.commit()?;
         Ok(())
     }
 }

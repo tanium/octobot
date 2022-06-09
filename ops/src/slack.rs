@@ -140,7 +140,7 @@ impl Slack {
             .slack_db
             .lookup_previous_thread(thread_guid.to_string(), channel_id.to_string())
             .await;
-        let parent_thread = res.unwrap_or(None);
+        let parent_thread = res.unwrap_or_default();
 
         let slack_msg = SlackMessage {
             text: msg.to_string(),
