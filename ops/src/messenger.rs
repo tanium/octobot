@@ -73,6 +73,7 @@ impl Messenger {
         self.send_to_slackbots(vec![item_owner.clone()], msg, attachments);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn send_to_channel<T: github::CommitLike>(
         &self,
         msg: &str,

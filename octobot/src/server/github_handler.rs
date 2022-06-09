@@ -1057,10 +1057,10 @@ impl GithubEventHandler {
     }
 
     fn build_thread_guid(&self, repo: Repo, number: u32) -> String {
-        return format!("{}/{}/{}", repo.owner.login(), repo.name, number);
+        format!("{}/{}/{}", repo.owner.login(), repo.name, number)
     }
 
     fn build_thread_guid_for_pr(&self, pr: &PullRequest) -> String {
-        return self.build_thread_guid(pr.base.repo.clone(), pr.number);
+        self.build_thread_guid(pr.base.repo.clone(), pr.number)
     }
 }

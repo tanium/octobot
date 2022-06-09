@@ -317,7 +317,7 @@ pub fn req(
         thread_url,
         msg: msg.into(),
         attachments: attachments.into(),
-        initial_thread: initial_thread,
+        initial_thread,
     }
 }
 
