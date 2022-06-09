@@ -7,7 +7,7 @@ pub fn all_migrations() -> Vec<Box<dyn Migration>> {
       channel varchar not null,
       thread varchar not null,
       timestamp integer not null,
-      PRIMARY KEY( guid )
+      PRIMARY KEY( guid, channel )
     );
     "#)]
 }
