@@ -39,6 +39,7 @@ fn test_sends_to_owner() {
         "hello there",
         &[],
         None,
+        false,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
@@ -63,6 +64,7 @@ fn test_sends_to_mapped_usernames() {
         "hello there",
         &[],
         None,
+        false,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
 
@@ -95,12 +97,14 @@ fn test_sends_to_owner_with_channel() {
             "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
             &[],
             None,
+            false,
         ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
             None,
+            false,
         ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -131,18 +135,21 @@ fn test_sends_to_assignees() {
             "hello there",
             &[],
             None,
+            false,
         ),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             "hello there",
             &[],
             None,
+            false,
         ),
         slack::req(
             SlackRecipient::user_mention("assign2"),
             "hello there",
             &[],
             None,
+            false,
         ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -171,6 +178,7 @@ fn test_does_not_send_to_event_sender() {
         "hello there",
         &[],
         None,
+        false,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     // Note: 'userA' is owner, sender, and assignee. (i.e. commented on a PR that he opened and is
@@ -200,12 +208,14 @@ fn test_sends_only_once() {
             "hello there",
             &[],
             None,
+            false,
         ),
         slack::req(
             SlackRecipient::user_mention("assign2"),
             "hello there",
             &[],
             None,
+            false,
         ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -239,6 +249,7 @@ fn test_peace_and_quiet() {
         "hello there",
         &[],
         None,
+        false,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
 

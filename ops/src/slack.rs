@@ -4,6 +4,7 @@ use failure::bail;
 use log::{debug, error, info};
 use serde_derive::{Deserialize, Serialize};
 
+use crate::slack_db::SlackDatabase;
 use crate::util;
 use crate::worker;
 use octobot_lib::errors::*;
@@ -23,6 +24,9 @@ pub struct SlackAttachment {
 #[derive(Deserialize)]
 struct SlackResponse {
     ok: bool,
+    // ts is the message's ID that we can use to respond to messages
+    // https://api.slack.com/methods/chat.postMessage#examples
+    ts: Option<String>,
     error: Option<String>,
 }
 
@@ -85,13 +89,16 @@ struct SlackMessage {
     text: String,
     attachments: Vec<SlackAttachment>,
     channel: String,
-    ts: Option<String>,
+    // Provide a thread_ts value for the posted message to act as a reply to a parent message.
+    // https://api.slack.com/methods/chat.postMessage#arg_thread_ts
+    thread_ts: Option<String>,
 }
 
 // the main object for sending messages to slack
 pub struct Slack {
     client: Arc<HTTPClient>,
     recent_messages: Mutex<Vec<SlackMessage>>,
+    slack_db: SlackDatabase,
 }
 
 const TRIM_MESSAGES_AT: usize = 200;
@@ -113,10 +120,10 @@ impl Slack {
                     metrics.slack_api_duration.clone(),
                 ),
         );
-
         Slack {
             client,
             recent_messages: Mutex::new(Vec::new()),
+            slack_db: SlackDatabase::new("slack_db.sqlite3").unwrap(),
         }
     }
 
@@ -126,25 +133,20 @@ impl Slack {
         channel_name: &str,
         msg: &str,
         attachments: Vec<SlackAttachment>,
-        use_threads: bool,
-        thread_url: &str,
+        initial_thread: bool,
+        thread_guid: &str,
     ) {
-        let mut parent_thread = None;
-        if use_threads {
-            let res = self
-                .lookup_previous_post(thread_url.to_string(), channel_id.to_string())
-                .await;
-            let option = res.unwrap_or(None);
-            if option.is_some() {
-                parent_thread = option
-            }
-        }
+        let res = self
+            .slack_db
+            .lookup_previous_thread(thread_guid.to_string(), channel_id.to_string())
+            .await;
+        let parent_thread = res.unwrap_or(None);
 
         let slack_msg = SlackMessage {
             text: msg.to_string(),
             attachments,
             channel: channel_id.to_string(),
-            ts: parent_thread,
+            thread_ts: parent_thread.clone(),
         };
 
         if !self.is_unique(&slack_msg) {
@@ -158,7 +160,17 @@ impl Slack {
         match res {
             Ok(r) => {
                 if r.ok {
-                    info!("Successfully sent slack message to {}", channel_name)
+                    let thread = r.ts.unwrap_or_default();
+                    info!(
+                        "Successfully sent slack message to {}, ts: \"{}\"",
+                        channel_name, thread
+                    );
+                    if initial_thread && parent_thread.is_none() {
+                        self.slack_db
+                            .insert_thread(thread_guid, channel_id, thread.as_str())
+                            .await
+                            .ok();
+                    }
                 } else {
                     error!(
                         "Error sending slack message to {}: {} ({})",
@@ -258,59 +270,6 @@ impl Slack {
 
         Ok(resp.user)
     }
-
-    pub async fn lookup_previous_post(
-        &self,
-        thread_url: String,
-        slack_channel: String,
-    ) -> Result<Option<String>> {
-        #[derive(Deserialize)]
-        struct SearchMatch {
-            ts: Option<String>,
-        }
-        #[derive(Deserialize)]
-        struct Messages {
-            matches: Vec<SearchMatch>,
-            total: i32,
-        }
-        #[derive(Deserialize)]
-        struct Resp {
-            ok: bool,
-            error: Option<String>,
-            messages: Option<Messages>,
-        }
-
-        let resp: Resp = self
-            .client
-            .get(&format!(
-                "/search.messages?query='in:{} from:@octobot has:link {}'&sort=timestamp",
-                slack_channel, thread_url
-            ))
-            .await?;
-
-        if !resp.ok {
-            if resp.error == Some(String::from("messages_not_found")) {
-                return Ok(None);
-            }
-            bail!(
-                "Failed to lookup messages: {}",
-                resp.error
-                    .unwrap_or_else(|| String::from("<unknown error>"))
-            );
-        }
-
-        let messages = resp.messages.unwrap_or(Messages {
-            total: 0,
-            matches: vec![],
-        });
-        if messages.total == 0 {
-            return Ok(None);
-        }
-
-        let search_match = messages.matches.first();
-        let option = search_match.unwrap_or(&SearchMatch { ts: None }).ts.clone();
-        Ok(option)
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -319,6 +278,7 @@ pub struct SlackRequest {
     pub thread_url: Option<String>,
     pub msg: String,
     pub attachments: Vec<SlackAttachment>,
+    pub initial_thread: bool,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
@@ -350,12 +310,14 @@ pub fn req(
     msg: &str,
     attachments: &[SlackAttachment],
     thread_url: Option<String>,
+    initial_thread: bool,
 ) -> SlackRequest {
     SlackRequest {
         channel,
         thread_url,
         msg: msg.into(),
         attachments: attachments.into(),
+        initial_thread: initial_thread,
     }
 }
 
@@ -378,7 +340,7 @@ impl worker::Runner<SlackRequest> for Runner {
                 &req.channel.name,
                 &req.msg,
                 req.attachments,
-                req.thread_url.is_some(),
+                req.initial_thread,
                 url.as_str(),
             )
             .await;

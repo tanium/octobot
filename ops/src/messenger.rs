@@ -35,7 +35,7 @@ impl Messenger {
         commits: &[T],
         thread_urls: Vec<String>,
     ) {
-        self.send_to_channel(msg, attachments, repo, branch, commits, thread_urls);
+        self.send_to_channel(msg, attachments, repo, branch, commits, thread_urls, false);
 
         let mut slackbots: Vec<github::User> = vec![item_owner.clone()];
 
@@ -68,6 +68,7 @@ impl Messenger {
             branch,
             commits,
             Vec::<String>::new(),
+            false,
         );
         self.send_to_slackbots(vec![item_owner.clone()], msg, attachments);
     }
@@ -80,6 +81,7 @@ impl Messenger {
         branch: &str,
         commits: &[T],
         thread_urls: Vec<String>,
+        init_thread: bool,
     ) {
         // We could look at the thread_url to see if threads have been used in the past, but that
         // wouldn't respect the users' choice if they change the setting later.
@@ -97,6 +99,7 @@ impl Messenger {
                     &channel_msg,
                     attachments,
                     None,
+                    init_thread,
                 ));
             } else {
                 for thread_url in &thread_urls {
@@ -105,6 +108,7 @@ impl Messenger {
                         &channel_msg,
                         attachments,
                         Some(thread_url.to_owned()),
+                        init_thread,
                     ));
                 }
             }
@@ -119,7 +123,8 @@ impl Messenger {
     ) {
         for user in users {
             if let Some(channel) = self.config.users().slack_direct_message(user.login()) {
-                self.slack.send(slack::req(channel, msg, attachments, None));
+                self.slack
+                    .send(slack::req(channel, msg, attachments, None, false));
             }
         }
     }

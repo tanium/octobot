@@ -11,7 +11,7 @@ use octobot_lib::config::Config;
 use octobot_lib::errors::Result;
 use octobot_lib::github;
 use octobot_lib::github::api::Session;
-use octobot_lib::github::CommentLike;
+use octobot_lib::github::{CommentLike, PullRequest, Repo};
 use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
 use octobot_ops::force_push::{self, ForcePushRequest};
@@ -502,7 +502,7 @@ impl GithubEventHandler {
 
                 if !pull_request.is_draft() {
                     let msg = format!("Pull Request {}", verb);
-
+                    let thread_guid = self.build_thread_guid_for_pr(pull_request);
                     match notify_mode {
                         NotifyMode::Channel => self.messenger.send_to_channel(
                             &msg,
@@ -510,7 +510,8 @@ impl GithubEventHandler {
                             &self.repository,
                             branch_name,
                             &commits,
-                            vec![pull_request.html_url.to_string()],
+                            vec![thread_guid],
+                            self.action == "opened",
                         ),
 
                         NotifyMode::All => self.messenger.send_to_all(
@@ -522,7 +523,7 @@ impl GithubEventHandler {
                             &self.all_participants(&pull_request, &commits),
                             branch_name,
                             &commits,
-                            vec![pull_request.html_url.as_str().to_string()],
+                            vec![thread_guid],
                         ),
 
                         NotifyMode::None => (),
@@ -672,7 +673,7 @@ impl GithubEventHandler {
                         &participants,
                         branch_name,
                         &commits,
-                        vec![pull_request.html_url.as_str().to_string()],
+                        vec![self.build_thread_guid_for_pr(pull_request)],
                     );
                 }
             }
@@ -725,7 +726,7 @@ impl GithubEventHandler {
             &participants,
             branch_name,
             commits,
-            vec![pull_request.html_url().to_string()],
+            vec![self.build_thread_guid(self.repository.clone(), pull_request.number())],
         );
     }
 
@@ -777,7 +778,10 @@ impl GithubEventHandler {
                             return (StatusCode::OK, "push [no PR]".into());
                         }
                     };
-                    let thread_urls = commit_prs.into_iter().map(|pr| pr.html_url).collect();
+                    let thread_urls = commit_prs
+                        .into_iter()
+                        .map(|pr| self.build_thread_guid_for_pr(&pr))
+                        .collect();
                     self.messenger.send_to_all(
                         &msg,
                         &attachments,
@@ -921,7 +925,7 @@ impl GithubEventHandler {
                             &self.all_participants(&pull_request, &commits),
                             &branch_name,
                             &commits,
-                            vec![pull_request.html_url.as_str().to_string()],
+                            vec![self.build_thread_guid_for_pr(pull_request)],
                         );
 
                         if self.data.forced()
@@ -1050,5 +1054,13 @@ impl GithubEventHandler {
             commits,
         );
         self.pr_merge.send(req);
+    }
+
+    fn build_thread_guid(&self, repo: Repo, number: u32) -> String {
+        return format!("{}/{}/{}", repo.owner.login(), repo.name, number);
+    }
+
+    fn build_thread_guid_for_pr(&self, pr: &PullRequest) -> String {
+        return self.build_thread_guid(pr.base.repo.clone(), pr.number);
     }
 }
