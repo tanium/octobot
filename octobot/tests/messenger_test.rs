@@ -162,7 +162,7 @@ fn test_sends_to_assignees() {
         &[github::User::new("assign1"), github::User::new("assign2")],
         "",
         &Vec::<github::Commit>::new(),
-        vec!["http://the-github-host/some-user/some-repo/pulls/1".to_string()],
+        vec!["some-user/some-repo/1".to_string()],
     );
 }
 

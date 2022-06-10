@@ -1549,7 +1549,7 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
             SlackRecipient::by_name("the-reviews-channel"),
             &format!("{} {}", msg, repo_msg),
             &attach,
-            Some("some-user/some-repo/32".to_string()),
+            Some("some-user/custom-branches-repo/32".to_string()),
             false,
         ),
         slack::req(

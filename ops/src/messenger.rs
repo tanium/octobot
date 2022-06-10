@@ -5,7 +5,6 @@ use crate::util;
 use crate::worker::Worker;
 use octobot_lib::config::Config;
 use octobot_lib::github;
-// use octobot_lib::github::{Repo, User};
 use octobot_lib::slack::SlackRecipient;
 
 pub struct Messenger {
@@ -33,9 +32,9 @@ impl Messenger {
         participants: &[github::User],
         branch: &str,
         commits: &[T],
-        thread_urls: Vec<String>,
+        thread_guids: Vec<String>,
     ) {
-        self.send_to_channel(msg, attachments, repo, branch, commits, thread_urls, false);
+        self.send_to_channel(msg, attachments, repo, branch, commits, thread_guids, false);
 
         let mut slackbots: Vec<github::User> = vec![item_owner.clone()];
 
