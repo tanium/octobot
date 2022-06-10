@@ -275,7 +275,7 @@ impl Slack {
 #[derive(Debug, PartialEq, Clone)]
 pub struct SlackRequest {
     pub channel: SlackRecipient,
-    pub thread_url: Option<String>,
+    pub thread_guid: Option<String>,
     pub msg: String,
     pub attachments: Vec<SlackAttachment>,
     pub initial_thread: bool,
@@ -309,12 +309,12 @@ pub fn req(
     channel: SlackRecipient,
     msg: &str,
     attachments: &[SlackAttachment],
-    thread_url: Option<String>,
+    thread_guid: Option<String>,
     initial_thread: bool,
 ) -> SlackRequest {
     SlackRequest {
         channel,
-        thread_url,
+        thread_guid,
         msg: msg.into(),
         attachments: attachments.into(),
         initial_thread,
@@ -333,7 +333,6 @@ pub fn new_runner(
 #[async_trait::async_trait]
 impl worker::Runner<SlackRequest> for Runner {
     async fn handle(&self, req: SlackRequest) {
-        let url = req.thread_url.unwrap_or_default();
         self.slack
             .send(
                 &req.channel.id,
@@ -341,7 +340,7 @@ impl worker::Runner<SlackRequest> for Runner {
                 &req.msg,
                 req.attachments,
                 req.initial_thread,
-                url.as_str(),
+                req.thread_guid.unwrap_or_default().as_str(),
             )
             .await;
     }

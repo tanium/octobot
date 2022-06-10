@@ -80,12 +80,12 @@ impl Messenger {
         repo: &github::Repo,
         branch: &str,
         commits: &[T],
-        thread_urls: Vec<String>,
-        init_thread: bool,
+        thread_guids: Vec<String>,
+        initial_thread: bool,
     ) {
-        // We could look at the thread_url to see if threads have been used in the past, but that
-        // wouldn't respect the users' choice if they change the setting later.
-        let use_threads = self.config.repos().notify_use_threads(repo) && !thread_urls.is_empty();
+        // We can use the thread_guid to see if threads have been used in the past within the
+        //  slack db, but that wouldn't respect the users' choice if they change the setting later.
+        let use_threads = self.config.repos().notify_use_threads(repo) && !thread_guids.is_empty();
 
         for channel in self.config.repos().lookup_channels(repo, branch, commits) {
             let channel_msg = format!(
@@ -99,16 +99,16 @@ impl Messenger {
                     &channel_msg,
                     attachments,
                     None,
-                    init_thread,
+                    initial_thread,
                 ));
             } else {
-                for thread_url in &thread_urls {
+                for thread_guid in &thread_guids {
                     self.slack.send(slack::req(
                         SlackRecipient::new(&channel, &channel),
                         &channel_msg,
                         attachments,
-                        Some(thread_url.to_owned()),
-                        init_thread,
+                        Some(thread_guid.to_owned()),
+                        initial_thread,
                     ));
                 }
             }
