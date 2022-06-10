@@ -502,7 +502,7 @@ impl GithubEventHandler {
 
                 if !pull_request.is_draft() {
                     let msg = format!("Pull Request {}", verb);
-
+                    let thread_guid = self.build_thread_guid(pull_request.number);
                     match notify_mode {
                         NotifyMode::Channel => self.messenger.send_to_channel(
                             &msg,
@@ -510,6 +510,8 @@ impl GithubEventHandler {
                             &self.repository,
                             branch_name,
                             &commits,
+                            vec![thread_guid],
+                            self.action == "opened",
                         ),
 
                         NotifyMode::All => self.messenger.send_to_all(
@@ -521,6 +523,7 @@ impl GithubEventHandler {
                             &self.all_participants(&pull_request, &commits),
                             branch_name,
                             &commits,
+                            vec![thread_guid],
                         ),
 
                         NotifyMode::None => (),
@@ -670,6 +673,7 @@ impl GithubEventHandler {
                         &participants,
                         branch_name,
                         &commits,
+                        vec![self.build_thread_guid(pull_request.number)],
                     );
                 }
             }
@@ -722,6 +726,7 @@ impl GithubEventHandler {
             &participants,
             branch_name,
             commits,
+            vec![self.build_thread_guid(pull_request.number())],
         );
     }
 
@@ -752,6 +757,31 @@ impl GithubEventHandler {
                     let branch_name = "";
                     let commits = Vec::<github::Commit>::new();
 
+                    let commit_prs = match self
+                        .github_session
+                        .get_pull_requests_by_commit(
+                            self.repository.owner.login(),
+                            &self.repository.name,
+                            commit,
+                            None,
+                        )
+                        .await
+                    {
+                        Ok(p) => p,
+                        Err(e) => {
+                            error!(
+                                "Error looking up PR for '{}' ({}): {}",
+                                branch_name,
+                                self.data.after(),
+                                e
+                            );
+                            return (StatusCode::OK, "push [no PR]".into());
+                        }
+                    };
+                    let thread_guids = commit_prs
+                        .into_iter()
+                        .map(|pr| self.build_thread_guid(pr.number))
+                        .collect();
                     self.messenger.send_to_all(
                         &msg,
                         &attachments,
@@ -761,6 +791,7 @@ impl GithubEventHandler {
                         &[],
                         branch_name,
                         &commits,
+                        thread_guids,
                     );
                 }
             }
@@ -894,6 +925,7 @@ impl GithubEventHandler {
                             &self.all_participants(&pull_request, &commits),
                             &branch_name,
                             &commits,
+                            vec![self.build_thread_guid(pull_request.number)],
                         );
 
                         if self.data.forced()
@@ -1022,5 +1054,14 @@ impl GithubEventHandler {
             commits,
         );
         self.pr_merge.send(req);
+    }
+
+    fn build_thread_guid(&self, number: u32) -> String {
+        format!(
+            "{}/{}/{}",
+            self.repository.owner.login(),
+            self.repository.name,
+            number
+        )
     }
 }

@@ -154,7 +154,7 @@ impl Repo {
             None => return Err(format_err!("No path segments in URL")),
         };
         if segments.len() != 2 {
-            return Err(format_err!("Expectd only two path segments!"));
+            return Err(format_err!("Expected only two path segments!"));
         }
 
         let user = segments[0];

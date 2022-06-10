@@ -32,8 +32,9 @@ impl Messenger {
         participants: &[github::User],
         branch: &str,
         commits: &[T],
+        thread_guids: Vec<String>,
     ) {
-        self.send_to_channel(msg, attachments, repo, branch, commits);
+        self.send_to_channel(msg, attachments, repo, branch, commits, thread_guids, false);
 
         let mut slackbots: Vec<github::User> = vec![item_owner.clone()];
 
@@ -59,10 +60,19 @@ impl Messenger {
         branch: &str,
         commits: &[T],
     ) {
-        self.send_to_channel(msg, attachments, repo, branch, commits);
+        self.send_to_channel(
+            msg,
+            attachments,
+            repo,
+            branch,
+            commits,
+            Vec::<String>::new(),
+            false,
+        );
         self.send_to_slackbots(vec![item_owner.clone()], msg, attachments);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn send_to_channel<T: github::CommitLike>(
         &self,
         msg: &str,
@@ -70,18 +80,38 @@ impl Messenger {
         repo: &github::Repo,
         branch: &str,
         commits: &[T],
+        thread_guids: Vec<String>,
+        initial_thread: bool,
     ) {
+        // We can use the thread_guid to see if threads have been used in the past within the
+        //  slack db, but that wouldn't respect the users' choice if they change the setting later.
+        let use_threads = self.config.repos().notify_use_threads(repo) && !thread_guids.is_empty();
+
         for channel in self.config.repos().lookup_channels(repo, branch, commits) {
             let channel_msg = format!(
                 "{} ({})",
                 msg,
                 util::make_link(&repo.html_url, &repo.full_name)
             );
-            self.slack.send(slack::req(
-                SlackRecipient::new(&channel, &channel),
-                &channel_msg,
-                attachments,
-            ));
+            if !use_threads {
+                self.slack.send(slack::req(
+                    SlackRecipient::new(&channel, &channel),
+                    &channel_msg,
+                    attachments,
+                    None,
+                    initial_thread,
+                ));
+            } else {
+                for thread_guid in &thread_guids {
+                    self.slack.send(slack::req(
+                        SlackRecipient::new(&channel, &channel),
+                        &channel_msg,
+                        attachments,
+                        Some(thread_guid.to_owned()),
+                        initial_thread,
+                    ));
+                }
+            }
         }
     }
 
@@ -93,7 +123,8 @@ impl Messenger {
     ) {
         for user in users {
             if let Some(channel) = self.config.users().slack_direct_message(user.login()) {
-                self.slack.send(slack::req(channel, msg, attachments));
+                self.slack
+                    .send(slack::req(channel, msg, attachments, None, false));
             }
         }
     }

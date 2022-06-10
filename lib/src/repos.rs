@@ -18,6 +18,7 @@ pub struct RepoInfo {
     // slack channel to send all messages to
     pub channel: String,
     pub force_push_notify: bool,
+    pub use_threads: bool,
     // A list of jira projects to be respected in processing.
     #[serde(default)]
     pub jira_config: Vec<RepoJiraConfig>,
@@ -61,6 +62,7 @@ impl RepoInfo {
             repo: repo.into(),
             channel: channel.into(),
             force_push_notify: false,
+            use_threads: false,
             jira_config: vec![],
             release_branch_prefix: String::new(),
         }
@@ -69,6 +71,12 @@ impl RepoInfo {
     pub fn with_force_push(self, value: bool) -> RepoInfo {
         let mut info = self;
         info.force_push_notify = value;
+        info
+    }
+
+    pub fn with_use_threads(self, value: bool) -> RepoInfo {
+        let mut info = self;
+        info.use_threads = value;
         info
     }
 
@@ -133,12 +141,13 @@ impl RepoConfig {
         let tx = conn.transaction()?;
 
         tx.execute(
-            r#"INSERT INTO repos (repo, channel, force_push_notify, release_branch_prefix)
-               VALUES (?1, ?2, ?3, ?4)"#,
+            r#"INSERT INTO repos (repo, channel, force_push_notify, use_threads, release_branch_prefix)
+               VALUES (?1, ?2, ?3, ?4, ?5)"#,
             &[
                 &repo.repo,
                 &repo.channel,
                 &db::to_tinyint(repo.force_push_notify) as &dyn ToSql,
+                &db::to_tinyint(repo.use_threads) as &dyn ToSql,
                 &repo.release_branch_prefix,
             ],
         )
@@ -166,12 +175,14 @@ impl RepoConfig {
                 SET repo = ?1,
                     channel = ?2,
                     force_push_notify = ?3,
-                    release_branch_prefix = ?4
-               WHERE id = ?5"#,
+                    use_threads = ?4,
+                    release_branch_prefix = ?5
+               WHERE id = ?6"#,
             &[
                 &repo.repo,
                 &repo.channel,
                 &db::to_tinyint(repo.force_push_notify) as &dyn ToSql,
+                &db::to_tinyint(repo.use_threads) as &dyn ToSql,
                 &repo.release_branch_prefix,
                 &id,
             ],
@@ -253,6 +264,12 @@ impl RepoConfig {
     pub fn notify_force_push(&self, repo: &github::Repo) -> bool {
         self.lookup_info(repo)
             .map(|r| r.force_push_notify)
+            .unwrap_or(false)
+    }
+
+    pub fn notify_use_threads(&self, repo: &github::Repo) -> bool {
+        self.lookup_info(repo)
+            .map(|r| r.use_threads)
             .unwrap_or(false)
     }
 
@@ -360,6 +377,7 @@ impl RepoConfig {
             repo: cols.get(row, "repo")?,
             channel: cols.get(row, "channel")?,
             force_push_notify: db::to_bool(cols.get(row, "force_push_notify")?),
+            use_threads: db::to_bool(cols.get(row, "use_threads")?),
             jira_config,
             release_branch_prefix: cols.get(row, "release_branch_prefix")?,
         })
@@ -571,6 +589,40 @@ mod tests {
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
             assert_eq!(false, repos.notify_force_push(&repo));
+        }
+    }
+
+    #[test]
+    fn test_notify_use_theads() {
+        let (mut repos, _temp) = new_test();
+        repos
+            .insert_info(&RepoInfo::new("some-user/the-default", "reviews"))
+            .unwrap();
+        repos
+            .insert_info(&RepoInfo::new("some-user/on-purpose", "reviews").with_use_threads(true))
+            .unwrap();
+        repos
+            .insert_info(&RepoInfo::new("some-user/quiet-repo", "reviews").with_use_threads(false))
+            .unwrap();
+        {
+            let repo =
+                github::Repo::parse("http://git.company.com/someone-else/some-other-repo").unwrap();
+            assert_eq!(false, repos.notify_use_threads(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/some-user/the-default").unwrap();
+            assert_eq!(false, repos.notify_use_threads(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/some-user/on-purpose").unwrap();
+            assert_eq!(true, repos.notify_use_threads(&repo));
+        }
+
+        {
+            let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
+            assert_eq!(false, repos.notify_use_threads(&repo));
         }
     }
 

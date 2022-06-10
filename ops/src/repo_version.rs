@@ -285,6 +285,8 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                 &req.repo,
                                 &req.branch,
                                 &req.commits,
+                                vec![req.repo.html_url.to_string()],
+                                false,
                             );
                         } else {
                             resolved = true

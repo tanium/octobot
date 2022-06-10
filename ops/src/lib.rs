@@ -12,6 +12,8 @@ pub mod migrate_slack;
 pub mod pr_merge;
 pub mod repo_version;
 pub mod slack;
+mod slack_db;
+mod slack_db_migrations;
 pub mod util;
 pub mod webhook_db;
 mod webhook_db_migrations;
