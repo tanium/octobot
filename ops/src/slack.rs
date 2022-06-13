@@ -138,7 +138,7 @@ impl Slack {
     ) {
         let res = self
             .slack_db
-            .lookup_previous_thread(thread_guid.to_string(), channel_id.to_string())
+            .lookup_previous_thread(thread_guid, channel_id)
             .await;
         let parent_thread = res.unwrap_or_default();
 
@@ -165,7 +165,7 @@ impl Slack {
                         "Successfully sent slack message to {}, ts: \"{}\"",
                         channel_name, thread
                     );
-                    if initial_thread && parent_thread.is_none() {
+                    if initial_thread && !thread_guid.is_empty() && parent_thread.is_none() {
                         self.slack_db
                             .insert_thread(thread_guid, channel_id, thread.as_str())
                             .await
