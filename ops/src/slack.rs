@@ -143,7 +143,7 @@ impl Slack {
         {
             Ok(r) => r,
             Err(e) => {
-                error!("Error looking up slack thread thread: {}", e);
+                error!("Error looking up slack thread: {}", e);
                 None
             }
         };
