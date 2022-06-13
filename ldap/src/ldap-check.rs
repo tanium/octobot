@@ -20,7 +20,7 @@ fn main() {
 
     if command == "auth" {
         let user = read_input("Enter username: ");
-        let pass = rpassword::prompt_password_stdout("Enter password: ").expect("password");
+        let pass = rpassword::prompt_password("Enter password: ").expect("password");
 
         match octobot_ldap::auth(&user, &pass, &ldap_config) {
             Ok(true) => println!("Successfully authenticated"),
