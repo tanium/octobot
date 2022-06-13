@@ -15,8 +15,8 @@ fn main() {
 
     let mut config = config::new(config_file.clone().into()).expect("Error parsing config");
 
-    let pass1 = rpassword::prompt_password_stdout("Enter new password: ").expect("password");
-    let pass2 = rpassword::prompt_password_stdout("Retype new password: ").expect("password");
+    let pass1 = rpassword::prompt_password("Enter new password: ").expect("password");
+    let pass2 = rpassword::prompt_password("Retype new password: ").expect("password");
 
     if pass1 != pass2 {
         println!("Passwords do not match!");
