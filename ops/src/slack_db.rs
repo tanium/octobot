@@ -27,9 +27,13 @@ impl SlackDatabase {
 
     pub async fn lookup_previous_thread(
         &self,
-        thread_guid: String,
-        slack_channel: String,
+        thread_guid: &str,
+        slack_channel: &str,
     ) -> Result<Option<String>> {
+        if thread_guid.is_empty() {
+            return Ok(None);
+        }
+
         let conn = self.connect()?;
 
         let thread = conn

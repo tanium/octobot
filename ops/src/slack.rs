@@ -136,11 +136,17 @@ impl Slack {
         initial_thread: bool,
         thread_guid: &str,
     ) {
-        let res = self
+        let parent_thread = match self
             .slack_db
-            .lookup_previous_thread(thread_guid.to_string(), channel_id.to_string())
-            .await;
-        let parent_thread = res.unwrap_or_default();
+            .lookup_previous_thread(thread_guid, channel_id)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error looking up slack thread: {}", e);
+                None
+            }
+        };
 
         let slack_msg = SlackMessage {
             text: msg.to_string(),
@@ -165,7 +171,7 @@ impl Slack {
                         "Successfully sent slack message to {}, ts: \"{}\"",
                         channel_name, thread
                     );
-                    if initial_thread && parent_thread.is_none() {
+                    if initial_thread && !thread_guid.is_empty() && parent_thread.is_none() {
                         self.slack_db
                             .insert_thread(thread_guid, channel_id, thread.as_str())
                             .await
