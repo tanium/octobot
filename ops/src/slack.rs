@@ -136,11 +136,17 @@ impl Slack {
         initial_thread: bool,
         thread_guid: &str,
     ) {
-        let res = self
+        let parent_thread = match self
             .slack_db
             .lookup_previous_thread(thread_guid, channel_id)
-            .await;
-        let parent_thread = res.unwrap_or_default();
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error looking up slack thread thread: {}", e);
+                None
+            }
+        };
 
         let slack_msg = SlackMessage {
             text: msg.to_string(),
