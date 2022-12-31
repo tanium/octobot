@@ -354,6 +354,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
     $scope.theRepo = {
       force_push_notify: true,
       use_threads: true,
+      hidden: false,
       jira_config: [],
     };
     $('#add-repo-modal').modal('show');
@@ -370,7 +371,11 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
   }
 
   $scope.addJIRA = function(theRepo) {
-    theRepo.jira_config.splice(0, 0, {});
+    theRepo.jira_config.splice(0, 0, { hidden: false });
+  };
+
+  $scope.showHideJIRAs = function(theRepo, value) {
+    theRepo.jira_config.forEach(config => config.hidden = value)
   };
 
   $scope.removeJIRA = function(theRepo, index) {

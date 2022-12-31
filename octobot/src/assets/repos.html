@@ -61,15 +61,25 @@
           <h4>JIRA</h4>
           <div style="margin: 10px 0px">
             <button type="button" class="btn btn-sm btn-primary" ng-click="addJIRA(theRepo)">Add JIRA</button>
+            <button class="btn btn-sm btn-primary" ng-disabled="!theRepo.jira_config" type="button" ng-click="hidden = !hidden; showHideJIRAs(theRepo, hidden)" ng-init="hidden=false">Toggle JIRA projects</button>
           </div>
 
           <div class="container">
             <div ng-repeat="config in theRepo.jira_config" class="row">
               <div class="border p-2 mb-2 col-11">
                 <div class="form-group">
-                  <label>Project</label>
+                  <label>
+                    Project
+                    <div class="col-1">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="config.hidden = !config.hidden">
+                        <span class="oi oi-chevron-top" ng-if="config.hidden"></span>
+                        <span class="oi oi-chevron-bottom" ng-if="!config.hidden"></span>
+                      </button>
+                    </div>
+                  </label>
                   <input type="text" class="form-control" ng-model="config.jira_project" placeholder="APP" required  />
                 </div>
+                <div ng-hide="config.hidden">
                 <div class="form-group">
                   <label>Release branch regex</label>
                   <input type="text" class="form-control" ng-model="config.release_branch_regex"  placeholder="release/app-.*" />
@@ -81,6 +91,7 @@
                 <div class="form-group">
                   <label>Slack channel override</label>
                   <input type="text" class="form-control" ng-model="config.channel" placeholder="app-reviews" />
+                </div>
                 </div>
               </div>
               <div class="col-1">
