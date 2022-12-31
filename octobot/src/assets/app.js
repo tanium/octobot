@@ -274,7 +274,7 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
 
   function doAddUser() {
     sessionHttp.post('/api/users', $scope.theUser).then(function(resp) {
-      notificationService.showSuccess('Added user succesfully');
+      notificationService.showSuccess('Added user successfully');
       refresh()
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -286,7 +286,7 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
 
   function doEditUser() {
     sessionHttp.put('/api/user', $scope.theUser).then(function(resp) {
-      notificationService.showSuccess('Edited user succesfully');
+      notificationService.showSuccess('Edited user successfully');
       refresh()
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -301,7 +301,7 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
       return;
     }
     return sessionHttp.delete('/api/user?id=' + Number(user.id)).then(function(resp) {
-      notificationService.showSuccess('Remove user succesfully');
+      notificationService.showSuccess('Remove user successfully');
       refresh();
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -384,7 +384,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
 
   function doAddRepo() {
     sessionHttp.post('/api/repos', $scope.theRepo).then(function(resp) {
-      notificationService.showSuccess('Added repo succesfully');
+      notificationService.showSuccess('Added repo successfully');
       refresh()
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -396,7 +396,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
 
   function doEditRepo() {
     sessionHttp.put('/api/repo', $scope.theRepo).then(function(resp) {
-      notificationService.showSuccess('Edited repo succesfully');
+      notificationService.showSuccess('Edited repo successfully');
       refresh()
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -411,7 +411,7 @@ app.controller('ReposController', function($rootScope, $scope, sessionHttp, noti
       return;
     }
     return sessionHttp.delete('/api/repo?id=' + Number(repo.id)).then(function(resp) {
-      notificationService.showSuccess('Remove repo succesfully');
+      notificationService.showSuccess('Remove repo successfully');
       refresh();
     }).catch(function(e) {
       if (!isLoggedIn()) {
@@ -500,7 +500,7 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
   function mergeVersionsForReal() {
     let version = $scope.req.version;
     mergeVersions(false).then(function(resp) {
-      notificationService.showSuccess('Created new version succesfully');
+      notificationService.showSuccess('Created new version successfully');
       $scope.reset();
       $scope.lastResp = resp.data.versions;
       $scope.lastVersion = version;
