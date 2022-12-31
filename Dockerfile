@@ -9,7 +9,7 @@ RUN apt-get update \
      git \
      firejail \
      gosu \
-     python \
+     python3.6 \
      openssl \
      libsqlite3-0 \
      libldap2-dev \

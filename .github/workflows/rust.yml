@@ -15,7 +15,7 @@ jobs:
       run: sudo apt-get install libsqlite3-dev libldap2-dev
 
     - name: Install test packages
-      run: sudo apt-get install python firejail
+      run: sudo apt-get install python3.6 firejail
 
     - name: Install stable toolchain
       uses: actions-rs/toolchain@v1
