@@ -224,10 +224,16 @@ impl RepoConfig {
     }
 
     pub fn delete(&mut self, id: i32) -> Result<()> {
-        let conn = self.db.connect()?;
-        conn.execute("DELETE from repos where id = ?1", &[&id])
+        let mut conn = self.db.connect()?;
+        let tx = conn.transaction()?;
+
+        tx.execute("DELETE from repos_jiras where repo_id = ?1", &[&id])
+            .map_err(|e| format_err!("Error clearing repo jira entries {}: {}", id, e))?;
+
+        tx.execute("DELETE from repos where id = ?1", &[&id])
             .map_err(|e| format_err!("Error deleting repo {}: {}", id, e))?;
 
+        tx.commit()?;
         Ok(())
     }
 
@@ -655,6 +661,44 @@ mod tests {
             let repo = github::Repo::parse("http://git.company.com/some-user/with-config").unwrap();
             assert_eq!(vec!["a", "b"], repos.jira_projects(&repo, "any"));
         }
+    }
+
+    #[test]
+    fn test_jira_repos_delete_recreate() {
+        let (mut repos, _temp) = new_test();
+        repos.insert("some-user", "SOME_OTHER_CHANNEL").unwrap();
+
+        // create a repo with jira config
+        let config1 = RepoJiraConfig::new("SER").with_release_branch_regex("release/server-.*");
+        repos
+            .insert_info(
+                &RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira_config(config1),
+            )
+            .unwrap();
+
+        // delete said repo
+        let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
+        let repo_info = repos.lookup_info(&repo).unwrap();
+        repos.delete(repo_info.id.unwrap()).unwrap();
+
+        // reinsert the same repo with the same jira config
+        let config1 = RepoJiraConfig::new("SER").with_release_branch_regex("release/server-.*");
+        repos
+            .insert_info(
+                &RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira_config(config1),
+            )
+            .unwrap();
+        assert_eq!(vec!["SER"], repos.jira_projects(&repo, "master"));
+        assert_eq!(vec!["SER"], repos.jira_projects(&repo, "main"));
+        assert_eq!(vec!["SER"], repos.jira_projects(&repo, "develop"));
+        assert_eq!(
+            vec!["SER"],
+            repos.jira_projects(&repo, "release/server-1.2")
+        );
+        assert_eq!(
+            Vec::<String>::new(),
+            repos.jira_projects(&repo, "release/other")
+        );
     }
 
     #[test]
