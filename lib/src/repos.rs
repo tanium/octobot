@@ -224,10 +224,16 @@ impl RepoConfig {
     }
 
     pub fn delete(&mut self, id: i32) -> Result<()> {
-        let conn = self.db.connect()?;
-        conn.execute("DELETE from repos where id = ?1", &[&id])
+        let mut conn = self.db.connect()?;
+        let tx = conn.transaction()?;
+
+        tx.execute("DELETE from repos_jiras where repo_id = ?1", &[&id])
+            .map_err(|e| format_err!("Error clearing repo jira entries {}: {}", id, e))?;
+
+        tx.execute("DELETE from repos where id = ?1", &[&id])
             .map_err(|e| format_err!("Error deleting repo {}: {}", id, e))?;
 
+        tx.commit()?;
         Ok(())
     }
 
