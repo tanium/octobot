@@ -658,6 +658,25 @@ mod tests {
     }
 
     #[test]
+    fn test_jira_repos_delete_recreate() {
+        let (mut repos, _temp) = new_test();
+        repos.insert("some-user", "SOME_OTHER_CHANNEL").unwrap();
+
+        // create a repo with jira config
+        let config1 = RepoJiraConfig::new("SER").with_release_branch_regex("release/server-.*");
+        repos.insert_info(&RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira_config(config1)).unwrap();
+
+        // delete said repo
+        let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
+        let repo_info = repos.lookup_info(&repo).unwrap();
+        repos.delete(repo_info.id.unwrap()).unwrap();
+
+        // reinsert the same repo with the same jira config
+        let config1 = RepoJiraConfig::new("SER").with_release_branch_regex("release/server-.*");
+        repos.insert_info(&RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira_config(config1)).unwrap();
+    }
+
+    #[test]
     fn test_jira_repos_config() {
         let (mut repos, _temp) = new_test();
         repos.insert("some-user", "SOME_OTHER_CHANNEL").unwrap();
