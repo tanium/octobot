@@ -670,7 +670,11 @@ mod tests {
 
         // create a repo with jira config
         let config1 = RepoJiraConfig::new("SER").with_release_branch_regex("release/server-.*");
-        repos.insert_info(&RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira_config(config1)).unwrap();
+        repos
+            .insert_info(
+                &RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira_config(config1),
+            )
+            .unwrap();
 
         // delete said repo
         let repo = github::Repo::parse("http://git.company.com/some-user/the-repo").unwrap();
@@ -679,7 +683,22 @@ mod tests {
 
         // reinsert the same repo with the same jira config
         let config1 = RepoJiraConfig::new("SER").with_release_branch_regex("release/server-.*");
-        repos.insert_info(&RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira_config(config1)).unwrap();
+        repos
+            .insert_info(
+                &RepoInfo::new("some-user/the-repo", "the-repo-reviews").with_jira_config(config1),
+            )
+            .unwrap();
+        assert_eq!(vec!["SER"], repos.jira_projects(&repo, "master"));
+        assert_eq!(vec!["SER"], repos.jira_projects(&repo, "main"));
+        assert_eq!(vec!["SER"], repos.jira_projects(&repo, "develop"));
+        assert_eq!(
+            vec!["SER"],
+            repos.jira_projects(&repo, "release/server-1.2")
+        );
+        assert_eq!(
+            Vec::<String>::new(),
+            repos.jira_projects(&repo, "release/other")
+        );
     }
 
     #[test]
