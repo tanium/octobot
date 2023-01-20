@@ -59,6 +59,8 @@ pub struct MetricsConfig {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SlackConfig {
     pub bot_token: String,
+    #[serde(default)]
+    pub ignored_users: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -194,6 +196,7 @@ impl ConfigModel {
             },
             slack: SlackConfig {
                 bot_token: String::new(),
+                ignored_users: vec![],
             },
             jira: None,
             ldap: None,

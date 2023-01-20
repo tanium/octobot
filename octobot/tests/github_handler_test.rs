@@ -165,6 +165,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
         )
         .expect("Failed to add some-user/some-repo");
 
+    config.slack.ignored_users = vec!["ignore-me[bot]".into()];
     config.jira = jira;
     let config = Arc::new(config);
 
@@ -661,6 +662,28 @@ async fn test_pull_request_comments_ignore_octobot() {
         body: Some("I think this file should change, cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("octobot[bot]"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.mock_pull_request_commits();
+
+    test.slack.expect(vec![]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
+}
+
+#[tokio::test]
+async fn test_pull_request_comments_ignore_user() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.comment = Some(Comment {
+        commit_id: Some("abcdef00001111".into()),
+        path: Some("src/main.rs".into()),
+        body: Some("I think this file should change, cc: @mentioned-participant".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("ignore-me[bot]"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.mock_pull_request_commits();
