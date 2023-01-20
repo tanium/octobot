@@ -57,9 +57,7 @@ pub struct JiraSession {
 }
 
 #[derive(Deserialize)]
-struct AuthResp {
-    pub name: String,
-}
+struct AuthResp {}
 
 fn lookup_field(field: &str, fields: &[Field]) -> Result<String> {
     fields
@@ -74,16 +72,12 @@ impl JiraSession {
         let jira_base = config.base_url();
         let api_base = format!("{}/rest/api/2", jira_base);
 
-        let auth = base64::encode(format!("{}:{}", config.username, config.password).as_bytes());
-
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
-        headers.insert(
-            reqwest::header::AUTHORIZATION,
-            format!("Basic {}", auth).parse().unwrap(),
-        );
 
-        let client = HTTPClient::new_with_headers(&api_base, headers)?;
+        // Login first without basic auth so we don't get a big html page on login errors
+
+        let client = HTTPClient::new_with_headers(&api_base, headers.clone())?;
         let client = match metrics {
             None => client,
             Some(ref m) => {
@@ -91,11 +85,39 @@ impl JiraSession {
             }
         };
 
-        let auth_resp = client
-            .get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base))
+        #[derive(Serialize)]
+        struct LoginReq {
+            username: String,
+            password: String,
+        }
+
+        let req = LoginReq {
+            username: config.username.clone(),
+            password: config.password.clone(),
+        };
+
+        client
+            .post::<AuthResp, LoginReq>(&format!("{}/rest/auth/1/session", jira_base), &req)
             .await
             .map_err(|e| format_err!("Error authenticating to JIRA: {}", e))?;
-        info!("Logged into JIRA as {}", auth_resp.name);
+
+        info!("Logged into JIRA");
+
+        // re-create the client with basic auth
+
+        let auth = base64::encode(format!("{}:{}", config.username, config.password).as_bytes());
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            format!("Basic {}", auth).parse().unwrap(),
+        );
+
+        let client = HTTPClient::new_with_headers(&api_base, headers.clone())?;
+        let client = match metrics {
+            None => client,
+            Some(ref m) => {
+                client.with_metrics(m.jira_api_responses.clone(), m.jira_api_duration.clone())
+            }
+        };
 
         let fields = client.get::<Vec<Field>>("/field").await?;
 
