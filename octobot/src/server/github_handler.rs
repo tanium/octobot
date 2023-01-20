@@ -693,10 +693,16 @@ impl GithubEventHandler {
             return;
         }
 
-        if comment.user().login() == self.github_session.bot_name() {
+        if comment.user().login() == self.github_session.bot_name()
+            || self
+                .config
+                .slack
+                .ignored_users
+                .contains(&comment.user().login().to_string())
+        {
             info!(
-                "Ignoring message from octobot ({}): {}",
-                self.github_session.bot_name(),
+                "Ignoring message from bot ({}): {}",
+                comment.user().login(),
                 comment.body()
             );
             return;
