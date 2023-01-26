@@ -242,6 +242,7 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
   $scope.addUser = function() {
     $scope.theUser = {
       mute_direct_messages: false,
+      muted_repos: [],
     };
     $('#add-user-modal').modal('show');
   }
