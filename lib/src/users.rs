@@ -112,7 +112,7 @@ impl UserConfig {
                 email: row.get(3)?,
                 github: row.get(4)?,
                 mute_direct_messages: db::to_bool(row.get(5)?),
-                muted_repos: row.get::<usize, String>(6)?.split(",").map(|s| s.to_owned()).collect(),
+                muted_repos: row.get::<usize, String>(6)?.split(",").map(|s| s.trim().to_owned()).collect(),
             })
         })?;
 
@@ -148,7 +148,7 @@ impl UserConfig {
                 email: row.get(3)?,
                 github: github_name.clone(),
                 mute_direct_messages: db::to_bool(row.get(4)?),
-                muted_repos: row.get::<usize, String>(5)?.split(",").map(|s| s.to_owned()).collect(),
+                muted_repos: row.get::<usize, String>(5)?.split(",").map(|s| s.trim().to_owned()).collect(),
             })
         })?;
 
@@ -217,7 +217,7 @@ mod tests {
     fn test_muted_repos() {
         let (mut users, _temp) = new_test();
 
-        let info = UserInfo::new("some-git-user", "the-slacker", "1234", "", vec!["org1/repo1".into(), "org2/repo2".into()]);
+        let info = UserInfo::new("some-git-user", "the-slacker", "1234", "", vec!["  org1/repo1  ".into(), "org2/repo2".into()]);
         users.insert_info(&info).unwrap();
 
         let muted_repos = users.lookup_info("some-git-user").unwrap().muted_repos;
