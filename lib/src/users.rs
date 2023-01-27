@@ -112,7 +112,7 @@ impl UserConfig {
                 email: row.get(3)?,
                 github: row.get(4)?,
                 mute_direct_messages: db::to_bool(row.get(5)?),
-                muted_repos: row.get::<usize, String>(6)?.split(",").map(|s| s.trim().to_owned()).collect(),
+                muted_repos: row.get::<usize, String>(6)?.split(",").map(|s| s.trim().to_owned()).filter(|s| s.len() > 0).collect(),
             })
         })?;
 
@@ -148,7 +148,7 @@ impl UserConfig {
                 email: row.get(3)?,
                 github: github_name.clone(),
                 mute_direct_messages: db::to_bool(row.get(4)?),
-                muted_repos: row.get::<usize, String>(5)?.split(",").map(|s| s.trim().to_owned()).collect(),
+                muted_repos: row.get::<usize, String>(5)?.split(",").map(|s| s.trim().to_owned()).filter(|s| s.len() > 0).collect(),
             })
         })?;
 
