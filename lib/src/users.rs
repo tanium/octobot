@@ -87,9 +87,9 @@ impl UserConfig {
         self.lookup_info(github_name).map(|u| u.slack_name)
     }
 
-    pub fn slack_direct_message(&self, github_name: &str, repo_name: &String) -> Option<SlackRecipient> {
+    pub fn slack_direct_message(&self, github_name: &str, repo_full_name: &String) -> Option<SlackRecipient> {
         self.lookup_info(github_name).and_then(|u| {
-            if u.mute_direct_messages || u.muted_repos.contains(repo_name){
+            if u.mute_direct_messages || u.muted_repos.contains(repo_full_name){
                 None
             } else if !u.slack_id.is_empty() {
                 Some(SlackRecipient::new(&u.slack_id, &u.slack_name))
@@ -175,7 +175,7 @@ mod tests {
         let (users, _temp) = new_test();
 
         assert_eq!(None, users.slack_user_name("joe"));
-        assert_eq!(None, users.slack_direct_message("joe", &"repo".into()));
+        assert_eq!(None, users.slack_direct_message("joe", &"org/repo".into()));
     }
 
     #[test]
@@ -190,10 +190,10 @@ mod tests {
         );
         assert_eq!(
             Some(SlackRecipient::new("@the-slacker", "the-slacker")),
-            users.slack_direct_message("some-git-user", &"repo".into())
+            users.slack_direct_message("some-git-user", &"org/repo".into())
         );
         assert_eq!(None, users.slack_user_name("some.other.user"));
-        assert_eq!(None, users.slack_direct_message("some.other.user", &"repo".into()));
+        assert_eq!(None, users.slack_direct_message("some.other.user", &"org/repo".into()));
     }
 
     #[test]
@@ -209,7 +209,7 @@ mod tests {
         );
         assert_eq!(
             Some(SlackRecipient::new("1234", "the-slacker")),
-            users.slack_direct_message("some-git-user", &"repo".into())
+            users.slack_direct_message("some-git-user", &"org/repo".into())
         );
     }
 
@@ -217,21 +217,21 @@ mod tests {
     fn test_muted_repos() {
         let (mut users, _temp) = new_test();
 
-        let info = UserInfo::new("some-git-user", "the-slacker", "1234", "", vec!["repo1".into(), "repo2".into()]);
+        let info = UserInfo::new("some-git-user", "the-slacker", "1234", "", vec!["org1/repo1".into(), "org2/repo2".into()]);
         users.insert_info(&info).unwrap();
 
         let muted_repos = users.lookup_info("some-git-user").unwrap().muted_repos;
         assert_eq!(2, muted_repos.len());
-        assert_eq!("repo1", muted_repos[0]);
-        assert_eq!("repo2", muted_repos[1]);
+        assert_eq!("org1/repo1", muted_repos[0]);
+        assert_eq!("org2/repo2", muted_repos[1]);
 
         assert_eq!(
             None,
-            users.slack_direct_message("some-git-user", &"repo1".into())
+            users.slack_direct_message("some-git-user", &"org1/repo1".into())
         );
         assert_eq!(
             Some(SlackRecipient::new("1234", "the-slacker")),
-            users.slack_direct_message("some-git-user", &"repo3".into())
+            users.slack_direct_message("some-git-user", &"org1/repo3".into())
         );
     }
 }
