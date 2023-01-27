@@ -48,7 +48,7 @@ impl Messenger {
         // make sure we do not send private message to author of that message
         slackbots.retain(|u| u.login != sender.login && u.login() != "octobot");
 
-        self.send_to_slackbots(slackbots, msg, attachments);
+        self.send_to_slackbots(slackbots, repo, msg, attachments);
     }
 
     pub fn send_to_owner<T: github::CommitLike>(
@@ -69,7 +69,7 @@ impl Messenger {
             Vec::<String>::new(),
             false,
         );
-        self.send_to_slackbots(vec![item_owner.clone()], msg, attachments);
+        self.send_to_slackbots(vec![item_owner.clone()], repo, msg, attachments);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -118,11 +118,12 @@ impl Messenger {
     fn send_to_slackbots(
         &self,
         users: Vec<github::User>,
+        repo: &github::Repo,
         msg: &str,
         attachments: &[SlackAttachment],
     ) {
         for user in users {
-            if let Some(channel) = self.config.users().slack_direct_message(user.login()) {
+            if let Some(channel) = self.config.users().slack_direct_message(user.login(), &repo.full_name) {
                 self.slack
                     .send(slack::req(channel, msg, attachments, None, false));
             }
