@@ -25,7 +25,13 @@ pub struct UserConfig {
 }
 
 impl UserInfo {
-    pub fn new(git_user: &str, slack_user: &str, slack_id: &str, email: &str, muted_repos: Vec<String>) -> UserInfo {
+    pub fn new(
+        git_user: &str,
+        slack_user: &str,
+        slack_id: &str,
+        email: &str,
+        muted_repos: Vec<String>,
+    ) -> UserInfo {
         UserInfo {
             id: None,
             github: git_user.to_string(),
@@ -87,9 +93,13 @@ impl UserConfig {
         self.lookup_info(github_name).map(|u| u.slack_name)
     }
 
-    pub fn slack_direct_message(&self, github_name: &str, repo_full_name: &String) -> Option<SlackRecipient> {
+    pub fn slack_direct_message(
+        &self,
+        github_name: &str,
+        repo_full_name: &String,
+    ) -> Option<SlackRecipient> {
         self.lookup_info(github_name).and_then(|u| {
-            if u.mute_direct_messages || u.muted_repos.contains(repo_full_name){
+            if u.mute_direct_messages || u.muted_repos.contains(repo_full_name) {
                 None
             } else if !u.slack_id.is_empty() {
                 Some(SlackRecipient::new(&u.slack_id, &u.slack_name))
@@ -112,7 +122,12 @@ impl UserConfig {
                 email: row.get(3)?,
                 github: row.get(4)?,
                 mute_direct_messages: db::to_bool(row.get(5)?),
-                muted_repos: row.get::<usize, String>(6)?.split(",").map(|s| s.trim().to_owned()).collect(),
+                muted_repos: row
+                    .get::<usize, String>(6)?
+                    .split(",")
+                    .map(|s| s.trim().to_owned())
+                    .filter(|s| s.len() > 0)
+                    .collect(),
             })
         })?;
 
@@ -148,7 +163,12 @@ impl UserConfig {
                 email: row.get(3)?,
                 github: github_name.clone(),
                 mute_direct_messages: db::to_bool(row.get(4)?),
-                muted_repos: row.get::<usize, String>(5)?.split(",").map(|s| s.trim().to_owned()).collect(),
+                muted_repos: row
+                    .get::<usize, String>(5)?
+                    .split(",")
+                    .map(|s| s.trim().to_owned())
+                    .filter(|s| s.len() > 0)
+                    .collect(),
             })
         })?;
 
@@ -193,7 +213,10 @@ mod tests {
             users.slack_direct_message("some-git-user", &"org/repo".into())
         );
         assert_eq!(None, users.slack_user_name("some.other.user"));
-        assert_eq!(None, users.slack_direct_message("some.other.user", &"org/repo".into()));
+        assert_eq!(
+            None,
+            users.slack_direct_message("some.other.user", &"org/repo".into())
+        );
     }
 
     #[test]
@@ -217,7 +240,13 @@ mod tests {
     fn test_muted_repos() {
         let (mut users, _temp) = new_test();
 
-        let info = UserInfo::new("some-git-user", "the-slacker", "1234", "", vec!["  org1/repo1  ".into(), "org2/repo2".into()]);
+        let info = UserInfo::new(
+            "some-git-user",
+            "the-slacker",
+            "1234",
+            "",
+            vec!["  org1/repo1  ".into(), "org2/repo2".into()],
+        );
         users.insert_info(&info).unwrap();
 
         let muted_repos = users.lookup_info("some-git-user").unwrap().muted_repos;

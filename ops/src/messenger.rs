@@ -123,7 +123,11 @@ impl Messenger {
         attachments: &[SlackAttachment],
     ) {
         for user in users {
-            if let Some(channel) = self.config.users().slack_direct_message(user.login(), &repo.full_name) {
+            if let Some(channel) = self
+                .config
+                .users()
+                .slack_direct_message(user.login(), &repo.full_name)
+            {
                 self.slack
                     .send(slack::req(channel, msg, attachments, None, false));
             }
