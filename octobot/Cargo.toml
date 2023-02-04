@@ -30,7 +30,7 @@ serde = "1.0.137"
 serde_derive = "1.0.137"
 serde_json = "1.0.81"
 thread-id = "4.0.0"
-tokio = { version = "1.20.3", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1.20.4", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-core = "0.1.18"
 tokio-threadpool = "0.1.18"
 async-trait = "0.1.56"
