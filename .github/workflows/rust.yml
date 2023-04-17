@@ -11,6 +11,9 @@ jobs:
     - name: Checkout sources
       uses: actions/checkout@v1
 
+    - name: Update apt
+      run: sudo apt-get update
+
     - name: Install build packages
       run: sudo apt-get install libsqlite3-dev libldap2-dev
 
