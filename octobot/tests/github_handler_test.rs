@@ -250,7 +250,7 @@ fn some_pr() -> Option<PullRequest> {
         merge_commit_sha: None,
         assignees: vec![User::new("assign1")],
         requested_reviewers: Some(vec![User::new("joe-reviewer")]),
-        requested_teams: Some(vec![Team::new("eng", "team-awesome")]),
+        requested_teams: None,
         teams: vec![],
         reviews: None,
         head: BranchRef {
@@ -1156,6 +1156,7 @@ async fn test_pull_request_review_requested() {
     test.handler.data.pull_request = some_pr();
     if let Some(ref mut pr) = test.handler.data.pull_request {
         pr.requested_reviewers = Some(vec![User::new("joe-reviewer"), User::new("smith-reviewer")]);
+        pr.requested_teams = Some(vec![Team::new("eng", "team-awesome")]);
     }
     test.handler.data.sender = User::new("the-pr-closer");
     test.mock_pull_request_commits();
