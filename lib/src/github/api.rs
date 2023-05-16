@@ -963,12 +963,9 @@ impl Session for GithubSession {
     }
 
     async fn get_team_members(&self, org: &str, team: &str) -> Result<Vec<User>> {
-        let users: Result<Vec<User>> = self
-            .client
+        self.client
             .get(&format!("orgs/{}/teams/{}", org, team))
             .await
-            .map_err(|e| format_err!("Error looking up team members {}/{}: {}", org, team, e));
-
-        Ok(users?)
+            .map_err(|e| format_err!("Error looking up team members {}/{}: {}", org, team, e))
     }
 }
