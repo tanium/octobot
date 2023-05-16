@@ -97,6 +97,36 @@ pub struct App {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Team {
+    pub name: String,
+    pub slug: String,
+    pub html_url: String,
+}
+
+impl Team {
+    pub fn new(org: &str, slug: &str) -> Team {
+        Team {
+            name: slug.to_string(),
+            slug: slug.to_string(),
+            html_url: format!("https://github.com/orgs/{}/teams/{}", org.to_string(), slug.to_string())
+        }
+    }
+
+    // org is not an explicit field on a team object nor in any other types. So we are going to
+    // parse it from the `html_url` field.
+    pub fn org(&self) -> &str {
+        // TODO: grab org from html_url
+        "eng"
+    }
+}
+
+impl PartialEq for Team {
+    fn eq(&self, other: &Self) -> bool {
+        self.slug == other.slug
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct User {
     pub login: Option<String>,
     pub name: Option<String>,
@@ -197,6 +227,7 @@ impl BranchRef {
 pub trait PullRequestLike: Send + Sync {
     fn user(&self) -> &User;
     fn assignees(&self) -> Vec<User>;
+    fn teams(&self) -> Vec<Team>;
     fn title(&self) -> &str;
     fn html_url(&self) -> &str;
     fn number(&self) -> u32;
@@ -217,6 +248,8 @@ pub struct PullRequest {
     pub head: BranchRef,
     pub base: BranchRef,
     pub requested_reviewers: Option<Vec<User>>,
+    pub requested_teams: Option<Vec<Team>>,
+    pub teams: Vec<Team>,
     pub reviews: Option<Vec<Review>>,
     pub draft: Option<bool>,
 }
@@ -234,6 +267,8 @@ impl PullRequest {
             merge_commit_sha: None,
             assignees: vec![],
             requested_reviewers: None,
+            requested_teams: None,
+            teams: vec![],
             reviews: None,
             head: BranchRef::new(""),
             base: BranchRef::new(""),
@@ -279,6 +314,14 @@ impl<'a> PullRequestLike for &'a PullRequest {
         assignees
     }
 
+    fn teams(&self) -> Vec<Team> {
+        let mut teams = self.teams.clone();
+        if let Some(ref rt) = self.requested_teams {
+            teams.extend(rt.iter().cloned());
+        }
+        teams
+    }
+
     fn title(&self) -> &str {
         &self.title
     }
@@ -313,6 +356,8 @@ impl<'a> PullRequestLike for &'a Issue {
     fn assignees(&self) -> Vec<User> {
         self.assignees.clone()
     }
+
+    fn teams(&self) -> Vec<Team> { vec![] }
 
     fn title(&self) -> &str {
         &self.title

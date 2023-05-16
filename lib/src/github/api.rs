@@ -129,6 +129,7 @@ pub trait Session: Send + Sync {
         check_run_id: u32,
         run: &CheckRun,
     ) -> Result<()>;
+    async fn get_team_members(&self, org: &str, team: &str) -> Result<Vec<User>>;
 }
 
 #[async_trait]
@@ -959,5 +960,15 @@ impl Session for GithubSession {
             })?
             .error_for_status()?;
         Ok(())
+    }
+
+    async fn get_team_members(&self, org: &str, team: &str) -> Result<Vec<User>> {
+        let users: Result<Vec<User>> = self
+            .client
+            .get(&format!("orgs/{}/teams/{}", org, team))
+            .await
+            .map_err(|e| format_err!("Error looking up team members {}/{}: {}", org, team, e));
+
+        Ok(users?)
     }
 }

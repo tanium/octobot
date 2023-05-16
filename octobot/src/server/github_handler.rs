@@ -1,6 +1,7 @@
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
+use futures::future::join_all;
 use hyper::{Body, Request, Response, StatusCode};
 use log::{error, info, warn};
 use regex::Regex;
@@ -11,7 +12,7 @@ use octobot_lib::config::Config;
 use octobot_lib::errors::Result;
 use octobot_lib::github;
 use octobot_lib::github::api::Session;
-use octobot_lib::github::CommentLike;
+use octobot_lib::github::{CommentLike, User};
 use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
 use octobot_ops::force_push::{self, ForcePushRequest};
@@ -397,7 +398,7 @@ impl GithubEventHandler {
         }
     }
 
-    fn all_participants(
+    async fn all_participants(
         &self,
         pull_request: &dyn github::PullRequestLike,
         pr_commits: &[github::Commit],
@@ -406,6 +407,25 @@ impl GithubEventHandler {
         let mut participants = pull_request.assignees();
         // add the author of the PR
         participants.push(pull_request.user().clone());
+        // add team members
+        let teams = pull_request.teams();
+        let futures = teams.iter().map(|t| {
+            self.github_session
+                .get_team_members(t.org(), t.slug.as_str())
+        });
+        let teams = join_all(futures).await;
+        let mut members: Vec<User> = vec![];
+        teams.iter().for_each(|r| {
+            let member = match r {
+                Ok(r) => r.clone(),
+                Err(e) => {
+                    error!("Error getting team members: {}", e);
+                    vec![]
+                }
+            };
+            members.append(&mut member.clone());
+        });
+        participants.append(&mut members);
         // look up commits and add the authors of those
         for commit in pr_commits {
             if let Some(ref author) = commit.author {
@@ -520,7 +540,7 @@ impl GithubEventHandler {
                             &pull_request.user,
                             &self.data.sender,
                             &self.repository,
-                            &self.all_participants(&pull_request, &commits),
+                            &self.all_participants(&pull_request, &commits).await,
                             branch_name,
                             &commits,
                             vec![thread_guid],
@@ -607,7 +627,8 @@ impl GithubEventHandler {
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
 
-                    self.do_pull_request_comment(&pull_request, &comment, branch_name, &commits);
+                    self.do_pull_request_comment(&pull_request, &comment, branch_name, &commits)
+                        .await;
                 }
             }
         }
@@ -624,7 +645,8 @@ impl GithubEventHandler {
 
                     // just a comment. should just be handled by regular comment handler.
                     if review.state == "commented" {
-                        self.do_pull_request_comment(&pull_request, &review, branch_name, &commits);
+                        self.do_pull_request_comment(&pull_request, &review, branch_name, &commits)
+                            .await;
                         return (StatusCode::OK, "pr_review [comment]".into());
                     }
 
@@ -649,7 +671,7 @@ impl GithubEventHandler {
                         action_msg,
                         util::make_link(
                             pull_request.html_url.as_str(),
-                            pull_request.title.as_str()
+                            pull_request.title.as_str(),
                         )
                     );
 
@@ -659,7 +681,7 @@ impl GithubEventHandler {
                         .color(color)
                         .build()];
 
-                    let mut participants = self.all_participants(&pull_request, &commits);
+                    let mut participants = self.all_participants(&pull_request, &commits).await;
                     for username in util::get_mentioned_usernames(review.body()) {
                         participants.push(github::User::new(username))
                     }
@@ -682,7 +704,7 @@ impl GithubEventHandler {
         (StatusCode::OK, "pr_review".into())
     }
 
-    fn do_pull_request_comment(
+    async fn do_pull_request_comment(
         &self,
         pull_request: &dyn github::PullRequestLike,
         comment: &dyn github::CommentLike,
@@ -718,7 +740,7 @@ impl GithubEventHandler {
             .title_link(comment.html_url())
             .build()];
 
-        let mut participants = self.all_participants(pull_request, commits);
+        let mut participants = self.all_participants(pull_request, commits).await;
         for username in util::get_mentioned_usernames(comment.body()) {
             participants.push(github::User::new(username))
         }
@@ -814,13 +836,15 @@ impl GithubEventHandler {
                     let branch_name = &pr.base.ref_name;
                     let commits = self.pull_request_commits(&pr).await;
 
-                    self.do_pull_request_comment(&pr, &comment, branch_name, &commits);
+                    self.do_pull_request_comment(&pr, &comment, branch_name, &commits)
+                        .await;
                 } else if let Some(ref issue) = self.data.issue {
                     // issues do not have branches or commits -> main channel is fine.
                     let branch_name = "";
                     let commits = vec![];
 
-                    self.do_pull_request_comment(&issue, &comment, branch_name, &commits);
+                    self.do_pull_request_comment(&issue, &comment, branch_name, &commits)
+                        .await;
                 }
             }
         }
@@ -928,7 +952,7 @@ impl GithubEventHandler {
                             &pull_request.user,
                             &self.data.sender,
                             &self.repository,
-                            &self.all_participants(&pull_request, &commits),
+                            &self.all_participants(&pull_request, &commits).await,
                             &branch_name,
                             &commits,
                             vec![self.build_thread_guid(pull_request.number)],
