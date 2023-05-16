@@ -108,7 +108,11 @@ impl Team {
         Team {
             name: slug.to_string(),
             slug: slug.to_string(),
-            html_url: format!("https://github.com/orgs/{}/teams/{}", org.to_string(), slug.to_string())
+            html_url: format!(
+                "https://github.com/orgs/{}/teams/{}",
+                org.to_string(),
+                slug.to_string()
+            ),
         }
     }
 
@@ -357,7 +361,9 @@ impl<'a> PullRequestLike for &'a Issue {
         self.assignees.clone()
     }
 
-    fn teams(&self) -> Vec<Team> { vec![] }
+    fn teams(&self) -> Vec<Team> {
+        vec![]
+    }
 
     fn title(&self) -> &str {
         &self.title
