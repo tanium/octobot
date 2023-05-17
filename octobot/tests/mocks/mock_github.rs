@@ -28,6 +28,7 @@ pub struct MockGithub {
     get_check_run_calls: Mutex<Vec<MockCall<CheckRun>>>,
     create_check_run_calls: Mutex<Vec<MockCall<u32>>>,
     update_check_run_calls: Mutex<Vec<MockCall<()>>>,
+    get_team_members_calls: Mutex<Vec<MockCall<Vec<User>>>>,
 }
 
 #[derive(Debug)]
@@ -70,6 +71,7 @@ impl MockGithub {
             get_check_run_calls: Mutex::new(vec![]),
             create_check_run_calls: Mutex::new(vec![]),
             update_check_run_calls: Mutex::new(vec![]),
+            get_team_members_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -473,6 +475,15 @@ impl Session for MockGithub {
 
         call.ret
     }
+
+    async fn get_team_members(&self, url: &str) -> Result<Vec<User>> {
+        let mut calls = self.get_team_members_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_team_members");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], url.to_string());
+
+        call.ret
+    }
 }
 
 impl MockGithub {
@@ -694,6 +705,13 @@ impl MockGithub {
                 ret,
                 vec![&pr.number.to_string(), &format_check_run(run)],
             ));
+    }
+
+    pub fn mock_get_team_members(&self, url: &str, ret: Result<Vec<User>>) {
+        self.get_team_members_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![&url.to_string()]));
     }
 }
 

@@ -97,6 +97,27 @@ pub struct App {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Team {
+    pub slug: String,
+    pub url: String,
+}
+
+impl Team {
+    pub fn new(slug: &str, url: &str) -> Team {
+        Team {
+            slug: slug.to_string(),
+            url: url.to_string(),
+        }
+    }
+}
+
+impl PartialEq for Team {
+    fn eq(&self, other: &Self) -> bool {
+        self.slug == other.slug
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct User {
     pub login: Option<String>,
     pub name: Option<String>,
@@ -197,6 +218,7 @@ impl BranchRef {
 pub trait PullRequestLike: Send + Sync {
     fn user(&self) -> &User;
     fn assignees(&self) -> Vec<User>;
+    fn teams(&self) -> Vec<Team>;
     fn title(&self) -> &str;
     fn html_url(&self) -> &str;
     fn number(&self) -> u32;
@@ -217,6 +239,7 @@ pub struct PullRequest {
     pub head: BranchRef,
     pub base: BranchRef,
     pub requested_reviewers: Option<Vec<User>>,
+    pub requested_teams: Option<Vec<Team>>,
     pub reviews: Option<Vec<Review>>,
     pub draft: Option<bool>,
 }
@@ -234,6 +257,7 @@ impl PullRequest {
             merge_commit_sha: None,
             assignees: vec![],
             requested_reviewers: None,
+            requested_teams: None,
             reviews: None,
             head: BranchRef::new(""),
             base: BranchRef::new(""),
@@ -279,6 +303,14 @@ impl<'a> PullRequestLike for &'a PullRequest {
         assignees
     }
 
+    fn teams(&self) -> Vec<Team> {
+        let mut teams = vec![];
+        if let Some(ref rt) = self.requested_teams {
+            teams.extend(rt.iter().cloned());
+        }
+        teams
+    }
+
     fn title(&self) -> &str {
         &self.title
     }
@@ -312,6 +344,10 @@ impl<'a> PullRequestLike for &'a Issue {
 
     fn assignees(&self) -> Vec<User> {
         self.assignees.clone()
+    }
+
+    fn teams(&self) -> Vec<Team> {
+        vec![]
     }
 
     fn title(&self) -> &str {

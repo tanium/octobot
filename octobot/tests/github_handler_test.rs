@@ -99,6 +99,14 @@ impl GithubHandlerTest {
 
         commits
     }
+
+    fn mock_get_team_members(&self) -> Vec<User> {
+        let users = some_members();
+        self.github
+            .mock_get_team_members("http://team-url", Ok(users.clone()));
+
+        users
+    }
 }
 
 fn new_test() -> GithubHandlerTest {
@@ -152,6 +160,14 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     config
         .users_write()
         .insert("mentioned-participant", "mentioned.participant")
+        .unwrap();
+    config
+        .users_write()
+        .insert("team-member1", "team.member1")
+        .unwrap();
+    config
+        .users_write()
+        .insert("team-member2", "team.member2")
         .unwrap();
 
     config
@@ -234,6 +250,7 @@ fn some_pr() -> Option<PullRequest> {
         merge_commit_sha: None,
         assignees: vec![User::new("assign1")],
         requested_reviewers: Some(vec![User::new("joe-reviewer")]),
+        requested_teams: None,
         reviews: None,
         head: BranchRef {
             ref_name: "pr-branch".into(),
@@ -271,6 +288,10 @@ fn some_commits() -> Vec<Commit> {
             },
         },
     ]
+}
+
+fn some_members() -> Vec<User> {
+    vec![User::new("team-member1"), User::new("team-member2")]
 }
 
 fn expect_jira_ref_fail(git: &MockGithub) {
@@ -1134,9 +1155,11 @@ async fn test_pull_request_review_requested() {
     test.handler.data.pull_request = some_pr();
     if let Some(ref mut pr) = test.handler.data.pull_request {
         pr.requested_reviewers = Some(vec![User::new("joe-reviewer"), User::new("smith-reviewer")]);
+        pr.requested_teams = Some(vec![Team::new("team-awesome", "http://team-url")]);
     }
     test.handler.data.sender = User::new("the-pr-closer");
     test.mock_pull_request_commits();
+    test.mock_get_team_members();
 
     let attach = vec![SlackAttachmentBuilder::new("")
         .title("Pull Request #32: \"The PR\"")
@@ -1182,6 +1205,20 @@ async fn test_pull_request_review_requested() {
         ),
         slack::req(
             SlackRecipient::user_mention("smith.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("team.member1"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("team.member2"),
             msg,
             &attach,
             None,
