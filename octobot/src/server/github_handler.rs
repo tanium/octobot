@@ -12,7 +12,7 @@ use octobot_lib::config::Config;
 use octobot_lib::errors::Result;
 use octobot_lib::github;
 use octobot_lib::github::api::Session;
-use octobot_lib::github::{CommentLike, User};
+use octobot_lib::github::CommentLike;
 use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
 use octobot_ops::force_push::{self, ForcePushRequest};
