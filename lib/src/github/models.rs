@@ -98,29 +98,20 @@ pub struct App {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Team {
-    pub name: String,
     pub slug: String,
-    pub html_url: String,
+    pub url: String,
 }
 
 impl Team {
-    pub fn new(org: &str, slug: &str) -> Team {
+    pub fn new(slug: &str, url: &str) -> Team {
         Team {
-            name: slug.to_string(),
             slug: slug.to_string(),
-            html_url: format!(
-                "https://github.com/orgs/{}/teams/{}",
-                org,
-                slug
-            ),
+            url: url.to_string(),
         }
     }
 
-    // org is not an explicit field on a team object nor in any other types. So we are going to
-    // parse it from the `html_url` field.
-    pub fn org(&self) -> &str {
-        // TODO: grab org from html_url
-        "eng"
+    pub fn url(&self) -> &str {
+        &self.url
     }
 }
 

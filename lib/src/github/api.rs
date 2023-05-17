@@ -1,8 +1,9 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use failure::format_err;
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::errors::*;
 use crate::github::models::*;
@@ -129,7 +130,7 @@ pub trait Session: Send + Sync {
         check_run_id: u32,
         run: &CheckRun,
     ) -> Result<()>;
-    async fn get_team_members(&self, org: &str, team: &str) -> Result<Vec<User>>;
+    async fn get_team_members(&self, url: &str) -> Result<Vec<User>>;
 }
 
 #[async_trait]
@@ -962,10 +963,10 @@ impl Session for GithubSession {
         Ok(())
     }
 
-    async fn get_team_members(&self, org: &str, team: &str) -> Result<Vec<User>> {
+    async fn get_team_members(&self, url: &str) -> Result<Vec<User>> {
         self.client
-            .get(&format!("orgs/{}/teams/{}", org, team))
+            .get(url)
             .await
-            .map_err(|e| format_err!("Error looking up team members {}/{}: {}", org, team, e))
+            .map_err(|e| format_err!("Error looking up team members {}: {}", url, e))
     }
 }

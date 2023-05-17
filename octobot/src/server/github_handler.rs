@@ -409,10 +409,9 @@ impl GithubEventHandler {
         participants.push(pull_request.user().clone());
         // add team members
         let team_members = pull_request.teams();
-        let futures = team_members.iter().map(|t| {
-            self.github_session
-                .get_team_members(t.org(), t.slug.as_str())
-        });
+        let futures = team_members
+            .iter()
+            .map(|t| self.github_session.get_team_members(t.url()));
         let teams = future::join_all(futures).await;
         participants.extend(
             teams
