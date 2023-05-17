@@ -109,10 +109,6 @@ impl Team {
             url: url.to_string(),
         }
     }
-
-    pub fn url(&self) -> &str {
-        &self.url
-    }
 }
 
 impl PartialEq for Team {
