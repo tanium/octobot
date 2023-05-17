@@ -408,8 +408,7 @@ impl GithubEventHandler {
         // add the author of the PR
         participants.push(pull_request.user().clone());
         // add team members
-        let teams = pull_request.teams();
-        let futures = teams.iter().map(|t| {
+        let team_members = pull_request.teams().iter().map(|t| {
             self.github_session
                 .get_team_members(t.org(), t.slug.as_str())
         });
