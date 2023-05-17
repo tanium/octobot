@@ -414,18 +414,18 @@ impl GithubEventHandler {
                 .get_team_members(t.org(), t.slug.as_str())
         });
         let teams = join_all(futures).await;
-        let mut members: Vec<User> = vec![];
-        teams.iter().for_each(|r| {
-            let member = match r {
-                Ok(r) => r.clone(),
-                Err(e) => {
-                    error!("Error getting team members: {}", e);
-                    vec![]
-                }
-            };
-            members.append(&mut member.clone());
-        });
-        participants.append(&mut members);
+        participants.extend(
+            teams
+                .into_iter()
+                .filter_map(|r| match r {
+                    Ok(r) => Some(r),
+                    Err(e) => {
+                        error!("Error getting team members: {}", e);
+                        None
+                    }
+                })
+                .flatten(),
+        );
         // look up commits and add the authors of those
         for commit in pr_commits {
             if let Some(ref author) = commit.author {
