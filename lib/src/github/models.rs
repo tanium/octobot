@@ -110,8 +110,8 @@ impl Team {
             slug: slug.to_string(),
             html_url: format!(
                 "https://github.com/orgs/{}/teams/{}",
-                org.to_string(),
-                slug.to_string()
+                org,
+                slug
             ),
         }
     }
@@ -253,7 +253,6 @@ pub struct PullRequest {
     pub base: BranchRef,
     pub requested_reviewers: Option<Vec<User>>,
     pub requested_teams: Option<Vec<Team>>,
-    pub teams: Vec<Team>,
     pub reviews: Option<Vec<Review>>,
     pub draft: Option<bool>,
 }
@@ -272,7 +271,6 @@ impl PullRequest {
             assignees: vec![],
             requested_reviewers: None,
             requested_teams: None,
-            teams: vec![],
             reviews: None,
             head: BranchRef::new(""),
             base: BranchRef::new(""),
@@ -319,7 +317,7 @@ impl<'a> PullRequestLike for &'a PullRequest {
     }
 
     fn teams(&self) -> Vec<Team> {
-        let mut teams = self.teams.clone();
+        let mut teams = vec![];
         if let Some(ref rt) = self.requested_teams {
             teams.extend(rt.iter().cloned());
         }

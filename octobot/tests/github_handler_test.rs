@@ -251,7 +251,6 @@ fn some_pr() -> Option<PullRequest> {
         assignees: vec![User::new("assign1")],
         requested_reviewers: Some(vec![User::new("joe-reviewer")]),
         requested_teams: None,
-        teams: vec![],
         reviews: None,
         head: BranchRef {
             ref_name: "pr-branch".into(),
