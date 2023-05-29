@@ -1,6 +1,7 @@
-use std::ops::Deref;
+use std::collections;
+use std::ops::{Add, Deref};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use hyper::{Body, Request, Response, StatusCode};
 use log::{error, info, warn};
@@ -58,7 +59,50 @@ pub struct GithubEventHandler {
     pub pr_merge: Arc<dyn Worker<PRMergeRequest>>,
     pub repo_version: Arc<dyn Worker<RepoVersionRequest>>,
     pub force_push: Arc<dyn Worker<ForcePushRequest>>,
-    pub team_members_cache: Mutex<ttl_cache::TtlCache<String, Vec<github::User>>>,
+    pub team_members_cache: TeamsCache,
+}
+
+struct TeamCacheEntry {
+    users: Vec<github::User>,
+    expiry: Instant,
+}
+
+pub struct TeamsCache {
+    members: Mutex<collections::HashMap<String, TeamCacheEntry>>,
+    ttl: Duration,
+}
+
+impl TeamsCache {
+    pub fn new(ttl: Duration) -> TeamsCache {
+        TeamsCache {
+            members: Mutex::new(collections::HashMap::new()),
+            ttl,
+        }
+    }
+
+    pub fn insert(&self, team_slug: String, users: Vec<github::User>) {
+        let mut hash = self.members.lock().unwrap();
+        let entry = TeamCacheEntry {
+            users,
+            expiry: Instant::now().add(self.ttl),
+        };
+        hash.insert(team_slug, entry);
+    }
+
+    pub fn get(&self, team_slug: &String) -> Option<Vec<github::User>> {
+        let hash = self.members.lock().unwrap();
+        let entry = hash.get(team_slug);
+        if entry.is_none() {
+            return None;
+        }
+        let entry = entry.unwrap();
+        if Instant::now() > entry.expiry {
+            let mut hash = self.members.lock().unwrap();
+            hash.remove(team_slug);
+            return None;
+        }
+        Some(entry.users.clone())
+    }
 }
 
 const MAX_CONCURRENT_JOBS: usize = 20;
@@ -323,7 +367,7 @@ impl Handler for GithubHandler {
             pr_merge,
             repo_version,
             force_push,
-            team_members_cache: Mutex::new(ttl_cache::TtlCache::new(100)),
+            team_members_cache: TeamsCache::new(Duration::new(3600, 0)),
         };
 
         match handler.handle_event().await {
@@ -412,25 +456,15 @@ impl GithubEventHandler {
         // add team members
         let teams = pull_request.teams();
         for t in teams {
-            if self
-                .team_members_cache
-                .lock()
-                .unwrap()
-                .contains_key(&t.slug)
-            {
-                let cache = self.team_members_cache.lock().unwrap();
-                let cached_team_members = cache.get(&t.slug).unwrap();
-                participants.append(&mut cached_team_members.clone());
+            let team_members = self.team_members_cache.get(&t.slug);
+            if team_members != None {
+                participants.append(&mut team_members.unwrap().clone());
             } else {
                 let team_members = self.github_session.get_team_members(&t.url).await;
                 match team_members {
                     Ok(m) => {
                         participants.append(&mut m.clone());
-                        self.team_members_cache.lock().unwrap().insert(
-                            t.slug,
-                            m,
-                            Duration::new(3600, 0),
-                        );
+                        self.team_members_cache.insert(t.slug, m);
                     }
                     Err(e) => {
                         error!("Error getting team members: {}", e);

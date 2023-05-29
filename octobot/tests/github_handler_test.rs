@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
+use std::time::Duration;
 
 use failure::format_err;
 use hyper::StatusCode;
@@ -8,7 +9,7 @@ use mocks::mock_github::MockGithub;
 use mocks::mock_jira::MockJira;
 use mocks::mock_slack::MockSlack;
 use mocks::mock_worker::LockedMockWorker;
-use octobot::server::github_handler::GithubEventHandler;
+use octobot::server::github_handler::{GithubEventHandler, TeamsCache};
 use octobot_lib::config::{Config, JiraConfig};
 use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github::api::Session;
@@ -211,7 +212,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             pr_merge: pr_merge_sender,
             repo_version: repo_version_sender,
             force_push: force_push_sender,
-            team_members_cache: Mutex::new(ttl_cache::TtlCache::new(100)),
+            team_members_cache: TeamsCache::new(Duration::new(3600, 0)),
         },
     }
 }
