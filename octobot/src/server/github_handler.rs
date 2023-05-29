@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use futures::future;
 use hyper::{Body, Request, Response, StatusCode};
 use log::{error, info, warn};
 use regex::Regex;
@@ -58,6 +58,7 @@ pub struct GithubEventHandler {
     pub pr_merge: Arc<dyn Worker<PRMergeRequest>>,
     pub repo_version: Arc<dyn Worker<RepoVersionRequest>>,
     pub force_push: Arc<dyn Worker<ForcePushRequest>>,
+    pub team_members_cache: Mutex<ttl_cache::TtlCache<String, Vec<github::User>>>,
 }
 
 const MAX_CONCURRENT_JOBS: usize = 20;
@@ -322,6 +323,7 @@ impl Handler for GithubHandler {
             pr_merge,
             repo_version,
             force_push,
+            team_members_cache: Mutex::new(ttl_cache::TtlCache::new(100)),
         };
 
         match handler.handle_event().await {
@@ -409,22 +411,34 @@ impl GithubEventHandler {
         participants.push(pull_request.user().clone());
         // add team members
         let teams = pull_request.teams();
-        let futures = teams
-            .iter()
-            .map(|t| self.github_session.get_team_members(&t.url));
-        let team_members = future::join_all(futures).await;
-        participants.extend(
-            team_members
-                .into_iter()
-                .filter_map(|r| match r {
-                    Ok(r) => Some(r),
+        for t in teams {
+            if self
+                .team_members_cache
+                .lock()
+                .unwrap()
+                .contains_key(&t.slug)
+            {
+                let cache = self.team_members_cache.lock().unwrap();
+                let cached_team_members = cache.get(&t.slug).unwrap();
+                participants.append(&mut cached_team_members.clone());
+            } else {
+                let team_members = self.github_session.get_team_members(&t.url).await;
+                match team_members {
+                    Ok(m) => {
+                        participants.append(&mut m.clone());
+                        self.team_members_cache.lock().unwrap().insert(
+                            t.slug,
+                            m,
+                            Duration::new(3600, 0),
+                        );
+                    }
                     Err(e) => {
                         error!("Error getting team members: {}", e);
-                        None
+                        ()
                     }
-                })
-                .flatten(),
-        );
+                }
+            }
+        }
         // look up commits and add the authors of those
         for commit in pr_commits {
             if let Some(ref author) = commit.author {

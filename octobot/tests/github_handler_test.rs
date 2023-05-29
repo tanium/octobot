@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use failure::format_err;
 use hyper::StatusCode;
@@ -211,6 +211,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             pr_merge: pr_merge_sender,
             repo_version: repo_version_sender,
             force_push: force_push_sender,
+            team_members_cache: Mutex::new(ttl_cache::TtlCache::new(100)),
         },
     }
 }
@@ -2062,6 +2063,142 @@ async fn test_push_force_notify_ignored() {
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
+}
+
+#[tokio::test]
+async fn test_team_members_cache() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "review_requested".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.requested_teams = Some(vec![Team::new("team-awesome", "http://team-url")]);
+    }
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.mock_pull_request_commits();
+    test.mock_pull_request_commits();
+    test.mock_get_team_members();
+
+    let attach = vec![SlackAttachmentBuilder::new("")
+        .title("Pull Request #32: \"The PR\"")
+        .title_link("http://the-pr")
+        .build()];
+    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer";
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Some("some-user/some-repo/32".to_string()),
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("team.member1"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("team.member2"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+
+    // Second request. get_team_members is not mocked on this request.
+    test.mock_pull_request_commits();
+    let attach = vec![SlackAttachmentBuilder::new("")
+        .title("Pull Request #32: \"The PR\"")
+        .title_link("http://the-pr")
+        .build()];
+    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer";
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Some("some-user/some-repo/32".to_string()),
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("team.member1"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("team.member2"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+    ]);
+    let another_resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), another_resp);
 }
 
 fn new_issue(key: &str) -> jira::Issue {
