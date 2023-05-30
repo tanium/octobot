@@ -91,11 +91,7 @@ impl TeamsCache {
 
     pub fn get(&self, team_slug: &String) -> Option<Vec<github::User>> {
         let mut hash = self.members.lock().unwrap();
-        let entry = hash.get(team_slug);
-        if entry.is_none() {
-            return None;
-        }
-        let entry = entry.unwrap();
+        let entry = hash.get(team_slug)?;
         if Instant::now() > entry.expiry {
             hash.remove(team_slug);
             return None;

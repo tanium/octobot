@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use base64;
+use base64::{self, Engine};
 use failure::format_err;
 use log::{debug, info};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -105,7 +105,8 @@ impl JiraSession {
 
         // re-create the client with basic auth
 
-        let auth = base64::encode(format!("{}:{}", config.username, config.password).as_bytes());
+        let auth = base64::engine::general_purpose::STANDARD
+            .encode(format!("{}:{}", config.username, config.password));
         headers.insert(
             reqwest::header::AUTHORIZATION,
             format!("Basic {}", auth).parse().unwrap(),

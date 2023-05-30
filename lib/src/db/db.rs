@@ -87,11 +87,7 @@ pub fn to_bool(val: i32) -> bool {
 }
 
 pub fn to_tinyint(val: bool) -> i8 {
-    if val {
-        1
-    } else {
-        0
-    }
+    i8::from(val)
 }
 
 #[cfg(test)]

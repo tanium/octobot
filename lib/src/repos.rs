@@ -143,7 +143,7 @@ impl RepoConfig {
         tx.execute(
             r#"INSERT INTO repos (repo, channel, force_push_notify, use_threads, release_branch_prefix)
                VALUES (?1, ?2, ?3, ?4, ?5)"#,
-            &[
+            [
                 &repo.repo,
                 &repo.channel,
                 &db::to_tinyint(repo.force_push_notify) as &dyn ToSql,
@@ -178,7 +178,7 @@ impl RepoConfig {
                     use_threads = ?4,
                     release_branch_prefix = ?5
                WHERE id = ?6"#,
-            &[
+            [
                 &repo.repo,
                 &repo.channel,
                 &db::to_tinyint(repo.force_push_notify) as &dyn ToSql,
@@ -189,7 +189,7 @@ impl RepoConfig {
         )
         .map_err(|e| format_err!("Error updating repo {}: {}", repo.repo, e))?;
 
-        tx.execute(r#"DELETE from repos_jiras where repo_id = ?1"#, &[&id])
+        tx.execute(r#"DELETE from repos_jiras where repo_id = ?1"#, [&id])
             .map_err(|e| format_err!("Error clearing repo jira entries {}: {}", repo.repo, e))?;
 
         self.insert_jiras(&tx, id as i64, &repo.jira_config)?;
@@ -209,7 +209,7 @@ impl RepoConfig {
             tx.execute(
                 r#"INSERT INTO repos_jiras (repo_id, jira, channel, version_script, release_branch_regex)
                VALUES (?1, ?2, ?3, ?4, ?5)"#,
-                &[
+                [
                     &id,
                     &config.jira_project as &dyn ToSql,
                     &config.channel,
@@ -227,10 +227,10 @@ impl RepoConfig {
         let mut conn = self.db.connect()?;
         let tx = conn.transaction()?;
 
-        tx.execute("DELETE from repos_jiras where repo_id = ?1", &[&id])
+        tx.execute("DELETE from repos_jiras where repo_id = ?1", [&id])
             .map_err(|e| format_err!("Error clearing repo jira entries {}: {}", id, e))?;
 
-        tx.execute("DELETE from repos where id = ?1", &[&id])
+        tx.execute("DELETE from repos where id = ?1", [&id])
             .map_err(|e| format_err!("Error deleting repo {}: {}", id, e))?;
 
         tx.commit()?;

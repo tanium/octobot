@@ -91,7 +91,7 @@ impl Migration for MigrationReposJiras {
                 tx.execute(
                     r#"INSERT INTO repos_jiras (repo_id, jira, version_script, release_branch_regex, channel)
                     VALUES (?1, ?2, ?3, '', '')"#,
-                    &[
+                    [
                         &id,
                         jira as &dyn ToSql,
                         &version_script,
