@@ -456,8 +456,8 @@ impl GithubEventHandler {
         let teams = pull_request.teams();
         for t in teams {
             let team_members = self.team_members_cache.get(&t.slug);
-            if team_members != None {
-                participants.append(&mut team_members.unwrap().clone());
+            if let Some(team_members) = team_members {
+                participants.extend(team_members.into_iter());
             } else {
                 let team_members = self.github_session.get_team_members(&t.url).await;
                 match team_members {
