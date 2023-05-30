@@ -1,7 +1,8 @@
-use std::ops::Deref;
+use std::collections;
+use std::ops::{Add, Deref};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use futures::future;
 use hyper::{Body, Request, Response, StatusCode};
 use log::{error, info, warn};
 use regex::Regex;
@@ -58,6 +59,49 @@ pub struct GithubEventHandler {
     pub pr_merge: Arc<dyn Worker<PRMergeRequest>>,
     pub repo_version: Arc<dyn Worker<RepoVersionRequest>>,
     pub force_push: Arc<dyn Worker<ForcePushRequest>>,
+    pub team_members_cache: TeamsCache,
+}
+
+struct TeamCacheEntry {
+    users: Vec<github::User>,
+    expiry: Instant,
+}
+
+pub struct TeamsCache {
+    members: Mutex<collections::HashMap<String, TeamCacheEntry>>,
+    ttl: Duration,
+}
+
+impl TeamsCache {
+    pub fn new(ttl: Duration) -> TeamsCache {
+        TeamsCache {
+            members: Mutex::new(collections::HashMap::new()),
+            ttl,
+        }
+    }
+
+    pub fn insert(&self, team_slug: String, users: Vec<github::User>) {
+        let mut hash = self.members.lock().unwrap();
+        let entry = TeamCacheEntry {
+            users,
+            expiry: Instant::now().add(self.ttl),
+        };
+        hash.insert(team_slug, entry);
+    }
+
+    pub fn get(&self, team_slug: &String) -> Option<Vec<github::User>> {
+        let mut hash = self.members.lock().unwrap();
+        let entry = hash.get(team_slug);
+        if entry.is_none() {
+            return None;
+        }
+        let entry = entry.unwrap();
+        if Instant::now() > entry.expiry {
+            hash.remove(team_slug);
+            return None;
+        }
+        Some(entry.users.clone())
+    }
 }
 
 const MAX_CONCURRENT_JOBS: usize = 20;
@@ -322,6 +366,7 @@ impl Handler for GithubHandler {
             pr_merge,
             repo_version,
             force_push,
+            team_members_cache: TeamsCache::new(Duration::from_secs(3600)),
         };
 
         match handler.handle_event().await {
@@ -409,22 +454,23 @@ impl GithubEventHandler {
         participants.push(pull_request.user().clone());
         // add team members
         let teams = pull_request.teams();
-        let futures = teams
-            .iter()
-            .map(|t| self.github_session.get_team_members(&t.url));
-        let team_members = future::join_all(futures).await;
-        participants.extend(
-            team_members
-                .into_iter()
-                .filter_map(|r| match r {
-                    Ok(r) => Some(r),
+        for t in teams {
+            let team_members = self.team_members_cache.get(&t.slug);
+            if let Some(team_members) = team_members {
+                participants.extend(team_members.into_iter());
+            } else {
+                let team_members = self.github_session.get_team_members(&t.url).await;
+                match team_members {
+                    Ok(m) => {
+                        participants.extend(m.clone().into_iter());
+                        self.team_members_cache.insert(t.slug, m);
+                    }
                     Err(e) => {
                         error!("Error getting team members: {}", e);
-                        None
                     }
-                })
-                .flatten(),
-        );
+                }
+            }
+        }
         // look up commits and add the authors of those
         for commit in pr_commits {
             if let Some(ref author) = commit.author {
