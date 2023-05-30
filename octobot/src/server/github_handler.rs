@@ -90,14 +90,13 @@ impl TeamsCache {
     }
 
     pub fn get(&self, team_slug: &String) -> Option<Vec<github::User>> {
-        let hash = self.members.lock().unwrap();
+        let mut hash = self.members.lock().unwrap();
         let entry = hash.get(team_slug);
         if entry.is_none() {
             return None;
         }
         let entry = entry.unwrap();
         if Instant::now() > entry.expiry {
-            let mut hash = self.members.lock().unwrap();
             hash.remove(team_slug);
             return None;
         }
@@ -367,7 +366,7 @@ impl Handler for GithubHandler {
             pr_merge,
             repo_version,
             force_push,
-            team_members_cache: TeamsCache::new(Duration::new(3600, 0)),
+            team_members_cache: TeamsCache::new(Duration::from_secs(3600)),
         };
 
         match handler.handle_event().await {
@@ -463,12 +462,11 @@ impl GithubEventHandler {
                 let team_members = self.github_session.get_team_members(&t.url).await;
                 match team_members {
                     Ok(m) => {
-                        participants.append(&mut m.clone());
+                        participants.extend(m.clone().into_iter());
                         self.team_members_cache.insert(t.slug, m);
                     }
                     Err(e) => {
                         error!("Error getting team members: {}", e);
-                        ()
                     }
                 }
             }
