@@ -39,7 +39,7 @@ impl SlackDatabase {
         let thread = conn
             .query_row(
                 "SELECT thread FROM pull_request_threads WHERE guid = ?1 AND channel = ?2 LIMIT 1",
-                &[&thread_guid, &slack_channel],
+                [&thread_guid, &slack_channel],
                 |row| row.get(0),
             )
             .map_or_else(|_| None, |r| r);
@@ -58,7 +58,7 @@ impl SlackDatabase {
         tx.execute(
             r#"INSERT INTO pull_request_threads (guid, channel, thread, timestamp)
                     VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)"#,
-            &[thread_guid, slack_channel, thread],
+            [thread_guid, slack_channel, thread],
         )
         .map_err(|e| {
             format_err!(

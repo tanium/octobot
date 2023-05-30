@@ -153,8 +153,8 @@ impl Config {
         let mut file = fs::File::create(&tmp_file)?;
 
         file.write_all(serialized.as_bytes())?;
-        fs::rename(&config_file, &bak_file)?;
-        fs::rename(&tmp_file, &config_file)?;
+        fs::rename(config_file, &bak_file)?;
+        fs::rename(&tmp_file, config_file)?;
         fs::remove_file(&bak_file)?;
 
         Ok(())

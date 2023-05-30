@@ -66,12 +66,9 @@ pub fn migrate(conn: &mut Connection, migrations: &[Box<dyn Migration>]) -> Resu
         migrations[next_version_unsigned].run(&tx)?;
 
         if next_version == 0 {
-            tx.execute("INSERT INTO __version VALUES (?1)", &[&next_version])
+            tx.execute("INSERT INTO __version VALUES (?1)", [&next_version])
         } else {
-            tx.execute(
-                "UPDATE __version set current_version = ?1",
-                &[&next_version],
-            )
+            tx.execute("UPDATE __version set current_version = ?1", [&next_version])
         }
         .map_err(|e| format_err!("Error updating version: {}", e))?;
 

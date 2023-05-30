@@ -323,10 +323,7 @@ fn make_merge_desc(
     // strip out PR from title
     let orig_title = pr_regex.replace(&orig_desc.0, "");
     // strip out previous merge title prefixes
-    let mut orig_title = prev_merge_regex
-        .replace(&orig_title, "")
-        .to_owned()
-        .to_string();
+    let mut orig_title = prev_merge_regex.replace(&orig_title, "").into_owned();
 
     // strip out conventional commit prefix
     let mut prefix = String::new();

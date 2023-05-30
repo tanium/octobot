@@ -57,7 +57,7 @@ impl UserConfig {
         let conn = self.db.connect()?;
         conn.execute(
             "INSERT INTO users (github_name, slack_name, slack_id, email, mute_direct_messages, muted_repos) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            &[
+            [
                 &user.github,
                 &user.slack_name,
                 &user.slack_id,
@@ -75,7 +75,7 @@ impl UserConfig {
         let conn = self.db.connect()?;
         conn.execute(
             "UPDATE users set github_name = ?1, slack_name = ?2, slack_id = ?3, email = ?4, mute_direct_messages = ?5, muted_repos = ?6  where id = ?7",
-            &[&user.github, &user.slack_name, &user.slack_id, &user.email, &db::to_tinyint(user.mute_direct_messages) as &dyn ToSql, &user.muted_repos.join(","), &user.id],
+            [&user.github, &user.slack_name, &user.slack_id, &user.email, &db::to_tinyint(user.mute_direct_messages) as &dyn ToSql, &user.muted_repos.join(","), &user.id],
         ).map_err(|e| format_err!("Error updating user {}: {}", user.github, e))?;
 
         Ok(())
@@ -83,7 +83,7 @@ impl UserConfig {
 
     pub fn delete(&mut self, user_id: i32) -> Result<()> {
         let conn = self.db.connect()?;
-        conn.execute("DELETE from users where id = ?1", &[&user_id])
+        conn.execute("DELETE from users where id = ?1", [&user_id])
             .map_err(|e| format_err!("Error deleting user {}: {}", user_id, e))?;
 
         Ok(())
@@ -124,9 +124,9 @@ impl UserConfig {
                 mute_direct_messages: db::to_bool(row.get(5)?),
                 muted_repos: row
                     .get::<usize, String>(6)?
-                    .split(",")
+                    .split(',')
                     .map(|s| s.trim().to_owned())
-                    .filter(|s| s.len() > 0)
+                    .filter(|s| !s.is_empty())
                     .collect(),
             })
         })?;
@@ -155,7 +155,7 @@ impl UserConfig {
         let mut stmt = conn.prepare(
             "SELECT id, slack_name, slack_id, email, mute_direct_messages, muted_repos FROM users where github_name = ?1",
         )?;
-        let found = stmt.query_map(&[&github_name], |row| {
+        let found = stmt.query_map([&github_name], |row| {
             Ok(UserInfo {
                 id: row.get(0)?,
                 slack_name: row.get(1)?,
@@ -165,9 +165,9 @@ impl UserConfig {
                 mute_direct_messages: db::to_bool(row.get(4)?),
                 muted_repos: row
                     .get::<usize, String>(5)?
-                    .split(",")
+                    .split(',')
                     .map(|s| s.trim().to_owned())
-                    .filter(|s| s.len() > 0)
+                    .filter(|s| !s.is_empty())
                     .collect(),
             })
         })?;
