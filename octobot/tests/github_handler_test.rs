@@ -2073,7 +2073,7 @@ async fn test_team_members_cache() {
     test.handler.action = "review_requested".into();
     test.handler.data.pull_request = some_pr();
     if let Some(ref mut pr) = test.handler.data.pull_request {
-        pr.requested_teams = Some(vec![Team::new("team-awesome", "http://team-url")]);
+        pr.requested_teams = Some(vec![Team::new("team-awesome", "http://team-members-url")]);
     }
     test.handler.data.sender = User::new("the-pr-closer");
     test.mock_pull_request_commits();
