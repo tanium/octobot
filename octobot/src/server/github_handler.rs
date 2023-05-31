@@ -455,7 +455,7 @@ impl GithubEventHandler {
             if let Some(team_members) = team_members {
                 participants.extend(team_members.into_iter());
             } else {
-                let team_members = self.github_session.get_team_members(&t.url).await;
+                let team_members = self.github_session.get_team_members(&t.members_url).await;
                 match team_members {
                     Ok(m) => {
                         participants.extend(m.clone().into_iter());
