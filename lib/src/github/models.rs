@@ -99,14 +99,14 @@ pub struct App {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Team {
     pub slug: String,
-    pub url: String,
+    pub members_url: String,
 }
 
 impl Team {
-    pub fn new(slug: &str, url: &str) -> Team {
+    pub fn new(slug: &str, members_url: &str) -> Team {
         Team {
             slug: slug.to_string(),
-            url: url.to_string(),
+            members_url: members_url.to_string(),
         }
     }
 }
