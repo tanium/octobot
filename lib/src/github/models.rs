@@ -106,7 +106,9 @@ impl Team {
     pub fn new(slug: &str, members_url: &str) -> Team {
         Team {
             slug: slug.to_string(),
-            members_url: members_url.to_string(),
+            // The members url is formatted as such: `https://api.github.com/teams/1/members{/member}`
+            // So we need to remove `{/member}` at the end.
+            members_url: members_url.split("{").next().unwrap().to_string(),
         }
     }
 }
