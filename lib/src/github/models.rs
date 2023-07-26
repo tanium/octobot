@@ -109,7 +109,7 @@ impl Team {
         let first_str = members_url.split("{").next();
         let url = match first_str {
             None => "",
-            Some(u) => u
+            Some(u) => u,
         };
         Team {
             slug: slug.to_string(),
