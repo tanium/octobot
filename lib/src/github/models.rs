@@ -113,7 +113,7 @@ impl Team {
         };
         Team {
             slug: slug.to_string(),
-            members_url: members_url.to_string(),
+            members_url: url.to_string(),
         }
     }
 }
