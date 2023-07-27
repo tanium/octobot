@@ -41,6 +41,7 @@ pub struct GithubHandlerState {
     slack_worker: Arc<dyn Worker<SlackRequest>>,
     recent_events: Mutex<Vec<String>>,
     metrics: Arc<Metrics>,
+    git_clone_manager: Arc<GitCloneManager>,
 }
 
 pub struct GithubHandler {
@@ -145,7 +146,11 @@ impl GithubHandlerState {
         );
         let force_push_worker = TokioWorker::new_worker(
             runtime.clone(),
-            force_push::new_runner(github_app.clone(), git_clone_manager, metrics.clone()),
+            force_push::new_runner(
+                github_app.clone(),
+                git_clone_manager.clone(),
+                metrics.clone(),
+            ),
         );
 
         GithubHandlerState {
@@ -159,7 +164,13 @@ impl GithubHandlerState {
             slack_worker,
             recent_events: Mutex::new(Vec::new()),
             metrics,
+            git_clone_manager,
         }
+    }
+
+    pub fn clean(&self) {
+        // Clean up repos not used in the past hour
+        self.git_clone_manager.clean(Duration::from_secs(3600));
     }
 }
 

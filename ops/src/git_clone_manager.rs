@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use failure::format_err;
 use log::info;
@@ -40,6 +41,10 @@ impl GitCloneManager {
         self.clone_repo(&session, owner, repo, held_clone_dir.dir())?;
 
         Ok(held_clone_dir)
+    }
+
+    pub fn clean(&self, expiration: Duration) {
+        self.dir_pool.clean(expiration);
     }
 
     fn clone_repo(

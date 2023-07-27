@@ -100,21 +100,35 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         metrics.clone(),
     );
 
-    let main_service = make_service_fn(move |_| {
-        let metrics = metrics.clone();
-        let _scoped_count = metrics::scoped_inc(&metrics.current_connection_count);
-
+    let main_service;
+    {
         let octobot = octobot.clone();
-
-        async move {
-            // move the scoped count inside the future
-            let _scoped_count = _scoped_count;
+        main_service = make_service_fn(move |_| {
+            let metrics = metrics.clone();
+            let _scoped_count = metrics::scoped_inc(&metrics.current_connection_count);
 
             let octobot = octobot.clone();
-            Ok::<_, hyper::Error>(service_fn(move |req| {
+
+            async move {
+                // move the scoped count inside the future
+                let _scoped_count = _scoped_count;
+
                 let octobot = octobot.clone();
-                octobot.call(req)
-            }))
+                Ok::<_, hyper::Error>(service_fn(move |req| {
+                    let octobot = octobot.clone();
+                    octobot.call(req)
+                }))
+            }
+        });
+    }
+
+    let jobs = tokio::spawn(async move {
+        let octobot = octobot.clone();
+
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
+        loop {
+            interval.tick().await;
+            octobot.clean();
         }
     });
 
@@ -123,5 +137,9 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
 
     if let Err(e) = server.await {
         error!("server error: {}", e);
+    }
+
+    if let Err(e) = jobs.await {
+        error!("jobs error: {}", e);
     }
 }
