@@ -104,11 +104,16 @@ pub struct Team {
 
 impl Team {
     pub fn new(slug: &str, members_url: &str) -> Team {
+        // The members url is formatted as such: `https://api.github.com/teams/1/members{/member}`
+        // So we need to remove `{/member}` at the end.
+        let first_str = members_url.split("{").next();
+        let url = match first_str {
+            None => "",
+            Some(u) => u,
+        };
         Team {
             slug: slug.to_string(),
-            // The members url is formatted as such: `https://api.github.com/teams/1/members{/member}`
-            // So we need to remove `{/member}` at the end.
-            members_url: members_url.split("{").next().unwrap().to_string(),
+            members_url: url.to_string(),
         }
     }
 }
