@@ -41,6 +41,10 @@ impl OctobotService {
             metrics,
         }
     }
+
+    pub fn clean(&self) {
+        self.github_handler_state.clean();
+    }
 }
 
 impl OctobotService {
