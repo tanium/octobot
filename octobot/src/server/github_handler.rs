@@ -169,8 +169,8 @@ impl GithubHandlerState {
     }
 
     pub fn clean(&self) {
-        // Clean up repos not used in the past hour
-        self.git_clone_manager.clean(Duration::from_secs(3600));
+        // Clean up repos not used in the past day
+        self.git_clone_manager.clean(Duration::from_secs(24 * 3600));
     }
 }
 
