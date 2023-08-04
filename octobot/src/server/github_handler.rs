@@ -69,7 +69,7 @@ struct TeamCacheEntry {
 }
 
 pub struct TeamsCache {
-    members: Mutex<collections::HashMap<String, TeamCacheEntry>>,
+    members: Mutex<collections::HashMap<(u32, u32), TeamCacheEntry>>,
     ttl: Duration,
 }
 
@@ -81,20 +81,21 @@ impl TeamsCache {
         }
     }
 
-    pub fn insert(&self, team_slug: String, users: Vec<github::User>) {
+    pub fn insert(&self, repo: &github::Repo, team_id: u32, users: Vec<github::User>) {
         let mut hash = self.members.lock().unwrap();
         let entry = TeamCacheEntry {
             users,
             expiry: Instant::now().add(self.ttl),
         };
-        hash.insert(team_slug, entry);
+        hash.insert((repo.owner.id, team_id), entry);
     }
 
-    pub fn get(&self, team_slug: &String) -> Option<Vec<github::User>> {
+    pub fn get(&self, repo: &github::Repo, team_id: u32) -> Option<Vec<github::User>> {
+        let key = (repo.owner.id, team_id);
         let mut hash = self.members.lock().unwrap();
-        let entry = hash.get(team_slug)?;
+        let entry = hash.get(&key)?;
         if Instant::now() > entry.expiry {
-            hash.remove(team_slug);
+            hash.remove(&key);
             return None;
         }
         Some(entry.users.clone())
@@ -459,25 +460,9 @@ impl GithubEventHandler {
         let mut participants = pull_request.assignees();
         // add the author of the PR
         participants.push(pull_request.user().clone());
-        // add team members
-        let teams = pull_request.teams();
-        for t in teams {
-            let team_members = self.team_members_cache.get(&t.slug);
-            if let Some(team_members) = team_members {
-                participants.extend(team_members.into_iter());
-            } else {
-                let team_members = self.github_session.get_team_members(&t.members_url).await;
-                match team_members {
-                    Ok(m) => {
-                        participants.extend(m.clone().into_iter());
-                        self.team_members_cache.insert(t.slug, m);
-                    }
-                    Err(e) => {
-                        error!("Error getting team members: {}", e);
-                    }
-                }
-            }
-        }
+        // add team participants
+        participants.extend(self.team_participants(pull_request).await);
+
         // look up commits and add the authors of those
         for commit in pr_commits {
             if let Some(ref author) = commit.author {
@@ -487,6 +472,44 @@ impl GithubEventHandler {
 
         participants.sort_by(|a, b| a.login().cmp(b.login()));
         participants.dedup();
+        participants
+    }
+
+    async fn team_participants(
+        &self,
+        pull_request: &dyn github::PullRequestLike,
+    ) -> Vec<github::User> {
+        let mut participants = vec![];
+
+        // Issues do not have a repo and cannot have teams assigned
+        let repo = match pull_request.repo() {
+            None => {
+                return participants;
+            }
+            Some(r) => r,
+        };
+
+        // add team members
+        let teams = pull_request.teams();
+
+        for t in teams {
+            let team_members = self.team_members_cache.get(repo, t.id);
+            if let Some(team_members) = team_members {
+                participants.extend(team_members.into_iter());
+            } else {
+                let team_members = self.github_session.get_team_members(repo, t.id).await;
+                match team_members {
+                    Ok(m) => {
+                        participants.extend(m.clone().into_iter());
+                        self.team_members_cache.insert(repo, t.id, m);
+                    }
+                    Err(e) => {
+                        error!("Error getting team members: {}", e);
+                    }
+                }
+            }
+        }
+
         participants
     }
 

@@ -130,7 +130,7 @@ pub trait Session: Send + Sync {
         check_run_id: u32,
         run: &CheckRun,
     ) -> Result<()>;
-    async fn get_team_members(&self, url: &str) -> Result<Vec<User>>;
+    async fn get_team_members(&self, repo: &Repo, id: u32) -> Result<Vec<User>>;
 }
 
 #[async_trait]
@@ -963,10 +963,20 @@ impl Session for GithubSession {
         Ok(())
     }
 
-    async fn get_team_members(&self, url: &str) -> Result<Vec<User>> {
+    async fn get_team_members(&self, repo: &Repo, team_id: u32) -> Result<Vec<User>> {
         self.client
-            .get(url)
+            .get(&format!(
+                "/organizations/{}/team/{}/members",
+                repo.owner.id, team_id
+            ))
             .await
-            .map_err(|e| format_err!("Error looking up team members {}: {}", url, e))
+            .map_err(|e| {
+                format_err!(
+                    "Error looking up team members {} for repo {}: {}",
+                    team_id,
+                    repo.full_name,
+                    e
+                )
+            })
     }
 }

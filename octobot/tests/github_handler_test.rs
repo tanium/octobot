@@ -101,10 +101,10 @@ impl GithubHandlerTest {
         commits
     }
 
-    fn mock_get_team_members(&self) -> Vec<User> {
+    fn mock_get_team_members(&self, team_id: u32) -> Vec<User> {
         let users = some_members();
         self.github
-            .mock_get_team_members("http://team-members-url", Ok(users.clone()));
+            .mock_get_team_members(&the_repo(), team_id, Ok(users.clone()));
 
         users
     }
@@ -1157,14 +1157,11 @@ async fn test_pull_request_review_requested() {
     test.handler.data.pull_request = some_pr();
     if let Some(ref mut pr) = test.handler.data.pull_request {
         pr.requested_reviewers = Some(vec![User::new("joe-reviewer"), User::new("smith-reviewer")]);
-        pr.requested_teams = Some(vec![Team::new(
-            "team-awesome",
-            "http://team-members-url{/to-remove}",
-        )]);
+        pr.requested_teams = Some(vec![Team::new(100, "team-awesome")]);
     }
     test.handler.data.sender = User::new("the-pr-closer");
     test.mock_pull_request_commits();
-    test.mock_get_team_members();
+    test.mock_get_team_members(100);
 
     let attach = vec![SlackAttachmentBuilder::new("")
         .title("Pull Request #32: \"The PR\"")
@@ -2076,12 +2073,12 @@ async fn test_team_members_cache() {
     test.handler.action = "review_requested".into();
     test.handler.data.pull_request = some_pr();
     if let Some(ref mut pr) = test.handler.data.pull_request {
-        pr.requested_teams = Some(vec![Team::new("team-awesome", "http://team-members-url")]);
+        pr.requested_teams = Some(vec![Team::new(100, "team-awesome")]);
     }
     test.handler.data.sender = User::new("the-pr-closer");
     test.mock_pull_request_commits();
     test.mock_pull_request_commits();
-    test.mock_get_team_members();
+    test.mock_get_team_members(100);
 
     let attach = vec![SlackAttachmentBuilder::new("")
         .title("Pull Request #32: \"The PR\"")

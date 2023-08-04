@@ -476,11 +476,12 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn get_team_members(&self, url: &str) -> Result<Vec<User>> {
+    async fn get_team_members(&self, repo: &Repo, team_id: u32) -> Result<Vec<User>> {
         let mut calls = self.get_team_members_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_team_members");
         let call = calls.remove(0);
-        assert_eq!(call.args[0], url.to_string());
+        assert_eq!(call.args[0], repo.full_name);
+        assert_eq!(call.args[1], team_id.to_string());
 
         call.ret
     }
@@ -707,11 +708,14 @@ impl MockGithub {
             ));
     }
 
-    pub fn mock_get_team_members(&self, url: &str, ret: Result<Vec<User>>) {
+    pub fn mock_get_team_members(&self, repo: &Repo, team_id: u32, ret: Result<Vec<User>>) {
         self.get_team_members_calls
             .lock()
             .unwrap()
-            .push(MockCall::new(ret, vec![&url.to_string()]));
+            .push(MockCall::new(
+                ret,
+                vec![&repo.full_name, &team_id.to_string()],
+            ));
     }
 }
 

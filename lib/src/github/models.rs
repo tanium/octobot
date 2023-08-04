@@ -98,22 +98,15 @@ pub struct App {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Team {
+    pub id: u32,
     pub slug: String,
-    pub members_url: String,
 }
 
 impl Team {
-    pub fn new(slug: &str, members_url: &str) -> Team {
-        // The members url is formatted as such: `https://api.github.com/teams/1/members{/member}`
-        // So we need to remove `{/member}` at the end.
-        let first_str = members_url.split("{").next();
-        let url = match first_str {
-            None => "",
-            Some(u) => u,
-        };
+    pub fn new(id: u32, slug: &str) -> Team {
         Team {
-            slug: slug.to_string(),
-            members_url: url.to_string(),
+            id,
+            slug: slug.into(),
         }
     }
 }
@@ -126,6 +119,7 @@ impl PartialEq for Team {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct User {
+    pub id: u32,
     pub login: Option<String>,
     pub name: Option<String>,
 }
@@ -133,6 +127,7 @@ pub struct User {
 impl User {
     pub fn new(login: &str) -> User {
         User {
+            id: 0,
             login: Some(login.to_string()),
             name: Some(login.to_string()),
         }
@@ -230,6 +225,7 @@ pub trait PullRequestLike: Send + Sync {
     fn html_url(&self) -> &str;
     fn number(&self) -> u32;
     fn has_commits(&self) -> bool;
+    fn repo(&self) -> Option<&Repo>;
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -333,6 +329,10 @@ impl<'a> PullRequestLike for &'a PullRequest {
     fn has_commits(&self) -> bool {
         true
     }
+
+    fn repo(&self) -> Option<&Repo> {
+        Some(&self.base.repo)
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -371,6 +371,10 @@ impl<'a> PullRequestLike for &'a Issue {
 
     fn has_commits(&self) -> bool {
         false
+    }
+
+    fn repo(&self) -> Option<&Repo> {
+        None
     }
 }
 
