@@ -1,4 +1,4 @@
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::time::SystemTime;
 
 use failure::format_err;
@@ -11,7 +11,7 @@ use crate::util;
 use crate::webhook_db_migrations;
 
 pub struct WebhookDatabase {
-    data: RwLock<Data>,
+    data: Mutex<Data>,
 }
 
 struct Data {
@@ -41,13 +41,13 @@ impl WebhookDatabase {
         }
 
         Ok(WebhookDatabase {
-            data: RwLock::new(Data { db, recent_events }),
+            data: Mutex::new(Data { db, recent_events }),
         })
     }
 
     // records the event and returns true if unique, otherwise returns false
     pub fn maybe_record(&self, guid: &str) -> Result<bool> {
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.lock().unwrap();
 
         if self.has_guid(&data, guid) {
             return Ok(false);
@@ -100,7 +100,7 @@ impl WebhookDatabase {
     pub fn clean(&self, expiration: SystemTime) -> Result<()> {
         let deadline = expiration.duration_since(SystemTime::UNIX_EPOCH)?.as_secs();
 
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.lock().unwrap();
 
         util::trim_unique_events(&mut data.recent_events, 1000, 100);
 
@@ -131,7 +131,7 @@ mod tests {
     }
 
     fn clean_cache(db: &WebhookDatabase) {
-        let mut data = db.data.write().unwrap();
+        let mut data = db.data.lock().unwrap();
         data.recent_events.clear();
     }
 
