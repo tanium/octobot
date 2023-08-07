@@ -1,8 +1,8 @@
 use std::borrow::Borrow;
 use std::sync::Arc;
 
-use conventional::{Commit, Simple as _};
 use anyhow::anyhow;
+use conventional::{Commit, Simple as _};
 use log::{error, info};
 use regex::Regex;
 
