@@ -1,4 +1,4 @@
-use failure::bail;
+use anyhow::{anyhow, bail};
 use maplit::hashmap;
 use prometheus::{HistogramTimer, HistogramVec, IntCounterVec};
 use reqwest;
@@ -189,13 +189,13 @@ impl HTTPClient {
         })
     }
 
-    fn make_clean_err<T>(&self, e: impl failure::Fail) -> Result<T> {
+    fn make_clean_err<T>(&self, e: impl std::error::Error) -> Result<T> {
+        let mut msg = format!("{}", e);
         if let Some(ref s) = self.secret_path {
-            let msg = format!("{}", e);
-            bail!("{}", msg.replace(s, "<redacted>"));
-        } else {
-            bail!(e);
+            msg = msg.replace(s, "<redacted>");
         }
+
+        Err(anyhow!("{}", msg))
     }
 
     async fn process_resp(&self, res: reqwest::Result<Response>) -> Result<Response> {

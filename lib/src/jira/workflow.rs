@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-use failure::format_err;
+use anyhow::anyhow;
 use log::{error, info};
 use regex::Regex;
 
@@ -309,7 +309,7 @@ pub async fn merge_pending_versions(
 ) -> Result<HashMap<String, Vec<version::Version>>> {
     let target_version = match version::Version::parse(version) {
         Some(v) => v,
-        None => return Err(format_err!("Invalid target version: {}", version)),
+        None => return Err(anyhow!("Invalid target version: {}", version)),
     };
 
     let real_versions = jira.get_versions(project).await?;
@@ -332,7 +332,7 @@ pub async fn merge_pending_versions(
     }
 
     if all_relevant_versions.is_empty() {
-        return Err(format_err!(
+        return Err(anyhow!(
             "No relevant pending versions for version {}",
             version
         ));

@@ -12,7 +12,6 @@ path = "src/lib.rs"
 [dependencies]
 base64 = "0.21.2"
 conventional = "0.5.0"
-failure = "0.1.8"
 log = "0.4.19"
 regex = "1.9.3"
 ring = "0.16.20"
@@ -30,6 +29,7 @@ prometheus = { version = "0.13.3", features = ["process"] }
 maplit = "1.0.2"
 hex = "0.4.3"
 time = "0.3.25"
+anyhow = "1.0.72"
 
 [dev-dependencies]
 tempfile = "3"

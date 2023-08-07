@@ -1,4 +1,4 @@
-use failure::format_err;
+use anyhow::anyhow;
 use serde_derive::{Deserialize, Serialize};
 use url::Url;
 
@@ -174,10 +174,10 @@ impl Repo {
         let url = Url::parse(html_url)?;
         let segments: Vec<&str> = match url.path_segments() {
             Some(s) => s.filter(|p| !p.is_empty()).collect(),
-            None => return Err(format_err!("No path segments in URL")),
+            None => return Err(anyhow!("No path segments in URL")),
         };
         if segments.len() != 2 {
-            return Err(format_err!("Expected only two path segments!"));
+            return Err(anyhow!("Expected only two path segments!"));
         }
 
         let user = segments[0];

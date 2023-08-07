@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use failure::format_err;
+use anyhow::anyhow;
 use log::error;
 use rusqlite::types::FromSql;
 
@@ -22,7 +22,7 @@ impl Database {
         let conn = db.connect()?;
         let mode: String = conn
             .query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))
-            .map_err(|e| format_err!("Error turning on WAL mode: {}", e))?;
+            .map_err(|e| anyhow!("Error turning on WAL mode: {}", e))?;
 
         if mode.trim() != "wal" {
             error!("Error setting WAL mode. Result: {}", mode);
@@ -33,7 +33,7 @@ impl Database {
 
     pub fn connect(&self) -> Result<Connection> {
         Connection::open(&self.db_file)
-            .map_err(|e| format_err!("Error opening database {}: {}", self.db_file, e))
+            .map_err(|e| anyhow!("Error opening database {}: {}", self.db_file, e))
     }
 }
 
@@ -58,13 +58,13 @@ impl Columns {
         self.cols
             .get(col)
             .copied()
-            .ok_or_else(|| format_err!("Invalid column '{}'", col))
+            .ok_or_else(|| anyhow!("Invalid column '{}'", col))
     }
 
     pub fn get<T: FromSql>(&self, row: &Row, col: &str) -> Result<T> {
         let index = self.get_index(col)?;
         row.get(index)
-            .map_err(|e| format_err!("Error getting column {}: {}", col, e))
+            .map_err(|e| anyhow!("Error getting column {}: {}", col, e))
     }
 }
 

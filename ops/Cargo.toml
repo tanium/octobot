@@ -12,7 +12,6 @@ path = "src/lib.rs"
 [dependencies]
 octobot_lib = { "path" = "../lib" }
 conventional = "0.5.0"
-failure = "0.1.8"
 hyper = "0.14.27"
 log = "0.4.19"
 regex = "1.9.3"
@@ -23,6 +22,7 @@ unidiff = "0.3.3"
 reqwest = { version = "0.11.18", features = ["json"] }
 async-trait = "0.1.72"
 serde_json = "1.0.104"
+anyhow = "1.0.72"
 
 [dev-dependencies]
 maplit = "1.0.2"
