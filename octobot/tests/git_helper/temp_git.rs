@@ -4,7 +4,7 @@ use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 
-use tempdir::TempDir;
+use tempfile::{tempdir, TempDir};
 
 use octobot_ops::git::Git;
 
@@ -16,13 +16,13 @@ pub struct TempGit {
 
 impl TempGit {
     pub fn new() -> TempGit {
-        let home = TempDir::new("home")
+        let home = tempdir()
             .expect("create fake home dir for configs")
             .into_path();
         std::env::set_var("HOME", &home);
         std::env::set_var("XDG_CONFIG_HOME", &home);
 
-        let dir = TempDir::new("git_test.rs").expect("create temp dir for git_test.rs");
+        let dir = tempdir().expect("create temp dir for git_test.rs");
 
         let repo_dir = dir.path().join("repo");
         let remote_dir = dir.path().join("remote");

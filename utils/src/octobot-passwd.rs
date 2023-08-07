@@ -1,6 +1,5 @@
 use ring::rand::SecureRandom;
 use ring::rand::SystemRandom;
-use rustc_serialize::hex::ToHex;
 
 use octobot_lib::config;
 use octobot_lib::passwd;
@@ -27,7 +26,7 @@ fn main() {
     SystemRandom::new()
         .fill(&mut salt_bytes)
         .expect("get random");
-    let salt: String = salt_bytes.to_hex();
+    let salt: String = hex::encode(salt_bytes);
 
     let pass_hash = passwd::store_password(&pass1, &salt);
 

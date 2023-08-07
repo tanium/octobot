@@ -1,4 +1,4 @@
-use failure::format_err;
+use anyhow::anyhow;
 use rusqlite::types::ToSql;
 use rusqlite::Transaction;
 
@@ -97,7 +97,7 @@ impl Migration for MigrationReposJiras {
                         &version_script,
                     ],
                 )
-                .map_err(|e| format_err!("Error inserting jira repo {} - {}: {}", id, jira, e))?;
+                .map_err(|e| anyhow!("Error inserting jira repo {} - {}: {}", id, jira, e))?;
             }
         }
 

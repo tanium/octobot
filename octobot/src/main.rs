@@ -2,7 +2,7 @@
 
 use std::io::Write;
 
-use failure::format_err;
+use anyhow::anyhow;
 
 use octobot_lib::config;
 use octobot_lib::errors::*;
@@ -16,8 +16,8 @@ fn main() {
 
         writeln!(stderr, "error: {}", e).expect(errmsg);
 
-        for cause in e.iter_causes() {
-            writeln!(stderr, "{}: {}", cause.name().unwrap_or("Error"), cause).expect(errmsg);
+        for cause in e.chain() {
+            writeln!(stderr, "{}", cause).expect(errmsg);
         }
 
         // The backtrace is not always generated. Try to run this example
@@ -30,7 +30,7 @@ fn main() {
 
 fn run() -> Result<()> {
     if std::env::args().len() < 2 {
-        return Err(format_err!("Usage: octobot <config-file>"));
+        return Err(anyhow!("Usage: octobot <config-file>"));
     }
 
     setup_logging();
@@ -47,7 +47,7 @@ fn run() -> Result<()> {
     let config_file = std::env::args().nth(1).unwrap();
 
     let config =
-        config::new(config_file.into()).map_err(|e| format_err!("Error parsing config: {}", e))?;
+        config::new(config_file.into()).map_err(|e| anyhow!("Error parsing config: {}", e))?;
 
     server::main::start(config);
 
@@ -55,13 +55,16 @@ fn run() -> Result<()> {
 }
 
 fn setup_logging() {
-    let formatter = |buf: &mut env_logger::fmt::Formatter, record: &log::Record| {
-        let now = chrono::Local::now();
+    let format = time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
+        .expect("invalid time format");
+
+    let formatter = move |buf: &mut env_logger::fmt::Formatter, record: &log::Record| {
+        let now = time::OffsetDateTime::now_local().expect("now");
         writeln!(
             buf,
             "[{},{:03}][{}:{}] - {} - {}",
-            now.format("%Y-%m-%d %H:%M:%S"),
-            now.timestamp_subsec_millis(),
+            now.format(&format).expect("cannot format time"),
+            now.millisecond(),
             thread_id::get(),
             std::thread::current().name().unwrap_or(""),
             record.level(),

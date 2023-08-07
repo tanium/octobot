@@ -1,6 +1,6 @@
 use std::ptr;
 
-use failure::format_err;
+use anyhow::anyhow;
 use log::{debug, info, warn};
 use openldap::{self, LDAPResponse, RustLDAP};
 use regex::Regex;
@@ -104,7 +104,7 @@ pub fn search(
     let ldap = new_ldap(&config.url)?;
     let bind_res = ldap.simple_bind(&config.bind_user, &config.bind_pass)?;
     if bind_res != 0 {
-        return Err(format_err!(
+        return Err(anyhow!(
             "LDAP service account bind failed with error code {}",
             bind_res
         ));
@@ -140,7 +140,7 @@ pub fn search(
             ptr::null_mut(), // timeout
             max_results,
         )
-        .map_err(|e| format_err!("Error on LDAP search: {}", e));
+        .map_err(|e| anyhow!("Error on LDAP search: {}", e));
 
     let entries = resp?
         .into_iter()

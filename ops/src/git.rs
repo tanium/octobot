@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use failure::format_err;
+use anyhow::anyhow;
 use log::debug;
 
 use octobot_lib::errors::*;
@@ -145,19 +145,19 @@ impl Git {
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| format_err!("Error starting git (args: {:?}): {}", args, e))?;
+            .map_err(|e| anyhow!("Error starting git (args: {:?}): {}", args, e))?;
 
         if let Some(stdin) = stdin {
             if let Some(ref mut child_stdin) = child.stdin {
                 child_stdin
                     .write_all(stdin.as_bytes())
-                    .map_err(|e| format_err!("Error writing to stdin: {}", e))?;
+                    .map_err(|e| anyhow!("Error writing to stdin: {}", e))?;
             }
         }
 
         let result = child
             .wait_with_output()
-            .map_err(|e| format_err!("Error running git (args: {:?}): {}", args, e))?;
+            .map_err(|e| anyhow!("Error running git (args: {:?}): {}", args, e))?;
 
         let mut output = String::new();
         if !result.stdout.is_empty() {
@@ -176,7 +176,7 @@ impl Git {
             .join("\n");
 
         if !result.status.success() {
-            Err(format_err!(
+            Err(anyhow!(
                 "Error running git (exit code {}, args: {:?}):\n{}",
                 result.status.code().unwrap_or(-1),
                 args,

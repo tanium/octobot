@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use async_trait::async_trait;
-use failure::format_err;
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
 
@@ -185,7 +185,7 @@ impl GithubApp {
                 .new_client()?
                 .get("/app")
                 .await
-                .map_err(|e| format_err!("Error authenticating to github with token: {}", e))?,
+                .map_err(|e| anyhow!("Error authenticating to github with token: {}", e))?,
         );
 
         info!("Logged in as GithubApp {}", github.bot_name());
@@ -292,7 +292,7 @@ impl GithubOauthApp {
                 .client
                 .get::<User>("/user")
                 .await
-                .map_err(|e| format_err!("Error authenticating to github with token: {}", e))?,
+                .map_err(|e| anyhow!("Error authenticating to github with token: {}", e))?,
         );
 
         info!("Logged in as OAuth app {}", github.bot_name());
@@ -401,7 +401,7 @@ impl GithubSession {
                 .client
                 .get::<Vec<PullRequest>>(&format!("{}&page={}", paging_url, page))
                 .await
-                .map_err(|e| format_err!("{}: {}", err_fmt, e))
+                .map_err(|e| anyhow!("{}: {}", err_fmt, e))
                 .map(|prs| {
                     prs.into_iter()
                         .filter(|p| {
@@ -463,7 +463,7 @@ impl Session for GithubSession {
             .client
             .get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
             .await
-            .map_err(|e| format_err!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e));
+            .map_err(|e| anyhow!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e));
         let mut pull_request = pull_request?;
 
         // Always fetch PR's reviewers. Users get removed from requested_reviewers after they submit their review. :cry:
@@ -561,7 +561,7 @@ impl Session for GithubSession {
             ))
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "error looking up pr labels: {}/{} #{}: {}",
                     owner,
                     repo,
@@ -591,7 +591,7 @@ impl Session for GithubSession {
                 &body,
             )
             .await
-            .map_err(|e| format_err!("Error adding label: {}/{} #{}: {}", owner, repo, number, e))
+            .map_err(|e| anyhow!("Error adding label: {}/{} #{}: {}", owner, repo, number, e))
     }
 
     async fn get_pull_request_commits(
@@ -612,7 +612,7 @@ impl Session for GithubSession {
                 ))
                 .await
                 .map_err(|e| {
-                    format_err!(
+                    anyhow!(
                         "Error looking up PR commits: {}/{} #{}: {}",
                         owner,
                         repo,
@@ -645,7 +645,7 @@ impl Session for GithubSession {
             ))
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error looking up PR reviews: {}/{} #{}: {}",
                     owner,
                     repo,
@@ -675,7 +675,7 @@ impl Session for GithubSession {
                 &body,
             )
             .await
-            .map_err(|e| format_err!("Error assigning PR: {}/{} #{}: {}", owner, repo, number, e))
+            .map_err(|e| anyhow!("Error assigning PR: {}/{} #{}: {}", owner, repo, number, e))
     }
 
     async fn request_review(
@@ -702,7 +702,7 @@ impl Session for GithubSession {
             )
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error requesting review for PR: {}/{} #{}: {}",
                     owner,
                     repo,
@@ -734,7 +734,7 @@ impl Session for GithubSession {
             )
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error commenting on PR: {}/{} #{}: {}",
                     owner,
                     repo,
@@ -767,7 +767,7 @@ impl Session for GithubSession {
             .post_void(&format!("repos/{}/{}/git/refs", owner, repo), &body)
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error creating branch {}/{} {}, {}: {}",
                     owner,
                     repo,
@@ -786,7 +786,7 @@ impl Session for GithubSession {
             ))
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error deleting branch {}/{} {}: {}",
                     owner,
                     repo,
@@ -825,7 +825,7 @@ impl Session for GithubSession {
                 &body,
             )
             .await
-            .map_err(|e| format_err!("Error approving PR {}/{} #{}: {}", owner, repo, number, e))
+            .map_err(|e| anyhow!("Error approving PR {}/{} #{}: {}", owner, repo, number, e))
     }
 
     async fn get_timeline(
@@ -842,7 +842,7 @@ impl Session for GithubSession {
                 owner, repo, number, page
             );
             let next_events: Vec<TimelineEvent> = match self.client.get(&url).await.map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error getting timeline for PR: {}/{} #{}: {}",
                     owner,
                     repo,
@@ -875,7 +875,7 @@ impl Session for GithubSession {
         let app_id = match self.app_id {
             Some(id) => id,
             None => {
-                return Err(format_err!("get_suites only supported for GitHub Apps"));
+                return Err(anyhow!("get_suites only supported for GitHub Apps"));
             }
         };
 
@@ -887,7 +887,7 @@ impl Session for GithubSession {
             .await
             .map(|list| list.check_suites)
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error getting suites for {} {}: {}",
                     pr.base.repo.full_name,
                     pr.head.sha,
@@ -904,7 +904,7 @@ impl Session for GithubSession {
             ))
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error getting check run #{} for {}: {}",
                     id,
                     pr.base.repo.full_name,
@@ -926,7 +926,7 @@ impl Session for GithubSession {
             )
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error creating check run for {}: {}",
                     pr.base.repo.full_name,
                     e
@@ -951,7 +951,7 @@ impl Session for GithubSession {
             .send()
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error updating check run #{} for {}: {}\n\nPayload: {:#?}",
                     check_run_id,
                     pr.base.repo.full_name,
@@ -971,7 +971,7 @@ impl Session for GithubSession {
             ))
             .await
             .map_err(|e| {
-                format_err!(
+                anyhow!(
                     "Error looking up team members {} for repo {}: {}",
                     team_id,
                     repo.full_name,

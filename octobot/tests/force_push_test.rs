@@ -1,6 +1,6 @@
 mod mocks;
 
-use failure::format_err;
+use anyhow::anyhow;
 
 use mocks::mock_github::MockGithub;
 
@@ -220,7 +220,7 @@ async fn test_force_push_error() {
     );
 
     force_push::comment_force_push(
-        Err(format_err!("Ahh!!")),
+        Err(anyhow!("Ahh!!")),
         &github,
         "some-user",
         "some-repo",

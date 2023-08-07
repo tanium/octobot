@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
-use failure::format_err;
+use anyhow::anyhow;
 
 use octobot_lib::errors::*;
 
@@ -109,11 +109,11 @@ pub fn recv_timeout<T>(rx: &Receiver<T>, timeout: std::time::Duration) -> Result
                     thread::sleep(sleep_time);
                 }
                 None => {
-                    return Err(format_err!("Timed out waiting"));
+                    return Err(anyhow!("Timed out waiting"));
                 }
             },
             Err(mpsc::TryRecvError::Disconnected) => {
-                return Err(format_err!("Channel disconnected!"));
+                return Err(anyhow!("Channel disconnected!"));
             }
         };
     }

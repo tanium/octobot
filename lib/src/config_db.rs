@@ -32,11 +32,11 @@ fn migrate(conn: &mut Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempdir::TempDir;
+    use tempfile::tempdir;
 
     #[test]
     fn test_migration_versions() {
-        let temp_dir = TempDir::new("users.rs").unwrap();
+        let temp_dir = tempdir().unwrap();
         let db_file = temp_dir.path().join("db.sqlite3");
         let mut conn = Connection::open(&db_file).expect("create temp database");
 
@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn test_multiple_migration() {
-        let temp_dir = TempDir::new("users.rs").unwrap();
+        let temp_dir = tempdir().unwrap();
         let db_file = temp_dir.path().join("db.sqlite3");
         let mut conn = Connection::open(&db_file).expect("create temp database");
 

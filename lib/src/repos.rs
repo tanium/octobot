@@ -1,4 +1,4 @@
-use failure::format_err;
+use anyhow::anyhow;
 use log::error;
 use rusqlite::types::ToSql;
 use rusqlite::{named_params, Connection, Row, Transaction};
@@ -151,7 +151,7 @@ impl RepoConfig {
                 &repo.release_branch_prefix,
             ],
         )
-        .map_err(|e| format_err!("Error inserting repo {}: {}", repo.repo, e))?;
+        .map_err(|e| anyhow!("Error inserting repo {}: {}", repo.repo, e))?;
 
         let id = tx.last_insert_rowid();
         self.insert_jiras(&tx, id, &repo.jira_config)?;
@@ -163,7 +163,7 @@ impl RepoConfig {
 
     pub fn update(&mut self, repo: &RepoInfo) -> Result<()> {
         if repo.id.is_none() {
-            return Err(format_err!("Repo does not have an id: cannot update."));
+            return Err(anyhow!("Repo does not have an id: cannot update."));
         }
         let id = repo.id.unwrap();
 
@@ -187,10 +187,10 @@ impl RepoConfig {
                 &id,
             ],
         )
-        .map_err(|e| format_err!("Error updating repo {}: {}", repo.repo, e))?;
+        .map_err(|e| anyhow!("Error updating repo {}: {}", repo.repo, e))?;
 
         tx.execute(r#"DELETE from repos_jiras where repo_id = ?1"#, [&id])
-            .map_err(|e| format_err!("Error clearing repo jira entries {}: {}", repo.repo, e))?;
+            .map_err(|e| anyhow!("Error clearing repo jira entries {}: {}", repo.repo, e))?;
 
         self.insert_jiras(&tx, id as i64, &repo.jira_config)?;
 
@@ -217,7 +217,7 @@ impl RepoConfig {
                     &config.release_branch_regex,
                 ],
             )
-            .map_err(|e| format_err!("Error inserting jira {} for repo {}: {}", config.jira_project, id, e))?;
+            .map_err(|e| anyhow!("Error inserting jira {} for repo {}: {}", config.jira_project, id, e))?;
         }
 
         Ok(())
@@ -228,10 +228,10 @@ impl RepoConfig {
         let tx = conn.transaction()?;
 
         tx.execute("DELETE from repos_jiras where repo_id = ?1", [&id])
-            .map_err(|e| format_err!("Error clearing repo jira entries {}: {}", id, e))?;
+            .map_err(|e| anyhow!("Error clearing repo jira entries {}: {}", id, e))?;
 
         tx.execute("DELETE from repos where id = ?1", [&id])
-            .map_err(|e| format_err!("Error deleting repo {}: {}", id, e))?;
+            .map_err(|e| anyhow!("Error deleting repo {}: {}", id, e))?;
 
         tx.commit()?;
         Ok(())
@@ -414,10 +414,10 @@ impl RepoConfig {
 mod tests {
     use super::*;
     use github;
-    use tempdir::TempDir;
+    use tempfile::{tempdir, TempDir};
 
     fn new_test() -> (RepoConfig, TempDir) {
-        let temp_dir = TempDir::new("repos.rs").unwrap();
+        let temp_dir = tempdir().unwrap();
         let db_file = temp_dir.path().join("db.sqlite3");
         let db = ConfigDatabase::new(&db_file.to_string_lossy()).expect("create temp database");
 

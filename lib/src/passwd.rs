@@ -1,6 +1,5 @@
 use log::error;
 use ring::{digest, pbkdf2};
-use rustc_serialize::hex::{FromHex, ToHex};
 
 static DIGEST_ALG: &pbkdf2::Algorithm = &pbkdf2::PBKDF2_HMAC_SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
@@ -19,11 +18,11 @@ pub fn store_password(pass: &str, salt: &str) -> String {
         &mut pass_hash,
     );
 
-    pass_hash.to_hex()
+    hex::encode(pass_hash)
 }
 
 pub fn verify_password(pass: &str, salt: &str, pass_hash: &str) -> bool {
-    let pass_hash = match pass_hash.from_hex() {
+    let pass_hash = match hex::decode(pass_hash) {
         Ok(h) => h,
         Err(e) => {
             error!("Invalid password hash stored: {} -- {}", pass_hash, e);

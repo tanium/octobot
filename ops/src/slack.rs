@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use failure::bail;
+use anyhow::bail;
 use log::{debug, error, info};
 use serde_derive::{Deserialize, Serialize};
 

@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 
 use ring::rand::SecureRandom;
 use ring::rand::SystemRandom;
-use rustc_serialize::hex::ToHex;
 
 static SESSION_EXPIRY_SECS: u64 = 15 * 60;
 static PRUNE_SECS: u64 = 30;
@@ -33,7 +32,7 @@ impl Sessions {
         // Doesn't look like SecureRandom, but docs claim it is.
         SystemRandom::new().fill(&mut bytes).expect("get random");
 
-        let sess_id = bytes.to_hex();
+        let sess_id = hex::encode(bytes);
         let session = Session {
             id: sess_id.clone(),
             created_at: Instant::now(),
