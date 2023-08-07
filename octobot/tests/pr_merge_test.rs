@@ -15,7 +15,7 @@ use octobot_lib::slack::SlackRecipient;
 use octobot_ops::pr_merge;
 use octobot_ops::slack::{self, SlackAttachmentBuilder};
 
-use failure::format_err;
+use anyhow::anyhow;
 
 use mocks::mock_slack::MockSlack;
 
@@ -553,7 +553,7 @@ async fn test_pr_merge_backport_failure() {
         &format!("(cherry-picked from {}, PR #123)", commit1),
         "my-feature-branch-1.0",
         "release/1.0",
-        Err(format_err!("bad stuff")),
+        Err(anyhow!("bad stuff")),
     );
 
     test.github.mock_comment_pull_request(

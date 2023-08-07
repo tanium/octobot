@@ -76,10 +76,10 @@ pub async fn parse_json<T: DeserializeOwned>(req: Request<Body>) -> Result<T> {
     let bytes = match hyper::body::to_bytes(req.into_body()).await {
         Ok(b) => b,
         Err(e) => {
-            return Err(failure::format_err!("Failed to read request body: {}", e));
+            return Err(anyhow::anyhow!("Failed to read request body: {}", e));
         }
     };
 
     serde_json::from_slice::<T>(bytes.as_ref())
-        .map_err(|e| failure::format_err!("Failed to parse JSON: {}", e))
+        .map_err(|e| anyhow::anyhow!("Failed to parse JSON: {}", e))
 }

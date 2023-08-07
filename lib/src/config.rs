@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use failure::format_err;
+use anyhow::anyhow;
 use serde_derive::{Deserialize, Serialize};
 use toml;
 
@@ -145,7 +145,7 @@ impl Config {
         };
 
         let serialized =
-            toml::to_string(&model).map_err(|e| format_err!("Error serializing config: {}", e))?;
+            toml::to_string(&model).map_err(|e| anyhow!("Error serializing config: {}", e))?;
 
         let tmp_file = config_file.to_string() + ".tmp";
         let bak_file = config_file.to_string() + ".bak";
@@ -274,10 +274,10 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
     match config_file.file_name() {
         Some(name) => {
             if name == db_file_name {
-                return Err(format_err!("Must provide toml config file"));
+                return Err(anyhow!("Must provide toml config file"));
             }
         }
-        None => return Err(format_err!("Provided config file has no file name")),
+        None => return Err(anyhow!("Provided config file has no file name")),
     };
 
     let mut db_file = config_file.clone();
@@ -294,7 +294,7 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
 
 fn parse_string(config_contents: &str) -> Result<ConfigModel> {
     toml::from_str::<ConfigModel>(config_contents)
-        .map_err(|e| format_err!("Error parsing config: {}", e))
+        .map_err(|e| anyhow!("Error parsing config: {}", e))
 }
 
 #[cfg(test)]

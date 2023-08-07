@@ -1,4 +1,4 @@
-use failure::format_err;
+use anyhow::anyhow;
 use log::info;
 use rusqlite::{Connection, Transaction};
 
@@ -19,7 +19,7 @@ struct SQLMigration {
 impl Migration for SQLMigration {
     fn run(&self, tx: &Transaction) -> Result<()> {
         tx.execute_batch(self.sql).map_err(|e| {
-            format_err!(
+            anyhow!(
                 "Error running migration: \n---\n{}\n---\n. Error: {}",
                 self.sql,
                 e
@@ -38,7 +38,7 @@ pub fn current_version(conn: &Connection) -> Result<Option<i32>> {
         version = row.get(0).ok();
         Ok(())
     })
-    .map_err(|_| format_err!("Could not get current version"))?;
+    .map_err(|_| anyhow!("Could not get current version"))?;
 
     Ok(version)
 }
@@ -49,7 +49,7 @@ pub fn migrate(conn: &mut Connection, migrations: &[Box<dyn Migration>]) -> Resu
         Err(_) => {
             // versions table probably doesn't exist.
             conn.execute(CREATE_VERSIONS, [])
-                .map_err(|e| format_err!("Error creating versions table: {}", e))?;
+                .map_err(|e| anyhow!("Error creating versions table: {}", e))?;
             None
         }
     };
@@ -70,7 +70,7 @@ pub fn migrate(conn: &mut Connection, migrations: &[Box<dyn Migration>]) -> Resu
         } else {
             tx.execute("UPDATE __version set current_version = ?1", [&next_version])
         }
-        .map_err(|e| format_err!("Error updating version: {}", e))?;
+        .map_err(|e| anyhow!("Error updating version: {}", e))?;
 
         tx.commit()?;
 

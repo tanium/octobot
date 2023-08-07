@@ -16,6 +16,6 @@ pub mod users;
 pub mod version;
 
 pub mod errors {
-    pub type Error = failure::Error;
-    pub type Result<T> = std::result::Result<T, failure::Error>;
+    pub type Error = anyhow::Error;
+    pub type Result<T> = anyhow::Result<T>;
 }

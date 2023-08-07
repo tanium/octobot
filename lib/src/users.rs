@@ -1,4 +1,4 @@
-use failure::format_err;
+use anyhow::anyhow;
 use log::error;
 use rusqlite::types::ToSql;
 use serde_derive::{Deserialize, Serialize};
@@ -66,7 +66,7 @@ impl UserConfig {
                 &user.muted_repos.join(","),
             ],
         )
-        .map_err(|e| format_err!("Error inserting user {}: {}", user.github, e))?;
+        .map_err(|e| anyhow!("Error inserting user {}: {}", user.github, e))?;
 
         Ok(())
     }
@@ -76,7 +76,7 @@ impl UserConfig {
         conn.execute(
             "UPDATE users set github_name = ?1, slack_name = ?2, slack_id = ?3, email = ?4, mute_direct_messages = ?5, muted_repos = ?6  where id = ?7",
             [&user.github, &user.slack_name, &user.slack_id, &user.email, &db::to_tinyint(user.mute_direct_messages) as &dyn ToSql, &user.muted_repos.join(","), &user.id],
-        ).map_err(|e| format_err!("Error updating user {}: {}", user.github, e))?;
+        ).map_err(|e| anyhow!("Error updating user {}: {}", user.github, e))?;
 
         Ok(())
     }
@@ -84,7 +84,7 @@ impl UserConfig {
     pub fn delete(&mut self, user_id: i32) -> Result<()> {
         let conn = self.db.connect()?;
         conn.execute("DELETE from users where id = ?1", [&user_id])
-            .map_err(|e| format_err!("Error deleting user {}: {}", user_id, e))?;
+            .map_err(|e| anyhow!("Error deleting user {}: {}", user_id, e))?;
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use failure::format_err;
+use anyhow::anyhow;
 use octobot_lib::db::{migrations, Connection, Database};
 use octobot_lib::errors::*;
 
@@ -61,7 +61,7 @@ impl SlackDatabase {
             [thread_guid, slack_channel, thread],
         )
         .map_err(|e| {
-            format_err!(
+            anyhow!(
                 "Error inserting slack thread {} - {} - {}: {}",
                 thread_guid,
                 slack_channel,
@@ -73,7 +73,7 @@ impl SlackDatabase {
             "DELETE FROM pull_request_threads WHERE timestamp < datetime('now', '-1 year')",
             [],
         )
-        .map_err(|e| format_err!("Error cleaning old slack threads: {}", e))?;
+        .map_err(|e| anyhow!("Error cleaning old slack threads: {}", e))?;
         tx.commit()?;
         Ok(())
     }
