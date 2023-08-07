@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use failure::format_err;
+use anyhow::anyhow;
 use log::info;
 
 use crate::dir_pool::{ArcDirPool, HeldDir};
@@ -82,7 +82,7 @@ impl GitCloneManager {
                 clone_dir
             );
             if let Err(e) = fs::create_dir_all(clone_dir) {
-                return Err(format_err!(
+                return Err(anyhow!(
                     "Error creating clone directory '{:?}': {}",
                     clone_dir,
                     e

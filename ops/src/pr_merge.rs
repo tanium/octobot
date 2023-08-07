@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::sync::Arc;
 
 use conventional::{Commit, Simple as _};
-use failure::format_err;
+use anyhow::anyhow;
 use log::{error, info};
 use regex::Regex;
 
@@ -126,7 +126,7 @@ pub async fn try_merge_pull_request(
 ) -> Result<github::PullRequest> {
     let pull_request = &req.pull_request;
     if !pull_request.is_merged() {
-        return Err(format_err!(
+        return Err(anyhow!(
             "Pull Request #{} is not yet merged.",
             pull_request.number
         ));
@@ -135,7 +135,7 @@ pub async fn try_merge_pull_request(
     let merge_commit_sha = if let Some(ref sha) = pull_request.merge_commit_sha {
         sha
     } else {
-        return Err(format_err!(
+        return Err(anyhow!(
             "Pull Request #{} has no merge commit.",
             pull_request.number
         ));
@@ -151,7 +151,7 @@ pub async fn try_merge_pull_request(
 
     // make sure there isn't already such a branch
     if git.has_remote_branch(&pr_branch_name)? {
-        return Err(format_err!(
+        return Err(anyhow!(
             "PR branch already exists on origin: '{}'",
             pr_branch_name
         ));

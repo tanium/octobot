@@ -34,7 +34,7 @@ prometheus = "0.13.3"
 maplit = "1.0.2"
 time = { version = "0.3.25", features = ["local-offset"]}
 hex = "0.4.3"
-anyhow = "1.0.72"
+anyhow = { version = "1.0.72", features = ["backtrace"] }
 
 [dev-dependencies]
 tempfile = "3"

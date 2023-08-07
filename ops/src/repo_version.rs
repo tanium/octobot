@@ -5,7 +5,7 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
-use failure::format_err;
+use anyhow::anyhow;
 use log;
 #[cfg(target_os = "linux")]
 use log::debug;
@@ -77,7 +77,7 @@ pub async fn comment_repo_version(
 // seem like a good idea to allow generic code execution without any containerization.
 #[cfg(not(target_os = "linux"))]
 fn run_script(_: &str, _: &Path) -> Result<String> {
-    return Err(format_err!(
+    return Err(anyhow!(
         "Version scripts only supported when running Linux."
     ));
 }
@@ -115,14 +115,14 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
     );
 
     let child = cmd.spawn().map_err(|e| {
-        format_err!(
+        anyhow!(
             "Error starting version script (script: {}): {}",
             version_script,
             e
         )
     })?;
     let result = child.wait_with_output().map_err(|e| {
-        format_err!(
+        anyhow!(
             "Error running version script (script: {}): {}",
             version_script,
             e
@@ -157,7 +157,7 @@ fn run_script(version_script: &str, clone_dir: &Path) -> Result<String> {
     // Note: there are some firejail failure conditions that do not trigger a non-zero exit code.
     // To catch these, and in the general case, we treat an empty version as an error.
     if !result.status.success() || output.is_empty() {
-        Err(format_err!(
+        Err(anyhow!(
             "Error running version script (exit code {}; script: {}):\n{}\n{}",
             result.status.code().unwrap_or(-1),
             version_script,

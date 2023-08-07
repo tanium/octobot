@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use failure::format_err;
+use anyhow::anyhow;
 use hyper::StatusCode;
 use tempfile::{tempdir, TempDir};
 
@@ -1333,7 +1333,7 @@ async fn test_pull_request_merged_error_getting_labels() {
         "some-user",
         "some-repo",
         32,
-        Err(format_err!("whooops.")),
+        Err(anyhow!("whooops.")),
     );
 
     let msg1 = "Pull Request merged";
