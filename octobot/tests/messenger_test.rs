@@ -2,7 +2,7 @@ mod mocks;
 
 use std::sync::Arc;
 
-use tempdir::TempDir;
+use tempfile::{tempdir, TempDir};
 
 use mocks::mock_slack::MockSlack;
 use octobot_lib::config::Config;
@@ -13,7 +13,7 @@ use octobot_ops::messenger;
 use octobot_ops::slack;
 
 fn new_test() -> (Arc<Config>, TempDir) {
-    let temp_dir = TempDir::new("repos.rs").unwrap();
+    let temp_dir = tempdir().unwrap();
     let db_file = temp_dir.path().join("db.sqlite3");
     let db = ConfigDatabase::new(&db_file.to_string_lossy()).expect("create temp database");
 

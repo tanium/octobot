@@ -55,13 +55,16 @@ fn run() -> Result<()> {
 }
 
 fn setup_logging() {
-    let formatter = |buf: &mut env_logger::fmt::Formatter, record: &log::Record| {
-        let now = chrono::Local::now();
+    let format = time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
+        .expect("invalid time format");
+
+    let formatter = move |buf: &mut env_logger::fmt::Formatter, record: &log::Record| {
+        let now = time::OffsetDateTime::now_local().expect("now");
         writeln!(
             buf,
             "[{},{:03}][{}:{}] - {} - {}",
-            now.format("%Y-%m-%d %H:%M:%S"),
-            now.timestamp_subsec_millis(),
+            now.format(&format).expect("cannot format time"),
+            now.millisecond(),
             thread_id::get(),
             std::thread::current().name().unwrap_or(""),
             record.level(),
