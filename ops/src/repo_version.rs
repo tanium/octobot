@@ -318,12 +318,11 @@ mod tests {
     use std::fs;
     use std::io::Write;
 
-    use tempdir::TempDir;
+    use tempfile::tempdir;
 
     #[test]
     fn test_run_script() {
-        let dir =
-            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir = tempdir().unwrap();
 
         let sub_dir = dir.path().join("subdir");
         fs::create_dir(&sub_dir).expect("create subdir");
@@ -339,8 +338,7 @@ mod tests {
 
     #[test]
     fn test_run_script_failure() {
-        let dir =
-            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir = tempdir().unwrap();
 
         let sub_dir = dir.path().join("subdir");
         fs::create_dir(&sub_dir).expect("create subdir");
@@ -360,8 +358,7 @@ mod tests {
 
     #[test]
     fn test_run_script_failure_firejail_error() {
-        let dir =
-            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir = tempdir().unwrap();
 
         let sub_dir = dir.path().join("subdir");
         fs::create_dir(&sub_dir).expect("create subdir");
@@ -379,8 +376,7 @@ mod tests {
 
     #[test]
     fn test_run_python_script() {
-        let dir =
-            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir = tempdir().unwrap();
 
         let sub_dir = dir.path().join("subdir");
         fs::create_dir(&sub_dir).expect("create subdir");
@@ -404,8 +400,7 @@ mod tests {
             return;
         }
 
-        let dir =
-            TempDir::new("repo_version.rs").expect("create temp dir for repo_version.rs test");
+        let dir = tempdir().unwrap();
 
         let parent_file = dir.path().join("private.txt");
         {

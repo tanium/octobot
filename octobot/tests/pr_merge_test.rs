@@ -3,7 +3,7 @@ mod mocks;
 
 use std::sync::Arc;
 
-use tempdir::TempDir;
+use tempfile::{tempdir, TempDir};
 
 use git_helper::temp_git::TempGit;
 use mocks::mock_github::MockGithub;
@@ -27,7 +27,7 @@ struct PRMergeTest {
 }
 
 fn new_test() -> (PRMergeTest, TempDir) {
-    let temp_dir = TempDir::new("repos.rs").unwrap();
+    let temp_dir = tempdir().unwrap();
     let db_file = temp_dir.path().join("db.sqlite3");
     let db = ConfigDatabase::new(&db_file.to_string_lossy()).expect("create temp database");
 

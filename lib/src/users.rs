@@ -180,10 +180,10 @@ impl UserConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempdir::TempDir;
+    use tempfile::{tempdir, TempDir};
 
     fn new_test() -> (UserConfig, TempDir) {
-        let temp_dir = TempDir::new("users.rs").unwrap();
+        let temp_dir = tempdir().unwrap();
         let db_file = temp_dir.path().join("db.sqlite3");
         let db = ConfigDatabase::new(&db_file.to_string_lossy()).expect("create temp database");
 

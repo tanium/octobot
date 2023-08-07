@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use failure::format_err;
 use hyper::StatusCode;
-use tempdir::TempDir;
+use tempfile::{tempdir, TempDir};
 
 use mocks::mock_github::MockGithub;
 use mocks::mock_jira::MockJira;
@@ -121,7 +121,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
     let repo_version = LockedMockWorker::new("repo-version");
     let force_push = LockedMockWorker::new("force-push");
 
-    let temp_dir = TempDir::new("github_handler_test.rs").unwrap();
+    let temp_dir = tempdir().unwrap();
     let db_file = temp_dir.path().join("db.sqlite3");
     let db = ConfigDatabase::new(&db_file.to_string_lossy()).expect("create temp database");
 

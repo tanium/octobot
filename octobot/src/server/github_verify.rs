@@ -1,7 +1,6 @@
 use hyper::HeaderMap;
 use log::{debug, error};
 use ring::hmac;
-use rustc_serialize::hex::FromHex;
 
 pub struct GithubWebhookVerifier {
     pub secret: String,
@@ -35,7 +34,7 @@ impl GithubWebhookVerifier {
             return false;
         }
 
-        let sig_bytes: Vec<u8> = match signature[5..].from_hex() {
+        let sig_bytes: Vec<u8> = match hex::decode(&signature[5..]) {
             Ok(s) => s,
             Err(e) => {
                 error!("Invalid hex value. {}", e);
@@ -61,7 +60,6 @@ impl GithubWebhookVerifier {
 mod tests {
     use super::*;
     use ring::hmac;
-    use rustc_serialize::hex::ToHex;
 
     #[test]
     fn verify_sig_valid() {
@@ -70,7 +68,7 @@ mod tests {
 
         let msg = "a message from the githubs.";
         let signature = hmac::sign(&key, msg.as_bytes());
-        let signature_hex = "sha1=".to_string() + signature.as_ref().to_hex().as_str();
+        let signature_hex = "sha1=".to_string() + hex::encode(signature.as_ref()).as_str();
 
         let verifier = GithubWebhookVerifier { secret: key_value };
 
@@ -84,7 +82,7 @@ mod tests {
 
         let msg = "a message from the githubs.";
         let signature = hmac::sign(&key, msg.as_bytes());
-        let signature_hex = "sha9=".to_string() + signature.as_ref().to_hex().as_str();
+        let signature_hex = "sha9=".to_string() + hex::encode(signature.as_ref()).as_str();
 
         let verifier = GithubWebhookVerifier { secret: key_value };
 
@@ -98,7 +96,7 @@ mod tests {
 
         let msg = "a message from the githubs.";
         let signature = hmac::sign(&key, msg.as_bytes());
-        let signature_hex = signature.as_ref().to_hex();
+        let signature_hex = hex::encode(signature.as_ref());
 
         let verifier = GithubWebhookVerifier { secret: key_value };
 
