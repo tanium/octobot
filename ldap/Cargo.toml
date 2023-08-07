@@ -12,7 +12,7 @@ path = "src/ldap-check.rs"
 [dependencies]
 octobot_lib = { path = "../lib" }
 failure = "0.1.8"
-log = "0.4.18"
+log = "0.4.19"
 openldap = "1.2.2"
-regex = "1.8.3"
+regex = "1.9.3"
 rpassword = "7.2.0"
