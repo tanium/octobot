@@ -32,7 +32,7 @@ impl WebhookDatabase {
         let mut stmt = connection
             .prepare("SELECT guid FROM processed_webhooks ORDER BY timestamp desc LIMIT 1000")?;
         let found = stmt
-            .query_map([], |row| Ok(row.get(0)?))
+            .query_map([], |row| row.get(0))
             .map_err(|e| format_err!("Error fetching webhooks: {}", e))?;
 
         let mut recent_events = vec![];
@@ -68,7 +68,7 @@ impl WebhookDatabase {
 
         conn.execute(
             "INSERT INTO processed_webhooks (guid, timestamp) VALUES (?1, ?2)",
-            &[&guid, &timestamp as &dyn ToSql],
+            [&guid, &timestamp as &dyn ToSql],
         )
         .map_err(|e| format_err!("Error inserting webhook {}: {}", guid, e))?;
 
@@ -81,7 +81,7 @@ impl WebhookDatabase {
             return true;
         }
 
-        match self.db_has_guid(&data, guid) {
+        match self.db_has_guid(data, guid) {
             Ok(r) => r,
             Err(e) => {
                 log::error!("Error checking guid {}: {}", guid, e);
@@ -94,7 +94,7 @@ impl WebhookDatabase {
         let conn = data.db.connect()?;
         let mut stmt = conn.prepare("SELECT 1 FROM processed_webhooks where guid = ?1")?;
 
-        stmt.exists(&[&guid]).map_err(|e| format_err!("{}", e))
+        stmt.exists([&guid]).map_err(|e| format_err!("{}", e))
     }
 
     pub fn clean(&self, expiration: SystemTime) -> Result<()> {
@@ -107,7 +107,7 @@ impl WebhookDatabase {
         let conn = data.db.connect()?;
         conn.execute(
             "DELETE FROM processed_webhooks where timestamp < ?1",
-            &[&deadline as &dyn ToSql],
+            [&deadline as &dyn ToSql],
         )
         .map_err(|e| format_err!("Error cleaning webhook db: {}", e))?;
 
