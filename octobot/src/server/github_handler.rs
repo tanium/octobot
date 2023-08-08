@@ -513,6 +513,19 @@ impl GithubEventHandler {
         participants
     }
 
+    fn reviewer_names(&self, pull_request: &github::PullRequest) -> Vec<String> {
+        let mut reviewer_names = vec![];
+
+        if let Some(ref reviewers) = pull_request.requested_reviewers {
+            reviewer_names.extend(self.slack_user_names(reviewers));
+        }
+        if let Some(ref teams) = pull_request.requested_teams {
+            reviewer_names.extend(teams.into_iter().map(|t| format!("@{}", t.slug)));
+        }
+
+        reviewer_names
+    }
+
     fn handle_ping(&self) -> EventResponse {
         (StatusCode::OK, "ping".into())
     }
@@ -557,16 +570,16 @@ impl GithubEventHandler {
                 verb = Some("unassigned".to_string());
                 notify_mode = NotifyMode::Channel;
             } else if self.action == "review_requested" {
-                if let Some(ref reviewers) = pull_request.requested_reviewers {
-                    let assignees_str = self.slack_user_names(reviewers).join(", ");
-                    verb = Some(format!(
-                        "by {} submitted for review to {}",
-                        self.slack_user_name(&pull_request.user),
-                        assignees_str
-                    ));
-                } else {
-                    verb = None;
+                let mut reviewers_str = self.reviewer_names(pull_request).join(", ");
+                if reviewers_str.is_empty() {
+                    reviewers_str = "<nobody>".into();
                 }
+                verb = Some(format!(
+                    "by {} submitted for review to {}",
+                    self.slack_user_name(&pull_request.user),
+                    reviewers_str
+                ));
+
                 notify_mode = NotifyMode::All;
             } else if self.action == "synchronize" {
                 verb = Some("synchronize".to_string());

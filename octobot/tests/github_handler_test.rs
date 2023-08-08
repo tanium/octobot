@@ -1167,7 +1167,7 @@ async fn test_pull_request_review_requested() {
         .title("Pull Request #32: \"The PR\"")
         .title_link("http://the-pr")
         .build()];
-    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer, smith.reviewer";
+    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer, smith.reviewer, @team-awesome";
 
     test.slack.expect(vec![
         slack::req(
@@ -1240,15 +1240,18 @@ async fn test_pull_request_review_no_username() {
     test.handler.data.pull_request = some_pr();
     if let Some(ref mut pr) = test.handler.data.pull_request {
         pr.requested_reviewers = Some(vec![User::new("some-unknown-reviewer")]);
+        pr.requested_teams = Some(vec![Team::new(100, "some-unknown-team")]);
     }
     test.handler.data.sender = User::new("the-pr-closer");
     test.mock_pull_request_commits();
+    test.github
+        .mock_get_team_members(&the_repo(), 100, Err(anyhow!("nope")));
 
     let attach = vec![SlackAttachmentBuilder::new("")
         .title("Pull Request #32: \"The PR\"")
         .title_link("http://the-pr")
         .build()];
-    let msg = "Pull Request by the.pr.owner submitted for review to some-unknown-reviewer";
+    let msg = "Pull Request by the.pr.owner submitted for review to some-unknown-reviewer, @some-unknown-team";
 
     test.slack.expect(vec![
         slack::req(
@@ -2084,7 +2087,7 @@ async fn test_team_members_cache() {
         .title("Pull Request #32: \"The PR\"")
         .title_link("http://the-pr")
         .build()];
-    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer";
+    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer, @team-awesome";
     test.slack.expect(vec![
         slack::req(
             SlackRecipient::by_name("the-reviews-channel"),
@@ -2146,7 +2149,7 @@ async fn test_team_members_cache() {
         .title("Pull Request #32: \"The PR\"")
         .title_link("http://the-pr")
         .build()];
-    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer";
+    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer, @team-awesome";
     test.slack.expect(vec![
         slack::req(
             SlackRecipient::by_name("the-reviews-channel"),
