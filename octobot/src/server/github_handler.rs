@@ -21,7 +21,7 @@ use octobot_ops::git_clone_manager::GitCloneManager;
 use octobot_ops::messenger::{self, Messenger};
 use octobot_ops::pr_merge::{self, PRMergeRequest};
 use octobot_ops::repo_version::{self, RepoVersionRequest};
-use octobot_ops::slack::{self, SlackAttachmentBuilder, SlackRequest};
+use octobot_ops::slack::{self, Slack, SlackAttachmentBuilder, SlackRequest};
 use octobot_ops::util;
 use octobot_ops::webhook_db::WebhookDatabase;
 use octobot_ops::worker::{TokioWorker, Worker};
@@ -111,6 +111,7 @@ impl GithubHandlerState {
         config: Arc<Config>,
         github_app: Arc<dyn github::api::GithubSessionFactory>,
         jira_session: Option<Arc<dyn jira::api::Session>>,
+        slack: Arc<Slack>,
         webhook_db: Arc<WebhookDatabase>,
         metrics: Arc<Metrics>,
     ) -> GithubHandlerState {
@@ -122,10 +123,8 @@ impl GithubHandlerState {
             metrics.clone(),
         )));
 
-        let slack_worker = TokioWorker::new_worker(
-            runtime.clone(),
-            slack::new_runner(config.slack.bot_token.clone(), metrics.clone()),
-        );
+        let slack_worker =
+            TokioWorker::new_worker(runtime.clone(), slack::new_runner(slack.clone()));
         let pr_merge_worker = TokioWorker::new_worker(
             runtime.clone(),
             pr_merge::new_runner(
@@ -188,10 +187,11 @@ impl GithubHandler {
         config: Arc<Config>,
         github_app: Arc<dyn github::api::GithubSessionFactory>,
         jira_session: Option<Arc<dyn jira::api::Session>>,
+        slack: Arc<Slack>,
         webhook_db: Arc<WebhookDatabase>,
         metrics: Arc<Metrics>,
     ) -> Box<GithubHandler> {
-        let state = GithubHandlerState::new(config, github_app, jira_session, webhook_db, metrics);
+        let state = GithubHandlerState::new(config, github_app, jira_session, slack, webhook_db, metrics);
         GithubHandler::from_state(Arc::new(state))
     }
 
@@ -527,6 +527,19 @@ impl GithubEventHandler {
         participants
     }
 
+    fn reviewer_names(&self, pull_request: &github::PullRequest) -> Vec<String> {
+        let mut reviewer_names = vec![];
+
+        if let Some(ref reviewers) = pull_request.requested_reviewers {
+            reviewer_names.extend(self.slack_user_names(reviewers));
+        }
+        if let Some(ref teams) = pull_request.requested_teams {
+            reviewer_names.extend(teams.into_iter().map(|t| format!("@{}", t.slug)));
+        }
+
+        reviewer_names
+    }
+
     fn handle_ping(&self) -> EventResponse {
         (StatusCode::OK, "ping".into())
     }
@@ -571,16 +584,16 @@ impl GithubEventHandler {
                 verb = Some("unassigned".to_string());
                 notify_mode = NotifyMode::Channel;
             } else if self.action == "review_requested" {
-                if let Some(ref reviewers) = pull_request.requested_reviewers {
-                    let assignees_str = self.slack_user_names(reviewers).join(", ");
-                    verb = Some(format!(
-                        "by {} submitted for review to {}",
-                        self.slack_user_name(&pull_request.user),
-                        assignees_str
-                    ));
-                } else {
-                    verb = None;
+                let mut reviewers_str = self.reviewer_names(pull_request).join(", ");
+                if reviewers_str.is_empty() {
+                    reviewers_str = "<nobody>".into();
                 }
+                verb = Some(format!(
+                    "by {} submitted for review to {}",
+                    self.slack_user_name(&pull_request.user),
+                    reviewers_str
+                ));
+
                 notify_mode = NotifyMode::All;
             } else if self.action == "synchronize" {
                 verb = Some("synchronize".to_string());
