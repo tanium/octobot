@@ -132,7 +132,7 @@ impl HTTPClient {
 
     pub async fn post_void_opt<U: Serialize>(&self, path: &str, body: Option<&U>) -> Result<()> {
         let _timer = self.maybe_start_timer("post", path);
-        let res = self.client.post(&self.make_url(path));
+        let res = self.client.post(self.make_url(path));
         let res = match body {
             None => res,
             Some(body) => res.json(body),

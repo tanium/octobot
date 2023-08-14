@@ -1070,17 +1070,17 @@ fn parse_link_header(value: &str) -> HashMap<String, String> {
     let re = Regex::new(r#"(<([^>]+)>; rel="(\w+)")"#).unwrap();
     let mut result = HashMap::new();
 
-    for c in re.captures_iter(&value) {
+    for c in re.captures_iter(value) {
         result.insert(c[3].into(), c[2].into());
     }
 
-    return result;
+    result
 }
 
 fn parse_next_cursor(res: &reqwest::Response) -> Option<String> {
-    if let Some(ref value) = res.headers().get(reqwest::header::LINK) {
+    if let Some(value) = res.headers().get(reqwest::header::LINK) {
         let values = parse_link_header(value.to_str().unwrap_or(""));
-        if let Some(ref next) = values.get("next") {
+        if let Some(next) = values.get("next") {
             if let Ok(url) = url::Url::parse(next) {
                 for (key, value) in url.query_pairs() {
                     if key == "cursor" {
@@ -1090,7 +1090,8 @@ fn parse_next_cursor(res: &reqwest::Response) -> Option<String> {
             }
         }
     }
-    return None;
+
+    None
 }
 
 #[cfg(test)]
