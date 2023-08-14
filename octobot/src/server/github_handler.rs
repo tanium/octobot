@@ -191,7 +191,8 @@ impl GithubHandler {
         webhook_db: Arc<WebhookDatabase>,
         metrics: Arc<Metrics>,
     ) -> Box<GithubHandler> {
-        let state = GithubHandlerState::new(config, github_app, jira_session, slack, webhook_db, metrics);
+        let state =
+            GithubHandlerState::new(config, github_app, jira_session, slack, webhook_db, metrics);
         GithubHandler::from_state(Arc::new(state))
     }
 
