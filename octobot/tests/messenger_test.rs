@@ -2,6 +2,7 @@ mod mocks;
 
 use std::sync::Arc;
 
+use octobot_ops::messenger::Participants;
 use tempfile::{tempdir, TempDir};
 
 use mocks::mock_slack::MockSlack;
@@ -48,7 +49,7 @@ fn test_sends_to_owner() {
         &github::User::new("the-owner"),
         &github::User::new("the-sender"),
         &github::Repo::new(),
-        &[],
+        Participants::new(),
         "",
         &Vec::<github::Commit>::new(),
         vec!["some-user/some-repo/1".to_string()],
@@ -74,7 +75,7 @@ fn test_sends_to_mapped_usernames() {
         &github::User::new("the-owner"),
         &github::User::new("the-sender"),
         &github::Repo::parse("http://git.foo.com/some-org/some-repo").unwrap(),
-        &[],
+        Participants::new(),
         "",
         &Vec::<github::Commit>::new(),
         vec!["some-user/some-repo/1".to_string()],
@@ -115,7 +116,7 @@ fn test_sends_to_owner_with_channel() {
         &github::User::new("the-owner"),
         &github::User::new("the-sender"),
         &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
-        &[],
+        Participants::new(),
         "",
         &Vec::<github::Commit>::new(),
         vec!["some-user/some-repo/1".to_string()],
@@ -131,13 +132,6 @@ fn test_sends_to_assignees() {
 
     let slack = MockSlack::new(vec![
         slack::req(
-            SlackRecipient::user_mention("the.owner"),
-            "hello there",
-            &[],
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             "hello there",
             &[],
@@ -151,15 +145,25 @@ fn test_sends_to_assignees() {
             None,
             false,
         ),
+        slack::req(
+            SlackRecipient::user_mention("the.owner"),
+            "hello there",
+            &[],
+            None,
+            false,
+        ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
+    let mut p = Participants::new();
+    p.add_user(github::User::new("assign1"));
+    p.add_user(github::User::new("assign2"));
     messenger.send_to_all(
         "hello there",
         &[],
         &github::User::new("the-owner"),
         &github::User::new("the-sender"),
         &github::Repo::new(),
-        &[github::User::new("assign1"), github::User::new("assign2")],
+        p,
         "",
         &Vec::<github::Commit>::new(),
         vec!["some-user/some-repo/1".to_string()],
@@ -183,13 +187,16 @@ fn test_does_not_send_to_event_sender() {
     let messenger = messenger::new(config, slack.new_sender());
     // Note: 'userA' is owner, sender, and assignee. (i.e. commented on a PR that he opened and is
     // assigned to). Being sender excludes receipt from any of these messages.
+    let mut p = Participants::new();
+    p.add_user(github::User::new("userA"));
+    p.add_user(github::User::new("userB"));
     messenger.send_to_all(
         "hello there",
         &[],
         &github::User::new("userA"),
         &github::User::new("userA"),
         &github::Repo::new(),
-        &[github::User::new("userA"), github::User::new("userB")],
+        p,
         "",
         &Vec::<github::Commit>::new(),
         vec!["some-user/some-repo/1".to_string()],
@@ -204,14 +211,14 @@ fn test_sends_only_once() {
 
     let slack = MockSlack::new(vec![
         slack::req(
-            SlackRecipient::user_mention("the.owner"),
+            SlackRecipient::user_mention("assign2"),
             "hello there",
             &[],
             None,
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("assign2"),
+            SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
             None,
@@ -220,13 +227,16 @@ fn test_sends_only_once() {
     ]);
     let messenger = messenger::new(config, slack.new_sender());
     // Note: 'the-owner' is also assigned. Should only receive one slackbot message though.
+    let mut p = Participants::new();
+    p.add_user(github::User::new("the-owner"));
+    p.add_user(github::User::new("assign2"));
     messenger.send_to_all(
         "hello there",
         &[],
         &github::User::new("the-owner"),
         &github::User::new("the-sender"),
         &github::Repo::new(),
-        &[github::User::new("the-owner"), github::User::new("assign2")],
+        p,
         "",
         &Vec::<github::Commit>::new(),
         vec!["some-user/some-repo/1".to_string()],
@@ -253,13 +263,52 @@ fn test_peace_and_quiet() {
     )]);
     let messenger = messenger::new(config, slack.new_sender());
 
+    let mut p = Participants::new();
+    p.add_user(github::User::new("the-owner"));
+    p.add_user(github::User::new("assign2"));
     messenger.send_to_all(
         "hello there",
         &[],
         &github::User::new("the-owner"),
         &github::User::new("the-sender"),
         &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
-        &[github::User::new("the-owner"), github::User::new("assign2")],
+        p,
+        "",
+        &Vec::<github::Commit>::new(),
+        vec!["some-user/some-repo/1".to_string()],
+    );
+}
+
+#[test]
+fn test_peace_and_quiet_teams() {
+    let (config, _temp) = new_test();
+
+    config.users_write().insert("assign2", "assign2").unwrap();
+
+    let mut user = config.users().lookup_info("assign2").unwrap();
+    user.mute_direct_messages = false;
+    user.mute_team_direct_messages = true;
+    config.users_write().update(&user).unwrap();
+
+    let slack = MockSlack::new(vec![slack::req(
+        SlackRecipient::user_mention("the.owner"),
+        "hello there",
+        &[],
+        None,
+        false,
+    )]);
+    let messenger = messenger::new(config, slack.new_sender());
+
+    let mut p = Participants::new();
+    p.add_team_member(github::User::new("assign1"));
+    p.add_team_member(github::User::new("assign2"));
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
+        p,
         "",
         &Vec::<github::Commit>::new(),
         vec!["some-user/some-repo/1".to_string()],

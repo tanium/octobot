@@ -18,7 +18,7 @@ use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
 use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::git_clone_manager::GitCloneManager;
-use octobot_ops::messenger::{self, Messenger};
+use octobot_ops::messenger::{self, Messenger, Participants};
 use octobot_ops::pr_merge::{self, PRMergeRequest};
 use octobot_ops::repo_version::{self, RepoVersionRequest};
 use octobot_ops::slack::{self, Slack, SlackAttachmentBuilder, SlackRequest};
@@ -470,23 +470,27 @@ impl GithubEventHandler {
         &self,
         pull_request: &dyn github::PullRequestLike,
         pr_commits: &[github::Commit],
-    ) -> Vec<github::User> {
+    ) -> Participants {
+        let mut participants = Participants::new();
+
         // start with the assignees
-        let mut participants = pull_request.assignees();
+        for u in pull_request.assignees().into_iter() {
+            participants.add_user(u);
+        }
         // add the author of the PR
-        participants.push(pull_request.user().clone());
+        participants.add_user(pull_request.user().clone());
         // add team participants
-        participants.extend(self.team_participants(pull_request).await);
+        for u in self.team_participants(pull_request).await {
+            participants.add_team_member(u);
+        }
 
         // look up commits and add the authors of those
         for commit in pr_commits {
             if let Some(ref author) = commit.author {
-                participants.push(author.clone());
+                participants.add_user(author.clone());
             }
         }
 
-        participants.sort_by(|a, b| a.login().cmp(b.login()));
-        participants.dedup();
         participants
     }
 
@@ -535,7 +539,7 @@ impl GithubEventHandler {
             reviewer_names.extend(self.slack_user_names(reviewers));
         }
         if let Some(ref teams) = pull_request.requested_teams {
-            reviewer_names.extend(teams.into_iter().map(|t| format!("@{}", t.slug)));
+            reviewer_names.extend(teams.iter().map(|t| format!("@{}", t.slug)));
         }
 
         reviewer_names
@@ -643,7 +647,7 @@ impl GithubEventHandler {
                             &pull_request.user,
                             &self.data.sender,
                             &self.repository,
-                            &self.all_participants(&pull_request, &commits).await,
+                            self.all_participants(&pull_request, &commits).await,
                             branch_name,
                             &commits,
                             vec![thread_guid],
@@ -786,7 +790,7 @@ impl GithubEventHandler {
 
                     let mut participants = self.all_participants(&pull_request, &commits).await;
                     for username in util::get_mentioned_usernames(review.body()) {
-                        participants.push(github::User::new(username))
+                        participants.add_user(github::User::new(username));
                     }
 
                     self.messenger.send_to_all(
@@ -795,7 +799,7 @@ impl GithubEventHandler {
                         &pull_request.user,
                         &self.data.sender,
                         &self.repository,
-                        &participants,
+                        participants,
                         branch_name,
                         &commits,
                         vec![self.build_thread_guid(pull_request.number)],
@@ -845,7 +849,7 @@ impl GithubEventHandler {
 
         let mut participants = self.all_participants(pull_request, commits).await;
         for username in util::get_mentioned_usernames(comment.body()) {
-            participants.push(github::User::new(username))
+            participants.add_user(github::User::new(username));
         }
 
         self.messenger.send_to_all(
@@ -854,7 +858,7 @@ impl GithubEventHandler {
             pull_request.user(),
             &self.data.sender,
             &self.repository,
-            &participants,
+            participants,
             branch_name,
             commits,
             vec![self.build_thread_guid(pull_request.number())],
@@ -919,7 +923,7 @@ impl GithubEventHandler {
                         &comment.user,
                         &self.data.sender,
                         &self.repository,
-                        &[],
+                        Participants::new(),
                         branch_name,
                         &commits,
                         thread_guids,
@@ -1055,7 +1059,7 @@ impl GithubEventHandler {
                             &pull_request.user,
                             &self.data.sender,
                             &self.repository,
-                            &self.all_participants(&pull_request, &commits).await,
+                            self.all_participants(&pull_request, &commits).await,
                             &branch_name,
                             &commits,
                             vec![self.build_thread_guid(pull_request.number)],

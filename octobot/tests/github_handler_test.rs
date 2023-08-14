@@ -494,13 +494,6 @@ async fn test_issue_comment() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -509,6 +502,13 @@ async fn test_issue_comment() {
         ),
         slack::req(
             SlackRecipient::user_mention("mentioned.participant"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -553,13 +553,6 @@ async fn test_pull_request_comment() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -575,6 +568,13 @@ async fn test_pull_request_comment() {
         ),
         slack::req(
             SlackRecipient::user_mention("mentioned.participant"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -618,13 +618,6 @@ async fn test_pull_request_review_commented() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -640,6 +633,13 @@ async fn test_pull_request_review_commented() {
         ),
         slack::req(
             SlackRecipient::user_mention("mentioned.participant"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -750,13 +750,6 @@ async fn test_pull_request_review_approved() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -772,6 +765,13 @@ async fn test_pull_request_review_approved() {
         ),
         slack::req(
             SlackRecipient::user_mention("mentioned.participant"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -816,13 +816,6 @@ async fn test_pull_request_review_changes_requested() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -838,6 +831,13 @@ async fn test_pull_request_review_changes_requested() {
         ),
         slack::req(
             SlackRecipient::user_mention("mentioned.participant"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -902,13 +902,6 @@ async fn test_pull_request_closed() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -924,6 +917,13 @@ async fn test_pull_request_closed() {
         ),
         slack::req(
             SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -988,13 +988,6 @@ async fn test_pull_request_ready_for_review() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -1010,6 +1003,13 @@ async fn test_pull_request_ready_for_review() {
         ),
         slack::req(
             SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -1082,13 +1082,6 @@ async fn test_pull_request_assigned() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -1111,6 +1104,13 @@ async fn test_pull_request_assigned() {
         ),
         slack::req(
             SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -1178,13 +1178,6 @@ async fn test_pull_request_review_requested() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -1226,6 +1219,13 @@ async fn test_pull_request_review_requested() {
             None,
             false,
         ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
     ]);
 
     let resp = test.handler.handle_event().await.unwrap();
@@ -1262,13 +1262,6 @@ async fn test_pull_request_review_no_username() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -1277,6 +1270,13 @@ async fn test_pull_request_review_no_username() {
         ),
         slack::req(
             SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -1359,13 +1359,6 @@ async fn test_pull_request_merged_error_getting_labels() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg1,
-            &attach1,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg1,
             &attach1,
@@ -1381,6 +1374,13 @@ async fn test_pull_request_merged_error_getting_labels() {
         ),
         slack::req(
             SlackRecipient::user_mention("joe.reviewer"),
+            msg1,
+            &attach1,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg1,
             &attach1,
             None,
@@ -1436,13 +1436,6 @@ async fn test_pull_request_merged_no_labels() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -1458,6 +1451,13 @@ async fn test_pull_request_merged_no_labels() {
         ),
         slack::req(
             SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -1509,13 +1509,6 @@ async fn test_pull_request_merged_backport_labels() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -1531,6 +1524,13 @@ async fn test_pull_request_merged_backport_labels() {
         ),
         slack::req(
             SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -1618,13 +1618,6 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -1640,6 +1633,13 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
         ),
         slack::req(
             SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -1835,13 +1835,6 @@ async fn test_push_with_pr() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach1,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach1,
@@ -1863,17 +1856,17 @@ async fn test_push_with_pr() {
             false,
         ),
         slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach1,
+            None,
+            false,
+        ),
+        slack::req(
             SlackRecipient::by_name("the-reviews-channel"),
             &format!("{} {}", msg, REPO_MSG),
             &attach2,
             Some("some-user/some-repo/99".to_string()),
-            false,
-        ),
-        slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach2,
-            None,
             false,
         ),
         slack::req(
@@ -1885,6 +1878,13 @@ async fn test_push_with_pr() {
         ),
         slack::req(
             SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach2,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach2,
             None,
@@ -1935,13 +1935,6 @@ async fn test_push_force_notify() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -1957,6 +1950,13 @@ async fn test_push_force_notify() {
         ),
         slack::req(
             SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -2034,13 +2034,6 @@ async fn test_push_force_notify_ignored() {
         .build()];
     test.slack.expect(vec![
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -2056,6 +2049,13 @@ async fn test_push_force_notify_ignored() {
         ),
         slack::req(
             SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -2097,13 +2097,6 @@ async fn test_team_members_cache() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -2133,6 +2126,13 @@ async fn test_team_members_cache() {
         ),
         slack::req(
             SlackRecipient::user_mention("team.member2"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
@@ -2159,13 +2159,6 @@ async fn test_team_members_cache() {
             false,
         ),
         slack::req(
-            SlackRecipient::user_mention("the.pr.owner"),
-            msg,
-            &attach,
-            None,
-            false,
-        ),
-        slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
             &attach,
@@ -2195,6 +2188,13 @@ async fn test_team_members_cache() {
         ),
         slack::req(
             SlackRecipient::user_mention("team.member2"),
+            msg,
+            &attach,
+            None,
+            false,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
             msg,
             &attach,
             None,
