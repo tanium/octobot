@@ -150,7 +150,6 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         let webhook_db = webhook_db.clone();
 
         // Wait some time for service to startup before redelivering
-        // Need to do this twice to actually wait)
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
 
         if let Some(guid) = latest_webhook_guid {
