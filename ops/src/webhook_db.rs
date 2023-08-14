@@ -46,7 +46,6 @@ impl WebhookDatabase {
     }
 
     fn get_guids(connection: &Connection, limit: u32) -> Result<Vec<String>> {
-        // Load some recent history into memory at startup
         let mut stmt = connection.prepare(&format!(
             "SELECT guid FROM processed_webhooks ORDER BY timestamp desc LIMIT {}",
             limit
