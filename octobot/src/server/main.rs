@@ -147,12 +147,11 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     info!("Listening (HTTP) on {}", http_addr);
 
     let webhook_redeliver = tokio::spawn(async move {
-        // Wait some time for service to startup before redelivering
-        tokio::time::interval(std::time::Duration::from_secs(10))
-            .tick()
-            .await;
-
         let webhook_db = webhook_db.clone();
+
+        // Wait some time for service to startup before redelivering
+        // Need to do this twice to actually wait)
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
 
         if let Some(guid) = latest_webhook_guid {
             log::info!("Starting webhook redelivery");
