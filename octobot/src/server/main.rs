@@ -16,6 +16,8 @@ use octobot_lib::jira;
 use octobot_lib::jira::api::JiraSession;
 use octobot_lib::metrics;
 
+use octobot_lib::github::api::Session;
+
 pub fn start(config: Config) {
     let num_http_threads = config.main.num_http_threads.unwrap_or(20);
     let metrics = metrics::Metrics::new();
@@ -73,6 +75,11 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         }
     };
 
+    let webhook_db = Arc::new(WebhookDatabase::new(&config.webhook_db_path()).expect("webhook db"));
+    let latest_webhook_guid = webhook_db
+        .get_latest_guid()
+        .expect("failed to lookup latest guid");
+
     let jira_api: Option<Arc<dyn jira::api::Session>> = if let Some(ref jira_config) = config.jira {
         match JiraSession::new(jira_config, Some(metrics.clone())).await {
             Ok(s) => Some(Arc::new(s)),
@@ -86,8 +93,6 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         Some(ref addr_and_port) => addr_and_port.parse().unwrap(),
         None => "0.0.0.0:3000".parse().unwrap(),
     };
-
-    let webhook_db = Arc::new(WebhookDatabase::new(&config.webhook_db_path()).expect("webhook db"));
 
     let ui_sessions = Arc::new(Sessions::new());
     let github_handler_state = Arc::new(GithubHandlerState::new(
@@ -141,11 +146,47 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     let server = Server::bind(&http_addr).serve(main_service);
     info!("Listening (HTTP) on {}", http_addr);
 
+    let webhook_redeliver = tokio::spawn(async move {
+        if let Some(guid) = latest_webhook_guid {
+            let session = match github_api.new_service_session().await {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("Failed to get session to redeliver webhooks: {}", e);
+                    return;
+                }
+            };
+
+            let max_count = 10_000;
+            let webhooks = match session.get_webhook_deliveries_since(&guid, max_count).await {
+                Ok(v) => v,
+                Err(e) => {
+                    log::error!("Failed to lookup webhook deliveries: {}", e);
+                    return;
+                }
+            };
+
+            for d in webhooks {
+                if d.status_code != 200 && d.status_code != 400 {
+                    log::info!("Redelivering webhook guid {} -- {}", d.guid, d.status_code);
+                    if let Err(e) = session.redeliver_webhook(d.id).await {
+                        log::error!("Failed to redleiver webhook guid: {}", e);
+                    }
+                }
+            }
+        } else {
+            log::info!("No recent webhook delivery to search for");
+        }
+    });
+
     if let Err(e) = server.await {
         error!("server error: {}", e);
     }
 
     if let Err(e) = jobs.await {
         error!("jobs error: {}", e);
+    }
+
+    if let Err(e) = webhook_redeliver.await {
+        error!("webhook redeliver error: {}", e);
     }
 }

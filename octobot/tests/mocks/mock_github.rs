@@ -29,6 +29,8 @@ pub struct MockGithub {
     create_check_run_calls: Mutex<Vec<MockCall<u32>>>,
     update_check_run_calls: Mutex<Vec<MockCall<()>>>,
     get_team_members_calls: Mutex<Vec<MockCall<Vec<User>>>>,
+    get_webhook_deliveries_calls: Mutex<Vec<MockCall<Vec<WebhookDelivery>>>>,
+    redeliver_webhook_calls: Mutex<Vec<MockCall<()>>>,
 }
 
 #[derive(Debug)]
@@ -72,6 +74,8 @@ impl MockGithub {
             create_check_run_calls: Mutex::new(vec![]),
             update_check_run_calls: Mutex::new(vec![]),
             get_team_members_calls: Mutex::new(vec![]),
+            get_webhook_deliveries_calls: Mutex::new(vec![]),
+            redeliver_webhook_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -138,6 +142,16 @@ impl Drop for MockGithub {
                 self.get_timeline_calls.lock().unwrap().len() == 0,
                 "Unmet get_timeline calls: {:?}",
                 *self.get_timeline_calls.lock().unwrap()
+            );
+            assert!(
+                self.get_webhook_deliveries_calls.lock().unwrap().len() == 0,
+                "Unmet get_webhook_deliveries calls: {:?}",
+                *self.get_webhook_deliveries_calls.lock().unwrap()
+            );
+            assert!(
+                self.redeliver_webhook_calls.lock().unwrap().len() == 0,
+                "Unmet redeliver_webhook calls: {:?}",
+                *self.redeliver_webhook_calls.lock().unwrap()
             );
         }
     }
@@ -484,6 +498,32 @@ impl Session for MockGithub {
         assert_eq!(call.args[1], team_id.to_string());
 
         call.ret
+    }
+
+    async fn get_webhook_deliveries_since(
+        &self,
+        guid: &str,
+        max_count: usize,
+    ) -> Result<Vec<WebhookDelivery>> {
+        let mut calls = self.get_webhook_deliveries_calls.lock().unwrap();
+        assert!(
+            calls.len() > 0,
+            "Unexpected call to get_webhook_deliveries_since"
+        );
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], guid);
+        assert_eq!(call.args[1], max_count.to_string());
+
+        call.ret
+    }
+
+    async fn redeliver_webhook(&self, id: u32) -> Result<()> {
+        let mut calls = self.redeliver_webhook_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to redeliver_webhook");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], id.to_string());
+
+        Ok(())
     }
 }
 

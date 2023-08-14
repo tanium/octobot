@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use async_trait::async_trait;
 use log::{error, info};
+use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::errors::*;
 use crate::github::models::*;
@@ -131,10 +133,19 @@ pub trait Session: Send + Sync {
         run: &CheckRun,
     ) -> Result<()>;
     async fn get_team_members(&self, repo: &Repo, id: u32) -> Result<Vec<User>>;
+
+    // webhoook
+    async fn get_webhook_deliveries_since(
+        &self,
+        guid: &str,
+        max_count: usize,
+    ) -> Result<Vec<WebhookDelivery>>;
+    async fn redeliver_webhook(&self, id: u32) -> Result<()>;
 }
 
 #[async_trait]
 pub trait GithubSessionFactory: Send + Sync {
+    async fn new_service_session(&self) -> Result<GithubSession>;
     async fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession>;
     async fn get_token_org(&self, org: &str) -> Result<String>;
     async fn get_token_repo(&self, owner: &str, repo: &str) -> Result<String>;
@@ -221,17 +232,18 @@ impl GithubApp {
         let client = self.new_client()?;
 
         // All we care about for now is the installation id
-        #[derive(Deserialize)]
+        #[derive(Deserialize, Debug)]
         struct Installation {
             id: u32,
         }
+
         #[derive(Deserialize)]
         struct AccessToken {
             token: String,
         }
 
-        // Lookup the installation id for this org/repo
         let installation: Installation = client.get(installation_url).await?;
+
         // Get a new access token for this id
         let token: AccessToken = client
             .post(
@@ -266,6 +278,17 @@ impl GithubSessionFactory for GithubApp {
             &self.host,
             &self.bot_name(),
             &self.get_token_repo(owner, repo).await?,
+            Some(self.app_id),
+            self.metrics.clone(),
+        )
+    }
+
+    async fn new_service_session(&self) -> Result<GithubSession> {
+        let jwt_token = jwt::new_token(self.app_id, &self.app_key);
+        GithubSession::new(
+            &self.host,
+            &self.bot_name(),
+            &jwt_token,
             Some(self.app_id),
             self.metrics.clone(),
         )
@@ -327,6 +350,10 @@ impl GithubSessionFactory for GithubOauthApp {
             self.metrics.clone(),
         )
     }
+
+    async fn new_service_session(&self) -> Result<GithubSession> {
+        return self.new_session("", "").await;
+    }
 }
 
 pub struct GithubSession {
@@ -365,7 +392,7 @@ impl GithubSession {
         );
         headers.insert(
             reqwest::header::AUTHORIZATION,
-            format!("Token {}", token).parse().unwrap(),
+            format!("Bearer {}", token).parse().unwrap(),
         );
 
         let client = HTTPClient::new_with_headers(&api_base(host), headers)?;
@@ -978,5 +1005,108 @@ impl Session for GithubSession {
                     e
                 )
             })
+    }
+
+    async fn get_webhook_deliveries_since(
+        &self,
+        guid: &str,
+        max_count: usize,
+    ) -> Result<Vec<WebhookDelivery>> {
+        if self.app_id.is_none() {
+            bail!("Only supported for GitHub Apps");
+        }
+
+        let mut next_cursor = None;
+
+        let mut result = vec![];
+
+        loop {
+            let mut url = String::from("/app/hook/deliveries?per_page=100");
+            if let Some(next_cursor) = next_cursor {
+                url += &format!("&cursor={}", next_cursor);
+            }
+
+            let res = self.client.get_raw(&url).await?;
+            next_cursor = parse_next_cursor(&res);
+
+            if next_cursor.is_none() {
+                break;
+            }
+
+            let results: Vec<WebhookDelivery> = self.client.parse_json(res).await?;
+
+            let done = results.iter().any(|d| d.guid == guid);
+
+            result.extend(results.into_iter());
+
+            if done {
+                break;
+            } else if result.len() >= max_count {
+                log::error!(
+                    "Failed to find webhook guid {} after finding {} entries",
+                    guid,
+                    result.len()
+                );
+                break;
+            }
+        }
+
+        return Ok(result);
+    }
+
+    async fn redeliver_webhook(&self, id: u32) -> Result<()> {
+        if self.app_id.is_none() {
+            bail!("Only supported for GitHub Apps");
+        }
+        let body: Option<&String> = None;
+
+        self.client
+            .post_void_opt(&format!("/app/hook/deliveries/{}/attempts", id), body)
+            .await
+    }
+}
+
+fn parse_link_header(value: &str) -> HashMap<String, String> {
+    let re = Regex::new(r#"(<([^>]+)>; rel="(\w+)")"#).unwrap();
+    let mut result = HashMap::new();
+
+    for c in re.captures_iter(value) {
+        result.insert(c[3].into(), c[2].into());
+    }
+
+    result
+}
+
+fn parse_next_cursor(res: &reqwest::Response) -> Option<String> {
+    if let Some(value) = res.headers().get(reqwest::header::LINK) {
+        let values = parse_link_header(value.to_str().unwrap_or(""));
+        if let Some(next) = values.get("next") {
+            if let Ok(url) = url::Url::parse(next) {
+                for (key, value) in url.query_pairs() {
+                    if key == "cursor" {
+                        return Some(value.into_owned());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_link() {
+        let link1 = r#"<https://git.example.com/?per_page=1&cursor=A>; rel="next""#;
+
+        let parsed = parse_link_header(link1);
+        assert_eq!(1, parsed.len());
+        assert_eq!(
+            "https://git.example.com/?per_page=1&cursor=A",
+            parsed.get("next").unwrap()
+        );
     }
 }
