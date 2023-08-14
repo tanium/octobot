@@ -29,6 +29,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
 
     let slack_api = Arc::new(octobot_ops::slack::Slack::new(
         config.slack.bot_token.clone(),
+        config.slack_db_path(),
         metrics.clone(),
     ));
 

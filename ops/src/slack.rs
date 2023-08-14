@@ -105,7 +105,9 @@ const TRIM_MESSAGES_AT: usize = 200;
 const TRIM_MESSAGES_TO: usize = 20;
 
 impl Slack {
-    pub fn new(bot_token: String, metrics: Arc<Metrics>) -> Slack {
+    pub fn new(bot_token: String, slack_db_path: String, metrics: Arc<Metrics>) -> Slack {
+        let slack_db = SlackDatabase::new(&slack_db_path).expect("init slack db");
+
         let mut headers = reqwest::header::HeaderMap::new();
         headers.append(
             reqwest::header::AUTHORIZATION,
@@ -122,8 +124,8 @@ impl Slack {
         );
         Slack {
             client,
+            slack_db,
             recent_messages: Mutex::new(Vec::new()),
-            slack_db: SlackDatabase::new("slack_db.sqlite3").unwrap(),
         }
     }
 
@@ -329,10 +331,11 @@ pub fn req(
 
 pub fn new_runner(
     bot_token: String,
+    slack_db_path: String,
     metrics: Arc<Metrics>,
 ) -> Arc<dyn worker::Runner<SlackRequest>> {
     Arc::new(Runner {
-        slack: Arc::new(Slack::new(bot_token, metrics)),
+        slack: Arc::new(Slack::new(bot_token, slack_db_path, metrics)),
     })
 }
 

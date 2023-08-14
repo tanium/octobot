@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use anyhow::anyhow;
@@ -23,6 +23,8 @@ pub struct Config {
 
     pub users: RwLock<users::UserConfig>,
     pub repos: RwLock<repos::RepoConfig>,
+
+    config_dir: PathBuf,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -116,10 +118,10 @@ pub struct LdapConfig {
 impl Config {
     // TODO: weird that `new` is used only by tests and the actual `new` is below...
     pub fn new(db: ConfigDatabase) -> Config {
-        Config::new_with_model(ConfigModel::new(), db)
+        Config::new_with_model(ConfigModel::new(), &PathBuf::new(), db)
     }
 
-    fn new_with_model(config: ConfigModel, db: ConfigDatabase) -> Config {
+    fn new_with_model(config: ConfigModel, dir: &Path, db: ConfigDatabase) -> Config {
         Config {
             main: config.main,
             admin: config.admin,
@@ -130,6 +132,7 @@ impl Config {
             ldap: config.ldap,
             users: RwLock::new(users::UserConfig::new(db.clone())),
             repos: RwLock::new(repos::RepoConfig::new(db)),
+            config_dir: dir.to_path_buf(),
         }
     }
 
@@ -174,6 +177,13 @@ impl Config {
 
     pub fn repos_write(&self) -> RwLockWriteGuard<repos::RepoConfig> {
         self.repos.write().unwrap()
+    }
+
+    pub fn slack_db_path(&self) -> String {
+        self.config_dir
+            .join("slack_db.sqlite3")
+            .to_string_lossy()
+            .to_string()
     }
 }
 
@@ -280,8 +290,13 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
         None => return Err(anyhow!("Provided config file has no file name")),
     };
 
-    let mut db_file = config_file.clone();
-    db_file.set_file_name(db_file_name);
+    let config_dir = config_file
+        .clone()
+        .parent()
+        .expect("no parent dir")
+        .to_path_buf();
+
+    let db_file = config_dir.join(db_file_name);
     let db = ConfigDatabase::new(&db_file.to_string_lossy())?;
 
     let mut config_file_open = fs::File::open(&config_file)?;
@@ -289,7 +304,7 @@ pub fn new(config_file: PathBuf) -> Result<Config> {
     config_file_open.read_to_string(&mut config_contents)?;
     let config_model = parse_string(&config_contents)?;
 
-    Ok(Config::new_with_model(config_model, db))
+    Ok(Config::new_with_model(config_model, &config_dir, db))
 }
 
 fn parse_string(config_contents: &str) -> Result<ConfigModel> {
