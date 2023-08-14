@@ -25,7 +25,7 @@ impl SlackDatabase {
         self.db.connect()
     }
 
-    pub async fn lookup_previous_thread(
+    pub fn lookup_previous_thread(
         &self,
         thread_guid: &str,
         slack_channel: &str,
@@ -47,7 +47,7 @@ impl SlackDatabase {
         Ok(thread)
     }
 
-    pub async fn insert_thread(
+    pub fn insert_thread(
         &self,
         thread_guid: &str,
         slack_channel: &str,

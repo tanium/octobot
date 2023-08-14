@@ -21,7 +21,7 @@ use octobot_ops::git_clone_manager::GitCloneManager;
 use octobot_ops::messenger::{self, Messenger};
 use octobot_ops::pr_merge::{self, PRMergeRequest};
 use octobot_ops::repo_version::{self, RepoVersionRequest};
-use octobot_ops::slack::{self, SlackAttachmentBuilder, SlackRequest};
+use octobot_ops::slack::{self, Slack, SlackAttachmentBuilder, SlackRequest};
 use octobot_ops::util;
 use octobot_ops::worker::{TokioWorker, Worker};
 
@@ -110,6 +110,7 @@ impl GithubHandlerState {
         config: Arc<Config>,
         github_app: Arc<dyn github::api::GithubSessionFactory>,
         jira_session: Option<Arc<dyn jira::api::Session>>,
+        slack: Arc<Slack>,
         metrics: Arc<Metrics>,
     ) -> GithubHandlerState {
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
@@ -120,10 +121,8 @@ impl GithubHandlerState {
             metrics.clone(),
         )));
 
-        let slack_worker = TokioWorker::new_worker(
-            runtime.clone(),
-            slack::new_runner(config.slack.bot_token.clone(), metrics.clone()),
-        );
+        let slack_worker =
+            TokioWorker::new_worker(runtime.clone(), slack::new_runner(slack.clone()));
         let pr_merge_worker = TokioWorker::new_worker(
             runtime.clone(),
             pr_merge::new_runner(
@@ -180,9 +179,10 @@ impl GithubHandler {
         config: Arc<Config>,
         github_app: Arc<dyn github::api::GithubSessionFactory>,
         jira_session: Option<Arc<dyn jira::api::Session>>,
+        slack: Arc<Slack>,
         metrics: Arc<Metrics>,
     ) -> Box<GithubHandler> {
-        let state = GithubHandlerState::new(config, github_app, jira_session, metrics);
+        let state = GithubHandlerState::new(config, github_app, jira_session, slack, metrics);
         GithubHandler::from_state(Arc::new(state))
     }
 
