@@ -87,7 +87,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         None => "0.0.0.0:3000".parse().unwrap(),
     };
 
-    let webhook_db = Arc::new(WebhookDatabase::new("webhook.db").expect("webhook db"));
+    let webhook_db = Arc::new(WebhookDatabase::new(&config.webhook_db_path()).expect("webhook db"));
 
     let ui_sessions = Arc::new(Sessions::new());
     let github_handler_state = Arc::new(GithubHandlerState::new(

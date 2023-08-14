@@ -185,6 +185,13 @@ impl Config {
             .to_string_lossy()
             .to_string()
     }
+
+    pub fn webhook_db_path(&self) -> String {
+        self.config_dir
+            .join("webhook_db.sqlite3")
+            .to_string_lossy()
+            .to_string()
+    }
 }
 
 impl ConfigModel {
