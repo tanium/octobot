@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::slack::{self, SlackAttachment, SlackRequest};
@@ -10,6 +11,79 @@ use octobot_lib::slack::SlackRecipient;
 pub struct Messenger {
     config: Arc<Config>,
     slack: Arc<dyn Worker<SlackRequest>>,
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum ParticipantType {
+    User,
+    TeamMember,
+}
+
+#[derive(PartialEq, Clone)]
+pub struct Participant {
+    user: github::User,
+    participant_type: ParticipantType,
+}
+
+impl Participant {
+    pub fn login(&self) -> &str {
+        self.user.login()
+    }
+}
+
+#[derive(Clone)]
+pub struct Participants {
+    users: BTreeMap<String, Participant>,
+}
+
+impl Participants {
+    pub fn new() -> Self {
+        Participants {
+            users: BTreeMap::new(),
+        }
+    }
+
+    pub fn single(user: github::User) -> Self {
+        let mut p = Self::new();
+        p.add_user(user);
+        p
+    }
+
+    pub fn remove(&mut self, login: &str) {
+        self.users.remove(login);
+    }
+
+    pub fn add_user(&mut self, user: github::User) {
+        self.add(Participant {
+            user,
+            participant_type: ParticipantType::User,
+        });
+    }
+
+    pub fn add_team_member(&mut self, user: github::User) {
+        self.add(Participant {
+            user,
+            participant_type: ParticipantType::TeamMember,
+        });
+    }
+
+    fn add(&mut self, p: Participant) {
+        let new_type = p.participant_type.clone();
+
+        let entry = self.users.entry(p.user.login().to_string()).or_insert(p);
+
+        if entry.participant_type != new_type {
+            match new_type {
+                ParticipantType::User => {
+                    // override.
+                    entry.participant_type = new_type
+                }
+                ParticipantType::TeamMember => {
+                    // ignore. team members do not override
+                }
+            }
+        }
+    }
 }
 
 pub fn new(config: Arc<Config>, slack: Arc<dyn Worker<SlackRequest>>) -> Messenger {
@@ -29,26 +103,20 @@ impl Messenger {
         item_owner: &github::User,
         sender: &github::User,
         repo: &github::Repo,
-        participants: &[github::User],
+        mut participants: Participants,
         branch: &str,
         commits: &[T],
         thread_guids: Vec<String>,
     ) {
         self.send_to_channel(msg, attachments, repo, branch, commits, thread_guids, false);
 
-        let mut slackbots: Vec<github::User> = vec![item_owner.clone()];
-
-        slackbots.extend(
-            participants
-                .iter()
-                .filter(|a| a.login != item_owner.login)
-                .cloned(),
-        );
+        participants.add_user(item_owner.clone());
 
         // make sure we do not send private message to author of that message
-        slackbots.retain(|u| u.login != sender.login && u.login() != "octobot");
+        participants.remove(sender.login());
+        participants.remove("octobot");
 
-        self.send_to_slackbots(slackbots, repo, msg, attachments);
+        self.send_to_slackbots(participants, repo, msg, attachments);
     }
 
     pub fn send_to_owner<T: github::CommitLike>(
@@ -69,7 +137,12 @@ impl Messenger {
             Vec::<String>::new(),
             false,
         );
-        self.send_to_slackbots(vec![item_owner.clone()], repo, msg, attachments);
+        self.send_to_slackbots(
+            Participants::single(item_owner.clone()),
+            repo,
+            msg,
+            attachments,
+        );
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -117,20 +190,54 @@ impl Messenger {
 
     fn send_to_slackbots(
         &self,
-        users: Vec<github::User>,
+        users: Participants,
         repo: &github::Repo,
         msg: &str,
         attachments: &[SlackAttachment],
     ) {
-        for user in users {
-            if let Some(channel) = self
-                .config
-                .users()
-                .slack_direct_message(user.login(), &repo.full_name)
-            {
+        for (_, user) in users.users.iter() {
+            let is_team_member = match user.participant_type {
+                ParticipantType::User => false,
+                ParticipantType::TeamMember => true,
+            };
+
+            let user_dm = self.config.users().slack_direct_message(
+                user.login(),
+                is_team_member,
+                &repo.full_name,
+            );
+
+            if let Some(user_dm) = user_dm {
                 self.slack
-                    .send(slack::req(channel, msg, attachments, None, false));
+                    .send(slack::req(user_dm, msg, attachments, None, false));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_participation_type_priority1() {
+        let mut p = Participants::new();
+
+        p.add_user(github::User::new("a"));
+        p.add_team_member(github::User::new("a"));
+
+        let entry = p.users.get("a").unwrap();
+        assert_eq!(entry.participant_type, ParticipantType::User);
+    }
+
+    #[test]
+    fn test_participation_type_priority2() {
+        let mut p = Participants::new();
+
+        p.add_team_member(github::User::new("a"));
+        p.add_user(github::User::new("a"));
+
+        let entry = p.users.get("a").unwrap();
+        assert_eq!(entry.participant_type, ParticipantType::User);
     }
 }

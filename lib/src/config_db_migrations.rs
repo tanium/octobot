@@ -71,6 +71,7 @@ pub fn all_migrations() -> Vec<Box<dyn Migration>> {
         sql(r#"alter table users add column email varchar not null default ''"#),
         sql(r#"alter table repos add column use_threads tinyint not null default 1"#),
         sql(r#"alter table users add column muted_repos varchar not null default ''"#),
+        sql(r#"alter table users add column mute_team_dm tinyint not null default 0"#),
     ]
 }
 
