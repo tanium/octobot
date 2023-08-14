@@ -135,7 +135,11 @@ pub trait Session: Send + Sync {
     async fn get_team_members(&self, repo: &Repo, id: u32) -> Result<Vec<User>>;
 
     // webhoook
-    async fn get_webhook_deliveries_since(&self, guid: &str) -> Result<Vec<WebhookDelivery>>;
+    async fn get_webhook_deliveries_since(
+        &self,
+        guid: &str,
+        max_count: usize,
+    ) -> Result<Vec<WebhookDelivery>>;
     async fn redeliver_webhook(&self, id: u32) -> Result<()>;
 }
 
@@ -1003,7 +1007,11 @@ impl Session for GithubSession {
             })
     }
 
-    async fn get_webhook_deliveries_since(&self, guid: &str) -> Result<Vec<WebhookDelivery>> {
+    async fn get_webhook_deliveries_since(
+        &self,
+        guid: &str,
+        max_count: usize,
+    ) -> Result<Vec<WebhookDelivery>> {
         if self.app_id.is_none() {
             bail!("Only supported for GitHub Apps");
         }
@@ -1032,6 +1040,13 @@ impl Session for GithubSession {
             result.extend(results.into_iter());
 
             if done {
+                break;
+            } else if result.len() >= max_count {
+                log::error!(
+                    "Failed to find webhook guid {} after finding {} entries",
+                    guid,
+                    result.len()
+                );
                 break;
             }
         }

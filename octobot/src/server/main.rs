@@ -156,7 +156,8 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
                 }
             };
 
-            let webhooks = match session.get_webhook_deliveries_since(&guid).await {
+            let max_count = 10_000;
+            let webhooks = match session.get_webhook_deliveries_since(&guid, max_count).await {
                 Ok(v) => v,
                 Err(e) => {
                     log::error!("Failed to lookup webhook deliveries: {}", e);

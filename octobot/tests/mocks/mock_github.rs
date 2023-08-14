@@ -500,7 +500,11 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn get_webhook_deliveries_since(&self, guid: &str) -> Result<Vec<WebhookDelivery>> {
+    async fn get_webhook_deliveries_since(
+        &self,
+        guid: &str,
+        max_count: usize,
+    ) -> Result<Vec<WebhookDelivery>> {
         let mut calls = self.get_webhook_deliveries_calls.lock().unwrap();
         assert!(
             calls.len() > 0,
@@ -508,6 +512,7 @@ impl Session for MockGithub {
         );
         let call = calls.remove(0);
         assert_eq!(call.args[0], guid);
+        assert_eq!(call.args[1], max_count.to_string());
 
         call.ret
     }
