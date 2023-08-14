@@ -779,6 +779,7 @@ dependencies = [
  "octobot_lib",
  "regex",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_derive",
  "serde_json",

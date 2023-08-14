@@ -4,6 +4,7 @@ use std::sync::Arc;
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
 use log::{error, info};
+use octobot_ops::webhook_db::WebhookDatabase;
 
 use crate::runtime;
 use crate::server::github_handler::GithubHandlerState;
@@ -86,12 +87,15 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         None => "0.0.0.0:3000".parse().unwrap(),
     };
 
+    let webhook_db = Arc::new(WebhookDatabase::new(&config.webhook_db_path()).expect("webhook db"));
+
     let ui_sessions = Arc::new(Sessions::new());
     let github_handler_state = Arc::new(GithubHandlerState::new(
         config.clone(),
         github_api.clone(),
         jira_api.clone(),
         slack_api.clone(),
+        webhook_db.clone(),
         metrics.clone(),
     ));
     let octobot = OctobotService::new(

@@ -61,15 +61,19 @@ where
 
     if unique {
         events.push(event);
-        if events.len() > trim_at {
-            // reverse so that that we keep recent events
-            events.reverse();
-            events.truncate(trim_to);
-            events.reverse();
-        }
+        trim_unique_events(events, trim_at, trim_to);
     }
 
     unique
+}
+
+pub fn trim_unique_events<T>(events: &mut Vec<T>, trim_at: usize, trim_to: usize) {
+    if events.len() > trim_at {
+        // reverse so that that we keep recent events
+        events.reverse();
+        events.truncate(trim_to);
+        events.reverse();
+    }
 }
 
 pub fn parse_query(query_params: Option<&str>) -> HashMap<String, String> {
