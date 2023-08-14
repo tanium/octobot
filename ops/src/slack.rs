@@ -98,7 +98,7 @@ struct SlackMessage {
 pub struct Slack {
     client: Arc<HTTPClient>,
     recent_messages: Mutex<Vec<SlackMessage>>,
-    slack_db: SlackDatabase,
+    slack_db: Mutex<SlackDatabase>,
 }
 
 const TRIM_MESSAGES_AT: usize = 200;
@@ -124,7 +124,7 @@ impl Slack {
         );
         Slack {
             client,
-            slack_db,
+            slack_db: Mutex::new(slack_db),
             recent_messages: Mutex::new(Vec::new()),
         }
     }
@@ -138,17 +138,17 @@ impl Slack {
         initial_thread: bool,
         thread_guid: &str,
     ) {
-        let parent_thread = match self
-            .slack_db
-            .lookup_previous_thread(thread_guid, channel_id)
-            .await
+        let parent_thread;
         {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error looking up slack thread: {}", e);
-                None
-            }
-        };
+            let slack_db = self.slack_db.lock().unwrap();
+            parent_thread = match slack_db.lookup_previous_thread(thread_guid, channel_id) {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("Error looking up slack thread: {}", e);
+                    None
+                }
+            };
+        }
 
         let slack_msg = SlackMessage {
             text: msg.to_string(),
@@ -174,9 +174,9 @@ impl Slack {
                         channel_name, thread
                     );
                     if initial_thread && !thread_guid.is_empty() && parent_thread.is_none() {
-                        self.slack_db
+                        let slack_db = self.slack_db.lock().unwrap();
+                        slack_db
                             .insert_thread(thread_guid, channel_id, thread.as_str())
-                            .await
                             .ok();
                     }
                 } else {
@@ -329,14 +329,8 @@ pub fn req(
     }
 }
 
-pub fn new_runner(
-    bot_token: String,
-    slack_db_path: String,
-    metrics: Arc<Metrics>,
-) -> Arc<dyn worker::Runner<SlackRequest>> {
-    Arc::new(Runner {
-        slack: Arc::new(Slack::new(bot_token, slack_db_path, metrics)),
-    })
+pub fn new_runner(slack: Arc<Slack>) -> Arc<dyn worker::Runner<SlackRequest>> {
+    Arc::new(Runner { slack })
 }
 
 #[async_trait::async_trait]

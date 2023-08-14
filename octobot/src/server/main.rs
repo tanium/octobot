@@ -91,6 +91,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         config.clone(),
         github_api.clone(),
         jira_api.clone(),
+        slack_api.clone(),
         metrics.clone(),
     ));
     let octobot = OctobotService::new(
