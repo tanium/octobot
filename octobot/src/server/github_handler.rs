@@ -524,7 +524,7 @@ impl GithubEventHandler {
             reviewer_names.extend(self.slack_user_names(reviewers));
         }
         if let Some(ref teams) = pull_request.requested_teams {
-            reviewer_names.extend(teams.into_iter().map(|t| format!("@{}", t.slug)));
+            reviewer_names.extend(teams.iter().map(|t| format!("@{}", t.slug)));
         }
 
         reviewer_names

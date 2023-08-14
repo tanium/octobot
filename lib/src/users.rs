@@ -112,9 +112,10 @@ impl UserConfig {
         repo_full_name: &String,
     ) -> Option<SlackRecipient> {
         self.lookup_info(github_name).and_then(|u| {
-            if u.mute_direct_messages || u.muted_repos.contains(repo_full_name) {
-                None
-            } else if for_team_reference && u.mute_team_direct_messages {
+            if u.mute_direct_messages
+                || u.muted_repos.contains(repo_full_name)
+                || (for_team_reference && u.mute_team_direct_messages)
+            {
                 None
             } else if !u.slack_id.is_empty() {
                 Some(SlackRecipient::new(&u.slack_id, &u.slack_name))
