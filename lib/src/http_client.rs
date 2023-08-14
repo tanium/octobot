@@ -253,7 +253,7 @@ impl HTTPClient {
                 self.maybe_record_status("<invalid json>");
                 let err: Result<()> = self.make_clean_err(e);
                 bail!(
-                    "Invalid JSONL: {}. Response body: {}",
+                    "Invalid JSON: {}. Response body: {}",
                     err.unwrap_err(),
                     text
                 );
