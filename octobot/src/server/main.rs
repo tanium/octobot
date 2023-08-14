@@ -147,6 +147,11 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     info!("Listening (HTTP) on {}", http_addr);
 
     let webhook_redeliver = tokio::spawn(async move {
+        // Wait some time for service to startup before redelivering
+        tokio::time::interval(std::time::Duration::from_secs(10))
+            .tick()
+            .await;
+
         if let Some(guid) = latest_webhook_guid {
             let session = match github_api.new_service_session().await {
                 Ok(s) => s,
