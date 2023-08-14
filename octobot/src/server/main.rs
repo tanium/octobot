@@ -152,7 +152,11 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
             .tick()
             .await;
 
+        let webhook_db = webhook_db.clone();
+
         if let Some(guid) = latest_webhook_guid {
+            log::info!("Starting webhook redelivery");
+
             let session = match github_api.new_service_session().await {
                 Ok(s) => s,
                 Err(e) => {
@@ -172,12 +176,26 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
 
             for d in webhooks {
                 if d.status_code != 200 && d.status_code != 400 {
-                    log::info!("Redelivering webhook guid {} -- {}", d.guid, d.status_code);
-                    if let Err(e) = session.redeliver_webhook(d.id).await {
-                        log::error!("Failed to redleiver webhook guid: {}", e);
+                    if webhook_db.has_guid(&d.guid) {
+                        log::debug!(
+                            "Skipping webhook redelivery guid {} -- {}",
+                            d.guid,
+                            d.status_code
+                        );
+                    } else {
+                        log::info!(
+                            "Redelivering webhook guid {} due to HTTP {}",
+                            d.guid,
+                            d.status_code
+                        );
+                        if let Err(e) = session.redeliver_webhook(d.id).await {
+                            log::error!("Failed to redeliver webhook guid: {}", e);
+                        }
                     }
                 }
             }
+
+            log::info!("Finished webhook redelivery");
         } else {
             log::info!("No recent webhook delivery to search for");
         }

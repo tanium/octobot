@@ -66,7 +66,7 @@ impl WebhookDatabase {
     pub fn maybe_record(&self, guid: &str) -> Result<bool> {
         let mut data = self.data.lock().unwrap();
 
-        if self.has_guid(&data, guid) {
+        if self.do_has_guid(&data, guid) {
             return Ok(false);
         }
 
@@ -92,7 +92,12 @@ impl WebhookDatabase {
         Ok(())
     }
 
-    fn has_guid(&self, data: &Data, guid: &str) -> bool {
+    pub fn has_guid(&self, guid: &str) -> bool {
+        let data = self.data.lock().unwrap();
+        self.do_has_guid(&data, guid)
+    }
+
+    fn do_has_guid(&self, data: &Data, guid: &str) -> bool {
         // check in-memory cache to avoid hiting db for common case
         if data.recent_events.contains(&guid.to_string()) {
             return true;
