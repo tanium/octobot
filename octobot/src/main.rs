@@ -59,7 +59,7 @@ fn setup_logging() {
         .expect("invalid time format");
 
     let formatter = move |buf: &mut env_logger::fmt::Formatter, record: &log::Record| {
-        let now = time::OffsetDateTime::now_local().expect("now");
+        let now = time::OffsetDateTime::now_utc();
         writeln!(
             buf,
             "[{},{:03}][{}:{}] - {} - {}",
