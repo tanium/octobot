@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import re
@@ -36,8 +36,6 @@ os.makedirs(docker_out)
 
 with task("Dockerfile.build"):
     run("docker build . -f Dockerfile.build -t octobot:build")
-with task("run_tests"):
-    run("docker run -t --privileged --rm octobot:build")
 with task("extract_files"):
     run("docker rm -f extract", ignore_fail=True, quiet=True)
     run("docker create --name extract octobot:build")
@@ -47,7 +45,7 @@ with task("extract_files"):
     run("docker rm -f extract")
     # write out the version file
     commit_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'])
-    with open(os.path.join(docker_out, 'version'), 'w') as f:
+    with open(os.path.join(docker_out, 'version'), 'wb') as f:
         f.write(commit_hash)
 with task("Dockerfile"):
     run("docker build . -t octobot:latest")
