@@ -374,7 +374,7 @@ impl GithubSession {
     ) -> Result<GithubSession> {
         let mut headers = reqwest::header::HeaderMap::new();
 
-        let accept_headers = vec![
+        let accept_headers = [
             // standard header
             "application/vnd.github.v3+json",
             // timeline api
@@ -460,7 +460,7 @@ impl GithubSession {
                 }
             }
 
-            pull_requests.extend(next_prs.into_iter());
+            pull_requests.extend(next_prs);
             page += 1;
         }
         Ok(pull_requests)
@@ -652,7 +652,7 @@ impl Session for GithubSession {
                 break;
             }
 
-            result.extend(next.into_iter());
+            result.extend(next);
             page += 1;
         }
 
@@ -885,7 +885,7 @@ impl Session for GithubSession {
                 break;
             }
 
-            events.extend(next_events.into_iter());
+            events.extend(next_events);
             page += 1;
         }
 
@@ -1037,7 +1037,7 @@ impl Session for GithubSession {
 
             let done = results.iter().any(|d| d.guid == guid);
 
-            result.extend(results.into_iter());
+            result.extend(results);
 
             if done {
                 break;

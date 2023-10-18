@@ -301,7 +301,7 @@ fn do_cherry_pick(
 
     let mut args = vec!["-c", "merge.renameLimit=999999"];
     args.extend(user_opts.iter());
-    args.extend(vec!["cherry-pick", "--allow-empty"].iter());
+    args.extend(["cherry-pick", "--allow-empty"].iter());
     args.extend(opts);
     args.push(commit_hash);
 

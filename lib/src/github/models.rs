@@ -279,7 +279,7 @@ impl PullRequest {
     pub fn all_reviewers(&self) -> Vec<User> {
         let mut reviewers = vec![];
         if let Some(ref requested_reviewers) = self.requested_reviewers {
-            reviewers.extend(requested_reviewers.clone().into_iter());
+            reviewers.extend(requested_reviewers.clone());
         }
 
         if let Some(ref reviews) = self.reviews {
