@@ -58,17 +58,23 @@ impl Eq for Version {}
 
 impl PartialOrd for Version {
     fn partial_cmp(&self, other: &Version) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Version) -> Ordering {
         // Note: this is always going to be at least 3.
         let min_len = cmp::min(self.parts.len(), other.parts.len());
         for i in 0..min_len {
             let result = self.parts[i].cmp(&other.parts[i]);
             if !result.is_eq() {
-                return Some(result);
+                return result;
             }
         }
 
         if self.parts.len() == other.parts.len() {
-            return Some(Ordering::Equal);
+            return Ordering::Equal;
         }
 
         // if all else is equal, but one of the Versions has more elements,
@@ -84,18 +90,11 @@ impl PartialOrd for Version {
         }
         for part in longer_parts.iter().skip(min_len) {
             if *part != 0 {
-                return Some(nonzero_answer);
+                return nonzero_answer;
             }
         }
 
-        Some(Ordering::Equal)
-    }
-}
-
-impl Ord for Version {
-    fn cmp(&self, other: &Version) -> Ordering {
-        // we never return None
-        self.partial_cmp(other).unwrap()
+        Ordering::Equal
     }
 }
 

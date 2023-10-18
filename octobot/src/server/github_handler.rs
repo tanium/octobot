@@ -514,12 +514,12 @@ impl GithubEventHandler {
         for t in teams {
             let team_members = self.team_members_cache.get(repo, t.id);
             if let Some(team_members) = team_members {
-                participants.extend(team_members.into_iter());
+                participants.extend(team_members);
             } else {
                 let team_members = self.github_session.get_team_members(repo, t.id).await;
                 match team_members {
                     Ok(m) => {
-                        participants.extend(m.clone().into_iter());
+                        participants.extend(m.clone());
                         self.team_members_cache.insert(repo, t.id, m);
                     }
                     Err(e) => {
