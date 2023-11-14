@@ -1,6 +1,7 @@
 <h3>Users</h3>
-  <div style="margin: 10px; float: right">
-    <button type="button" class="btn btn-sm btn-primary" ng-click="addUser()">Add user</button>
+  <div class="form-group">
+    <button type="button" class="btn btn-sm btn-primary float-sm-right mb-2 col-xs-12 col-sm-auto" ng-click="addUser()">Add user</button>
+    <input type="text" class="form-control form-control-sm float-sm-right mb-2 col-sm-2 mx-sm-2" ng-model="needle" placeholder="Filter">
   </div>
 
   <table class="table">
@@ -9,8 +10,7 @@
       <th>Slack Username</th>
       <th>&nbsp;</th>
     </tr>
-
-    <tr ng-repeat="user in users">
+    <tr ng-repeat="user in users | filter:needle">
       <td>{{user.github}}</td>
       <td>{{user.slack_name}}</td>
       <td>
