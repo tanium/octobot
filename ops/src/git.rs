@@ -11,6 +11,7 @@ use octobot_lib::errors::*;
 pub struct Git {
     pub host: String,
     pub token: String,
+    pub ask_pass_path: String,
     repo_dir: PathBuf,
 }
 
@@ -20,6 +21,7 @@ impl Git {
             host: host.to_string(),
             token: token.to_string(),
             repo_dir: repo_dir.to_owned(),
+            ask_pass_path: Self::default_ask_pass_path(),
         }
     }
 
@@ -31,7 +33,7 @@ impl Git {
         self.do_run(args, Some(stdin))
     }
 
-    fn ask_pass_path(&self) -> String {
+    fn default_ask_pass_path() -> String {
         let ask_pass = "octobot-ask-pass";
         match env::current_exe() {
             Ok(ref exe) if exe.parent().is_some() => exe
@@ -137,7 +139,7 @@ impl Git {
             .stderr(Stdio::piped())
             .stdout(Stdio::piped())
             .args(args)
-            .env("GIT_ASKPASS", &self.ask_pass_path())
+            .env("GIT_ASKPASS", &self.ask_pass_path)
             // sadly this is the only way i could find to silence the cherry-pick advice.
             .env("GIT_CHERRY_PICK_HELP", "")
             .env("OCTOBOT_HOST", &self.host)
