@@ -223,4 +223,13 @@ mod tests {
             versions.iter().min().unwrap()
         );
     }
+
+    #[test]
+    fn test_version_parts() {
+        let v = Version::parse("1.2.3.4").unwrap();
+        assert_eq!(1, v.major());
+        assert_eq!(2, v.minor());
+        assert_eq!(3, v.patch());
+        assert_eq!(&[1, 2, 3, 4], v.parts());
+    }
 }
