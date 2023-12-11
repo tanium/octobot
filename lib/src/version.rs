@@ -34,6 +34,15 @@ impl Version {
         assert!(self.parts.len() >= 3);
         self.parts[1]
     }
+
+    pub fn patch(&self) -> u32 {
+        assert!(self.parts.len() >= 3);
+        self.parts[2]
+    }
+
+    pub fn parts(&self) -> &[u32] {
+        self.parts.as_slice()
+    }
 }
 
 impl fmt::Display for Version {
@@ -213,5 +222,14 @@ mod tests {
             &Version::parse("1.0.0.0").unwrap(),
             versions.iter().min().unwrap()
         );
+    }
+
+    #[test]
+    fn test_version_parts() {
+        let v = Version::parse("1.2.3.4").unwrap();
+        assert_eq!(1, v.major());
+        assert_eq!(2, v.minor());
+        assert_eq!(3, v.patch());
+        assert_eq!(&[1, 2, 3, 4], v.parts());
     }
 }
