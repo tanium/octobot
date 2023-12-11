@@ -34,6 +34,15 @@ impl Version {
         assert!(self.parts.len() >= 3);
         self.parts[1]
     }
+
+    pub fn patch(&self) -> u32 {
+        assert!(self.parts.len() >= 3);
+        self.parts[2]
+    }
+
+    pub fn parts(&self) -> &[u32] {
+        self.parts.as_slice()
+    }
 }
 
 impl fmt::Display for Version {
