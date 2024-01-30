@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 import re
 import shutil
 import subprocess
 
-is_travis = os.environ.get('TRAVIS') is not None
+parser = argparse.ArgumentParser(description='Build Octobot and package in a container')
+parser.add_argument(
+    '--use-podman',
+    action='store_true',
+    help='Use podman to build container instead of docker',
+)
 
-engine = os.environ.get('OCTOBOT_CONTAINER_BUILD_ENGINE', 'docker')
+args = parser.parse_args()
+engine = 'docker'
+if args.use_podman:
+    engine = 'podman'
+
+is_travis = os.environ.get('TRAVIS') is not None
 
 class task:
     def __init__(self, title):
