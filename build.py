@@ -6,6 +6,9 @@ import shutil
 import subprocess
 
 is_travis = os.environ.get('TRAVIS') is not None
+
+engine = os.environ.get('OCTOBOT_CONTAINER_BUILD_ENGINE', 'docker')
+
 class task:
     def __init__(self, title):
         self.title = title
@@ -35,17 +38,17 @@ if os.path.exists(docker_tmp):
 os.makedirs(docker_out)
 
 with task("Dockerfile.build"):
-    run("docker build . -f Dockerfile.build -t octobot:build")
+    run("{} build . -f Dockerfile.build -t octobot:build".format(engine))
 with task("extract_files"):
-    run("docker rm -f extract", ignore_fail=True, quiet=True)
-    run("docker create --name extract octobot:build")
-    run("docker cp extract:/usr/src/app/target/release/octobot {}".format(docker_out))
-    run("docker cp extract:/usr/src/app/target/release/octobot-passwd {}".format(docker_out))
-    run("docker cp extract:/usr/src/app/target/release/octobot-ask-pass {}".format(docker_out))
-    run("docker rm -f extract")
+    run("{} rm -f extract".format(engine), ignore_fail=True, quiet=True)
+    run("{} create --name extract octobot:build".format(engine))
+    run("{} cp extract:/usr/src/app/target/release/octobot {}".format(engine, docker_out))
+    run("{} cp extract:/usr/src/app/target/release/octobot-passwd {}".format(engine, docker_out))
+    run("{} cp extract:/usr/src/app/target/release/octobot-ask-pass {}".format(engine, docker_out))
+    run("{} rm -f extract".format(engine))
     # write out the version file
     commit_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'])
     with open(os.path.join(docker_out, 'version'), 'wb') as f:
         f.write(commit_hash)
 with task("Dockerfile"):
-    run("docker build . -t octobot:latest")
+    run("{} build . -t octobot:latest".format(engine))
