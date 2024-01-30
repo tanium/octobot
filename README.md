@@ -30,7 +30,7 @@ This will result in docker image called `octobot:latest` that you can deploy as 
 * Make sure that whatever path you map `/data` to is a persistent location since this is where configuration is stored.
 * Create a `config.toml` file in this location before deploying (see below).
 
-Using podman? Set OCTOBOT\_CONTAINER\_BUILD\_ENGINE=podman when running build.py
+Using podman? use `build.py --use-podman`
 
 ### Configuration
 
