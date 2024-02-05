@@ -48,7 +48,7 @@
   <h3>Success!</h3>
 
   <p>
-    The following JIRAs were found with pending versions were migrated to {{lastVersion}}
+    The following JIRAs were found with pending versions were migrated to <a ng-href="{{versionUrl}}" target="_blank">{{lastVersion}}</a>
   </p>
   <div class="well" ng-repeat="(key, versions) in lastResp">
     <h4><a ng-href="{{jiraLink(key)}}" target="_blank">{{key}}</a></h4>

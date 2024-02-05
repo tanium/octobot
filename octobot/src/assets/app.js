@@ -496,11 +496,13 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
 
   function mergeVersionsForReal() {
     let version = $scope.req.version;
+    let project = $scope.req.project;
     mergeVersions(false).then(function(resp) {
-      notificationService.showSuccess('Created new version succesfully');
+      notificationService.showSuccess('Created new version succesfully.');
       $scope.reset();
       $scope.lastResp = resp.data.versions;
       $scope.lastVersion = version;
+      $scope.versionUrl = jiraBase + "/projects/" + project + "/versions/" + resp.data.version_id;
 
     }).catch(function(e) {
       notificationService.showError('Error creating new version: ' + parseError(e));
