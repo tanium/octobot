@@ -344,7 +344,10 @@ async fn test_merge_pending_versions_for_real() {
     let new_version = "1.2.0.500";
     test.jira.mock_get_versions(
         "SER",
-        Ok(vec![Version::new("1.2.0.100"), Version::new("1.3.0.100")]),
+        Ok(vec![
+            Version::with_id("1.2.0.100", "12345"),
+            Version::with_id("1.3.0.100", "54321"),
+        ]),
     );
     test.jira.mock_find_pending_versions(
         "SER",
@@ -364,7 +367,11 @@ async fn test_merge_pending_versions_for_real() {
         }),
     );
 
-    test.jira.mock_add_version("SER", new_version, Ok(()));
+    test.jira.mock_add_version(
+        "SER",
+        new_version,
+        Ok(Version::with_id(new_version, "89012")),
+    );
 
     test.jira.mock_remove_pending_versions(
         "SER-1",
@@ -382,9 +389,11 @@ async fn test_merge_pending_versions_for_real() {
     test.jira
         .mock_assign_fix_version("SER-4", new_version, Ok(()));
 
-    let res = hashmap! {
+    let res = version::MergedVersion {
+        issues: hashmap! {
         "SER-1".to_string() => vec![version::Version::parse("1.2.0.200").unwrap()],
-        "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()],
+        "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()] },
+        version_id: Some("89012".to_string()),
     };
 
     assert_eq!(
@@ -407,7 +416,10 @@ async fn test_merge_pending_versions_dry_run() {
     let new_version = "1.2.0.500";
     test.jira.mock_get_versions(
         "SER",
-        Ok(vec![Version::new("1.2.0.100"), Version::new("1.3.0.100")]),
+        Ok(vec![
+            Version::with_id("1.2.0.100", "12345"),
+            Version::with_id("1.3.0.100", "54321"),
+        ]),
     );
     test.jira.mock_find_pending_versions(
         "SER",
@@ -429,9 +441,11 @@ async fn test_merge_pending_versions_dry_run() {
 
     // Don't expect the other state-changing functions to get called
 
-    let res = hashmap! {
+    let res = version::MergedVersion {
+        issues: hashmap! {
         "SER-1".to_string() => vec![version::Version::parse("1.2.0.200").unwrap()],
-        "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()],
+        "SER-4".to_string() => vec![version::Version::parse("1.2.0.300").unwrap()] },
+        version_id: None,
     };
 
     assert_eq!(
@@ -455,9 +469,9 @@ async fn test_merge_pending_versions_missed_versions() {
     test.jira.mock_get_versions(
         "SER",
         Ok(vec![
-            Version::new("1.2.0.100"),
-            Version::new("1.2.0.500"),
-            Version::new("1.2.0.600"),
+            Version::with_id("1.2.0.100", "12345"),
+            Version::with_id("1.2.0.500", "54321"),
+            Version::with_id("1.2.0.600", "89012"),
         ]),
     );
     test.jira.mock_find_pending_versions(
@@ -481,8 +495,10 @@ async fn test_merge_pending_versions_missed_versions() {
     test.jira
         .mock_assign_fix_version("SER-1", missed_version, Ok(()));
 
-    let res = hashmap! {
-        "SER-1".to_string() => vec![version::Version::parse("1.2.0.150").unwrap()],
+    let res = version::MergedVersion {
+        issues: hashmap! {
+        "SER-1".to_string() => vec![version::Version::parse("1.2.0.150").unwrap()] },
+        version_id: Some("54321".to_string()),
     };
 
     assert_eq!(

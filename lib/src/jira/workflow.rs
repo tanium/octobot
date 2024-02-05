@@ -306,7 +306,7 @@ pub async fn merge_pending_versions(
     project: &str,
     jira: &dyn jira::api::Session,
     mode: DryRunMode,
-) -> Result<HashMap<String, Vec<version::Version>>> {
+) -> Result<version::MergedVersion> {
     let target_version = match version::Version::parse(version) {
         Some(v) => v,
         None => return Err(anyhow!("Invalid target version: {}", version)),
@@ -328,7 +328,10 @@ pub async fn merge_pending_versions(
         .collect::<HashMap<_, _>>();
 
     if mode == DryRunMode::DryRun {
-        return Ok(all_relevant_versions);
+        return Ok(version::MergedVersion {
+            issues: all_relevant_versions,
+            version_id: None,
+        });
     }
 
     if all_relevant_versions.is_empty() {
@@ -339,18 +342,23 @@ pub async fn merge_pending_versions(
     }
 
     // create the target version for this project
-    if real_versions.iter().any(|v| v.name == version) {
-        info!(
-            "JIRA version {} already exists for project {}",
-            version, project
-        );
-    } else {
-        info!(
-            "Creating new JIRA version {} for project {}",
-            version, project
-        );
-        jira.add_version(project, version).await?;
-    }
+    let id = match real_versions.into_iter().find(|v| v.name == version) {
+        Some(v) => {
+            info!(
+                "JIRA version {} already exists for project {}",
+                version, project
+            );
+            v.id
+        }
+        None => {
+            info!(
+                "Creating new JIRA version {} for project {}",
+                version, project
+            );
+
+            jira.add_version(project, version).await?.id
+        }
+    };
 
     {
         // sort the keys for deterministic results for testing purposes.
@@ -380,7 +388,10 @@ pub async fn merge_pending_versions(
         }
     }
 
-    Ok(all_relevant_versions)
+    return Ok(version::MergedVersion {
+        issues: all_relevant_versions,
+        version_id: Some(id),
+    });
 }
 
 fn find_relevant_versions(

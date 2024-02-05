@@ -344,7 +344,7 @@ impl MergeVersions {
             }
         }
 
-        self.make_resp(resp.set_versions(all_relevant_versions))
+        self.make_resp(resp.set_versions(all_relevant_versions.issues))
     }
 
     fn make_resp(&self, resp: MergeVersionsResp) -> Response<Body> {
