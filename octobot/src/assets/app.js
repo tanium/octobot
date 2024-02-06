@@ -474,7 +474,7 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
         $scope.req.admin_user = loggedInUser() + resp.data.login_suffix;
       }
       if (resp.data.error) {
-        notificationService.showError(resp.data.error);
+        throw(resp.data.error)
       }
       return resp;
     }).finally(function(e) {
