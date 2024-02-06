@@ -388,10 +388,10 @@ pub async fn merge_pending_versions(
         }
     }
 
-    return Ok(version::MergedVersion {
+    Ok(version::MergedVersion {
         issues: all_relevant_versions,
         version_id: Some(id),
-    });
+    })
 }
 
 fn find_relevant_versions(
