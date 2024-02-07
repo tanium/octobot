@@ -252,7 +252,7 @@ struct MergeVersionsResp {
     jira_base: String,
     login_suffix: Option<String>,
     versions: HashMap<String, Vec<version::Version>>,
-    version_id: Option<String>,
+    version_url: Option<String>,
     error: Option<String>,
 }
 
@@ -262,7 +262,7 @@ impl MergeVersionsResp {
             jira_base: jira_config.base_url(),
             login_suffix: jira_config.login_suffix.clone(),
             versions: HashMap::new(),
-            version_id: None,
+            version_url: None,
             error: None,
         }
     }
@@ -272,8 +272,8 @@ impl MergeVersionsResp {
         self
     }
 
-    fn set_version_id(mut self, version_id: Option<String>) -> Self {
-        self.version_id = version_id;
+    fn set_version_url(mut self, version_url: Option<String>) -> Self {
+        self.version_url = version_url;
         self
     }
 
@@ -351,9 +351,18 @@ impl MergeVersions {
             }
         }
 
+        let version_url = if let Some(id) = all_relevant_versions.version_id {
+            Some(format!(
+                "{}/projects/{}/versions/{}",
+                resp.jira_base, &merge_req.project, id
+            ))
+        } else {
+            None
+        };
+
         self.make_resp(
             resp.set_versions(all_relevant_versions.issues)
-                .set_version_id(all_relevant_versions.version_id),
+                .set_version_url(version_url),
         )
     }
 

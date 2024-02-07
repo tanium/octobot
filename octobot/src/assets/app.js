@@ -502,7 +502,7 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
       $scope.reset();
       $scope.lastResp = resp.data.versions;
       $scope.lastVersion = version;
-      $scope.versionUrl = jiraBase + "/projects/" + project + "/versions/" + resp.data.version_id;
+      $scope.versionUrl = resp.data.version_url;
 
     }).catch(function(e) {
       notificationService.showError('Error creating new version: ' + parseError(e));
