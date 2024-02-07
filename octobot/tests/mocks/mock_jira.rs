@@ -12,7 +12,7 @@ pub struct MockJira {
     get_transitions_calls: Mutex<Vec<MockCall<Vec<Transition>>>>,
     transition_issue_calls: Mutex<Vec<MockCall<()>>>,
     comment_issue_calls: Mutex<Vec<MockCall<()>>>,
-    add_version_calls: Mutex<Vec<MockCall<()>>>,
+    add_version_calls: Mutex<Vec<MockCall<Version>>>,
     get_versions_calls: Mutex<Vec<MockCall<Vec<Version>>>>,
     assign_fix_version_calls: Mutex<Vec<MockCall<()>>>,
     reorder_version_calls: Mutex<Vec<MockCall<()>>>,
@@ -155,7 +155,7 @@ impl Session for MockJira {
         call.ret
     }
 
-    async fn add_version(&self, proj: &str, version: &str) -> Result<()> {
+    async fn add_version(&self, proj: &str, version: &str) -> Result<Version> {
         let mut calls = self.add_version_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to add_version");
         let call = calls.remove(0);
@@ -267,7 +267,7 @@ impl MockJira {
             .push(MockCall::new(ret, vec![key, comment]));
     }
 
-    pub fn mock_add_version(&self, proj: &str, version: &str, ret: Result<()>) {
+    pub fn mock_add_version(&self, proj: &str, version: &str, ret: Result<Version>) {
         self.add_version_calls
             .lock()
             .unwrap()

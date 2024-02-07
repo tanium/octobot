@@ -1,4 +1,5 @@
 use std::cmp::{self, Ordering};
+use std::collections::HashMap;
 use std::fmt;
 
 use serde::ser::{Serialize, Serializer};
@@ -6,6 +7,12 @@ use serde::ser::{Serialize, Serializer};
 #[derive(Clone, Debug)]
 pub struct Version {
     parts: Vec<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MergedVersion {
+    pub issues: HashMap<String, Vec<Version>>,
+    pub version_id: Option<String>,
 }
 
 impl Version {

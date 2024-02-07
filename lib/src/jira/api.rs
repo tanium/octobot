@@ -27,7 +27,7 @@ pub trait Session: Send + Sync {
 
     async fn comment_issue(&self, key: &str, comment: &str) -> Result<()>;
 
-    async fn add_version(&self, proj: &str, version: &str) -> Result<()>;
+    async fn add_version(&self, proj: &str, version: &str) -> Result<Version>;
     async fn get_versions(&self, proj: &str) -> Result<Vec<Version>>;
     async fn assign_fix_version(&self, key: &str, version: &str) -> Result<()>;
     async fn reorder_version(&self, version: &Version, position: JiraVersionPosition)
@@ -216,7 +216,7 @@ impl Session for JiraSession {
             .map_err(|e| anyhow!("Error commenting on [{}]: {}", key, e))
     }
 
-    async fn add_version(&self, proj: &str, version: &str) -> Result<()> {
+    async fn add_version(&self, proj: &str, version: &str) -> Result<Version> {
         #[derive(Serialize)]
         struct AddVersionReq {
             name: String,
@@ -227,14 +227,17 @@ impl Session for JiraSession {
             name: version.into(),
             project: proj.into(),
         };
-        self.client.post_void("/version", &req).await.map_err(|e| {
-            anyhow!(
-                "Error adding version {} to project {}: {}",
-                version,
-                proj,
-                e
-            )
-        })
+        self.client
+            .post::<Version, AddVersionReq>("/version", &req)
+            .await
+            .map_err(|e| {
+                anyhow!(
+                    "Error adding version {} to project {}: {}",
+                    version,
+                    proj,
+                    e
+                )
+            })
     }
 
     async fn get_versions(&self, proj: &str) -> Result<Vec<Version>> {

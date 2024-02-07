@@ -474,7 +474,7 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
         $scope.req.admin_user = loggedInUser() + resp.data.login_suffix;
       }
       if (resp.data.error) {
-        notificationService.showError(resp.data.error);
+        throw(resp.data.error)
       }
       return resp;
     }).finally(function(e) {
@@ -496,11 +496,13 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
 
   function mergeVersionsForReal() {
     let version = $scope.req.version;
+    let project = $scope.req.project;
     mergeVersions(false).then(function(resp) {
-      notificationService.showSuccess('Created new version succesfully');
+      notificationService.showSuccess('Created new version succesfully.');
       $scope.reset();
       $scope.lastResp = resp.data.versions;
       $scope.lastVersion = version;
+      $scope.versionUrl = resp.data.version_url;
 
     }).catch(function(e) {
       notificationService.showError('Error creating new version: ' + parseError(e));

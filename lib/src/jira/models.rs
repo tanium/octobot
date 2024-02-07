@@ -80,9 +80,13 @@ pub struct Version {
 
 impl Version {
     pub fn new(name: &str) -> Version {
+        Version::with_id(name, "some-id")
+    }
+
+    pub fn with_id(name: &str, id: &str) -> Version {
         Version {
-            uri: "http://something/version/some-id".into(),
-            id: "some-id".into(),
+            uri: format!("http://something/version/{}", id),
+            id: id.into(),
             name: name.into(),
         }
     }
