@@ -351,13 +351,12 @@ impl MergeVersions {
             }
         }
 
-        let version_url = if let Some(id) = all_relevant_versions.version_id {
-            Some(format!(
+        let version_url = match all_relevant_versions.version_id {
+            Some(id) => Some(format!(
                 "{}/projects/{}/versions/{}",
                 resp.jira_base, &merge_req.project, id
-            ))
-        } else {
-            None
+            )),
+            None => None,
         };
 
         self.make_resp(
