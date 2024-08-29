@@ -409,6 +409,15 @@ impl GithubEventHandler {
             if self.action.is_empty() { "" } else { "." },
             self.action
         );
+
+        if self.is_ignored_user(&self.data.sender) {
+            info!(
+                "Ignoring event from ignored user: {}",
+                self.data.sender.login(),
+            );
+            return Some((StatusCode::OK, "ignored-user".into()));
+        }
+
         if self.event == "ping" {
             Some(self.handle_ping())
         } else if self.event == "pull_request" {
@@ -543,6 +552,13 @@ impl GithubEventHandler {
         }
 
         reviewer_names
+    }
+
+    fn is_ignored_user(&self, user: &github::User) -> bool {
+        self.config
+            .slack
+            .ignored_users
+            .contains(&user.login().to_string())
     }
 
     fn handle_ping(&self) -> EventResponse {
@@ -822,13 +838,7 @@ impl GithubEventHandler {
             return;
         }
 
-        if comment.user().login() == self.github_session.bot_name()
-            || self
-                .config
-                .slack
-                .ignored_users
-                .contains(&comment.user().login().to_string())
-        {
+        if comment.user().login() == self.github_session.bot_name() {
             info!(
                 "Ignoring message from bot ({}): {}",
                 comment.user().login(),
