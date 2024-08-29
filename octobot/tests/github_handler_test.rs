@@ -708,13 +708,13 @@ async fn test_pull_request_comments_ignore_user() {
         html_url: "http://the-comment".into(),
         user: User::new("ignore-me[bot]"),
     });
-    test.handler.data.sender = User::new("joe-reviewer");
+    test.handler.data.sender = User::new("ignore-me[bot]");
     test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
     let resp = test.handler.handle_event().await.unwrap();
-    assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
+    assert_eq!((StatusCode::OK, "ignored-user".into()), resp);
 }
 
 #[tokio::test]
