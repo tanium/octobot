@@ -1,3 +1,4 @@
+use log::info;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -108,6 +109,14 @@ impl Messenger {
         commits: &[T],
         thread_guids: Vec<String>,
     ) {
+        if self.is_ignored_user(sender) {
+            info!(
+                "Ignoring event from ignored user: {}",
+                sender.login(),
+            );
+            return;
+        }
+
         self.send_to_channel(msg, attachments, repo, branch, commits, thread_guids, false);
 
         participants.add_user(item_owner.clone());
@@ -117,6 +126,13 @@ impl Messenger {
         participants.remove("octobot");
 
         self.send_to_slackbots(participants, repo, msg, attachments);
+    }
+
+    fn is_ignored_user(&self, user: &github::User) -> bool {
+        self.config
+            .slack
+            .ignored_users
+            .contains(&user.login().to_string())
     }
 
     pub fn send_to_owner<T: github::CommitLike>(
