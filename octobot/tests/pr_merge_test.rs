@@ -62,10 +62,10 @@ async fn test_pr_merge_basic() {
     let (test, _temp_dir) = new_test();
 
     // setup a release branch
-    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+    test.git.run_git(&["push", "origin", "main:release/1.0"]);
 
-    // make a new commit on master
-    test.git.run_git(&["checkout", "master"]);
+    // make a new commit on main
+    test.git.run_git(&["checkout", "main"]);
     test.git
         .add_repo_file("file.txt", "contents1", "I made a change");
     let commit1 = test.git.git.current_commit().unwrap();
@@ -76,7 +76,7 @@ async fn test_pr_merge_basic() {
     pr.merged = Some(true);
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
-    pr.base = github::BranchRef::new("master");
+    pr.base = github::BranchRef::new("main");
     pr.assignees = vec![
         github::User::new("user1"),
         github::User::new("user2"),
@@ -100,7 +100,7 @@ async fn test_pr_merge_basic() {
     test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
-        "master->1.0: I made a change",
+        "main->1.0: I made a change",
         &format!("(cherry-picked from {}, PR #123)", commit1),
         "my-feature-branch-1.0",
         "release/1.0",
@@ -146,7 +146,7 @@ async fn test_pr_merge_basic() {
     assert_eq!(
         "",
         test.git
-            .run_git(&["diff", "master", "origin/my-feature-branch-1.0"])
+            .run_git(&["diff", "main", "origin/my-feature-branch-1.0"])
     );
 }
 
@@ -155,10 +155,10 @@ async fn test_pr_merge_author_is_assignee() {
     let (test, _temp_dir) = new_test();
 
     // setup a release branch
-    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+    test.git.run_git(&["push", "origin", "main:release/1.0"]);
 
-    // make a new commit on master
-    test.git.run_git(&["checkout", "master"]);
+    // make a new commit on main
+    test.git.run_git(&["checkout", "main"]);
     test.git
         .add_repo_file("file.txt", "contents1", "I made a change");
     let commit1 = test.git.git.current_commit().unwrap();
@@ -169,7 +169,7 @@ async fn test_pr_merge_author_is_assignee() {
     pr.merged = Some(true);
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
-    pr.base = github::BranchRef::new("master");
+    pr.base = github::BranchRef::new("main");
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
 
@@ -180,7 +180,7 @@ async fn test_pr_merge_author_is_assignee() {
     test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
-        "master->1.0: I made a change",
+        "main->1.0: I made a change",
         &format!("(cherry-picked from {}, PR #123)", commit1),
         "my-feature-branch-1.0",
         "release/1.0",
@@ -216,7 +216,7 @@ if (true) {
     do_something();
 }
 ";
-    let contents_master = "
+    let contents_main = "
 try {
     if (true) {
         do_something();
@@ -248,10 +248,10 @@ if (true)    {
         .add_repo_file("file.cpp", contents_10, "a change on 1.0");
     test.git.run_git(&["push", "-u", "origin", "release/1.0"]);
 
-    // make a new commit on master
-    test.git.run_git(&["checkout", "master"]);
+    // make a new commit on main
+    test.git.run_git(&["checkout", "main"]);
     test.git
-        .add_repo_file("file.cpp", contents_master, "final change");
+        .add_repo_file("file.cpp", contents_main, "final change");
     let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
@@ -260,7 +260,7 @@ if (true)    {
     pr.merged = Some(true);
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
-    pr.base = github::BranchRef::new("master");
+    pr.base = github::BranchRef::new("main");
     pr.assignees = vec![github::User::new("user1"), github::User::new("user2")];
     let pr = pr;
 
@@ -271,7 +271,7 @@ if (true)    {
     test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
-        "master->1.0: final change",
+        "main->1.0: final change",
         &format!("(cherry-picked from {}, PR #123)", commit1),
         "my-feature-branch-1.0",
         "release/1.0",
@@ -321,7 +321,7 @@ if (true) {
     do_something();
 }
 ";
-    let contents_master = "
+    let contents_main = "
 try {
     if (true) {
         do_something();
@@ -352,10 +352,10 @@ if (true) {
         .add_repo_file("file.cpp", contents_10, "a change on 1.0");
     test.git.run_git(&["push", "-u", "origin", "release/1.0"]);
 
-    // make a new commit on master
-    test.git.run_git(&["checkout", "master"]);
+    // make a new commit on main
+    test.git.run_git(&["checkout", "main"]);
     test.git
-        .add_repo_file("file.cpp", contents_master, "final change");
+        .add_repo_file("file.cpp", contents_main, "final change");
     let commit1 = test.git.git.current_commit().unwrap();
 
     // pretend this came from a PR
@@ -364,7 +364,7 @@ if (true) {
     pr.merged = Some(true);
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
-    pr.base = github::BranchRef::new("master");
+    pr.base = github::BranchRef::new("main");
     pr.assignees = vec![github::User::new("user1"), github::User::new("user2")];
     let pr = pr;
 
@@ -375,7 +375,7 @@ if (true) {
     test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
-        "master->1.0: final change",
+        "main->1.0: final change",
         &format!("(cherry-picked from {}, PR #123)", commit1),
         "my-feature-branch-1.0",
         "release/1.0",
@@ -421,10 +421,10 @@ async fn test_pr_merge_conventional_commit() {
     let (test, _temp_dir) = new_test();
 
     // setup a release branch
-    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+    test.git.run_git(&["push", "origin", "main:release/1.0"]);
 
-    // make a new commit on master
-    test.git.run_git(&["checkout", "master"]);
+    // make a new commit on main
+    test.git.run_git(&["checkout", "main"]);
     test.git
         .add_repo_file("file.txt", "contents1", "fix(thing)!: I made a change");
     let commit1 = test.git.git.current_commit().unwrap();
@@ -435,7 +435,7 @@ async fn test_pr_merge_conventional_commit() {
     pr.merged = Some(true);
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
-    pr.base = github::BranchRef::new("master");
+    pr.base = github::BranchRef::new("main");
     pr.assignees = vec![
         github::User::new("user1"),
         github::User::new("user2"),
@@ -459,7 +459,7 @@ async fn test_pr_merge_conventional_commit() {
     test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
-        "fix(thing)!: master->1.0: I made a change",
+        "fix(thing)!: main->1.0: I made a change",
         &format!("(cherry-picked from {}, PR #123)", commit1),
         "my-feature-branch-1.0",
         "release/1.0",
@@ -505,7 +505,7 @@ async fn test_pr_merge_conventional_commit() {
     assert_eq!(
         "",
         test.git
-            .run_git(&["diff", "master", "origin/my-feature-branch-1.0"])
+            .run_git(&["diff", "main", "origin/my-feature-branch-1.0"])
     );
 }
 
@@ -514,10 +514,10 @@ async fn test_pr_merge_backport_failure() {
     let (mut test, _temp_dir) = new_test();
 
     // setup a release branch
-    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+    test.git.run_git(&["push", "origin", "main:release/1.0"]);
 
-    // make a new commit on master
-    test.git.run_git(&["checkout", "master"]);
+    // make a new commit on main
+    test.git.run_git(&["checkout", "main"]);
     test.git
         .add_repo_file("file.txt", "contents1", "I made a change");
     let commit1 = test.git.git.current_commit().unwrap();
@@ -529,7 +529,7 @@ async fn test_pr_merge_backport_failure() {
     pr.merged = Some(true);
     pr.merge_commit_sha = Some(commit1.clone());
     pr.head = github::BranchRef::new("my-feature-branch");
-    pr.base = github::BranchRef::new("master");
+    pr.base = github::BranchRef::new("main");
     pr.assignees = vec![
         github::User::new("user1"),
         github::User::new("user2"),
@@ -549,7 +549,7 @@ async fn test_pr_merge_backport_failure() {
     test.github.mock_create_pull_request(
         "the-owner",
         "the-repo",
-        "master->1.0: I made a change",
+        "main->1.0: I made a change",
         &format!("(cherry-picked from {}, PR #123)", commit1),
         "my-feature-branch-1.0",
         "release/1.0",

@@ -6,7 +6,7 @@ use git_helper::temp_git::TempGit;
 fn test_current_branch() {
     let git = TempGit::new();
 
-    assert_eq!("master", git.git.current_branch().unwrap());
+    assert_eq!("main", git.git.current_branch().unwrap());
     git.run_git(&["checkout", "-b", "other-branch"]);
     assert_eq!("other-branch", git.git.current_branch().unwrap());
 }
@@ -17,8 +17,8 @@ fn test_has_branch() {
 
     assert_eq!(
         true,
-        git.git.has_branch("master").unwrap(),
-        "should have master branch"
+        git.git.has_branch("main").unwrap(),
+        "should have main branch"
     );
 
     git.run_git(&["branch", "falcon"]);
@@ -63,8 +63,8 @@ fn test_does_branch_contain() {
 
     assert_eq!(
         true,
-        git.git.does_branch_contain(&commit, "master").unwrap(),
-        "master should contain commit"
+        git.git.does_branch_contain(&commit, "main").unwrap(),
+        "main should contain commit"
     );
     assert_eq!(
         true,
@@ -98,8 +98,8 @@ fn test_does_branch_contain() {
 
     assert_eq!(
         false,
-        git.git.does_branch_contain(&commit2, "master").unwrap(),
-        "master should not contain commit2"
+        git.git.does_branch_contain(&commit2, "main").unwrap(),
+        "main should not contain commit2"
     );
     assert_eq!(
         false,
@@ -126,7 +126,7 @@ fn test_find_base_commit() {
     git.run_git(&["push", "origin", "falcon"]);
     let falcon_commit = git.run_git(&["rev-parse", "HEAD"]);
 
-    git.run_git(&["checkout", "-b", "horses", "master"]);
+    git.run_git(&["checkout", "-b", "horses", "main"]);
     git.add_repo_file(
         "horses.txt",
         "Stallion\nSteed\nMustang\n",
@@ -137,8 +137,8 @@ fn test_find_base_commit() {
 
     git.reclone();
 
-    // now change master!
-    git.run_git(&["checkout", "master"]);
+    // now change main!
+    git.run_git(&["checkout", "main"]);
     git.add_repo_file("foo1.txt", "", "some other commit 1");
     git.add_repo_file("foo2.txt", "", "some other commit 2");
     let new_base_commit = git.run_git(&["rev-parse", "HEAD"]);
@@ -148,13 +148,13 @@ fn test_find_base_commit() {
     assert_eq!(
         base_commit,
         git.git
-            .find_base_branch_commit(&falcon_commit, "master")
+            .find_base_branch_commit(&falcon_commit, "main")
             .unwrap()
     );
     assert_eq!(
         base_commit,
         git.git
-            .find_base_branch_commit("origin/falcon", "master")
+            .find_base_branch_commit("origin/falcon", "main")
             .unwrap()
     );
 
@@ -162,36 +162,36 @@ fn test_find_base_commit() {
     assert_eq!(
         base_commit,
         git.git
-            .find_base_branch_commit(&horses_commit, "master")
+            .find_base_branch_commit(&horses_commit, "main")
             .unwrap()
     );
     assert_eq!(
         base_commit,
         git.git
-            .find_base_branch_commit("origin/horses", "master")
+            .find_base_branch_commit("origin/horses", "main")
             .unwrap()
     );
 
     // now rebase falcon!
     git.run_git(&["checkout", "falcon"]);
-    git.run_git(&["rebase", "master"]);
+    git.run_git(&["rebase", "main"]);
     git.run_git(&["push", "-f"]);
     let new_falcon_commit = git.run_git(&["rev-parse", "HEAD"]);
     assert_eq!(
         base_commit,
         git.git
-            .find_base_branch_commit(&falcon_commit, "master")
+            .find_base_branch_commit(&falcon_commit, "main")
             .unwrap()
     );
     assert_eq!(
         new_base_commit,
         git.git
-            .find_base_branch_commit(&new_falcon_commit, "master")
+            .find_base_branch_commit(&new_falcon_commit, "main")
             .unwrap()
     );
     assert_eq!(
         new_base_commit,
-        git.git.find_base_branch_commit("falcon", "master").unwrap()
+        git.git.find_base_branch_commit("falcon", "main").unwrap()
     );
 
     // now force-push and reclone to clear reflog
@@ -200,20 +200,20 @@ fn test_find_base_commit() {
 
     // get a local 'falcon' reference
     git.run_git(&["checkout", "falcon"]);
-    git.run_git(&["checkout", "master"]);
+    git.run_git(&["checkout", "main"]);
     let new_falcon_commit = git.run_git(&["rev-parse", "HEAD"]);
     assert_eq!(
         new_base_commit,
         git.git
-            .find_base_branch_commit(&new_falcon_commit, "master")
+            .find_base_branch_commit(&new_falcon_commit, "main")
             .unwrap()
     );
     assert_eq!(
         new_base_commit,
-        git.git.find_base_branch_commit("falcon", "master").unwrap()
+        git.git.find_base_branch_commit("falcon", "main").unwrap()
     );
 
-    // try rewriting the master branch. should stay the same...
+    // try rewriting the main branch. should stay the same...
     git.run_git(&[
         "commit",
         "--amend",
@@ -226,7 +226,7 @@ fn test_find_base_commit() {
     assert_eq!(
         new_base_commit,
         git.git
-            .find_base_branch_commit(&new_falcon_commit, "master")
+            .find_base_branch_commit(&new_falcon_commit, "main")
             .unwrap()
     );
 
@@ -236,7 +236,7 @@ fn test_find_base_commit() {
     assert_eq!(
         some_commit_1,
         git.git
-            .find_base_branch_commit(&new_falcon_commit, "master")
+            .find_base_branch_commit(&new_falcon_commit, "main")
             .unwrap()
     );
 }
@@ -256,7 +256,7 @@ fn test_checkout_branch_new_local_branch() {
     assert_eq!(
         (),
         git.git
-            .checkout_branch("some-new-branch", "origin/master")
+            .checkout_branch("some-new-branch", "origin/main")
             .unwrap()
     );
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
@@ -298,12 +298,12 @@ fn test_checkout_branch_already_checked_out() {
 
     assert_eq!(
         (),
-        git.git.checkout_branch("master", "origin/master").unwrap()
+        git.git.checkout_branch("main", "origin/main").unwrap()
     );
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);
-    assert_eq!("master", git.git.current_branch().unwrap());
+    assert_eq!("main", git.git.current_branch().unwrap());
 }
 
 #[test]
@@ -322,7 +322,7 @@ fn test_checkout_branch_already_exists() {
     assert_eq!(
         (),
         git.git
-            .checkout_branch("the-branch", "origin/master")
+            .checkout_branch("the-branch", "origin/main")
             .unwrap()
     );
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
