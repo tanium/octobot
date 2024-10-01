@@ -110,7 +110,7 @@ impl Messenger {
         thread_guids: Vec<String>,
     ) {
         if self.is_ignored_user(sender) {
-            info!("Ignoring event from ignored user: {}", sender.login(),);
+            info!("Ignoring message from ignored user: {}", sender.login(),);
             return;
         }
 
