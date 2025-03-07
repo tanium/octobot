@@ -241,12 +241,9 @@ fn test_checkout_branch_new_local_branch() {
     git.run_git(&["push"]);
     git.run_git(&["reset", "--hard", &base_commit]);
 
-    assert_eq!(
-        (),
-        git.git
-            .checkout_branch("some-new-branch", "origin/master")
-            .unwrap()
-    );
+    git.git
+        .checkout_branch("some-new-branch", "origin/master")
+        .unwrap();
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);
@@ -260,12 +257,9 @@ fn test_checkout_branch_with_ref() {
     let base_commit = git.run_git(&["rev-parse", "HEAD"]);
     git.add_repo_file("prarie-falcon.txt", "Prarie", "falcons 1");
 
-    assert_eq!(
-        (),
-        git.git
-            .checkout_branch("some-new-branch", &base_commit)
-            .unwrap()
-    );
+    git.git
+        .checkout_branch("some-new-branch", &base_commit)
+        .unwrap();
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, base_commit);
@@ -284,10 +278,7 @@ fn test_checkout_branch_already_checked_out() {
     git.run_git(&["push"]);
     git.run_git(&["reset", "--hard", &base_commit]);
 
-    assert_eq!(
-        (),
-        git.git.checkout_branch("master", "origin/master").unwrap()
-    );
+    git.git.checkout_branch("master", "origin/master").unwrap();
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);
@@ -307,12 +298,9 @@ fn test_checkout_branch_already_exists() {
 
     git.run_git(&["reset", "--hard", &base_commit]);
 
-    assert_eq!(
-        (),
-        git.git
-            .checkout_branch("the-branch", "origin/master")
-            .unwrap()
-    );
+    git.git
+        .checkout_branch("the-branch", "origin/master")
+        .unwrap();
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);

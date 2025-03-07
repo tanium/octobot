@@ -98,15 +98,15 @@ mod tests {
     fn test_bools() {
         assert_eq!(1, to_tinyint(true));
         assert_eq!(0, to_tinyint(false));
-        assert_eq!(true, to_bool(1));
-        assert_eq!(false, to_bool(0));
+        assert!(to_bool(1));
+        assert!(!to_bool(0));
     }
 
     #[test]
     fn test_vecs() {
         assert_eq!(
             "hello,world",
-            from_string_vec(&vec!["hello".into(), "world".into()])
+            from_string_vec(&["hello".into(), "world".into()])
         );
         assert_eq!(
             vec!["hello".to_string(), "world".to_string()],

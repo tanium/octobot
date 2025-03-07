@@ -30,7 +30,6 @@ pub fn new(
             }
         })
         .on_thread_stop({
-            let running_count = running_count;
             move || {
                 running_count.dec();
             }
@@ -42,7 +41,6 @@ pub fn new(
             }
         })
         .on_thread_unpark({
-            let parked_count = parked_count;
             move || {
                 parked_count.dec();
             }

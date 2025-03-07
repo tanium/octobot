@@ -80,7 +80,7 @@ impl HTTPClient {
 
     pub async fn get_raw(&self, path: &str) -> Result<Response> {
         let _timer = self.maybe_start_timer("get", path);
-        let res = self.client.get(&self.make_url(path)).send().await;
+        let res = self.client.get(self.make_url(path)).send().await;
         let res = self.process_resp(res).await?;
 
         self.maybe_record_ok();
@@ -105,7 +105,7 @@ impl HTTPClient {
         let _timer = self.maybe_start_timer("post", path);
         let res = self
             .client
-            .post(&self.make_url(path))
+            .post(self.make_url(path))
             .json(body)
             .send()
             .await;
@@ -120,7 +120,7 @@ impl HTTPClient {
         let _timer = self.maybe_start_timer("post", path);
         let res = self
             .client
-            .post(&self.make_url(path))
+            .post(self.make_url(path))
             .json(body)
             .send()
             .await;
@@ -149,12 +149,7 @@ impl HTTPClient {
         T: DeserializeOwned + Send + 'static,
     {
         let _timer = self.maybe_start_timer("put", path);
-        let res = self
-            .client
-            .put(&self.make_url(path))
-            .json(body)
-            .send()
-            .await;
+        let res = self.client.put(self.make_url(path)).json(body).send().await;
         let res = self.process_resp(res).await?;
         let res = self.parse_json(res).await?;
 
@@ -164,12 +159,7 @@ impl HTTPClient {
 
     pub async fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
         let _timer = self.maybe_start_timer("put", path);
-        let res = self
-            .client
-            .put(&self.make_url(path))
-            .json(body)
-            .send()
-            .await;
+        let res = self.client.put(self.make_url(path)).json(body).send().await;
         self.process_resp(res).await?;
 
         self.maybe_record_ok();
@@ -178,7 +168,7 @@ impl HTTPClient {
 
     pub async fn delete_void(&self, path: &str) -> Result<()> {
         let _timer = self.maybe_start_timer("delete", path);
-        let res = self.client.delete(&self.make_url(path)).send().await;
+        let res = self.client.delete(self.make_url(path)).send().await;
         self.process_resp(res).await?;
 
         self.maybe_record_ok();

@@ -516,51 +516,51 @@ mod tests {
         // no matching jiras -> default
         assert_eq!(
             vec!["the-repo-reviews"],
-            repos.lookup_channels(&repo, "", &vec![none_commit])
+            repos.lookup_channels(&repo, "", &[none_commit])
         );
 
         // matching jiras, wrong branch -> default
         assert_eq!(
             vec!["the-repo-reviews"],
-            repos.lookup_channels(&repo, "other", &vec![client_commit.clone()])
+            repos.lookup_channels(&repo, "other", &[client_commit.clone()])
         );
 
         // matching jiras, right branch
         assert_eq!(
             vec!["server-reviews"],
-            repos.lookup_channels(&repo, "main", &vec![server_commit.clone()])
+            repos.lookup_channels(&repo, "main", &[server_commit.clone()])
         );
         assert_eq!(
             vec!["server-reviews"],
-            repos.lookup_channels(&repo, "release/server-1.0", &vec![server_commit.clone()])
+            repos.lookup_channels(&repo, "release/server-1.0", &[server_commit.clone()])
         );
         assert_eq!(
             vec!["client-reviews"],
-            repos.lookup_channels(&repo, "main", &vec![client_commit.clone()])
+            repos.lookup_channels(&repo, "main", &[client_commit.clone()])
         );
         assert_eq!(
             vec!["client-reviews"],
-            repos.lookup_channels(&repo, "release/client-1.0", &vec![client_commit.clone()])
+            repos.lookup_channels(&repo, "release/client-1.0", &[client_commit.clone()])
         );
 
         // both jiras - main branch
         assert_eq!(
             vec!["client-reviews", "server-reviews"],
-            repos.lookup_channels(&repo, "main", &vec![both_commit.clone()])
+            repos.lookup_channels(&repo, "main", &[both_commit.clone()])
         );
         assert_eq!(
             vec!["client-reviews", "server-reviews"],
-            repos.lookup_channels(&repo, "main", &vec![client_commit, server_commit])
+            repos.lookup_channels(&repo, "main", &[client_commit, server_commit])
         );
 
         // both jiras - release branch
         assert_eq!(
             vec!["server-reviews"],
-            repos.lookup_channels(&repo, "release/server-1.0", &vec![both_commit.clone()])
+            repos.lookup_channels(&repo, "release/server-1.0", &[both_commit.clone()])
         );
         assert_eq!(
             vec!["client-reviews"],
-            repos.lookup_channels(&repo, "release/client-1.0", &vec![both_commit])
+            repos.lookup_channels(&repo, "release/client-1.0", &[both_commit])
         );
     }
 
@@ -579,22 +579,22 @@ mod tests {
         {
             let repo =
                 github::Repo::parse("http://git.company.com/someone-else/some-other-repo").unwrap();
-            assert_eq!(false, repos.notify_force_push(&repo));
+            assert!(!repos.notify_force_push(&repo));
         }
 
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/the-default").unwrap();
-            assert_eq!(false, repos.notify_force_push(&repo));
+            assert!(!repos.notify_force_push(&repo));
         }
 
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/on-purpose").unwrap();
-            assert_eq!(true, repos.notify_force_push(&repo));
+            assert!(repos.notify_force_push(&repo));
         }
 
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
-            assert_eq!(false, repos.notify_force_push(&repo));
+            assert!(!repos.notify_force_push(&repo));
         }
     }
 
@@ -613,22 +613,22 @@ mod tests {
         {
             let repo =
                 github::Repo::parse("http://git.company.com/someone-else/some-other-repo").unwrap();
-            assert_eq!(false, repos.notify_use_threads(&repo));
+            assert!(!repos.notify_use_threads(&repo));
         }
 
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/the-default").unwrap();
-            assert_eq!(false, repos.notify_use_threads(&repo));
+            assert!(!repos.notify_use_threads(&repo));
         }
 
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/on-purpose").unwrap();
-            assert_eq!(true, repos.notify_use_threads(&repo));
+            assert!(repos.notify_use_threads(&repo));
         }
 
         {
             let repo = github::Repo::parse("http://git.company.com/some-user/quiet-repo").unwrap();
-            assert_eq!(false, repos.notify_use_threads(&repo));
+            assert!(!repos.notify_use_threads(&repo));
         }
     }
 

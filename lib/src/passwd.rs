@@ -46,8 +46,8 @@ mod tests {
     #[test]
     fn test_password() {
         let pw_hash = store_password("the-pass", "some-salt");
-        assert_eq!(true, verify_password("the-pass", "some-salt", &pw_hash));
-        assert_eq!(false, verify_password("wrong-pass", "some-salt", &pw_hash));
-        assert_eq!(false, verify_password("the-pass", "wrong-salt", &pw_hash));
+        assert!(verify_password("the-pass", "some-salt", &pw_hash));
+        assert!(!verify_password("wrong-pass", "some-salt", &pw_hash));
+        assert!(!verify_password("the-pass", "wrong-salt", &pw_hash));
     }
 }

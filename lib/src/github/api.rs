@@ -969,7 +969,7 @@ impl Session for GithubSession {
     ) -> Result<()> {
         self.client
             .client
-            .patch(&format!(
+            .patch(format!(
                 "{}/repos/{}/check-runs/{}",
                 self.client.api_base, pr.base.repo.full_name, check_run_id
             ))

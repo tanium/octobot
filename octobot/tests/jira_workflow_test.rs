@@ -131,8 +131,7 @@ async fn test_submit_for_review() {
     test.jira
         .mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config)
-        .await;
+    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config).await;
 }
 
 #[tokio::test]
@@ -317,8 +316,7 @@ async fn test_transition_issues_only_if_necessary() {
     test.jira
         .mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config)
-        .await;
+    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config).await;
 }
 
 #[tokio::test]
@@ -539,10 +537,7 @@ async fn test_sort_versions() {
     test.jira
         .mock_reorder_version(&v0, JiraVersionPosition::After(v3.clone()), Ok(()));
 
-    assert_eq!(
-        (),
-        jira::workflow::sort_versions("SER", &test.jira)
-            .await
-            .unwrap()
-    );
+    jira::workflow::sort_versions("SER", &test.jira)
+        .await
+        .unwrap()
 }

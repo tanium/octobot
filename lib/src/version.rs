@@ -142,13 +142,13 @@ mod tests {
     #[test]
     fn test_version_equal() {
         assert!(Version::parse("1.0").unwrap() == Version::parse("1.0.0").unwrap());
-        assert!(!(Version::parse("1.0").unwrap() == Version::parse("1.1").unwrap()));
+        assert!(Version::parse("1.0").unwrap() != Version::parse("1.1").unwrap());
     }
 
     #[test]
     fn test_version_not_equal() {
         assert!(Version::parse("1.0").unwrap() != Version::parse("2.0.0").unwrap());
-        assert!(!(Version::parse("1.0").unwrap() != Version::parse("1.0.0").unwrap()));
+        assert!(Version::parse("1.0").unwrap() == Version::parse("1.0.0").unwrap());
     }
 
     #[test]
@@ -162,7 +162,7 @@ mod tests {
         // lesser third digit
         assert!(Version::parse("1.0.0.0").unwrap() < Version::parse("1.0.0.1").unwrap());
         // negative test
-        assert!(!(Version::parse("2.0.0.0").unwrap() < Version::parse("1.0.0.1").unwrap()));
+        assert!(Version::parse("2.0.0.0").unwrap() >= Version::parse("1.0.0.1").unwrap());
     }
 
     // Impropable in practice, but seems good for completeness
@@ -178,20 +178,20 @@ mod tests {
     fn test_version_less_or_equal() {
         assert!(Version::parse("1.0.0.0").unwrap() <= Version::parse("1.0.0.1").unwrap());
         assert!(Version::parse("1.0.0.0").unwrap() <= Version::parse("1.0.0.0").unwrap());
-        assert!(!(Version::parse("2.0.0.1").unwrap() <= Version::parse("1.0.0.0").unwrap()));
+        assert!(Version::parse("2.0.0.1").unwrap() > Version::parse("1.0.0.0").unwrap());
     }
 
     #[test]
     fn test_version_greater() {
         assert!(Version::parse("4.8").unwrap() > Version::parse("4.1.2").unwrap());
-        assert!(!(Version::parse("4.8").unwrap() > Version::parse("4.9").unwrap()));
+        assert!(Version::parse("4.8").unwrap() <= Version::parse("4.9").unwrap());
     }
 
     #[test]
     fn test_version_greater_or_equal() {
         assert!(Version::parse("4.8.1").unwrap() >= Version::parse("4.8").unwrap());
         assert!(Version::parse("4.8").unwrap() >= Version::parse("4.8").unwrap());
-        assert!(!(Version::parse("4.8").unwrap() >= Version::parse("4.9").unwrap()));
+        assert!(Version::parse("4.8").unwrap() < Version::parse("4.9").unwrap());
     }
 
     #[test]
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_version_max() {
-        let versions = vec![
+        let versions = &[
             Version::parse("1.0.0.0").unwrap(),
             Version::parse("2.0.0.0").unwrap(),
         ];
