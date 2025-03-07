@@ -139,9 +139,7 @@ mod tests {
 
     #[test]
     fn test_non_diff_contents() {
-        assert!(
-            DiffOfDiffs::new("some-non-diff", "some-non-diff").are_equal()
-        );
+        assert!(DiffOfDiffs::new("some-non-diff", "some-non-diff").are_equal());
 
         let diffs = DiffOfDiffs::new("some-non-diff", "some-other-non-diff");
         assert!(!diffs.are_equal());
