@@ -56,24 +56,15 @@ impl HookBody {
     }
 
     pub fn ref_name(&self) -> &str {
-        match self.ref_name {
-            Some(ref v) => v,
-            None => "",
-        }
+        self.ref_name.as_deref().unwrap_or_default()
     }
 
     pub fn after(&self) -> &str {
-        match self.after {
-            Some(ref v) => v,
-            None => "",
-        }
+        self.after.as_deref().unwrap_or_default()
     }
 
     pub fn before(&self) -> &str {
-        match self.before {
-            Some(ref v) => v,
-            None => "",
-        }
+        self.before.as_deref().unwrap_or_default()
     }
 
     pub fn forced(&self) -> bool {
@@ -134,13 +125,10 @@ impl User {
     }
 
     pub fn login(&self) -> &str {
-        if let Some(ref login) = self.login {
-            login
-        } else if let Some(ref name) = self.name {
-            name
-        } else {
-            ""
-        }
+        self.login
+            .as_deref()
+            .or(self.name.as_deref())
+            .unwrap_or_default()
     }
 }
 
@@ -416,10 +404,7 @@ impl Review {
 
 impl CommentLike for &Review {
     fn body(&self) -> &str {
-        match self.body {
-            Some(ref body) => body,
-            None => "",
-        }
+        self.body.as_deref().unwrap_or_default()
     }
 
     fn user(&self) -> &User {
@@ -442,10 +427,7 @@ pub struct Comment {
 
 impl CommentLike for &Comment {
     fn body(&self) -> &str {
-        match self.body {
-            Some(ref body) => body,
-            None => "",
-        }
+        self.body.as_deref().unwrap_or_default()
     }
 
     fn user(&self) -> &User {
