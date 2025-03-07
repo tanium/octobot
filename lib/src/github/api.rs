@@ -895,7 +895,6 @@ impl Session for GithubSession {
     async fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>> {
         #[derive(Deserialize)]
         pub struct CheckSuiteList {
-            pub total_count: u32,
             pub check_suites: Vec<CheckSuite>,
         }
 

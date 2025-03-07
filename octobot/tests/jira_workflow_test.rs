@@ -131,7 +131,7 @@ async fn test_submit_for_review() {
     test.jira
         .mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config)
+    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config)
         .await;
 }
 
@@ -176,7 +176,7 @@ async fn test_resolve_issue_no_resolution() {
     jira::workflow::resolve_issue(
         "master",
         None,
-        &vec![commit1, commit2],
+        &[commit1, commit2],
         &projects,
         &test.jira,
         &test.config,
@@ -236,7 +236,7 @@ async fn test_resolve_issue_with_resolution() {
     jira::workflow::resolve_issue(
         "release/99",
         Some("5.6.7"),
-        &vec![commit],
+        &[commit],
         &projects,
         &test.jira,
         &test.config,
@@ -317,7 +317,7 @@ async fn test_transition_issues_only_if_necessary() {
     test.jira
         .mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
 
-    jira::workflow::submit_for_review(&pr, &vec![commit], &projects, &test.jira, &test.config)
+    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config)
         .await;
 }
 
@@ -334,7 +334,7 @@ async fn test_add_pending_version() {
         .mock_add_pending_version("CLI-45", "5.6.7", Ok(()));
     test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
 
-    jira::workflow::add_pending_version(Some("5.6.7"), &vec![commit], &projects, &test.jira).await;
+    jira::workflow::add_pending_version(Some("5.6.7"), &[commit], &projects, &test.jira).await;
 }
 
 #[tokio::test]
@@ -375,12 +375,12 @@ async fn test_merge_pending_versions_for_real() {
 
     test.jira.mock_remove_pending_versions(
         "SER-1",
-        &vec![version::Version::parse("1.2.0.200").unwrap()],
+        &[version::Version::parse("1.2.0.200").unwrap()],
         Ok(()),
     );
     test.jira.mock_remove_pending_versions(
         "SER-4",
-        &vec![version::Version::parse("1.2.0.300").unwrap()],
+        &[version::Version::parse("1.2.0.300").unwrap()],
         Ok(()),
     );
 
@@ -489,7 +489,7 @@ async fn test_merge_pending_versions_missed_versions() {
 
     test.jira.mock_remove_pending_versions(
         "SER-1",
-        &vec![version::Version::parse("1.2.0.150").unwrap()],
+        &[version::Version::parse("1.2.0.150").unwrap()],
         Ok(()),
     );
     test.jira

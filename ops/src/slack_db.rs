@@ -41,8 +41,7 @@ impl SlackDatabase {
                 "SELECT thread FROM pull_request_threads WHERE guid = ?1 AND channel = ?2 LIMIT 1",
                 [&thread_guid, &slack_channel],
                 |row| row.get(0),
-            )
-            .map_or_else(|_| None, |r| r);
+            ).unwrap_or(None);
 
         Ok(thread)
     }

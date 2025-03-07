@@ -139,13 +139,12 @@ mod tests {
 
     #[test]
     fn test_non_diff_contents() {
-        assert_eq!(
-            true,
+        assert!(
             DiffOfDiffs::new("some-non-diff", "some-non-diff").are_equal()
         );
 
         let diffs = DiffOfDiffs::new("some-non-diff", "some-other-non-diff");
-        assert_eq!(false, diffs.are_equal());
+        assert!(!diffs.are_equal());
         assert_eq!(Vec::<PatchedFile>::new(), diffs.different_patch_files());
     }
 
@@ -186,7 +185,7 @@ index 4442a2c..007a2cf 100644
  pub mod git;"#;
 
         let diffs = DiffOfDiffs::new(diff0, diff0);
-        assert_eq!(true, diffs.are_equal());
+        assert!(diffs.are_equal());
         assert_eq!(Vec::<PatchedFile>::new(), diffs.different_patch_files());
 
         // same diff, but diff line numbers
@@ -224,7 +223,7 @@ index 4442a2c..007a2cf 100644
  pub mod force_push;
  pub mod git;"#;
 
-        assert_eq!(true, DiffOfDiffs::new(diff0, diff1).are_equal());
+        assert!(DiffOfDiffs::new(diff0, diff1).are_equal());
     }
 
     #[test]
@@ -318,7 +317,7 @@ index 4442a2c..007a2cf 100644
  pub mod git;"#;
 
         let diffs = DiffOfDiffs::new(diff0, diff1);
-        assert_eq!(false, diffs.are_equal());
+        assert!(!diffs.are_equal());
 
         let diff_files = diffs.different_patch_files();
         assert_eq!(2, diff_files.len());
@@ -340,6 +339,6 @@ index 06c9b9d..5007551 100644
 "#;
 
         let diffs = DiffOfDiffs::new(diff0, diff0);
-        assert_eq!(true, diffs.are_equal());
+        assert!(diffs.are_equal());
     }
 }
