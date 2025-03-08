@@ -566,6 +566,7 @@ impl MockGithub {
             ));
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn mock_create_pull_request(
         &self,
         owner: &str,

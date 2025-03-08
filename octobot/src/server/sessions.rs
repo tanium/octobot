@@ -82,17 +82,17 @@ mod tests {
         let sess1 = sessions.new_session();
         let sess2 = sessions.new_session();
 
-        assert_eq!(true, sessions.is_valid_session(&sess1));
-        assert_eq!(true, sessions.is_valid_session(&sess2));
+        assert!(sessions.is_valid_session(&sess1));
+        assert!(sessions.is_valid_session(&sess2));
 
         sessions.remove_session(&sess1);
 
-        assert_eq!(false, sessions.is_valid_session(&sess1));
-        assert_eq!(true, sessions.is_valid_session(&sess2));
+        assert!(!sessions.is_valid_session(&sess1));
+        assert!(sessions.is_valid_session(&sess2));
 
         sessions.remove_session(&sess2);
 
-        assert_eq!(false, sessions.is_valid_session(&sess2));
+        assert!(!sessions.is_valid_session(&sess2));
     }
 
     #[test]
@@ -100,16 +100,16 @@ mod tests {
         let sessions = Sessions::new();
 
         let sess = sessions.new_session();
-        assert_eq!(true, sessions.is_valid_session(&sess));
+        assert!(sessions.is_valid_session(&sess));
 
         // reset only last prune time. not enough.
         *sessions.last_pruned.write().unwrap() -= Duration::from_secs(PRUNE_SECS + 1);
-        assert_eq!(true, sessions.is_valid_session(&sess));
+        assert!(sessions.is_valid_session(&sess));
 
         // reset only last prune time and last accessed time
         *sessions.last_pruned.write().unwrap() -= Duration::from_secs(PRUNE_SECS + 1);
         sessions.sessions.write().unwrap()[0].created_at -=
             Duration::from_secs(SESSION_EXPIRY_SECS + 1);
-        assert_eq!(false, sessions.is_valid_session(&sess));
+        assert!(!sessions.is_valid_session(&sess));
     }
 }

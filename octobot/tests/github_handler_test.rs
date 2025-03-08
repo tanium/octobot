@@ -2372,7 +2372,7 @@ async fn test_jira_pull_request_opened_too_many_commits() {
         ),
         slack::req(
             SlackRecipient::user_mention("the.pr.owner"),
-            &"Too many commits on Pull Request #32. Ignoring JIRAs.".to_string(),
+            "Too many commits on Pull Request #32. Ignoring JIRAs.",
             &attach,
             None,
             false,

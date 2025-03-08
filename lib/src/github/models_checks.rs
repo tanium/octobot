@@ -146,7 +146,7 @@ impl<'de> Deserialize2<'de> for Conclusion {
     {
         struct ConclusionVisitor;
 
-        impl<'de> Visitor<'de> for ConclusionVisitor {
+        impl Visitor<'_> for ConclusionVisitor {
             type Value = Conclusion;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -194,7 +194,7 @@ impl<'de> Deserialize2<'de> for CheckStatus {
     {
         struct StatusVisitor;
 
-        impl<'de> Visitor<'de> for StatusVisitor {
+        impl Visitor<'_> for StatusVisitor {
             type Value = CheckStatus;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

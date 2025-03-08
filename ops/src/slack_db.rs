@@ -42,7 +42,7 @@ impl SlackDatabase {
                 [&thread_guid, &slack_channel],
                 |row| row.get(0),
             )
-            .map_or_else(|_| None, |r| r);
+            .unwrap_or(None);
 
         Ok(thread)
     }

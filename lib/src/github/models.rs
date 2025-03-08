@@ -56,24 +56,15 @@ impl HookBody {
     }
 
     pub fn ref_name(&self) -> &str {
-        match self.ref_name {
-            Some(ref v) => v,
-            None => "",
-        }
+        self.ref_name.as_deref().unwrap_or_default()
     }
 
     pub fn after(&self) -> &str {
-        match self.after {
-            Some(ref v) => v,
-            None => "",
-        }
+        self.after.as_deref().unwrap_or_default()
     }
 
     pub fn before(&self) -> &str {
-        match self.before {
-            Some(ref v) => v,
-            None => "",
-        }
+        self.before.as_deref().unwrap_or_default()
     }
 
     pub fn forced(&self) -> bool {
@@ -134,13 +125,10 @@ impl User {
     }
 
     pub fn login(&self) -> &str {
-        if let Some(ref login) = self.login {
-            login
-        } else if let Some(ref name) = self.name {
-            name
-        } else {
-            ""
-        }
+        self.login
+            .as_deref()
+            .or(self.name.as_deref())
+            .unwrap_or_default()
     }
 }
 
@@ -290,7 +278,7 @@ impl PullRequest {
     }
 }
 
-impl<'a> PullRequestLike for &'a PullRequest {
+impl PullRequestLike for &PullRequest {
     fn user(&self) -> &User {
         &self.user
     }
@@ -344,7 +332,7 @@ pub struct Issue {
     pub assignees: Vec<User>,
 }
 
-impl<'a> PullRequestLike for &'a Issue {
+impl PullRequestLike for &Issue {
     fn user(&self) -> &User {
         &self.user
     }
@@ -414,12 +402,9 @@ impl Review {
     }
 }
 
-impl<'a> CommentLike for &'a Review {
+impl CommentLike for &Review {
     fn body(&self) -> &str {
-        match self.body {
-            Some(ref body) => body,
-            None => "",
-        }
+        self.body.as_deref().unwrap_or_default()
     }
 
     fn user(&self) -> &User {
@@ -440,12 +425,9 @@ pub struct Comment {
     pub user: User,
 }
 
-impl<'a> CommentLike for &'a Comment {
+impl CommentLike for &Comment {
     fn body(&self) -> &str {
-        match self.body {
-            Some(ref body) => body,
-            None => "",
-        }
+        self.body.as_deref().unwrap_or_default()
     }
 
     fn user(&self) -> &User {
@@ -500,7 +482,7 @@ impl CommitLike for PushCommit {
     }
 }
 
-impl<'a> CommitLike for &'a PushCommit {
+impl CommitLike for &PushCommit {
     fn sha(&self) -> &str {
         &self.id
     }
@@ -528,7 +510,7 @@ impl CommitLike for Commit {
     }
 }
 
-impl<'a> CommitLike for &'a Commit {
+impl CommitLike for &Commit {
     fn sha(&self) -> &str {
         &self.sha
     }
@@ -765,9 +747,9 @@ mod tests {
             assert_eq!("", body.ref_name());
             assert_eq!("", body.after());
             assert_eq!("", body.before());
-            assert_eq!(false, body.forced());
-            assert_eq!(false, body.created());
-            assert_eq!(false, body.deleted());
+            assert!(!body.forced());
+            assert!(!body.created());
+            assert!(!body.deleted());
         }
 
         // test values
@@ -784,18 +766,18 @@ mod tests {
         {
             let mut body = HookBody::new();
             body.forced = Some(true);
-            assert_eq!(true, body.forced());
+            assert!(body.forced());
         }
 
         {
             let mut body = HookBody::new();
             body.created = Some(true);
-            assert_eq!(true, body.created());
+            assert!(body.created());
         }
         {
             let mut body = HookBody::new();
             body.deleted = Some(true);
-            assert_eq!(true, body.deleted());
+            assert!(body.deleted());
         }
     }
 

@@ -15,8 +15,7 @@ fn test_current_branch() {
 fn test_has_branch() {
     let git = TempGit::new();
 
-    assert_eq!(
-        true,
+    assert!(
         git.git.has_branch("master").unwrap(),
         "should have master branch"
     );
@@ -24,19 +23,16 @@ fn test_has_branch() {
     git.run_git(&["branch", "falcon"]);
     git.run_git(&["branch", "eagle"]);
 
-    assert_eq!(
-        true,
+    assert!(
         git.git.has_branch("falcon").unwrap(),
         "should have falcon branch"
     );
-    assert_eq!(
-        true,
+    assert!(
         git.git.has_branch("eagle").unwrap(),
         "should have eagle branch"
     );
-    assert_eq!(
-        false,
-        git.git.has_branch("eagles").unwrap(),
+    assert!(
+        !git.git.has_branch("eagles").unwrap(),
         "should NOT have eagles branch"
     );
 }
@@ -48,8 +44,8 @@ fn test_has_remote_branch() {
     git.run_git(&["checkout", "-b", "release/1.0.1"]);
     git.run_git(&["push", "origin", "release/1.0.1"]);
 
-    assert_eq!(true, git.git.has_remote_branch("release/1.0.1").unwrap());
-    assert_eq!(false, git.git.has_remote_branch("release/1.0").unwrap());
+    assert!(git.git.has_remote_branch("release/1.0.1").unwrap());
+    assert!(!git.git.has_remote_branch("release/1.0").unwrap());
 }
 
 #[test]
@@ -61,18 +57,15 @@ fn test_does_branch_contain() {
     git.run_git(&["branch", "falcon"]);
     git.run_git(&["branch", "eagle"]);
 
-    assert_eq!(
-        true,
+    assert!(
         git.git.does_branch_contain(&commit, "master").unwrap(),
         "master should contain commit"
     );
-    assert_eq!(
-        true,
+    assert!(
         git.git.does_branch_contain(&commit, "eagle").unwrap(),
         "eagle should contain commit"
     );
-    assert_eq!(
-        true,
+    assert!(
         git.git.does_branch_contain(&commit, "falcon").unwrap(),
         "falcon should contain commit"
     );
@@ -85,30 +78,25 @@ fn test_does_branch_contain() {
     );
 
     let commit2 = git.run_git(&["rev-parse", "HEAD"]);
-    assert_eq!(
-        true,
+    assert!(
         git.git.does_branch_contain(&commit, "stallion").unwrap(),
         "stallion should contain commit"
     );
-    assert_eq!(
-        true,
+    assert!(
         git.git.does_branch_contain(&commit2, "stallion").unwrap(),
         "stallion should contain commit2"
     );
 
-    assert_eq!(
-        false,
-        git.git.does_branch_contain(&commit2, "master").unwrap(),
+    assert!(
+        !git.git.does_branch_contain(&commit2, "master").unwrap(),
         "master should not contain commit2"
     );
-    assert_eq!(
-        false,
-        git.git.does_branch_contain(&commit2, "eagle").unwrap(),
+    assert!(
+        !git.git.does_branch_contain(&commit2, "eagle").unwrap(),
         "eagle should not contain commit2"
     );
-    assert_eq!(
-        false,
-        git.git.does_branch_contain(&commit2, "falcon").unwrap(),
+    assert!(
+        !git.git.does_branch_contain(&commit2, "falcon").unwrap(),
         "falcon should not contain commit2"
     );
 }
@@ -253,12 +241,9 @@ fn test_checkout_branch_new_local_branch() {
     git.run_git(&["push"]);
     git.run_git(&["reset", "--hard", &base_commit]);
 
-    assert_eq!(
-        (),
-        git.git
-            .checkout_branch("some-new-branch", "origin/master")
-            .unwrap()
-    );
+    git.git
+        .checkout_branch("some-new-branch", "origin/master")
+        .unwrap();
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);
@@ -272,12 +257,9 @@ fn test_checkout_branch_with_ref() {
     let base_commit = git.run_git(&["rev-parse", "HEAD"]);
     git.add_repo_file("prarie-falcon.txt", "Prarie", "falcons 1");
 
-    assert_eq!(
-        (),
-        git.git
-            .checkout_branch("some-new-branch", &base_commit)
-            .unwrap()
-    );
+    git.git
+        .checkout_branch("some-new-branch", &base_commit)
+        .unwrap();
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, base_commit);
@@ -296,10 +278,7 @@ fn test_checkout_branch_already_checked_out() {
     git.run_git(&["push"]);
     git.run_git(&["reset", "--hard", &base_commit]);
 
-    assert_eq!(
-        (),
-        git.git.checkout_branch("master", "origin/master").unwrap()
-    );
+    git.git.checkout_branch("master", "origin/master").unwrap();
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);
@@ -319,12 +298,9 @@ fn test_checkout_branch_already_exists() {
 
     git.run_git(&["reset", "--hard", &base_commit]);
 
-    assert_eq!(
-        (),
-        git.git
-            .checkout_branch("the-branch", "origin/master")
-            .unwrap()
-    );
+    git.git
+        .checkout_branch("the-branch", "origin/master")
+        .unwrap();
     let now_commit = git.run_git(&["rev-parse", "HEAD"]);
 
     assert_eq!(now_commit, new_commit);

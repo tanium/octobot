@@ -18,6 +18,7 @@ pub struct MockJira {
     reorder_version_calls: Mutex<Vec<MockCall<()>>>,
     add_pending_version_calls: Mutex<Vec<MockCall<()>>>,
     remove_pending_versions_calls: Mutex<Vec<MockCall<()>>>,
+    #[allow(clippy::type_complexity)]
     find_pending_versions_calls: Mutex<Vec<MockCall<HashMap<String, Vec<version::Version>>>>>,
 }
 

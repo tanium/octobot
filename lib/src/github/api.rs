@@ -895,7 +895,6 @@ impl Session for GithubSession {
     async fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>> {
         #[derive(Deserialize)]
         pub struct CheckSuiteList {
-            pub total_count: u32,
             pub check_suites: Vec<CheckSuite>,
         }
 
@@ -970,7 +969,7 @@ impl Session for GithubSession {
     ) -> Result<()> {
         self.client
             .client
-            .patch(&format!(
+            .patch(format!(
                 "{}/repos/{}/check-runs/{}",
                 self.client.api_base, pr.base.repo.full_name, check_run_id
             ))

@@ -55,7 +55,7 @@ impl<T: PartialEq + Debug + Send + Sync + 'static> LockedMockWorker<T> {
     }
 
     pub fn new_sender(&self) -> Arc<dyn Worker<T>> {
-        let worker: &Arc<MockWorker<T>> = &*self.worker.lock().unwrap();
+        let worker: &Arc<MockWorker<T>> = &self.worker.lock().unwrap();
         worker.clone()
     }
 }
