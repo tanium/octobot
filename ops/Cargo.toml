@@ -17,7 +17,7 @@ log = "0.4.19"
 regex = "1.9.3"
 serde = "1.0.183"
 serde_derive = "1.0.183"
-tokio = { version = "1.29.1", features = ["rt"] }
+tokio = { version = "1.43.1", features = ["rt"] }
 unidiff = "0.3.3"
 reqwest = { version = "0.11.18", features = ["json"] }
 async-trait = "0.1.72"
