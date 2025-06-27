@@ -541,3 +541,93 @@ async fn test_sort_versions() {
         .await
         .unwrap()
 }
+
+#[tokio::test]
+async fn test_resolve_issue_with_release_note() {
+    let test = new_test();
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit = new_push_commit(
+        "Fix [SER-1] I fixed a critical bug\n\nRelease Note Fixed login issue\ncausing user lockouts Release Note",
+        "aabbccddee",
+    );
+
+    let expected_comment = "Merged into branch master: [aabbccd|http://the-commit/aabbccddee]\n\
+                           {quote}Fix [SER-1] I fixed a critical bug{quote}\n\
+                           Release Note: Fixed login issue\ncausing user lockouts";
+    test.jira.mock_comment_issue("SER-1", expected_comment, Ok(()));
+
+    test.jira
+        .mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("003", "resolved1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("003"), Ok(()));
+
+    jira::workflow::resolve_issue(
+        "master",
+        None,
+        &[commit],
+        &projects,
+        &test.jira,
+        &test.config,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_resolve_issue_with_release_note_and_version() {
+    let test = new_test();
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit = new_push_commit(
+        "Fix [SER-2] Another important fix\n\nRelease Note\nEnhanced performance by 50% Release Note",
+        "bbccddaabb",
+    );
+
+    let expected_comment = "Merged into branch release/1.0: [bbccdda|http://the-commit/bbccddaabb]\n\
+                           {quote}Fix [SER-2] Another important fix{quote}\n\
+                           Included in version 2.1.0\n\
+                           Release Note: Enhanced performance by 50%";
+    test.jira.mock_comment_issue("SER-2", expected_comment, Ok(()));
+
+    test.jira
+        .mock_get_issue("SER-2", Ok(new_issue("SER-2", None)));
+    test.jira
+        .mock_get_transitions("SER-2", Ok(vec![new_transition("003", "resolved1")]));
+    test.jira
+        .mock_transition_issue("SER-2", &new_transition_req("003"), Ok(()));
+
+    jira::workflow::resolve_issue(
+        "release/1.0",
+        Some("2.1.0"),
+        &[commit],
+        &projects,
+        &test.jira,
+        &test.config,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_resolve_issue_referenced_with_release_note() {
+    let test = new_test();
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit = new_push_commit(
+        "Some change that relates to [CLI-100]\n\nRelease Note Added new API endpoint Release Note",
+        "ccddaabbcc",
+    );
+
+    let expected_comment = "Referenced by commit merged into branch master: [ccddaab|http://the-commit/ccddaabbcc]\n\
+                           {quote}Some change that relates to [CLI-100]{quote}\n\
+                           Release Note: Added new API endpoint";
+    test.jira.mock_comment_issue("CLI-100", expected_comment, Ok(()));
+
+    jira::workflow::resolve_issue(
+        "master",
+        None,
+        &[commit],
+        &projects,
+        &test.jira,
+        &test.config,
+    )
+    .await;
+}

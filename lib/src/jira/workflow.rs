@@ -33,6 +33,16 @@ fn get_jira_keys(strings: Vec<String>, projects: &[String]) -> Vec<String> {
     all_keys
 }
 
+fn get_release_note<T: CommitLike>(commit: &T) -> Option<String> {
+    // Release Note [multi-line release note content] Release Note
+    let re = Regex::new(r"(?ims)Release\s+Note\s*(.*?)\s*Release\s+Note").unwrap();
+    
+    re.captures(commit.message())
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn get_fixed_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
     // Fix [ABC-123][OTHER-567], [YEAH-999]
     let re =
@@ -195,10 +205,15 @@ pub async fn resolve_issue(
             Some(v) => format!("\nIncluded in version {}", v),
         };
 
-        let fix_msg = format!("Merged into branch {}: {}{}", branch, desc, version_desc);
+        let release_note_desc = match get_release_note(commit) {
+            None => String::new(),
+            Some(note) => format!("\nRelease Note: {}", note),
+        };
+
+        let fix_msg = format!("Merged into branch {}: {}{}{}", branch, desc, version_desc, release_note_desc);
         let ref_msg = format!(
-            "Referenced by commit merged into branch {}: {}{}",
-            branch, desc, version_desc
+            "Referenced by commit merged into branch {}: {}{}{}",
+            branch, desc, version_desc, release_note_desc
         );
         let resolved_states = config.resolved_states();
 
@@ -727,5 +742,46 @@ mod tests {
             expected,
             find_relevant_versions(&target_version, &pending_versions, &real_versions)
         );
+    }
+
+    #[test]
+    fn test_get_release_note() {
+        let mut commit = Commit::new();
+        
+        // Test commit with no release note
+        commit.commit.message = "Fix [KEY-1] Some bug fix".into();
+        assert_eq!(None, get_release_note(&commit));
+
+        // Test example 1: content on same line and multiple lines
+        commit.commit.message = "Fix [KEY-1]\n\nRelease Note abc\nxyz\ns kkk\nddd   Release Note".into();
+        assert_eq!(Some("abc\nxyz\ns kkk\nddd".to_string()), get_release_note(&commit));
+
+        // Test example 2: single line content
+        commit.commit.message = "Fix [KEY-2]\n\nRelease Note\nxyz Release Note".into();
+        assert_eq!(Some("xyz".to_string()), get_release_note(&commit));
+
+        // Test traditional multi-line release note
+        commit.commit.message = "Fix [KEY-3] Another fix\n\nRelease Note\nAdded new feature for users.\nImproved performance significantly.\nRelease Note".into();
+        assert_eq!(Some("Added new feature for users.\nImproved performance significantly.".to_string()), get_release_note(&commit));
+
+        // Test case insensitive matching
+        commit.commit.message = "Fix [KEY-4] Yet another fix\n\nrelease note\nCase insensitive test\nRELEASE NOTE".into();
+        assert_eq!(Some("Case insensitive test".to_string()), get_release_note(&commit));
+
+        // Test with extra spaces and whitespace
+        commit.commit.message = "Fix [KEY-5] Fix with spaces\n\nRelease   Note  \n  Extra spaces handled  \n  Release Note".into();
+        assert_eq!(Some("Extra spaces handled".to_string()), get_release_note(&commit));
+
+        // Test empty release note (should return None)
+        commit.commit.message = "Fix [KEY-6] Empty note\n\nRelease Note\n\nRelease Note".into();
+        assert_eq!(None, get_release_note(&commit));
+
+        // Test inline release note
+        commit.commit.message = "Fix [KEY-7] Inline\n\nRelease Note Fixed inline issue Release Note".into();
+        assert_eq!(Some("Fixed inline issue".to_string()), get_release_note(&commit));
+
+        // Test release note with special characters
+        commit.commit.message = "Fix [KEY-8] Special chars\n\nRelease Note\nFixed issue with special chars: & < > % $\nRelease Note".into();
+        assert_eq!(Some("Fixed issue with special chars: & < > % $".to_string()), get_release_note(&commit));
     }
 }
