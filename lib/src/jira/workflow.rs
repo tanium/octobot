@@ -37,10 +37,10 @@ fn get_release_note<T: CommitLike>(commit: &T) -> Option<String> {
     // Release Note [multi-line release note content] Release Note
     let re = Regex::new(r"(?ims)Release\s+Note\s*(.*?)\s*Release\s+Note").unwrap();
     
-    re.captures(commit.message())
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().trim().to_string())
-        .filter(|s| !s.is_empty())
+    re.captures(commit.message())                   // Find regex matches in commit message
+        .and_then(|c| c.get(1))                     // Extract capture group 1 (the content between Release Note tags)
+        .map(|m| m.as_str().trim().to_string())     // Convert to string and trim whitespace from start/end
+        .filter(|s| !s.is_empty())                  // Return None if the trimmed content is empty
 }
 
 fn get_fixed_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
