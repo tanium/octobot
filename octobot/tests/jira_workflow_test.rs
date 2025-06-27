@@ -617,8 +617,7 @@ async fn test_resolve_issue_referenced_with_release_note() {
     );
 
     let expected_comment = "Referenced by commit merged into branch master: [ccddaab|http://the-commit/ccddaabbcc]\n\
-                           {quote}Some change that relates to [CLI-100]{quote}\n\
-                           Release Note: Added new API endpoint";
+                           {quote}Some change that relates to [CLI-100]{quote}";
     test.jira.mock_comment_issue("CLI-100", expected_comment, Ok(()));
 
     jira::workflow::resolve_issue(

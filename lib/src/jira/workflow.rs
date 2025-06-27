@@ -41,6 +41,13 @@ fn get_release_note<T: CommitLike>(commit: &T) -> Option<String> {
         .and_then(|c| c.get(1))                     // Extract capture group 1 (the content between Release Note tags)
         .map(|m| m.as_str().trim().to_string())     // Convert to string and trim whitespace from start/end
         .filter(|s| !s.is_empty())                  // Return None if the trimmed content is empty
+        .map(|s| {                                  // Enforce 1000 character limit
+            if s.len() > 1000 {
+                format!("{}... [truncated]", &s[..997])
+            } else {
+                s
+            }
+        })
 }
 
 fn get_fixed_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
@@ -212,8 +219,8 @@ pub async fn resolve_issue(
 
         let fix_msg = format!("Merged into branch {}: {}{}{}", branch, desc, version_desc, release_note_desc);
         let ref_msg = format!(
-            "Referenced by commit merged into branch {}: {}{}{}",
-            branch, desc, version_desc, release_note_desc
+            "Referenced by commit merged into branch {}: {}{}",
+            branch, desc, version_desc
         );
         let resolved_states = config.resolved_states();
 
@@ -783,5 +790,27 @@ mod tests {
         // Test release note with special characters
         commit.commit.message = "Fix [KEY-8] Special chars\n\nRelease Note\nFixed issue with special chars: & < > % $\nRelease Note".into();
         assert_eq!(Some("Fixed issue with special chars: & < > % $".to_string()), get_release_note(&commit));
+
+        // Test release note under character limit (should be unchanged)
+        let short_note = "A".repeat(999);
+        commit.commit.message = format!("Fix [KEY-9] Short note\n\nRelease Note\n{}\nRelease Note", short_note);
+        assert_eq!(Some(short_note), get_release_note(&commit));
+
+        // Test release note at exact character limit (should be unchanged)
+        let exact_limit_note = "A".repeat(1000);
+        commit.commit.message = format!("Fix [KEY-10] Exact limit\n\nRelease Note\n{}\nRelease Note", exact_limit_note);
+        assert_eq!(Some(exact_limit_note), get_release_note(&commit));
+
+        // Test release note just over character limit (should be truncated)
+        let just_over_note = "A".repeat(1001);
+        commit.commit.message = format!("Fix [KEY-11] Just over\n\nRelease Note\n{}\nRelease Note", just_over_note);
+        let expected_just_over = format!("{}... [truncated]", "A".repeat(997));
+        assert_eq!(Some(expected_just_over), get_release_note(&commit));
+
+        // Test release note well over character limit (should be truncated)
+        let long_note = "A".repeat(1500);
+        commit.commit.message = format!("Fix [KEY-12] Long note\n\nRelease Note\n{}\nRelease Note", long_note);
+        let expected_truncated = format!("{}... [truncated]", "A".repeat(997));
+        assert_eq!(Some(expected_truncated), get_release_note(&commit));
     }
 }
