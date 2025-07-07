@@ -36,7 +36,7 @@ fn get_jira_keys(strings: Vec<String>, projects: &[String]) -> Vec<String> {
 fn get_release_note<T: CommitLike>(commit: &T) -> Option<String> {
     // Release-Note [multi-line release note content] Release-Note
     let re = Regex::new(r"(?ims)Release-Note\s*(.*?)\s*Release-Note").unwrap();
-    
+
     re.captures(commit.message())                   // Find regex matches in commit message
         .and_then(|c| c.get(1))                     // Extract capture group 1 (the content between Release-Note tags)
         .map(|m| m.as_str().trim().to_string())     // Convert to string and trim whitespace from start/end
@@ -235,6 +235,13 @@ pub async fn resolve_issue(
                     error!("Error setting release note text for key [{}]: {}", key, e);
                 } else {
                     info!("Updated release note text for [{}]", key);
+                    
+                    // Update release note status to "Complete" when release note text is successfully set
+                    if let Err(e) = jira.set_release_note_status(&key, "Complete").await {
+                        error!("Error setting release note status for key [{}]: {}", key, e);
+                    } else {
+                        info!("Updated release note status to 'Complete' for [{}]", key);
+                    }
                 }
             }
 
@@ -763,7 +770,7 @@ mod tests {
     #[test]
     fn test_get_release_note() {
         let mut commit = Commit::new();
-        
+
         // Test commit with no release note
         commit.commit.message = "Fix [KEY-1] Some bug fix".into();
         assert_eq!(None, get_release_note(&commit));
