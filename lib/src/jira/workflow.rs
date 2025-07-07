@@ -7,7 +7,7 @@ use regex::Regex;
 
 use crate::config::JiraConfig;
 use crate::errors::*;
-use crate::github::{Commit, CommitLike, PullRequest, PushCommit};
+use crate::github::{Commit, CommitLike, Label, PullRequest, PushCommit};
 use crate::jira;
 use crate::jira::Transition;
 use crate::version;
@@ -48,6 +48,20 @@ fn get_release_note<T: CommitLike>(commit: &T) -> Option<String> {
                 s
             }
         })
+}
+
+fn get_release_note_channels(labels: &[Label]) -> Vec<String> {
+    let mut channels = Vec::new();
+    
+    for label in labels {
+        match label.name.as_str() {
+            "release-note:cloud" => channels.push("Cloud".to_string()),
+            "release-note:on-prem" => channels.push("On-Prem".to_string()),
+            _ => {} // ignore other labels
+        }
+    }
+    
+    channels
 }
 
 fn get_fixed_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
@@ -198,6 +212,7 @@ pub async fn resolve_issue(
     projects: &[String],
     jira: &dyn jira::api::Session,
     config: &JiraConfig,
+    pr_labels: Option<&[Label]>,
 ) {
     for commit in commits {
         let desc = format!(
@@ -242,6 +257,19 @@ pub async fn resolve_issue(
                         error!("Error setting release note status for key [{}]: {}", key, e);
                     } else {
                         info!("Updated release note status to 'Complete' for [{}]", key);
+                    }
+
+                    // Update release note channels field if configured and PR labels exist
+                    if let Some(labels) = pr_labels {
+                        let channels = get_release_note_channels(labels);
+                        if !channels.is_empty() {
+                            let channels_str = channels.join(", ");
+                            if let Err(e) = jira.set_release_note_channels(&key, &channels_str).await {
+                                error!("Error setting release note channels for key [{}]: {}", key, e);
+                            } else {
+                                info!("Updated release note channels to '{}' for [{}]", channels_str, key);
+                            }
+                        }
                     }
                 }
             }
@@ -829,5 +857,47 @@ mod tests {
         commit.commit.message = format!("Fix [KEY-12] Long note\n\nRelease-Note\n{}\nRelease-Note", long_note);
         let expected_truncated = format!("{}... [truncated]", "A".repeat(997));
         assert_eq!(Some(expected_truncated), get_release_note(&commit));
+    }
+
+    #[test]
+    fn test_get_release_note_channels() {
+        use crate::github::Label;
+
+        // Test with no labels
+        let labels = vec![];
+        assert_eq!(Vec::<String>::new(), get_release_note_channels(&labels));
+
+        // Test with cloud label only
+        let labels = vec![Label { name: "release-note:cloud".to_string() }];
+        assert_eq!(vec!["Cloud"], get_release_note_channels(&labels));
+
+        // Test with on-prem label only
+        let labels = vec![Label { name: "release-note:on-prem".to_string() }];
+        assert_eq!(vec!["On-Prem"], get_release_note_channels(&labels));
+
+        // Test with both labels
+        let labels = vec![
+            Label { name: "release-note:cloud".to_string() },
+            Label { name: "release-note:on-prem".to_string() },
+        ];
+        assert_eq!(vec!["Cloud", "On-Prem"], get_release_note_channels(&labels));
+
+        // Test with other labels mixed in
+        let labels = vec![
+            Label { name: "bug".to_string() },
+            Label { name: "release-note:cloud".to_string() },
+            Label { name: "enhancement".to_string() },
+            Label { name: "release-note:on-prem".to_string() },
+            Label { name: "release-note:not-needed".to_string() },
+        ];
+        assert_eq!(vec!["Cloud", "On-Prem"], get_release_note_channels(&labels));
+
+        // Test with only irrelevant labels
+        let labels = vec![
+            Label { name: "bug".to_string() },
+            Label { name: "enhancement".to_string() },
+            Label { name: "release-note:not-needed".to_string() },
+        ];
+        assert_eq!(Vec::<String>::new(), get_release_note_channels(&labels));
     }
 }

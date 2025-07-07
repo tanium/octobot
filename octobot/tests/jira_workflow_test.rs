@@ -182,6 +182,7 @@ async fn test_resolve_issue_no_resolution() {
         &projects,
         &test.jira,
         &test.config,
+        None,
     )
     .await;
 }
@@ -242,6 +243,7 @@ async fn test_resolve_issue_with_resolution() {
         &projects,
         &test.jira,
         &test.config,
+        None,
     )
     .await;
 }
@@ -565,6 +567,8 @@ async fn test_resolve_issue_with_release_note() {
     // Expect release note status to be set to "Complete"
     test.jira.mock_set_release_note_status("SER-1", "Complete", Ok(()));
 
+    // Don't expect release note channels to be updated (no PR labels provided)
+
     test.jira
         .mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
     test.jira
@@ -579,6 +583,7 @@ async fn test_resolve_issue_with_release_note() {
         &projects,
         &test.jira,
         &test.config,
+        None,
     )
     .await;
 }
@@ -618,6 +623,7 @@ async fn test_resolve_issue_with_release_note_and_version() {
         &projects,
         &test.jira,
         &test.config,
+        None,
     )
     .await;
 }
@@ -642,6 +648,56 @@ async fn test_resolve_issue_referenced_with_release_note() {
         &projects,
         &test.jira,
         &test.config,
+        None,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_resolve_issue_with_release_note_and_channels() {
+    let test = new_test();
+    let projects = vec!["SER".to_string(), "CLI".to_string()];
+    let commit = new_push_commit(
+        "Fix [SER-3] Feature with release notes\n\nRelease-Note\nAdded multi-cloud support with improved reliability\nRelease-Note",
+        "ccddeeaabb",
+    );
+
+    let expected_comment = "Merged into branch main: [ccddee|http://the-commit/ccddeeaabb]\n\
+                           {quote}Fix [SER-3] Feature with release notes{quote}\n\
+                           Release-Note\nAdded multi-cloud support with improved reliability\nRelease Note";
+    test.jira.mock_comment_issue("SER-3", expected_comment, Ok(()));
+
+    // Expect release note text field to be updated
+    test.jira.mock_set_release_note_text("SER-3", "Added multi-cloud support with improved reliability", Ok(()));
+    
+    // Expect release note status to be set to "Complete"
+    test.jira.mock_set_release_note_status("SER-3", "Complete", Ok(()));
+
+    // Expect release note channels to be updated with both Cloud and On-Prem
+    test.jira.mock_set_release_note_channels("SER-3", "Cloud, On-Prem", Ok(()));
+
+    test.jira
+        .mock_get_issue("SER-3", Ok(new_issue("SER-3", None)));
+    test.jira
+        .mock_get_transitions("SER-3", Ok(vec![new_transition("003", "resolved1")]));
+    test.jira
+        .mock_transition_issue("SER-3", &new_transition_req("003"), Ok(()));
+
+    // Create PR labels
+    let labels = vec![
+        github::Label { name: "release-note:cloud".to_string() },
+        github::Label { name: "release-note:on-prem".to_string() },
+        github::Label { name: "bug".to_string() }, // other label to test filtering
+    ];
+
+    jira::workflow::resolve_issue(
+        "main",
+        None,
+        &[commit],
+        &projects,
+        &test.jira,
+        &test.config,
+        Some(&labels),
     )
     .await;
 }
