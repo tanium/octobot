@@ -65,6 +65,7 @@ pub async fn comment_repo_version(
         jira_projects,
         jira,
         jira_config,
+        None,
     )
     .await;
 
@@ -302,6 +303,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                             &jira_projects,
                             jira,
                             jira_config,
+                            None,
                         )
                         .await;
                     }

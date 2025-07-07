@@ -662,7 +662,7 @@ async fn test_resolve_issue_with_release_note_and_channels() {
         "ccddeeaabb",
     );
 
-    let expected_comment = "Merged into branch main: [ccddee|http://the-commit/ccddeeaabb]\n\
+    let expected_comment = "Merged into branch main: [ccddeea|http://the-commit/ccddeeaabb]\n\
                            {quote}Fix [SER-3] Feature with release notes{quote}\n\
                            Release-Note\nAdded multi-cloud support with improved reliability\nRelease Note";
     test.jira.mock_comment_issue("SER-3", expected_comment, Ok(()));

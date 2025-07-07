@@ -817,11 +817,11 @@ mod tests {
         assert_eq!(Some("Added new feature for users.\nImproved performance significantly.".to_string()), get_release_note(&commit));
 
         // Test case insensitive matching
-        commit.commit.message = "Fix [KEY-4] Yet another fix\n\nrelease note\nCase insensitive test\nRELEASE NOTE".into();
+        commit.commit.message = "Fix [KEY-4] Yet another fix\n\nrelease-note\nCase insensitive test\nRELEASE-NOTE".into();
         assert_eq!(Some("Case insensitive test".to_string()), get_release_note(&commit));
 
         // Test with extra spaces and whitespace
-        commit.commit.message = "Fix [KEY-5] Fix with spaces\n\nRelease   Note  \n  Extra spaces handled  \n  Release-Note".into();
+        commit.commit.message = "Fix [KEY-5] Fix with spaces\n\nRelease-Note  \n  Extra spaces handled  \n  Release-Note".into();
         assert_eq!(Some("Extra spaces handled".to_string()), get_release_note(&commit));
 
         // Test empty release note (should return None)
