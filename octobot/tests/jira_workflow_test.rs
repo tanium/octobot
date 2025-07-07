@@ -556,7 +556,7 @@ async fn test_resolve_issue_with_release_note() {
 
     let expected_comment = "Merged into branch master: [aabbccd|http://the-commit/aabbccddee]\n\
                            {quote}Fix [SER-1] I fixed a critical bug{quote}\n\
-                           Release-Note: Fixed login issue\ncausing user lockouts";
+                           Release-Note\nFixed login issue\ncausing user lockouts\nRelease Note";
     test.jira.mock_comment_issue("SER-1", expected_comment, Ok(()));
 
     test.jira
@@ -589,7 +589,7 @@ async fn test_resolve_issue_with_release_note_and_version() {
     let expected_comment = "Merged into branch release/1.0: [bbccdda|http://the-commit/bbccddaabb]\n\
                            {quote}Fix [SER-2] Another important fix{quote}\n\
                            Included in version 2.1.0\n\
-                           Release-Note: Enhanced performance by 50%";
+                           Release-Note\nEnhanced performance by 50%\nRelease Note";
     test.jira.mock_comment_issue("SER-2", expected_comment, Ok(()));
 
     test.jira

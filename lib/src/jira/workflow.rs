@@ -214,7 +214,7 @@ pub async fn resolve_issue(
 
         let release_note_desc = match get_release_note(commit) {
             None => String::new(),
-            Some(note) => format!("\nRelease-Note: {}", note),
+            Some(note) => format!("\nRelease-Note\n{}\nRelease Note", note),
         };
 
         let fix_msg = format!("Merged into branch {}: {}{}{}", branch, desc, version_desc, release_note_desc);
