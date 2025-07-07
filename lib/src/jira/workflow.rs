@@ -229,6 +229,15 @@ pub async fn resolve_issue(
                 error!("Error commenting on key [{}]: {}", key, e);
             }
 
+            // Update release note text field if configured and release note exists
+            if let Some(release_note) = get_release_note(commit) {
+                if let Err(e) = jira.set_release_note_text(&key, &release_note).await {
+                    error!("Error setting release note text for key [{}]: {}", key, e);
+                } else {
+                    info!("Updated release note text for [{}]", key);
+                }
+            }
+
             let issue_state = try_get_issue_state(&key, jira).await;
             if !needs_transition(&issue_state, &resolved_states) {
                 continue;

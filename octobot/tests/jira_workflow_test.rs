@@ -559,6 +559,9 @@ async fn test_resolve_issue_with_release_note() {
                            Release-Note\nFixed login issue\ncausing user lockouts\nRelease Note";
     test.jira.mock_comment_issue("SER-1", expected_comment, Ok(()));
 
+    // Expect release note text field to be updated
+    test.jira.mock_set_release_note_text("SER-1", "Fixed login issue\ncausing user lockouts", Ok(()));
+
     test.jira
         .mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
     test.jira
@@ -591,6 +594,9 @@ async fn test_resolve_issue_with_release_note_and_version() {
                            Included in version 2.1.0\n\
                            Release-Note\nEnhanced performance by 50%\nRelease Note";
     test.jira.mock_comment_issue("SER-2", expected_comment, Ok(()));
+
+    // Expect release note text field to be updated
+    test.jira.mock_set_release_note_text("SER-2", "Enhanced performance by 50%", Ok(()));
 
     test.jira
         .mock_get_issue("SER-2", Ok(new_issue("SER-2", None)));
