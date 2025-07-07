@@ -40,6 +40,13 @@ pub trait Session: Send + Sync {
         &self,
         proj: &str,
     ) -> Result<HashMap<String, Vec<version::Version>>>;
+
+    async fn set_release_note_text(&self, key: &str, text: &str) -> Result<()>;
+    async fn get_release_note_text(&self, key: &str) -> Result<Option<String>>;
+    async fn set_release_note_channels(&self, key: &str, channels: &str) -> Result<()>;
+    async fn get_release_note_channels(&self, key: &str) -> Result<Option<String>>;
+    async fn set_release_note_status(&self, key: &str, status: &str) -> Result<()>;
+    async fn get_release_note_status(&self, key: &str) -> Result<Option<String>>;
 }
 
 #[derive(Debug)]
@@ -53,6 +60,12 @@ pub struct JiraSession {
     fix_versions_field: String,
     pending_versions_field: Option<String>,
     pending_versions_field_id: Option<String>,
+    release_note_text_field: Option<String>,
+    release_note_text_field_id: Option<String>,
+    release_note_channels_field: Option<String>,
+    release_note_channels_field_id: Option<String>,
+    release_note_status_field: Option<String>,
+    release_note_status_field_id: Option<String>,
     restrict_comment_visibility_to_role: Option<String>,
 }
 
@@ -128,14 +141,38 @@ impl JiraSession {
         };
         let fix_versions_field = lookup_field(&config.fix_versions(), &fields)?;
 
+        let release_note_text_field_id = match config.release_note_text_field {
+            Some(ref f) => Some(lookup_field(f, &fields)?),
+            None => None,
+        };
+
+        let release_note_channels_field_id = match config.release_note_channels_field {
+            Some(ref f) => Some(lookup_field(f, &fields)?),
+            None => None,
+        };
+
+        let release_note_status_field_id = match config.release_note_status_field {
+            Some(ref f) => Some(lookup_field(f, &fields)?),
+            None => None,
+        };
+
         debug!("Pending Version field: {:?}", pending_versions_field_id);
         debug!("Fix Versions field: {:?}", fix_versions_field);
+        debug!("Release Note Text field: {:?}", release_note_text_field_id);
+        debug!("Release Note Channels field: {:?}", release_note_channels_field_id);
+        debug!("Release Note Status field: {:?}", release_note_status_field_id);
 
         Ok(JiraSession {
             client,
             fix_versions_field,
             pending_versions_field: config.pending_versions_field.clone(),
             pending_versions_field_id,
+            release_note_text_field: config.release_note_text_field.clone(),
+            release_note_text_field_id,
+            release_note_channels_field: config.release_note_channels_field.clone(),
+            release_note_channels_field_id,
+            release_note_status_field: config.release_note_status_field.clone(),
+            release_note_status_field_id,
             restrict_comment_visibility_to_role: config.restrict_comment_visibility_to_role.clone(),
         })
     }
@@ -398,6 +435,132 @@ impl Session for JiraSession {
 
         Ok(HashMap::new())
     }
+
+    async fn set_release_note_text(&self, key: &str, text: &str) -> Result<()> {
+        if let Some(ref field_id) = self.release_note_text_field_id.clone() {
+            let req = json!({
+                "update": {
+                    field_id.to_string(): [{ "set": text }]
+                }
+            });
+
+            self.client
+                .put_void(&format!("/issue/{}", key), &req)
+                .await
+                .map_err(|e| {
+                    anyhow!(
+                        "Error setting release note text for [{}]: {}",
+                        key,
+                        e
+                    )
+                })?;
+        }
+        Ok(())
+    }
+
+    async fn get_release_note_text(&self, key: &str) -> Result<Option<String>> {
+        if let Some(ref field_id) = self.release_note_text_field_id.clone() {
+            let issue = self
+                .client
+                .get::<serde_json::Value>(&format!("/issue/{}", key))
+                .await
+                .map_err(|e| anyhow!("Error getting issue [{}]: {}", key, e))?;
+
+            let field_value = &issue["fields"][field_id];
+            if field_value.is_null() {
+                Ok(None)
+            } else {
+                Ok(Some(field_value.as_str().unwrap_or("").to_string()))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn set_release_note_channels(&self, key: &str, channels: &str) -> Result<()> {
+        if let Some(ref field_id) = self.release_note_channels_field_id.clone() {
+            // Parse comma-separated values and convert to Jira multi-select format
+            let channel_values: Vec<serde_json::Value> = channels
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|value| json!({"value": value}))
+                .collect();
+
+            let req = json!({
+                "update": {
+                    field_id.to_string(): [{ "set": channel_values }]
+                }
+            });
+
+            self.client
+                .put_void(&format!("/issue/{}", key), &req)
+                .await
+                .map_err(|e| {
+                    anyhow!(
+                        "Error setting release note channels for [{}]: {}",
+                        key,
+                        e
+                    )
+                })?;
+        }
+        Ok(())
+    }
+
+    async fn get_release_note_channels(&self, key: &str) -> Result<Option<String>> {
+        if let Some(ref field_id) = self.release_note_channels_field_id.clone() {
+            let issue = self
+                .client
+                .get::<serde_json::Value>(&format!("/issue/{}", key))
+                .await
+                .map_err(|e| anyhow!("Error getting issue [{}]: {}", key, e))?;
+
+            let field_value = &issue["fields"][field_id];
+            Ok(parse_multiselect_field(field_value))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn set_release_note_status(&self, key: &str, status: &str) -> Result<()> {
+        if let Some(ref field_id) = self.release_note_status_field_id.clone() {
+            // Format single value for Jira single-select field
+            let status_value = json!({"value": status});
+
+            let req = json!({
+                "update": {
+                    field_id.to_string(): [{ "set": status_value }]
+                }
+            });
+
+            self.client
+                .put_void(&format!("/issue/{}", key), &req)
+                .await
+                .map_err(|e| {
+                    anyhow!(
+                        "Error setting release note status for [{}]: {}",
+                        key,
+                        e
+                    )
+                })?;
+        }
+        Ok(())
+    }
+
+    async fn get_release_note_status(&self, key: &str) -> Result<Option<String>> {
+        if let Some(ref field_id) = self.release_note_status_field_id.clone() {
+            let issue = self
+                .client
+                .get::<serde_json::Value>(&format!("/issue/{}", key))
+                .await
+                .map_err(|e| anyhow!("Error getting issue [{}]: {}", key, e))?;
+
+            let field_value = &issue["fields"][field_id];
+            Ok(parse_singleselect_field(field_value))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 fn parse_pending_version_field(field: &serde_json::Value) -> Vec<version::Version> {
@@ -405,6 +568,44 @@ fn parse_pending_version_field(field: &serde_json::Value) -> Vec<version::Versio
     re.split(field.as_str().unwrap_or("").trim())
         .filter_map(version::Version::parse)
         .collect::<Vec<_>>()
+}
+
+/// Parse a Jira multi-select field that returns an array of option objects
+fn parse_multiselect_field(field: &serde_json::Value) -> Option<String> {
+    if field.is_null() {
+        None
+    } else if let Some(options_array) = field.as_array() {
+        let values: Vec<String> = options_array
+            .iter()
+            .filter_map(|option| {
+                option.get("value")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
+
+        if values.is_empty() {
+            None
+        } else {
+            Some(values.join(", "))
+        }
+    } else {
+        // Fallback: treat as simple string field
+        Some(field.as_str().unwrap_or("").to_string())
+    }
+}
+
+/// Parse a Jira single-select field that returns a single option object
+fn parse_singleselect_field(field: &serde_json::Value) -> Option<String> {
+    if field.is_null() {
+        None
+    } else if let Some(value_str) = field.get("value").and_then(|v| v.as_str()) {
+        // Single-select field: extract "value" from the option object
+        Some(value_str.to_string())
+    } else {
+        // Fallback: treat as simple string field
+        Some(field.as_str().unwrap_or("").to_string())
+    }
 }
 
 fn parse_pending_versions(
@@ -468,5 +669,85 @@ mod tests {
 
         let versions = parse_pending_versions(&search, "the-field");
         assert_eq!(expected, versions);
+    }
+
+    #[test]
+    fn test_parse_multiselect_field() {
+        // Test null field
+        let null_field = json!(null);
+        assert_eq!(parse_multiselect_field(&null_field), None);
+
+        // Test empty array
+        let empty_array = json!([]);
+        assert_eq!(parse_multiselect_field(&empty_array), None);
+
+        // Test single option
+        let single_option = json!([
+            {
+                "self": "https://jira.corp.tanium.com/rest/api/2/customFieldOption/14101",
+                "value": "Cloud",
+                "id": "14101",
+                "disabled": false
+            }
+        ]);
+        assert_eq!(parse_multiselect_field(&single_option), Some("Cloud".to_string()));
+
+        // Test multiple options
+        let multiple_options = json!([
+            {
+                "self": "https://jira.corp.tanium.com/rest/api/2/customFieldOption/14101",
+                "value": "Cloud",
+                "id": "14101",
+                "disabled": false
+            },
+            {
+                "self": "https://jira.corp.tanium.com/rest/api/2/customFieldOption/14102",
+                "value": "On-Prem",
+                "id": "14102",
+                "disabled": false
+            }
+        ]);
+        assert_eq!(parse_multiselect_field(&multiple_options), Some("Cloud, On-Prem".to_string()));
+
+        // Test fallback to string field
+        let string_field = json!("Direct String Value");
+        assert_eq!(parse_multiselect_field(&string_field), Some("Direct String Value".to_string()));
+    }
+
+    #[test]
+    fn test_parse_singleselect_field() {
+        // Test null field
+        let null_field = json!(null);
+        assert_eq!(parse_singleselect_field(&null_field), None);
+
+        // Test single option object
+        let single_option = json!({
+            "self": "https://jira.corp.tanium.com/rest/api/2/customFieldOption/13519",
+            "value": "Incomplete",
+            "id": "13519",
+            "disabled": false
+        });
+        assert_eq!(parse_singleselect_field(&single_option), Some("Incomplete".to_string()));
+
+        // Test different status values
+        let complete_option = json!({
+            "self": "https://jira.corp.tanium.com/rest/api/2/customFieldOption/13520",
+            "value": "Complete",
+            "id": "13520",
+            "disabled": false
+        });
+        assert_eq!(parse_singleselect_field(&complete_option), Some("Complete".to_string()));
+
+        let not_needed_option = json!({
+            "self": "https://jira.corp.tanium.com/rest/api/2/customFieldOption/13521",
+            "value": "Release-Note Not Needed",
+            "id": "13521",
+            "disabled": false
+        });
+        assert_eq!(parse_singleselect_field(&not_needed_option), Some("Release-Note Not Needed".to_string()));
+
+        // Test fallback to string field
+        let string_field = json!("Direct String Value");
+        assert_eq!(parse_singleselect_field(&string_field), Some("Direct String Value".to_string()));
     }
 }

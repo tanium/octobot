@@ -228,6 +228,9 @@ fn new_test_with_jira() -> GithubHandlerTest {
         fixed_resolutions: Some(vec![":boom:".into()]),
         fix_versions_field: Some("the-versions".into()),
         pending_versions_field: Some("the-pending-versions".into()),
+        release_note_text_field: Some("the-release-note-text".into()),
+        release_note_channels_field: Some("the-release-note-channels".into()),
+        release_note_status_field: Some("the-release-note-status".into()),
         restrict_comment_visibility_to_role: None,
         login_suffix: None,
     });

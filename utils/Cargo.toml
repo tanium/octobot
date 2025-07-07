@@ -14,9 +14,15 @@ doc = false
 name = "octobot-passwd"
 path = "src/octobot-passwd.rs"
 
+[[bin]]
+doc = false
+name = "jira-test"
+path = "src/jira-test.rs"
+
 [dependencies]
 rpassword = "7.2.0"
 ring = "0.17.13"
 regex = "1.9.3"
 octobot_lib = { "path" = "../lib" }
 hex = "0.4.3"
+tokio = { version = "1.43.1", features = ["full"] }

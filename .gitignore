@@ -1,5 +1,8 @@
 repos/
 target/
 config/
+config.toml
+db.sqlite3
 .docker-tmp/
 .idea/
+.vscode/

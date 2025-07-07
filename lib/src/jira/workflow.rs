@@ -34,11 +34,11 @@ fn get_jira_keys(strings: Vec<String>, projects: &[String]) -> Vec<String> {
 }
 
 fn get_release_note<T: CommitLike>(commit: &T) -> Option<String> {
-    // Release Note [multi-line release note content] Release Note
-    let re = Regex::new(r"(?ims)Release\s+Note\s*(.*?)\s*Release\s+Note").unwrap();
+    // Release-Note [multi-line release note content] Release-Note
+    let re = Regex::new(r"(?ims)Release-Note\s*(.*?)\s*Release-Note").unwrap();
     
     re.captures(commit.message())                   // Find regex matches in commit message
-        .and_then(|c| c.get(1))                     // Extract capture group 1 (the content between Release Note tags)
+        .and_then(|c| c.get(1))                     // Extract capture group 1 (the content between Release-Note tags)
         .map(|m| m.as_str().trim().to_string())     // Convert to string and trim whitespace from start/end
         .filter(|s| !s.is_empty())                  // Return None if the trimmed content is empty
         .map(|s| {                                  // Enforce 1000 character limit
@@ -214,7 +214,7 @@ pub async fn resolve_issue(
 
         let release_note_desc = match get_release_note(commit) {
             None => String::new(),
-            Some(note) => format!("\nRelease Note: {}", note),
+            Some(note) => format!("\nRelease-Note: {}", note),
         };
 
         let fix_msg = format!("Merged into branch {}: {}{}{}", branch, desc, version_desc, release_note_desc);
@@ -760,15 +760,15 @@ mod tests {
         assert_eq!(None, get_release_note(&commit));
 
         // Test example 1: content on same line and multiple lines
-        commit.commit.message = "Fix [KEY-1]\n\nRelease Note abc\nxyz\ns kkk\nddd   Release Note".into();
+        commit.commit.message = "Fix [KEY-1]\n\nRelease-Note abc\nxyz\ns kkk\nddd   Release-Note".into();
         assert_eq!(Some("abc\nxyz\ns kkk\nddd".to_string()), get_release_note(&commit));
 
         // Test example 2: single line content
-        commit.commit.message = "Fix [KEY-2]\n\nRelease Note\nxyz Release Note".into();
+        commit.commit.message = "Fix [KEY-2]\n\nRelease-Note\nxyz Release-Note".into();
         assert_eq!(Some("xyz".to_string()), get_release_note(&commit));
 
         // Test traditional multi-line release note
-        commit.commit.message = "Fix [KEY-3] Another fix\n\nRelease Note\nAdded new feature for users.\nImproved performance significantly.\nRelease Note".into();
+        commit.commit.message = "Fix [KEY-3] Another fix\n\nRelease-Note\nAdded new feature for users.\nImproved performance significantly.\nRelease-Note".into();
         assert_eq!(Some("Added new feature for users.\nImproved performance significantly.".to_string()), get_release_note(&commit));
 
         // Test case insensitive matching
@@ -776,40 +776,40 @@ mod tests {
         assert_eq!(Some("Case insensitive test".to_string()), get_release_note(&commit));
 
         // Test with extra spaces and whitespace
-        commit.commit.message = "Fix [KEY-5] Fix with spaces\n\nRelease   Note  \n  Extra spaces handled  \n  Release Note".into();
+        commit.commit.message = "Fix [KEY-5] Fix with spaces\n\nRelease   Note  \n  Extra spaces handled  \n  Release-Note".into();
         assert_eq!(Some("Extra spaces handled".to_string()), get_release_note(&commit));
 
         // Test empty release note (should return None)
-        commit.commit.message = "Fix [KEY-6] Empty note\n\nRelease Note\n\nRelease Note".into();
+        commit.commit.message = "Fix [KEY-6] Empty note\n\nRelease-Note\n\nRelease-Note".into();
         assert_eq!(None, get_release_note(&commit));
 
         // Test inline release note
-        commit.commit.message = "Fix [KEY-7] Inline\n\nRelease Note Fixed inline issue Release Note".into();
+        commit.commit.message = "Fix [KEY-7] Inline\n\nRelease-Note Fixed inline issue Release-Note".into();
         assert_eq!(Some("Fixed inline issue".to_string()), get_release_note(&commit));
 
         // Test release note with special characters
-        commit.commit.message = "Fix [KEY-8] Special chars\n\nRelease Note\nFixed issue with special chars: & < > % $\nRelease Note".into();
+        commit.commit.message = "Fix [KEY-8] Special chars\n\nRelease-Note\nFixed issue with special chars: & < > % $\nRelease-Note".into();
         assert_eq!(Some("Fixed issue with special chars: & < > % $".to_string()), get_release_note(&commit));
 
         // Test release note under character limit (should be unchanged)
         let short_note = "A".repeat(999);
-        commit.commit.message = format!("Fix [KEY-9] Short note\n\nRelease Note\n{}\nRelease Note", short_note);
+        commit.commit.message = format!("Fix [KEY-9] Short note\n\nRelease-Note\n{}\nRelease-Note", short_note);
         assert_eq!(Some(short_note), get_release_note(&commit));
 
         // Test release note at exact character limit (should be unchanged)
         let exact_limit_note = "A".repeat(1000);
-        commit.commit.message = format!("Fix [KEY-10] Exact limit\n\nRelease Note\n{}\nRelease Note", exact_limit_note);
+        commit.commit.message = format!("Fix [KEY-10] Exact limit\n\nRelease-Note\n{}\nRelease-Note", exact_limit_note);
         assert_eq!(Some(exact_limit_note), get_release_note(&commit));
 
         // Test release note just over character limit (should be truncated)
         let just_over_note = "A".repeat(1001);
-        commit.commit.message = format!("Fix [KEY-11] Just over\n\nRelease Note\n{}\nRelease Note", just_over_note);
+        commit.commit.message = format!("Fix [KEY-11] Just over\n\nRelease-Note\n{}\nRelease-Note", just_over_note);
         let expected_just_over = format!("{}... [truncated]", "A".repeat(997));
         assert_eq!(Some(expected_just_over), get_release_note(&commit));
 
         // Test release note well over character limit (should be truncated)
         let long_note = "A".repeat(1500);
-        commit.commit.message = format!("Fix [KEY-12] Long note\n\nRelease Note\n{}\nRelease Note", long_note);
+        commit.commit.message = format!("Fix [KEY-12] Long note\n\nRelease-Note\n{}\nRelease-Note", long_note);
         let expected_truncated = format!("{}... [truncated]", "A".repeat(997));
         assert_eq!(Some(expected_truncated), get_release_note(&commit));
     }

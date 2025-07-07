@@ -27,6 +27,9 @@ fn new_test() -> JiraWorkflowTest {
         fixed_resolutions: Some(vec!["it-is-fixed".into()]),
         fix_versions_field: Some("the-versions".into()),
         pending_versions_field: Some("the-pending-versions".into()),
+        release_note_text_field: Some("the-release-note-text".into()),
+        release_note_channels_field: Some("the-release-note-channels".into()),
+        release_note_status_field: Some("the-release-note-status".into()),
         restrict_comment_visibility_to_role: None,
         login_suffix: None,
     };
@@ -547,13 +550,13 @@ async fn test_resolve_issue_with_release_note() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_push_commit(
-        "Fix [SER-1] I fixed a critical bug\n\nRelease Note Fixed login issue\ncausing user lockouts Release Note",
+        "Fix [SER-1] I fixed a critical bug\n\nRelease-Note Fixed login issue\ncausing user lockouts Release-Note",
         "aabbccddee",
     );
 
     let expected_comment = "Merged into branch master: [aabbccd|http://the-commit/aabbccddee]\n\
                            {quote}Fix [SER-1] I fixed a critical bug{quote}\n\
-                           Release Note: Fixed login issue\ncausing user lockouts";
+                           Release-Note: Fixed login issue\ncausing user lockouts";
     test.jira.mock_comment_issue("SER-1", expected_comment, Ok(()));
 
     test.jira
@@ -579,14 +582,14 @@ async fn test_resolve_issue_with_release_note_and_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_push_commit(
-        "Fix [SER-2] Another important fix\n\nRelease Note\nEnhanced performance by 50% Release Note",
+        "Fix [SER-2] Another important fix\n\nRelease-Note\nEnhanced performance by 50% Release-Note",
         "bbccddaabb",
     );
 
     let expected_comment = "Merged into branch release/1.0: [bbccdda|http://the-commit/bbccddaabb]\n\
                            {quote}Fix [SER-2] Another important fix{quote}\n\
                            Included in version 2.1.0\n\
-                           Release Note: Enhanced performance by 50%";
+                           Release-Note: Enhanced performance by 50%";
     test.jira.mock_comment_issue("SER-2", expected_comment, Ok(()));
 
     test.jira

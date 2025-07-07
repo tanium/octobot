@@ -20,6 +20,12 @@ pub struct MockJira {
     remove_pending_versions_calls: Mutex<Vec<MockCall<()>>>,
     #[allow(clippy::type_complexity)]
     find_pending_versions_calls: Mutex<Vec<MockCall<HashMap<String, Vec<version::Version>>>>>,
+    set_release_note_text_calls: Mutex<Vec<MockCall<()>>>,
+    get_release_note_text_calls: Mutex<Vec<MockCall<Option<String>>>>,
+    set_release_note_channels_calls: Mutex<Vec<MockCall<()>>>,
+    get_release_note_channels_calls: Mutex<Vec<MockCall<Option<String>>>>,
+    set_release_note_status_calls: Mutex<Vec<MockCall<()>>>,
+    get_release_note_status_calls: Mutex<Vec<MockCall<Option<String>>>>,
 }
 
 #[derive(Debug)]
@@ -51,6 +57,12 @@ impl MockJira {
             add_pending_version_calls: Mutex::new(vec![]),
             remove_pending_versions_calls: Mutex::new(vec![]),
             find_pending_versions_calls: Mutex::new(vec![]),
+            set_release_note_text_calls: Mutex::new(vec![]),
+            get_release_note_text_calls: Mutex::new(vec![]),
+            set_release_note_channels_calls: Mutex::new(vec![]),
+            get_release_note_channels_calls: Mutex::new(vec![]),
+            set_release_note_status_calls: Mutex::new(vec![]),
+            get_release_note_status_calls: Mutex::new(vec![]),
         }
     }
 }
@@ -112,6 +124,36 @@ impl Drop for MockJira {
                 self.find_pending_versions_calls.lock().unwrap().len() == 0,
                 "Unmet find_pending_versions calls: {:?}",
                 *self.find_pending_versions_calls.lock().unwrap()
+            );
+            assert!(
+                self.set_release_note_text_calls.lock().unwrap().len() == 0,
+                "Unmet set_release_note_text calls: {:?}",
+                *self.set_release_note_text_calls.lock().unwrap()
+            );
+            assert!(
+                self.get_release_note_text_calls.lock().unwrap().len() == 0,
+                "Unmet get_release_note_text calls: {:?}",
+                *self.get_release_note_text_calls.lock().unwrap()
+            );
+            assert!(
+                self.set_release_note_channels_calls.lock().unwrap().len() == 0,
+                "Unmet set_release_note_channels calls: {:?}",
+                *self.set_release_note_channels_calls.lock().unwrap()
+            );
+            assert!(
+                self.get_release_note_channels_calls.lock().unwrap().len() == 0,
+                "Unmet get_release_note_channels calls: {:?}",
+                *self.get_release_note_channels_calls.lock().unwrap()
+            );
+            assert!(
+                self.set_release_note_status_calls.lock().unwrap().len() == 0,
+                "Unmet set_release_note_status calls: {:?}",
+                *self.set_release_note_status_calls.lock().unwrap()
+            );
+            assert!(
+                self.get_release_note_status_calls.lock().unwrap().len() == 0,
+                "Unmet get_release_note_status calls: {:?}",
+                *self.get_release_note_status_calls.lock().unwrap()
             );
         }
     }
@@ -237,6 +279,63 @@ impl Session for MockJira {
 
         call.ret
     }
+
+    async fn set_release_note_text(&self, key: &str, text: &str) -> Result<()> {
+        let mut calls = self.set_release_note_text_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to set_release_note_text");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], key);
+        assert_eq!(call.args[1], text);
+
+        call.ret
+    }
+
+    async fn get_release_note_text(&self, key: &str) -> Result<Option<String>> {
+        let mut calls = self.get_release_note_text_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_release_note_text");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], key);
+
+        call.ret
+    }
+
+    async fn set_release_note_channels(&self, key: &str, channels: &str) -> Result<()> {
+        let mut calls = self.set_release_note_channels_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to set_release_note_channels");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], key);
+        assert_eq!(call.args[1], channels);
+
+        call.ret
+    }
+
+    async fn get_release_note_channels(&self, key: &str) -> Result<Option<String>> {
+        let mut calls = self.get_release_note_channels_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_release_note_channels");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], key);
+
+        call.ret
+    }
+
+    async fn set_release_note_status(&self, key: &str, status: &str) -> Result<()> {
+        let mut calls = self.set_release_note_status_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to set_release_note_status");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], key);
+        assert_eq!(call.args[1], status);
+
+        call.ret
+    }
+
+    async fn get_release_note_status(&self, key: &str) -> Result<Option<String>> {
+        let mut calls = self.get_release_note_status_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_release_note_status");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], key);
+
+        call.ret
+    }
 }
 
 impl MockJira {
@@ -332,5 +431,47 @@ impl MockJira {
             .lock()
             .unwrap()
             .push(MockCall::new(ret, vec![proj]));
+    }
+
+    pub fn mock_set_release_note_text(&self, key: &str, text: &str, ret: Result<()>) {
+        self.set_release_note_text_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key, text]));
+    }
+
+    pub fn mock_get_release_note_text(&self, key: &str, ret: Result<Option<String>>) {
+        self.get_release_note_text_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key]));
+    }
+
+    pub fn mock_set_release_note_channels(&self, key: &str, channels: &str, ret: Result<()>) {
+        self.set_release_note_channels_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key, channels]));
+    }
+
+    pub fn mock_get_release_note_channels(&self, key: &str, ret: Result<Option<String>>) {
+        self.get_release_note_channels_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key]));
+    }
+
+    pub fn mock_set_release_note_status(&self, key: &str, status: &str, ret: Result<()>) {
+        self.set_release_note_status_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key, status]));
+    }
+
+    pub fn mock_get_release_note_status(&self, key: &str, ret: Result<Option<String>>) {
+        self.get_release_note_status_calls
+            .lock()
+            .unwrap()
+            .push(MockCall::new(ret, vec![key]));
     }
 }
