@@ -14,7 +14,6 @@ doc = false
 name = "octobot-passwd"
 path = "src/octobot-passwd.rs"
 
-
 [dependencies]
 rpassword = "7.2.0"
 ring = "0.17.13"
