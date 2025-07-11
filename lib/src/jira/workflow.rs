@@ -251,7 +251,7 @@ pub async fn resolve_issue(
 
             // Update release note text field if configured and release note exists
             if let Some(release_note) = &release_note {
-                if let Err(e) = jira.set_release_note_text(&key, &release_note).await {
+                if let Err(e) = jira.set_release_note_text(&key, release_note).await {
                     error!("Error setting release note text for key [{}]: {}", key, e);
                 } else {
                     info!("Updated release note text for [{}]", key);
