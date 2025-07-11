@@ -7,7 +7,7 @@ use regex::Regex;
 
 use crate::config::JiraConfig;
 use crate::errors::*;
-use crate::github::{Commit, CommitLike, PullRequest, PushCommit};
+use crate::github::{Commit, CommitLike, Label, PullRequest, PushCommit};
 use crate::jira;
 use crate::jira::Transition;
 use crate::version;
@@ -31,6 +31,38 @@ fn get_jira_keys(strings: Vec<String>, projects: &[String]) -> Vec<String> {
     all_keys.dedup();
 
     all_keys
+}
+
+fn get_release_note<T: CommitLike>(commit: &T) -> Option<String> {
+    // Release-Note [multi-line release note content] Release-Note
+    let re = Regex::new(r"(?ims)Release-Note\s*(.*?)\s*Release-Note").unwrap();
+
+    re.captures(commit.message()) // Find regex matches in commit message
+        .and_then(|c| c.get(1)) // Extract capture group 1 (the content between Release-Note tags)
+        .map(|m| m.as_str().trim().to_string()) // Convert to string and trim whitespace from start/end
+        .filter(|s| !s.is_empty()) // Return None if the trimmed content is empty
+        .map(|s| {
+            // Enforce 1000 character limit
+            if s.len() > 1000 {
+                format!("{}... [truncated]", &s[..997])
+            } else {
+                s
+            }
+        })
+}
+
+fn get_release_note_channels(labels: &[Label]) -> Vec<String> {
+    let mut channels = Vec::new();
+
+    for label in labels {
+        match label.name.as_str() {
+            "release-note:cloud" => channels.push("Cloud".to_string()),
+            "release-note:on-prem" => channels.push("On-Prem".to_string()),
+            _ => {} // ignore other labels
+        }
+    }
+
+    channels
 }
 
 fn get_fixed_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
@@ -181,6 +213,7 @@ pub async fn resolve_issue(
     projects: &[String],
     jira: &dyn jira::api::Session,
     config: &JiraConfig,
+    pr_labels: Option<&[Label]>,
 ) {
     for commit in commits {
         let desc = format!(
@@ -195,7 +228,16 @@ pub async fn resolve_issue(
             Some(v) => format!("\nIncluded in version {}", v),
         };
 
-        let fix_msg = format!("Merged into branch {}: {}{}", branch, desc, version_desc);
+        let release_note = get_release_note(commit);
+        let release_note_desc = match &release_note {
+            None => String::new(),
+            Some(note) => format!("\nRelease-Note\n{}\nRelease Note", note),
+        };
+
+        let fix_msg = format!(
+            "Merged into branch {}: {}{}{}",
+            branch, desc, version_desc, release_note_desc
+        );
         let ref_msg = format!(
             "Referenced by commit merged into branch {}: {}{}",
             branch, desc, version_desc
@@ -205,6 +247,43 @@ pub async fn resolve_issue(
         for key in get_fixed_jira_keys(&[commit], projects) {
             if let Err(e) = jira.comment_issue(&key, &fix_msg).await {
                 error!("Error commenting on key [{}]: {}", key, e);
+            }
+
+            // Update release note text field if configured and release note exists
+            if let Some(release_note) = &release_note {
+                if let Err(e) = jira.set_release_note_text(&key, release_note).await {
+                    error!("Error setting release note text for key [{}]: {}", key, e);
+                } else {
+                    info!("Updated release note text for [{}]", key);
+
+                    // Update release note status to "Complete" when release note text is successfully set
+                    if let Err(e) = jira.set_release_note_status(&key, "Complete").await {
+                        error!("Error setting release note status for key [{}]: {}", key, e);
+                    } else {
+                        info!("Updated release note status to 'Complete' for [{}]", key);
+                    }
+
+                    // Update release note channels field if configured and PR labels exist
+                    if let Some(labels) = pr_labels {
+                        let channels = get_release_note_channels(labels);
+                        if !channels.is_empty() {
+                            let channels_str = channels.join(", ");
+                            if let Err(e) =
+                                jira.set_release_note_channels(&key, &channels_str).await
+                            {
+                                error!(
+                                    "Error setting release note channels for key [{}]: {}",
+                                    key, e
+                                );
+                            } else {
+                                info!(
+                                    "Updated release note channels to '{}' for [{}]",
+                                    channels_str, key
+                                );
+                            }
+                        }
+                    }
+                }
             }
 
             let issue_state = try_get_issue_state(&key, jira).await;
@@ -727,5 +806,168 @@ mod tests {
             expected,
             find_relevant_versions(&target_version, &pending_versions, &real_versions)
         );
+    }
+
+    #[test]
+    fn test_get_release_note() {
+        let mut commit = Commit::new();
+
+        // Test commit with no release note
+        commit.commit.message = "Fix [KEY-1] Some bug fix".into();
+        assert_eq!(None, get_release_note(&commit));
+
+        // Test example 1: content on same line and multiple lines
+        commit.commit.message =
+            "Fix [KEY-1]\n\nRelease-Note abc\nxyz\ns kkk\nddd   Release-Note".into();
+        assert_eq!(
+            Some("abc\nxyz\ns kkk\nddd".to_string()),
+            get_release_note(&commit)
+        );
+
+        // Test example 2: single line content
+        commit.commit.message = "Fix [KEY-2]\n\nRelease-Note\nxyz Release-Note".into();
+        assert_eq!(Some("xyz".to_string()), get_release_note(&commit));
+
+        // Test traditional multi-line release note
+        commit.commit.message = "Fix [KEY-3] Another fix\n\nRelease-Note\nAdded new feature for users.\nImproved performance significantly.\nRelease-Note".into();
+        assert_eq!(
+            Some("Added new feature for users.\nImproved performance significantly.".to_string()),
+            get_release_note(&commit)
+        );
+
+        // Test case insensitive matching
+        commit.commit.message =
+            "Fix [KEY-4] Yet another fix\n\nrelease-note\nCase insensitive test\nRELEASE-NOTE"
+                .into();
+        assert_eq!(
+            Some("Case insensitive test".to_string()),
+            get_release_note(&commit)
+        );
+
+        // Test with extra spaces and whitespace
+        commit.commit.message = "Fix [KEY-5] Fix with spaces\n\nRelease-Note  \n  Extra spaces handled  \n  Release-Note".into();
+        assert_eq!(
+            Some("Extra spaces handled".to_string()),
+            get_release_note(&commit)
+        );
+
+        // Test empty release note (should return None)
+        commit.commit.message = "Fix [KEY-6] Empty note\n\nRelease-Note\n\nRelease-Note".into();
+        assert_eq!(None, get_release_note(&commit));
+
+        // Test inline release note
+        commit.commit.message =
+            "Fix [KEY-7] Inline\n\nRelease-Note Fixed inline issue Release-Note".into();
+        assert_eq!(
+            Some("Fixed inline issue".to_string()),
+            get_release_note(&commit)
+        );
+
+        // Test release note with special characters
+        commit.commit.message = "Fix [KEY-8] Special chars\n\nRelease-Note\nFixed issue with special chars: & < > % $\nRelease-Note".into();
+        assert_eq!(
+            Some("Fixed issue with special chars: & < > % $".to_string()),
+            get_release_note(&commit)
+        );
+
+        // Test release note under character limit (should be unchanged)
+        let short_note = "A".repeat(999);
+        commit.commit.message = format!(
+            "Fix [KEY-9] Short note\n\nRelease-Note\n{}\nRelease-Note",
+            short_note
+        );
+        assert_eq!(Some(short_note), get_release_note(&commit));
+
+        // Test release note at exact character limit (should be unchanged)
+        let exact_limit_note = "A".repeat(1000);
+        commit.commit.message = format!(
+            "Fix [KEY-10] Exact limit\n\nRelease-Note\n{}\nRelease-Note",
+            exact_limit_note
+        );
+        assert_eq!(Some(exact_limit_note), get_release_note(&commit));
+
+        // Test release note just over character limit (should be truncated)
+        let just_over_note = "A".repeat(1001);
+        commit.commit.message = format!(
+            "Fix [KEY-11] Just over\n\nRelease-Note\n{}\nRelease-Note",
+            just_over_note
+        );
+        let expected_just_over = format!("{}... [truncated]", "A".repeat(997));
+        assert_eq!(Some(expected_just_over), get_release_note(&commit));
+
+        // Test release note well over character limit (should be truncated)
+        let long_note = "A".repeat(1500);
+        commit.commit.message = format!(
+            "Fix [KEY-12] Long note\n\nRelease-Note\n{}\nRelease-Note",
+            long_note
+        );
+        let expected_truncated = format!("{}... [truncated]", "A".repeat(997));
+        assert_eq!(Some(expected_truncated), get_release_note(&commit));
+    }
+
+    #[test]
+    fn test_get_release_note_channels() {
+        use crate::github::Label;
+
+        // Test with no labels
+        let labels = vec![];
+        assert_eq!(Vec::<String>::new(), get_release_note_channels(&labels));
+
+        // Test with cloud label only
+        let labels = vec![Label {
+            name: "release-note:cloud".to_string(),
+        }];
+        assert_eq!(vec!["Cloud"], get_release_note_channels(&labels));
+
+        // Test with on-prem label only
+        let labels = vec![Label {
+            name: "release-note:on-prem".to_string(),
+        }];
+        assert_eq!(vec!["On-Prem"], get_release_note_channels(&labels));
+
+        // Test with both labels
+        let labels = vec![
+            Label {
+                name: "release-note:cloud".to_string(),
+            },
+            Label {
+                name: "release-note:on-prem".to_string(),
+            },
+        ];
+        assert_eq!(vec!["Cloud", "On-Prem"], get_release_note_channels(&labels));
+
+        // Test with other labels mixed in
+        let labels = vec![
+            Label {
+                name: "bug".to_string(),
+            },
+            Label {
+                name: "release-note:cloud".to_string(),
+            },
+            Label {
+                name: "enhancement".to_string(),
+            },
+            Label {
+                name: "release-note:on-prem".to_string(),
+            },
+            Label {
+                name: "release-note:not-needed".to_string(),
+            },
+        ];
+        assert_eq!(vec!["Cloud", "On-Prem"], get_release_note_channels(&labels));
+
+        // Test with only irrelevant labels
+        let labels = vec![
+            Label {
+                name: "bug".to_string(),
+            },
+            Label {
+                name: "enhancement".to_string(),
+            },
+            Label {
+                name: "release-note:not-needed".to_string(),
+            },
+        ];
+        assert_eq!(Vec::<String>::new(), get_release_note_channels(&labels));
     }
 }

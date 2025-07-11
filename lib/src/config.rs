@@ -92,6 +92,12 @@ pub struct JiraConfig {
     pub fix_versions_field: Option<String>,
     // the field name for where the pending build versions go. expected to be a plain text field
     pub pending_versions_field: Option<String>,
+    // the field where the release notes are written. expected to be a plain text field
+    pub release_note_text_field: Option<String>,
+    // the field name for where release note channels are tracked. expected to be a multi-select field
+    pub release_note_channels_field: Option<String>,
+    // the field name for where release note status is tracked. expected to be a single-select field
+    pub release_note_status_field: Option<String>,
     // optional name of role to restrict octobot comment visibility. (e.g. "Developers")
     pub restrict_comment_visibility_to_role: Option<String>,
     // optional suffix to add to the username for the login dialog (e.g. "@company.com")

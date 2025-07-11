@@ -40,6 +40,10 @@ pub trait Session: Send + Sync {
         &self,
         proj: &str,
     ) -> Result<HashMap<String, Vec<version::Version>>>;
+
+    async fn set_release_note_text(&self, key: &str, text: &str) -> Result<()>;
+    async fn set_release_note_channels(&self, key: &str, channels: &str) -> Result<()>;
+    async fn set_release_note_status(&self, key: &str, status: &str) -> Result<()>;
 }
 
 #[derive(Debug)]
@@ -53,6 +57,9 @@ pub struct JiraSession {
     fix_versions_field: String,
     pending_versions_field: Option<String>,
     pending_versions_field_id: Option<String>,
+    release_note_text_field_id: Option<String>,
+    release_note_channels_field_id: Option<String>,
+    release_note_status_field_id: Option<String>,
     restrict_comment_visibility_to_role: Option<String>,
 }
 
@@ -128,14 +135,41 @@ impl JiraSession {
         };
         let fix_versions_field = lookup_field(&config.fix_versions(), &fields)?;
 
+        let release_note_text_field_id = match config.release_note_text_field {
+            Some(ref f) => Some(lookup_field(f, &fields)?),
+            None => None,
+        };
+
+        let release_note_channels_field_id = match config.release_note_channels_field {
+            Some(ref f) => Some(lookup_field(f, &fields)?),
+            None => None,
+        };
+
+        let release_note_status_field_id = match config.release_note_status_field {
+            Some(ref f) => Some(lookup_field(f, &fields)?),
+            None => None,
+        };
+
         debug!("Pending Version field: {:?}", pending_versions_field_id);
         debug!("Fix Versions field: {:?}", fix_versions_field);
+        debug!("Release Note Text field: {:?}", release_note_text_field_id);
+        debug!(
+            "Release Note Channels field: {:?}",
+            release_note_channels_field_id
+        );
+        debug!(
+            "Release Note Status field: {:?}",
+            release_note_status_field_id
+        );
 
         Ok(JiraSession {
             client,
             fix_versions_field,
             pending_versions_field: config.pending_versions_field.clone(),
             pending_versions_field_id,
+            release_note_text_field_id,
+            release_note_channels_field_id,
+            release_note_status_field_id,
             restrict_comment_visibility_to_role: config.restrict_comment_visibility_to_role.clone(),
         })
     }
@@ -397,6 +431,65 @@ impl Session for JiraSession {
         }
 
         Ok(HashMap::new())
+    }
+
+    async fn set_release_note_text(&self, key: &str, text: &str) -> Result<()> {
+        if let Some(ref field_id) = self.release_note_text_field_id.clone() {
+            let req = json!({
+                "update": {
+                    field_id.to_string(): [{ "set": text }]
+                }
+            });
+
+            self.client
+                .put_void(&format!("/issue/{}", key), &req)
+                .await
+                .map_err(|e| anyhow!("Error setting release note text for [{}]: {}", key, e))?;
+        }
+        Ok(())
+    }
+
+    async fn set_release_note_channels(&self, key: &str, channels: &str) -> Result<()> {
+        if let Some(ref field_id) = self.release_note_channels_field_id.clone() {
+            // Parse comma-separated values and convert to Jira multi-select format
+            let channel_values: Vec<serde_json::Value> = channels
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|value| json!({"value": value}))
+                .collect();
+
+            let req = json!({
+                "update": {
+                    field_id.to_string(): [{ "set": channel_values }]
+                }
+            });
+
+            self.client
+                .put_void(&format!("/issue/{}", key), &req)
+                .await
+                .map_err(|e| anyhow!("Error setting release note channels for [{}]: {}", key, e))?;
+        }
+        Ok(())
+    }
+
+    async fn set_release_note_status(&self, key: &str, status: &str) -> Result<()> {
+        if let Some(ref field_id) = self.release_note_status_field_id.clone() {
+            // Format single value for Jira single-select field
+            let status_value = json!({"value": status});
+
+            let req = json!({
+                "update": {
+                    field_id.to_string(): [{ "set": status_value }]
+                }
+            });
+
+            self.client
+                .put_void(&format!("/issue/{}", key), &req)
+                .await
+                .map_err(|e| anyhow!("Error setting release note status for [{}]: {}", key, e))?;
+        }
+        Ok(())
     }
 }
 
