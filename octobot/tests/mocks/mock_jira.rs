@@ -271,7 +271,10 @@ impl Session for MockJira {
 
     async fn set_release_note_channels(&self, key: &str, channels: &str) -> Result<()> {
         let mut calls = self.set_release_note_channels_calls.lock().unwrap();
-        assert!(calls.len() > 0, "Unexpected call to set_release_note_channels");
+        assert!(
+            calls.len() > 0,
+            "Unexpected call to set_release_note_channels"
+        );
         let call = calls.remove(0);
         assert_eq!(call.args[0], key);
         assert_eq!(call.args[1], channels);
@@ -281,14 +284,16 @@ impl Session for MockJira {
 
     async fn set_release_note_status(&self, key: &str, status: &str) -> Result<()> {
         let mut calls = self.set_release_note_status_calls.lock().unwrap();
-        assert!(calls.len() > 0, "Unexpected call to set_release_note_status");
+        assert!(
+            calls.len() > 0,
+            "Unexpected call to set_release_note_status"
+        );
         let call = calls.remove(0);
         assert_eq!(call.args[0], key);
         assert_eq!(call.args[1], status);
 
         call.ret
     }
-
 }
 
 impl MockJira {
@@ -406,5 +411,4 @@ impl MockJira {
             .unwrap()
             .push(MockCall::new(ret, vec![key, status]));
     }
-
 }

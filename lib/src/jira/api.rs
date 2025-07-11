@@ -153,8 +153,14 @@ impl JiraSession {
         debug!("Pending Version field: {:?}", pending_versions_field_id);
         debug!("Fix Versions field: {:?}", fix_versions_field);
         debug!("Release Note Text field: {:?}", release_note_text_field_id);
-        debug!("Release Note Channels field: {:?}", release_note_channels_field_id);
-        debug!("Release Note Status field: {:?}", release_note_status_field_id);
+        debug!(
+            "Release Note Channels field: {:?}",
+            release_note_channels_field_id
+        );
+        debug!(
+            "Release Note Status field: {:?}",
+            release_note_status_field_id
+        );
 
         Ok(JiraSession {
             client,
@@ -438,13 +444,7 @@ impl Session for JiraSession {
             self.client
                 .put_void(&format!("/issue/{}", key), &req)
                 .await
-                .map_err(|e| {
-                    anyhow!(
-                        "Error setting release note text for [{}]: {}",
-                        key,
-                        e
-                    )
-                })?;
+                .map_err(|e| anyhow!("Error setting release note text for [{}]: {}", key, e))?;
         }
         Ok(())
     }
@@ -468,13 +468,7 @@ impl Session for JiraSession {
             self.client
                 .put_void(&format!("/issue/{}", key), &req)
                 .await
-                .map_err(|e| {
-                    anyhow!(
-                        "Error setting release note channels for [{}]: {}",
-                        key,
-                        e
-                    )
-                })?;
+                .map_err(|e| anyhow!("Error setting release note channels for [{}]: {}", key, e))?;
         }
         Ok(())
     }
@@ -493,17 +487,10 @@ impl Session for JiraSession {
             self.client
                 .put_void(&format!("/issue/{}", key), &req)
                 .await
-                .map_err(|e| {
-                    anyhow!(
-                        "Error setting release note status for [{}]: {}",
-                        key,
-                        e
-                    )
-                })?;
+                .map_err(|e| anyhow!("Error setting release note status for [{}]: {}", key, e))?;
         }
         Ok(())
     }
-
 }
 
 fn parse_pending_version_field(field: &serde_json::Value) -> Vec<version::Version> {
@@ -512,7 +499,6 @@ fn parse_pending_version_field(field: &serde_json::Value) -> Vec<version::Versio
         .filter_map(version::Version::parse)
         .collect::<Vec<_>>()
 }
-
 
 fn parse_pending_versions(
     search: &serde_json::Value,
@@ -576,5 +562,4 @@ mod tests {
         let versions = parse_pending_versions(&search, "the-field");
         assert_eq!(expected, versions);
     }
-
 }
