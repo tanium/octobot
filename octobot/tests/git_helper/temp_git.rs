@@ -16,9 +16,7 @@ pub struct TempGit {
 
 impl TempGit {
     pub fn new() -> TempGit {
-        let home = tempdir()
-            .expect("create fake home dir for configs")
-            .into_path();
+        let home = tempdir().expect("create fake home dir for configs").keep();
         std::env::set_var("HOME", &home);
         std::env::set_var("XDG_CONFIG_HOME", &home);
 
