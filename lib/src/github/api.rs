@@ -205,7 +205,7 @@ impl GithubApp {
     }
 
     fn new_client(&self) -> Result<HTTPClient> {
-        let jwt_token = jwt::new_token(self.app_id, &self.app_key);
+        let jwt_token = jwt::new_token(self.app_id, &self.app_key)?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.append(
@@ -284,7 +284,7 @@ impl GithubSessionFactory for GithubApp {
     }
 
     async fn new_service_session(&self) -> Result<GithubSession> {
-        let jwt_token = jwt::new_token(self.app_id, &self.app_key);
+        let jwt_token = jwt::new_token(self.app_id, &self.app_key)?;
         GithubSession::new(
             &self.host,
             &self.bot_name(),
