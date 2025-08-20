@@ -235,6 +235,12 @@ pub struct PullRequest {
     pub draft: Option<bool>,
 }
 
+// https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests-files
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct PullRequestFile {
+    pub filename: String,
+}
+
 impl PullRequest {
     pub fn new() -> PullRequest {
         PullRequest {

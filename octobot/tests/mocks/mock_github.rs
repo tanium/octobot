@@ -12,6 +12,7 @@ pub struct MockGithub {
     get_pr_calls: Mutex<Vec<MockCall<PullRequest>>>,
     get_prs_calls: Mutex<Vec<MockCall<Vec<PullRequest>>>>,
     get_prs_by_commit_calls: Mutex<Vec<MockCall<Vec<PullRequest>>>>,
+    get_pr_files_calls: Mutex<Vec<MockCall<Vec<PullRequestFile>>>>,
     create_pr_calls: Mutex<Vec<MockCall<PullRequest>>>,
     get_pr_labels_calls: Mutex<Vec<MockCall<Vec<Label>>>>,
     add_pr_labels_calls: Mutex<Vec<MockCall<()>>>,
@@ -61,6 +62,7 @@ impl MockGithub {
             get_pr_labels_calls: Mutex::new(vec![]),
             add_pr_labels_calls: Mutex::new(vec![]),
             get_pr_commits_calls: Mutex::new(vec![]),
+            get_pr_files_calls: Mutex::new(vec![]),
             get_pr_reviews_calls: Mutex::new(vec![]),
             assign_pr_calls: Mutex::new(vec![]),
             request_review_calls: Mutex::new(vec![]),
@@ -224,6 +226,21 @@ impl Session for MockGithub {
         assert_eq!(call.args[2], commit);
         assert_eq!(call.args[3], head.unwrap_or(""));
 
+        call.ret
+    }
+
+    async fn get_pull_request_files(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<PullRequestFile>> {
+        let mut calls = self.get_pr_files_calls.lock().unwrap();
+        assert!(calls.len() > 0, "Unexpected call to get_pull_request_files");
+        let call = calls.remove(0);
+        assert_eq!(call.args[0], owner);
+        assert_eq!(call.args[1], repo);
+        assert_eq!(call.args[2], number.to_string());
         call.ret
     }
 
