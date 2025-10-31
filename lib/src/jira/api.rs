@@ -75,43 +75,57 @@ impl JiraSession {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
 
-        // Login first without basic auth so we don't get a big html page on login errors
+        // First check that the auth is good
+        match &config.auth {
+            crate::config::JiraAuth::Basic { username, password } => {
+                let req = LoginReq {
+                    username: username.clone(),
+                    password: password.clone(),
+                };
 
-        let client = HTTPClient::new_with_headers(&api_base, headers.clone())?;
-        let client = match metrics {
-            None => client,
-            Some(ref m) => {
-                client.with_metrics(m.jira_api_responses.clone(), m.jira_api_duration.clone())
+                let client = HTTPClient::new_with_headers(&api_base, headers.clone())?;
+                let client = match metrics {
+                    None => client,
+                    Some(ref m) => client
+                        .with_metrics(m.jira_api_responses.clone(), m.jira_api_duration.clone()),
+                };
+
+                #[derive(Serialize)]
+                struct LoginReq {
+                    username: String,
+                    password: String,
+                }
+
+                client
+                    .post::<AuthResp, LoginReq>(&format!("{}/rest/auth/1/session", jira_base), &req)
+                    .await
+                    .map_err(|e| anyhow!("Error authenticating to JIRA: {}", e))?;
+
+                info!("Logged into JIRA");
+
+                let auth = base64::engine::general_purpose::STANDARD
+                    .encode(format!("{}:{}", username, password));
+                headers.insert(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Basic {}", auth).parse().unwrap(),
+                );
             }
-        };
+            crate::config::JiraAuth::Token(token) => {
+                headers.insert(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {}", token).parse().unwrap(),
+                );
+                let client = HTTPClient::new_with_headers(&api_base, headers.clone())?;
+                client
+                    .get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base))
+                    .await
+                    .map_err(|e| anyhow!("Error authenticating to JIRA: {}", e))?;
 
-        #[derive(Serialize)]
-        struct LoginReq {
-            username: String,
-            password: String,
+                info!("Logged into JIRA");
+            }
         }
 
-        let req = LoginReq {
-            username: config.username.clone(),
-            password: config.password.clone(),
-        };
-
-        client
-            .post::<AuthResp, LoginReq>(&format!("{}/rest/auth/1/session", jira_base), &req)
-            .await
-            .map_err(|e| anyhow!("Error authenticating to JIRA: {}", e))?;
-
-        info!("Logged into JIRA");
-
-        // re-create the client with basic auth
-
-        let auth = base64::engine::general_purpose::STANDARD
-            .encode(format!("{}:{}", config.username, config.password));
-        headers.insert(
-            reqwest::header::AUTHORIZATION,
-            format!("Basic {}", auth).parse().unwrap(),
-        );
-
+        // Now create our actual client
         let client = HTTPClient::new_with_headers(&api_base, headers.clone())?;
         let client = match metrics {
             None => client,

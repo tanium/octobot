@@ -2,6 +2,7 @@ mod mocks;
 
 use maplit::hashmap;
 
+use octobot_lib::config::JiraAuth;
 use octobot_lib::config::JiraConfig;
 use octobot_lib::github;
 use octobot_lib::jira;
@@ -19,8 +20,10 @@ fn new_test() -> JiraWorkflowTest {
     let jira = MockJira::new();
     let config = JiraConfig {
         host: "the-host".into(),
-        username: "the-jira-user".into(),
-        password: "the-jira-pass".into(),
+        auth: JiraAuth::Basic {
+            username: "the-jira-user".into(),
+            password: "the-jira-pass".into(),
+        },
         progress_states: Some(vec!["progress1".into()]),
         review_states: Some(vec!["reviewing1".into()]),
         resolved_states: Some(vec!["resolved1".into(), "resolved2".into()]),

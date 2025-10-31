@@ -10,7 +10,7 @@ use mocks::mock_jira::MockJira;
 use mocks::mock_slack::MockSlack;
 use mocks::mock_worker::LockedMockWorker;
 use octobot::server::github_handler::{GithubEventHandler, TeamsCache};
-use octobot_lib::config::{Config, JiraConfig};
+use octobot_lib::config::{Config, JiraAuth, JiraConfig};
 use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github::api::Session;
 use octobot_lib::github::*;
@@ -220,8 +220,10 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
 fn new_test_with_jira() -> GithubHandlerTest {
     let jira = Some(JiraConfig {
         host: "the-jira-host".into(),
-        username: "the-jira-user".into(),
-        password: "the-jira-pass".into(),
+        auth: JiraAuth::Basic {
+            username: "the-jira-user".into(),
+            password: "the-jira-pass".into(),
+        },
         progress_states: Some(vec!["the-progress".into()]),
         review_states: Some(vec!["the-review".into()]),
         resolved_states: Some(vec!["the-resolved".into()]),
