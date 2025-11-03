@@ -11,7 +11,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json;
 use serde_json::json;
 
-use crate::config::JiraConfig;
+use crate::config::{JiraAuth, JiraConfig};
 use crate::errors::*;
 use crate::http_client::HTTPClient;
 use crate::jira::models::*;
@@ -77,7 +77,7 @@ impl JiraSession {
 
         // First check that the auth is good
         match &config.auth {
-            crate::config::JiraAuth::Basic { username, password } => {
+            JiraAuth::Basic { username, password } => {
                 let req = LoginReq {
                     username: username.clone(),
                     password: password.clone(),

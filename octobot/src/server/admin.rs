@@ -306,17 +306,18 @@ impl MergeVersions {
         let resp = MergeVersionsResp::new(&jira_config);
 
         if !merge_req.dry_run {
-            if let Some(token) = merge_req.admin_token {
-                jira_config.auth = JiraAuth::Token(token);
-            } else {
-                let username = merge_req.admin_user.unwrap_or_default();
-                let password = merge_req.admin_pass.unwrap_or_default();
-
-                if username.is_empty() || password.is_empty() {
+            match (
+                merge_req.admin_token,
+                merge_req.admin_user,
+                merge_req.admin_pass,
+            ) {
+                (Some(token), _, _) => jira_config.auth = JiraAuth::Token(token),
+                (None, Some(username), Some(password)) => {
+                    jira_config.auth = JiraAuth::Basic { username, password }
+                }
+                _ => {
                     return self.make_resp(resp.set_error("JIRA auth required for non dry-run"));
                 }
-
-                jira_config.auth = JiraAuth::Basic { username, password };
             }
         }
 
