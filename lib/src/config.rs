@@ -75,10 +75,15 @@ pub struct GithubConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum JiraAuth {
+    Basic { username: String, password: String },
+    Token(String),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct JiraConfig {
     pub host: String,
-    pub username: String,
-    pub password: String,
+    pub auth: JiraAuth,
 
     // review state that may be necessary before submitting for review (defaults to ["In Progress"])
     pub progress_states: Option<Vec<String>>,
