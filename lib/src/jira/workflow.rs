@@ -129,6 +129,15 @@ pub async fn submit_for_review(
 
         let issue_state = try_get_issue_state(&key, jira).await;
 
+        if issue_state
+            .as_ref()
+            .is_some_and(|s| config.frozen_states().contains(&s.name))
+        {
+            // don't transition issues "backwards" from fixed/resolved
+            info!("Issue already in state '{issue_state:?}', won't transition",);
+            continue;
+        }
+
         if !needs_transition(&issue_state, &review_states) {
             continue;
         }
@@ -164,6 +173,15 @@ pub async fn submit_for_review(
         }
 
         let issue_state = try_get_issue_state(&key, jira).await;
+
+        if issue_state
+            .as_ref()
+            .is_some_and(|s| config.frozen_states().contains(&s.name))
+        {
+            // don't transition issues "backwards" from fixed/resolved
+            info!("Issue already in state '{issue_state:?}', won't transition",);
+            continue;
+        }
 
         if !needs_transition(&issue_state, &progress_states) {
             continue;

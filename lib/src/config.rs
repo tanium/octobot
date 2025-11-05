@@ -91,6 +91,8 @@ pub struct JiraConfig {
     pub review_states: Option<Vec<String>>,
     // resolved state to transition to when PR is merged. (defaults to ["Resolved", "Done"])
     pub resolved_states: Option<Vec<String>>,
+    // Do not transition tickets once they reach these states. (defaults to ["Resolved", "Done", "Verified"])
+    pub frozen_states: Option<Vec<String>>,
     // when marking as resolved, add this resolution (defaults to ["Fixed", "Done"])
     pub fixed_resolutions: Option<Vec<String>>,
     // the field name for where the version goes. (defaults to "fixVersions").
@@ -271,6 +273,14 @@ impl JiraConfig {
             states.clone() // hmm. do these w/o a clone?
         } else {
             vec!["Resolved".into(), "Done".into()]
+        }
+    }
+
+    pub fn frozen_states(&self) -> Vec<String> {
+        if let Some(ref states) = self.frozen_states {
+            states.clone() // hmm. do these w/o a clone?
+        } else {
+            vec!["Resolved".into(), "Done".into(), "Verified".into()]
         }
     }
 
