@@ -229,6 +229,7 @@ fn new_test_with_jira() -> GithubHandlerTest {
         resolved_states: Some(vec!["the-resolved".into()]),
         fixed_resolutions: Some(vec![":boom:".into()]),
         fix_versions_field: Some("the-versions".into()),
+        frozen_states: None,
         pending_versions_field: Some("the-pending-versions".into()),
         restrict_comment_visibility_to_role: None,
         login_suffix: None,
