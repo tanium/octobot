@@ -140,7 +140,7 @@ impl JiraSession {
             Some(ref f) => Some(lookup_field(f, &fields)?),
             None => None,
         };
-        let fix_versions_field = lookup_field(&config.fix_versions(), &fields)?;
+        let fix_versions_field = lookup_field(&config.fix_versions_field, &fields)?;
 
         debug!("Pending Version field: {:?}", pending_versions_field_id);
         debug!("Fix Versions field: {:?}", fix_versions_field);

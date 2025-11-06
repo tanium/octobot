@@ -108,8 +108,8 @@ pub async fn submit_for_review(
     jira: &dyn jira::api::Session,
     config: &JiraConfig,
 ) {
-    let review_states = config.review_states();
-    let progress_states = config.progress_states();
+    let review_states = &config.review_states;
+    let progress_states = &config.progress_states;
 
     for key in get_fixed_jira_keys(commits, projects) {
         // add comment
@@ -131,24 +131,24 @@ pub async fn submit_for_review(
 
         if issue_state
             .as_ref()
-            .is_some_and(|s| config.frozen_states().contains(&s.name))
+            .is_some_and(|s| config.frozen_states.contains(&s.name))
         {
             // don't transition issues "backwards" from fixed/resolved
             info!("Issue already in state '{issue_state:?}', won't transition",);
             continue;
         }
 
-        if !needs_transition(&issue_state, &review_states) {
+        if !needs_transition(&issue_state, review_states) {
             continue;
         }
 
         // try to transition to in-progress
-        if needs_transition(&issue_state, &progress_states) {
-            try_transition(&key, &progress_states, jira).await;
+        if needs_transition(&issue_state, progress_states) {
+            try_transition(&key, progress_states, jira).await;
         }
 
         // try transition to pending-review
-        try_transition(&key, &review_states, jira).await;
+        try_transition(&key, review_states, jira).await;
     }
 
     let mentioned = get_mentioned_jira_keys(commits, projects);
@@ -176,19 +176,19 @@ pub async fn submit_for_review(
 
         if issue_state
             .as_ref()
-            .is_some_and(|s| config.frozen_states().contains(&s.name))
+            .is_some_and(|s| config.frozen_states.contains(&s.name))
         {
             // don't transition issues "backwards" from fixed/resolved
             info!("Issue already in state '{issue_state:?}', won't transition",);
             continue;
         }
 
-        if !needs_transition(&issue_state, &progress_states) {
+        if !needs_transition(&issue_state, progress_states) {
             continue;
         }
 
         // try to transition to in-progress
-        try_transition(&key, &progress_states, jira).await;
+        try_transition(&key, progress_states, jira).await;
     }
 }
 
@@ -218,7 +218,7 @@ pub async fn resolve_issue(
             "Referenced by commit merged into branch {}: {}{}",
             branch, desc, version_desc
         );
-        let resolved_states = config.resolved_states();
+        let resolved_states = &config.resolved_states;
 
         for key in get_fixed_jira_keys(&[commit], projects) {
             if let Err(e) = jira.comment_issue(&key, &fix_msg).await {
@@ -226,19 +226,19 @@ pub async fn resolve_issue(
             }
 
             let issue_state = try_get_issue_state(&key, jira).await;
-            if !needs_transition(&issue_state, &resolved_states) {
+            if !needs_transition(&issue_state, resolved_states) {
                 continue;
             }
 
-            match find_transition(&key, &resolved_states, jira).await {
+            match find_transition(&key, resolved_states, jira).await {
                 Ok(Some(transition)) => {
                     let mut req = transition.new_request();
 
                     if let Some(ref fields) = transition.fields {
                         if let Some(ref resolution) = fields.resolution {
                             for res in &resolution.allowed_values {
-                                for resolution in config.fixed_resolutions() {
-                                    if res.name == resolution {
+                                for resolution in &config.fixed_resolutions {
+                                    if res.name == *resolution {
                                         req.set_resolution(res);
                                         break;
                                     }
