@@ -74,10 +74,34 @@ pub struct GithubConfig {
     pub app_key_file: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum JiraAuth {
     Basic { username: String, password: String },
     Token(String),
+}
+
+fn default_progress_states() -> Vec<String> {
+    vec!["In Progress".into()]
+}
+
+fn default_review_states() -> Vec<String> {
+    vec!["Pending Review".into()]
+}
+
+fn default_resolved_states() -> Vec<String> {
+    vec!["Resolved".into(), "Done".into()]
+}
+
+fn default_frozen_states() -> Vec<String> {
+    vec!["Resolved".into(), "Done".into(), "Verified".into()]
+}
+
+fn default_fixed_resolutions() -> Vec<String> {
+    vec!["Fixed".into(), "Done".into()]
+}
+
+fn default_fix_versions_field() -> String {
+    "fixVersions".into()
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -86,17 +110,23 @@ pub struct JiraConfig {
     pub auth: JiraAuth,
 
     // review state that may be necessary before submitting for review (defaults to ["In Progress"])
-    pub progress_states: Option<Vec<String>>,
+    #[serde(default = "default_progress_states")]
+    pub progress_states: Vec<String>,
     // review state to transition to when marked for review (defaults to ["Pending Review"])
-    pub review_states: Option<Vec<String>>,
+    #[serde(default = "default_review_states")]
+    pub review_states: Vec<String>,
     // resolved state to transition to when PR is merged. (defaults to ["Resolved", "Done"])
-    pub resolved_states: Option<Vec<String>>,
+    #[serde(default = "default_resolved_states")]
+    pub resolved_states: Vec<String>,
     // Do not transition tickets once they reach these states. (defaults to ["Resolved", "Done", "Verified"])
-    pub frozen_states: Option<Vec<String>>,
+    #[serde(default = "default_frozen_states")]
+    pub frozen_states: Vec<String>,
     // when marking as resolved, add this resolution (defaults to ["Fixed", "Done"])
-    pub fixed_resolutions: Option<Vec<String>>,
+    #[serde(default = "default_fixed_resolutions")]
+    pub fixed_resolutions: Vec<String>,
     // the field name for where the version goes. (defaults to "fixVersions").
-    pub fix_versions_field: Option<String>,
+    #[serde(default = "default_fix_versions_field")]
+    pub fix_versions_field: String,
     // the field name for where the pending build versions go. expected to be a plain text field
     pub pending_versions_field: Option<String>,
     // optional name of role to restrict octobot comment visibility. (e.g. "Developers")
@@ -251,54 +281,6 @@ impl JiraConfig {
             format!("https://{}", self.host)
         }
     }
-
-    pub fn progress_states(&self) -> Vec<String> {
-        if let Some(ref states) = self.progress_states {
-            states.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["In Progress".into()]
-        }
-    }
-
-    pub fn review_states(&self) -> Vec<String> {
-        if let Some(ref states) = self.review_states {
-            states.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["Pending Review".into()]
-        }
-    }
-
-    pub fn resolved_states(&self) -> Vec<String> {
-        if let Some(ref states) = self.resolved_states {
-            states.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["Resolved".into(), "Done".into()]
-        }
-    }
-
-    pub fn frozen_states(&self) -> Vec<String> {
-        if let Some(ref states) = self.frozen_states {
-            states.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["Resolved".into(), "Done".into(), "Verified".into()]
-        }
-    }
-
-    pub fn fixed_resolutions(&self) -> Vec<String> {
-        if let Some(ref res) = self.fixed_resolutions {
-            res.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["Fixed".into(), "Done".into()]
-        }
-    }
-
-    pub fn fix_versions(&self) -> String {
-        if let Some(ref field) = self.fix_versions_field {
-            field.clone()
-        } else {
-            "fixVersions".into()
-        }
-    }
 }
 
 pub fn new(config_file: PathBuf) -> Result<Config> {
@@ -352,8 +334,24 @@ webhook_secret = "abcd"
 host = "git.company.com"
 app_id = 2
 app_key_file = "some-file.key"
+
+[jira]
+host = "example.com"
+auth = { Basic = { username = "user", password = "pass" } }
+progress_states = ["Progressing"]
 "#;
         let config = parse_string(config_str).unwrap();
         assert_eq!("foo", config.slack.bot_token);
+        let jira = config.jira.expect("missing jira config");
+        assert_eq!(jira.host, "example.com");
+        assert_eq!(
+            jira.auth,
+            JiraAuth::Basic {
+                username: "user".into(),
+                password: "pass".into()
+            }
+        );
+        assert_eq!(jira.progress_states, &["Progressing"]);
+        assert_eq!(jira.review_states, &["Pending Review"]);
     }
 }
