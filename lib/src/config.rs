@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use anyhow::anyhow;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use toml;
 
 use crate::config_db::ConfigDatabase;
@@ -80,52 +80,22 @@ pub enum JiraAuth {
     Token(String),
 }
 
-fn default_progress_states() -> Vec<String> {
-    vec!["In Progress".into()]
-}
-
-fn default_review_states() -> Vec<String> {
-    vec!["Pending Review".into()]
-}
-
-fn default_resolved_states() -> Vec<String> {
-    vec!["Resolved".into(), "Done".into()]
-}
-
-fn default_frozen_states() -> Vec<String> {
-    vec!["Resolved".into(), "Done".into(), "Verified".into()]
-}
-
-fn default_fixed_resolutions() -> Vec<String> {
-    vec!["Fixed".into(), "Done".into()]
-}
-
-fn default_fix_versions_field() -> String {
-    "fixVersions".into()
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug)]
 pub struct JiraConfig {
-    pub host: String,
+    pub base_url: String,
     pub auth: JiraAuth,
 
     // review state that may be necessary before submitting for review (defaults to ["In Progress"])
-    #[serde(default = "default_progress_states")]
     pub progress_states: Vec<String>,
     // review state to transition to when marked for review (defaults to ["Pending Review"])
-    #[serde(default = "default_review_states")]
     pub review_states: Vec<String>,
     // resolved state to transition to when PR is merged. (defaults to ["Resolved", "Done"])
-    #[serde(default = "default_resolved_states")]
     pub resolved_states: Vec<String>,
     // Do not transition tickets once they reach these states. (defaults to ["Resolved", "Done", "Verified"])
-    #[serde(default = "default_frozen_states")]
     pub frozen_states: Vec<String>,
     // when marking as resolved, add this resolution (defaults to ["Fixed", "Done"])
-    #[serde(default = "default_fixed_resolutions")]
     pub fixed_resolutions: Vec<String>,
     // the field name for where the version goes. (defaults to "fixVersions").
-    #[serde(default = "default_fix_versions_field")]
     pub fix_versions_field: String,
     // the field name for where the pending build versions go. expected to be a plain text field
     pub pending_versions_field: Option<String>,
@@ -133,6 +103,67 @@ pub struct JiraConfig {
     pub restrict_comment_visibility_to_role: Option<String>,
     // optional suffix to add to the username for the login dialog (e.g. "@company.com")
     pub login_suffix: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for JiraConfig {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Config {
+            pub host: String,
+            pub username: Option<String>,
+            pub password: Option<String>,
+            pub token: Option<String>,
+
+            pub progress_states: Option<Vec<String>>,
+            pub review_states: Option<Vec<String>>,
+            pub resolved_states: Option<Vec<String>>,
+            pub frozen_states: Option<Vec<String>>,
+            pub fixed_resolutions: Option<Vec<String>>,
+            pub fix_versions_field: Option<String>,
+            pub pending_versions_field: Option<String>,
+            pub restrict_comment_visibility_to_role: Option<String>,
+            pub login_suffix: Option<String>,
+        }
+
+        let c = Config::deserialize(deserializer)?;
+
+        Ok(JiraConfig {
+            base_url: if c.host.starts_with("http") {
+                c.host
+            } else {
+                format!("https://{}", c.host)
+            },
+            auth: match (c.username, c.password, c.token) {
+                (Some(username), Some(password), None) => JiraAuth::Basic { username, password },
+                (None, None, Some(token)) => JiraAuth::Token(token),
+                _ => Err(serde::de::Error::custom(
+                    "Must specify either username/password or token",
+                ))?,
+            },
+            progress_states: c
+                .progress_states
+                .unwrap_or_else(|| vec!["In Progress".into()]),
+            review_states: c
+                .review_states
+                .unwrap_or_else(|| vec!["Pending Review".into()]),
+            resolved_states: c
+                .resolved_states
+                .unwrap_or_else(|| vec!["Resolved".into(), "Done".into()]),
+            frozen_states: c
+                .frozen_states
+                .unwrap_or_else(|| vec!["Resolved".into(), "Done".into(), "Verified".into()]),
+            fixed_resolutions: c
+                .fixed_resolutions
+                .unwrap_or_else(|| vec!["Fixed".into(), "Done".into()]),
+            fix_versions_field: c.fix_versions_field.unwrap_or_else(|| "fixVersions".into()),
+            pending_versions_field: c.pending_versions_field,
+            restrict_comment_visibility_to_role: c.restrict_comment_visibility_to_role,
+            login_suffix: c.login_suffix,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -273,16 +304,6 @@ impl GithubConfig {
     }
 }
 
-impl JiraConfig {
-    pub fn base_url(&self) -> String {
-        if self.host.starts_with("http") {
-            self.host.clone()
-        } else {
-            format!("https://{}", self.host)
-        }
-    }
-}
-
 pub fn new(config_file: PathBuf) -> Result<Config> {
     let db_file_name = "db.sqlite3";
     match config_file.file_name() {
@@ -337,13 +358,14 @@ app_key_file = "some-file.key"
 
 [jira]
 host = "example.com"
-auth = { Basic = { username = "user", password = "pass" } }
+username = "user"
+password = "pass"
 progress_states = ["Progressing"]
 "#;
         let config = parse_string(config_str).unwrap();
         assert_eq!("foo", config.slack.bot_token);
         let jira = config.jira.expect("missing jira config");
-        assert_eq!(jira.host, "example.com");
+        assert_eq!(jira.base_url, "https://example.com");
         assert_eq!(
             jira.auth,
             JiraAuth::Basic {
@@ -353,5 +375,52 @@ progress_states = ["Progressing"]
         );
         assert_eq!(jira.progress_states, &["Progressing"]);
         assert_eq!(jira.review_states, &["Pending Review"]);
+    }
+
+    #[test]
+    fn test_parse_jira_token() {
+        let config_str = r#"
+[main]
+clone_root_dir = "./repos"
+
+[slack]
+bot_token = "foo"
+
+[github]
+webhook_secret = "abcd"
+host = "git.company.com"
+
+[jira]
+host = "example.com"
+token = "token"
+"#;
+        let config = parse_string(config_str).unwrap();
+        let jira = config.jira.expect("missing jira config");
+        assert_eq!(jira.auth, JiraAuth::Token("token".into()));
+    }
+
+    #[test]
+    fn test_parse_jira_missing_auth() {
+        let config_str = r#"
+[main]
+clone_root_dir = "./repos"
+
+[github]
+webhook_secret = "abcd"
+host = "git.company.com"
+
+[slack]
+bot_token = "foo"
+
+[jira]
+host = "example.com"
+"#;
+        let err = parse_string(config_str).expect_err("Expected parse to fail with no auth");
+        assert!(
+            err.to_string()
+                .contains("Must specify either username/password or token"),
+            "{}",
+            err
+        );
     }
 }

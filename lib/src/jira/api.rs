@@ -69,7 +69,7 @@ fn lookup_field(field: &str, fields: &[Field]) -> Result<String> {
 
 impl JiraSession {
     pub async fn new(config: &JiraConfig, metrics: Option<Arc<Metrics>>) -> Result<JiraSession> {
-        let jira_base = config.base_url();
+        let jira_base = &config.base_url;
         let api_base = format!("{}/rest/api/2", jira_base);
 
         let mut headers = reqwest::header::HeaderMap::new();

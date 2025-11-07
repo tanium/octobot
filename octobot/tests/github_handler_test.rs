@@ -219,7 +219,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
 
 fn new_test_with_jira() -> GithubHandlerTest {
     let jira = Some(JiraConfig {
-        host: "the-jira-host".into(),
+        base_url: "http://the-jira-host".into(),
         auth: JiraAuth::Basic {
             username: "the-jira-user".into(),
             password: "the-jira-pass".into(),

@@ -260,7 +260,7 @@ struct MergeVersionsResp {
 impl MergeVersionsResp {
     fn new(jira_config: &JiraConfig) -> Self {
         Self {
-            jira_base: jira_config.base_url(),
+            jira_base: jira_config.base_url.clone(),
             login_suffix: jira_config.login_suffix.clone(),
             versions: HashMap::new(),
             version_url: None,

@@ -19,7 +19,7 @@ struct JiraWorkflowTest {
 fn new_test() -> JiraWorkflowTest {
     let jira = MockJira::new();
     let config = JiraConfig {
-        host: "the-host".into(),
+        base_url: "http://the-host".into(),
         auth: JiraAuth::Basic {
             username: "the-jira-user".into(),
             password: "the-jira-pass".into(),
