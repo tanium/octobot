@@ -24,8 +24,8 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
         profile: minimal
-        toolchain: 1.91.0
-        override: true
+        toolchain: 1.84.0
+        override: false
         components: rustfmt, clippy
 
     - name: Build
