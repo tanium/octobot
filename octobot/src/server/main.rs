@@ -203,9 +203,8 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         error!("server error: {}", e);
     }
 
-    if let Err(e) = jobs.await {
-        error!("jobs error: {}", e);
-    }
+    let Err(e) = jobs.await;
+    error!("jobs error: {}", e);
 
     if let Err(e) = webhook_redeliver.await {
         error!("webhook redeliver error: {}", e);

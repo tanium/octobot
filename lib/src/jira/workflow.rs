@@ -94,7 +94,7 @@ fn get_jira_project(jira_key: &str) -> &str {
 }
 
 fn needs_transition(state: &Option<jira::Status>, target: &[String]) -> bool {
-    if let Some(ref state) = state {
+    if let Some(state) = state {
         !target.contains(&state.name)
     } else {
         true

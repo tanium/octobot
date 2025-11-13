@@ -163,19 +163,19 @@ impl Config {
         Ok(())
     }
 
-    pub fn users(&self) -> RwLockReadGuard<users::UserConfig> {
+    pub fn users(&self) -> RwLockReadGuard<'_, users::UserConfig> {
         self.users.read().unwrap()
     }
 
-    pub fn users_write(&self) -> RwLockWriteGuard<users::UserConfig> {
+    pub fn users_write(&self) -> RwLockWriteGuard<'_, users::UserConfig> {
         self.users.write().unwrap()
     }
 
-    pub fn repos(&self) -> RwLockReadGuard<repos::RepoConfig> {
+    pub fn repos(&self) -> RwLockReadGuard<'_, repos::RepoConfig> {
         self.repos.read().unwrap()
     }
 
-    pub fn repos_write(&self) -> RwLockWriteGuard<repos::RepoConfig> {
+    pub fn repos_write(&self) -> RwLockWriteGuard<'_, repos::RepoConfig> {
         self.repos.write().unwrap()
     }
 

@@ -19,12 +19,14 @@ impl TempGit {
         let home = tempdir()
             .expect("create fake home dir for configs")
             .into_path();
-        std::env::set_var("HOME", &home);
-        std::env::set_var("XDG_CONFIG_HOME", &home);
+        unsafe {
+            std::env::set_var("HOME", &home);
+            std::env::set_var("XDG_CONFIG_HOME", &home);
 
-        // These will interfere with tests run locally
-        std::env::remove_var("GIT_AUTHOR_NAME");
-        std::env::remove_var("GIT_AUTHOR_EMAIL");
+            // These will interfere with tests run locally
+            std::env::remove_var("GIT_AUTHOR_NAME");
+            std::env::remove_var("GIT_AUTHOR_EMAIL");
+        }
 
         let dir = tempdir().expect("create temp dir for git_test.rs");
 
