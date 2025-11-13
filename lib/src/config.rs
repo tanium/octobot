@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use anyhow::anyhow;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use toml;
 
 use crate::config_db::ConfigDatabase;
@@ -74,28 +74,96 @@ pub struct GithubConfig {
     pub app_key_file: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum JiraAuth {
+    Basic { username: String, password: String },
+    Token(String),
+}
+
+#[derive(Serialize, Clone, Debug)]
 pub struct JiraConfig {
-    pub host: String,
-    pub username: String,
-    pub password: String,
+    pub base_url: String,
+    pub auth: JiraAuth,
 
     // review state that may be necessary before submitting for review (defaults to ["In Progress"])
-    pub progress_states: Option<Vec<String>>,
+    pub progress_states: Vec<String>,
     // review state to transition to when marked for review (defaults to ["Pending Review"])
-    pub review_states: Option<Vec<String>>,
+    pub review_states: Vec<String>,
     // resolved state to transition to when PR is merged. (defaults to ["Resolved", "Done"])
-    pub resolved_states: Option<Vec<String>>,
+    pub resolved_states: Vec<String>,
+    // Do not transition tickets once they reach these states. (defaults to ["Resolved", "Done", "Verified"])
+    pub frozen_states: Vec<String>,
     // when marking as resolved, add this resolution (defaults to ["Fixed", "Done"])
-    pub fixed_resolutions: Option<Vec<String>>,
+    pub fixed_resolutions: Vec<String>,
     // the field name for where the version goes. (defaults to "fixVersions").
-    pub fix_versions_field: Option<String>,
+    pub fix_versions_field: String,
     // the field name for where the pending build versions go. expected to be a plain text field
     pub pending_versions_field: Option<String>,
     // optional name of role to restrict octobot comment visibility. (e.g. "Developers")
     pub restrict_comment_visibility_to_role: Option<String>,
     // optional suffix to add to the username for the login dialog (e.g. "@company.com")
     pub login_suffix: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for JiraConfig {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Config {
+            pub host: String,
+            pub username: Option<String>,
+            pub password: Option<String>,
+            pub token: Option<String>,
+
+            pub progress_states: Option<Vec<String>>,
+            pub review_states: Option<Vec<String>>,
+            pub resolved_states: Option<Vec<String>>,
+            pub frozen_states: Option<Vec<String>>,
+            pub fixed_resolutions: Option<Vec<String>>,
+            pub fix_versions_field: Option<String>,
+            pub pending_versions_field: Option<String>,
+            pub restrict_comment_visibility_to_role: Option<String>,
+            pub login_suffix: Option<String>,
+        }
+
+        let c = Config::deserialize(deserializer)?;
+
+        Ok(JiraConfig {
+            base_url: if c.host.starts_with("http") {
+                c.host
+            } else {
+                format!("https://{}", c.host)
+            },
+            auth: match (c.username, c.password, c.token) {
+                (Some(username), Some(password), None) => JiraAuth::Basic { username, password },
+                (None, None, Some(token)) => JiraAuth::Token(token),
+                _ => Err(serde::de::Error::custom(
+                    "Must specify either username/password or token",
+                ))?,
+            },
+            progress_states: c
+                .progress_states
+                .unwrap_or_else(|| vec!["In Progress".into()]),
+            review_states: c
+                .review_states
+                .unwrap_or_else(|| vec!["Pending Review".into()]),
+            resolved_states: c
+                .resolved_states
+                .unwrap_or_else(|| vec!["Resolved".into(), "Done".into()]),
+            frozen_states: c
+                .frozen_states
+                .unwrap_or_else(|| vec!["Resolved".into(), "Done".into(), "Verified".into()]),
+            fixed_resolutions: c
+                .fixed_resolutions
+                .unwrap_or_else(|| vec!["Fixed".into(), "Done".into()]),
+            fix_versions_field: c.fix_versions_field.unwrap_or_else(|| "fixVersions".into()),
+            pending_versions_field: c.pending_versions_field,
+            restrict_comment_visibility_to_role: c.restrict_comment_visibility_to_role,
+            login_suffix: c.login_suffix,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -236,56 +304,6 @@ impl GithubConfig {
     }
 }
 
-impl JiraConfig {
-    pub fn base_url(&self) -> String {
-        if self.host.starts_with("http") {
-            self.host.clone()
-        } else {
-            format!("https://{}", self.host)
-        }
-    }
-
-    pub fn progress_states(&self) -> Vec<String> {
-        if let Some(ref states) = self.progress_states {
-            states.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["In Progress".into()]
-        }
-    }
-
-    pub fn review_states(&self) -> Vec<String> {
-        if let Some(ref states) = self.review_states {
-            states.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["Pending Review".into()]
-        }
-    }
-
-    pub fn resolved_states(&self) -> Vec<String> {
-        if let Some(ref states) = self.resolved_states {
-            states.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["Resolved".into(), "Done".into()]
-        }
-    }
-
-    pub fn fixed_resolutions(&self) -> Vec<String> {
-        if let Some(ref res) = self.fixed_resolutions {
-            res.clone() // hmm. do these w/o a clone?
-        } else {
-            vec!["Fixed".into(), "Done".into()]
-        }
-    }
-
-    pub fn fix_versions(&self) -> String {
-        if let Some(ref field) = self.fix_versions_field {
-            field.clone()
-        } else {
-            "fixVersions".into()
-        }
-    }
-}
-
 pub fn new(config_file: PathBuf) -> Result<Config> {
     let db_file_name = "db.sqlite3";
     match config_file.file_name() {
@@ -337,8 +355,72 @@ webhook_secret = "abcd"
 host = "git.company.com"
 app_id = 2
 app_key_file = "some-file.key"
+
+[jira]
+host = "example.com"
+username = "user"
+password = "pass"
+progress_states = ["Progressing"]
 "#;
         let config = parse_string(config_str).unwrap();
         assert_eq!("foo", config.slack.bot_token);
+        let jira = config.jira.expect("missing jira config");
+        assert_eq!(jira.base_url, "https://example.com");
+        assert_eq!(
+            jira.auth,
+            JiraAuth::Basic {
+                username: "user".into(),
+                password: "pass".into()
+            }
+        );
+        assert_eq!(jira.progress_states, &["Progressing"]);
+        assert_eq!(jira.review_states, &["Pending Review"]);
+    }
+
+    #[test]
+    fn test_parse_jira_token() {
+        let config_str = r#"
+[main]
+clone_root_dir = "./repos"
+
+[slack]
+bot_token = "foo"
+
+[github]
+webhook_secret = "abcd"
+host = "git.company.com"
+
+[jira]
+host = "example.com"
+token = "token"
+"#;
+        let config = parse_string(config_str).unwrap();
+        let jira = config.jira.expect("missing jira config");
+        assert_eq!(jira.auth, JiraAuth::Token("token".into()));
+    }
+
+    #[test]
+    fn test_parse_jira_missing_auth() {
+        let config_str = r#"
+[main]
+clone_root_dir = "./repos"
+
+[github]
+webhook_secret = "abcd"
+host = "git.company.com"
+
+[slack]
+bot_token = "foo"
+
+[jira]
+host = "example.com"
+"#;
+        let err = parse_string(config_str).expect_err("Expected parse to fail with no auth");
+        assert!(
+            err.to_string()
+                .contains("Must specify either username/password or token"),
+            "{}",
+            err
+        );
     }
 }

@@ -2,6 +2,7 @@ mod mocks;
 
 use maplit::hashmap;
 
+use octobot_lib::config::JiraAuth;
 use octobot_lib::config::JiraConfig;
 use octobot_lib::github;
 use octobot_lib::jira;
@@ -18,14 +19,17 @@ struct JiraWorkflowTest {
 fn new_test() -> JiraWorkflowTest {
     let jira = MockJira::new();
     let config = JiraConfig {
-        host: "the-host".into(),
-        username: "the-jira-user".into(),
-        password: "the-jira-pass".into(),
-        progress_states: Some(vec!["progress1".into()]),
-        review_states: Some(vec!["reviewing1".into()]),
-        resolved_states: Some(vec!["resolved1".into(), "resolved2".into()]),
-        fixed_resolutions: Some(vec!["it-is-fixed".into()]),
-        fix_versions_field: Some("the-versions".into()),
+        base_url: "http://the-host".into(),
+        auth: JiraAuth::Basic {
+            username: "the-jira-user".into(),
+            password: "the-jira-pass".into(),
+        },
+        progress_states: vec!["progress1".into()],
+        review_states: vec!["reviewing1".into()],
+        resolved_states: vec!["resolved1".into(), "resolved2".into()],
+        frozen_states: vec!["verified1".into()],
+        fixed_resolutions: vec!["it-is-fixed".into()],
+        fix_versions_field: "the-versions".into(),
         pending_versions_field: Some("the-pending-versions".into()),
         restrict_comment_visibility_to_role: None,
         login_suffix: None,
@@ -130,6 +134,28 @@ async fn test_submit_for_review() {
         .mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
     test.jira
         .mock_transition_issue("CLI-9999", &new_transition_req("001"), Ok(()));
+
+    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config).await;
+}
+
+#[tokio::test]
+async fn test_submit_for_review_frozen_status() {
+    let test = new_test();
+    let pr = new_pr();
+    let projects = vec!["SER".to_string()];
+    let commit = new_commit("Fix [SER-1] I fixed it.", "aabbccddee");
+
+    test.jira.mock_comment_issue(
+        "SER-1",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+
+    // This state should prevent us from attempting a transition
+    test.jira
+        .mock_get_issue("SER-1", Ok(new_issue("SER-1", Some("verified1"))));
+
+    // We expect no other jira API calls since we shouldn't transition
 
     jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config).await;
 }

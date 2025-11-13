@@ -36,6 +36,12 @@ pub trait Session: Send + Sync {
         commit: &str,
         head: Option<&str>,
     ) -> Result<Vec<PullRequest>>;
+    async fn get_pull_request_files(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<PullRequestFile>>;
 
     async fn create_pull_request(
         &self,
@@ -205,7 +211,7 @@ impl GithubApp {
     }
 
     fn new_client(&self) -> Result<HTTPClient> {
-        let jwt_token = jwt::new_token(self.app_id, &self.app_key);
+        let jwt_token = jwt::new_token(self.app_id, &self.app_key)?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.append(
@@ -284,7 +290,7 @@ impl GithubSessionFactory for GithubApp {
     }
 
     async fn new_service_session(&self) -> Result<GithubSession> {
-        let jwt_token = jwt::new_token(self.app_id, &self.app_key);
+        let jwt_token = jwt::new_token(self.app_id, &self.app_key)?;
         GithubSession::new(
             &self.host,
             &self.bot_name(),
@@ -545,6 +551,26 @@ impl Session for GithubSession {
         return self
             .do_get_pull_requests(owner, repo, head, paging_url, err_fmt)
             .await;
+    }
+
+    async fn get_pull_request_files(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<Vec<PullRequestFile>> {
+        self.client
+            .get(&format!("repos/{}/{}/pulls/{}/files", owner, repo, number))
+            .await
+            .map_err(|e| {
+                anyhow!(
+                    "Error looking up files for PR: {}/{} #{}: {}",
+                    owner,
+                    repo,
+                    number,
+                    e
+                )
+            })
     }
 
     async fn create_pull_request(

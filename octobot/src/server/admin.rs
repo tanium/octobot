@@ -8,7 +8,7 @@ use log::error;
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
 
-use octobot_lib::config::{Config, JiraConfig};
+use octobot_lib::config::{Config, JiraAuth, JiraConfig};
 use octobot_lib::errors::*;
 use octobot_lib::jira;
 use octobot_lib::repos::RepoInfo;
@@ -242,6 +242,7 @@ impl MergeVersions {
 struct MergeVersionsReq {
     admin_user: Option<String>,
     admin_pass: Option<String>,
+    admin_token: Option<String>,
     project: String,
     version: String,
     dry_run: bool,
@@ -259,7 +260,7 @@ struct MergeVersionsResp {
 impl MergeVersionsResp {
     fn new(jira_config: &JiraConfig) -> Self {
         Self {
-            jira_base: jira_config.base_url(),
+            jira_base: jira_config.base_url.clone(),
             login_suffix: jira_config.login_suffix.clone(),
             versions: HashMap::new(),
             version_url: None,
@@ -305,11 +306,18 @@ impl MergeVersions {
         let resp = MergeVersionsResp::new(&jira_config);
 
         if !merge_req.dry_run {
-            jira_config.username = merge_req.admin_user.unwrap_or_default();
-            jira_config.password = merge_req.admin_pass.unwrap_or_default();
-
-            if jira_config.username.is_empty() || jira_config.password.is_empty() {
-                return self.make_resp(resp.set_error("JIRA auth required for non dry-run"));
+            match (
+                merge_req.admin_token,
+                merge_req.admin_user,
+                merge_req.admin_pass,
+            ) {
+                (Some(token), _, _) => jira_config.auth = JiraAuth::Token(token),
+                (None, Some(username), Some(password)) => {
+                    jira_config.auth = JiraAuth::Basic { username, password }
+                }
+                _ => {
+                    return self.make_resp(resp.set_error("JIRA auth required for non dry-run"));
+                }
             }
         }
 
