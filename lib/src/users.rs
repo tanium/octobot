@@ -198,7 +198,7 @@ impl UserConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::{tempdir, TempDir};
+    use tempfile::{TempDir, tempdir};
 
     fn new_test() -> (UserConfig, TempDir) {
         let temp_dir = tempdir().unwrap();

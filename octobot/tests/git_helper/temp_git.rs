@@ -4,7 +4,7 @@ use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 use octobot_ops::git::Git;
 

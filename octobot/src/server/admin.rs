@@ -18,7 +18,7 @@ use octobot_ops::slack::Slack;
 use octobot_ops::util;
 
 use crate::http_util;
-use crate::server::http::{parse_json, Handler};
+use crate::server::http::{Handler, parse_json};
 
 pub enum Op {
     List,
@@ -103,7 +103,7 @@ impl UserAdmin {
 
         let user_id = match query.get("id").map(|id| id.parse::<i32>()) {
             None | Some(Err(_)) => {
-                return Ok(http_util::new_bad_req_resp("No `id` param specified"))
+                return Ok(http_util::new_bad_req_resp("No `id` param specified"));
             }
             Some(Ok(id)) => id,
         };
@@ -215,7 +215,7 @@ impl RepoAdmin {
 
         let repo_id = match query.get("id").map(|id| id.parse::<i32>()) {
             None | Some(Err(_)) => {
-                return Ok(http_util::new_bad_req_resp("No `id` param specified"))
+                return Ok(http_util::new_bad_req_resp("No `id` param specified"));
             }
             Some(Ok(id)) => id,
         };

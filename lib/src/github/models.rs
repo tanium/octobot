@@ -547,11 +547,7 @@ impl Commit {
     }
 
     pub fn short_hash_str(hash: &str) -> &str {
-        if hash.len() < 7 {
-            hash
-        } else {
-            &hash[0..7]
-        }
+        if hash.len() < 7 { hash } else { &hash[0..7] }
     }
 
     pub fn title(commit: &dyn CommitLike) -> String {

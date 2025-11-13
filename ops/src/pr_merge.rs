@@ -520,7 +520,12 @@ mod tests {
     #[test]
     fn test_make_merge_desc_multi2() {
         let desc = make_merge_desc(
-            (String::from("prev_branch->source_branch: more_branches->prev_branch: Yay, I made a change (#99)"), String::from("")),
+            (
+                String::from(
+                    "prev_branch->source_branch: more_branches->prev_branch: Yay, I made a change (#99)",
+                ),
+                String::from(""),
+            ),
             "abcdef",
             99,
             "other_branch",

@@ -3,7 +3,7 @@ mod mocks;
 use std::sync::Arc;
 
 use octobot_ops::messenger::Participants;
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 use mocks::mock_slack::MockSlack;
 use octobot_lib::config::Config;

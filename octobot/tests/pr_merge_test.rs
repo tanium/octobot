@@ -3,7 +3,7 @@ mod mocks;
 
 use std::sync::Arc;
 
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 use git_helper::temp_git::TempGit;
 use mocks::mock_github::MockGithub;

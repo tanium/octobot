@@ -1,9 +1,9 @@
 use anyhow::anyhow;
-use rusqlite::types::ToSql;
 use rusqlite::Transaction;
+use rusqlite::types::ToSql;
 
 use crate::db;
-use crate::db::migrations::{sql, Migration};
+use crate::db::migrations::{Migration, sql};
 use crate::errors::*;
 
 pub fn all_migrations() -> Vec<Box<dyn Migration>> {

@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use octobot_lib::db::{migrations, Connection, Database};
+use octobot_lib::db::{Connection, Database, migrations};
 use octobot_lib::errors::*;
 
 use crate::slack_db_migrations;

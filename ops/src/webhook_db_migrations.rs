@@ -1,4 +1,4 @@
-use octobot_lib::db::migrations::{sql, Migration};
+use octobot_lib::db::migrations::{Migration, sql};
 
 pub fn all_migrations() -> Vec<Box<dyn Migration>> {
     vec![sql(r#"

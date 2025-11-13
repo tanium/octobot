@@ -12,8 +12,8 @@ use tokio;
 use octobot_lib::config::Config;
 use octobot_lib::errors::Result;
 use octobot_lib::github;
-use octobot_lib::github::api::Session;
 use octobot_lib::github::CommentLike;
+use octobot_lib::github::api::Session;
 use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
 use octobot_ops::force_push::{self, ForcePushRequest};
@@ -618,14 +618,16 @@ impl GithubEventHandler {
             if let Some(ref verb) = verb {
                 let branch_name = &pull_request.base.ref_name;
 
-                let attachments = vec![SlackAttachmentBuilder::new("")
-                    .title(format!(
-                        "Pull Request #{}: \"{}\"",
-                        pull_request.number,
-                        pull_request.title.as_str()
-                    ))
-                    .title_link(pull_request.html_url.as_str())
-                    .build()];
+                let attachments = vec![
+                    SlackAttachmentBuilder::new("")
+                        .title(format!(
+                            "Pull Request #{}: \"{}\"",
+                            pull_request.number,
+                            pull_request.title.as_str()
+                        ))
+                        .title_link(pull_request.html_url.as_str())
+                        .build(),
+                ];
 
                 if !pull_request.is_draft() {
                     let msg = format!("Pull Request {}", verb);
@@ -782,11 +784,13 @@ impl GithubEventHandler {
                         )
                     );
 
-                    let attachments = vec![SlackAttachmentBuilder::new(review.body())
-                        .title(format!("Review: {}", state_msg))
-                        .title_link(review.html_url.as_str())
-                        .color(color)
-                        .build()];
+                    let attachments = vec![
+                        SlackAttachmentBuilder::new(review.body())
+                            .title(format!("Review: {}", state_msg))
+                            .title_link(review.html_url.as_str())
+                            .color(color)
+                            .build(),
+                    ];
 
                     let mut participants = self.all_participants(&pull_request, &commits).await;
                     for username in util::get_mentioned_usernames(review.body()) {
@@ -842,10 +846,12 @@ impl GithubEventHandler {
             util::make_link(pull_request.html_url(), pull_request.title())
         );
 
-        let attachments = vec![SlackAttachmentBuilder::new(comment.body().trim())
-            .title(format!("{} said:", self.slack_user_name(comment.user())))
-            .title_link(comment.html_url())
-            .build()];
+        let attachments = vec![
+            SlackAttachmentBuilder::new(comment.body().trim())
+                .title(format!("{} said:", self.slack_user_name(comment.user())))
+                .title_link(comment.html_url())
+                .build(),
+        ];
 
         let mut participants = self.all_participants(pull_request, commits).await;
         for username in util::get_mentioned_usernames(comment.body()) {
@@ -883,10 +889,12 @@ impl GithubEventHandler {
                         util::make_link(commit_url.as_str(), commit)
                     );
 
-                    let attachments = vec![SlackAttachmentBuilder::new(comment.body())
-                        .title(format!("{} said:", self.slack_user_name(&comment.user)))
-                        .title_link(comment.html_url.as_str())
-                        .build()];
+                    let attachments = vec![
+                        SlackAttachmentBuilder::new(comment.body())
+                            .title(format!("{} said:", self.slack_user_name(&comment.user)))
+                            .title_link(comment.html_url.as_str())
+                            .build(),
+                    ];
 
                     // TODO: should try to tie this back to a PR to get this to the right channel.
                     let branch_name = "";

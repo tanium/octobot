@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use base64::{self, Engine};
 use log::{debug, info};
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
@@ -31,11 +31,11 @@ pub trait Session: Send + Sync {
     async fn get_versions(&self, proj: &str) -> Result<Vec<Version>>;
     async fn assign_fix_version(&self, key: &str, version: &str) -> Result<()>;
     async fn reorder_version(&self, version: &Version, position: JiraVersionPosition)
-        -> Result<()>;
+    -> Result<()>;
 
     async fn add_pending_version(&self, key: &str, version: &str) -> Result<()>;
     async fn remove_pending_versions(&self, key: &str, versions: &[version::Version])
-        -> Result<()>;
+    -> Result<()>;
     async fn find_pending_versions(
         &self,
         proj: &str,
