@@ -1,11 +1,11 @@
+use prometheus::Registry;
 #[cfg(target_os = "linux")]
 use prometheus::process_collector::ProcessCollector;
-use prometheus::Registry;
-use prometheus::{register_gauge_vec_with_registry, GaugeVec};
-use prometheus::{register_gauge_with_registry, Gauge};
-use prometheus::{register_histogram_vec_with_registry, HistogramVec};
-use prometheus::{register_histogram_with_registry, Histogram};
-use prometheus::{register_int_counter_vec_with_registry, IntCounterVec};
+use prometheus::{Gauge, register_gauge_with_registry};
+use prometheus::{GaugeVec, register_gauge_vec_with_registry};
+use prometheus::{Histogram, register_histogram_with_registry};
+use prometheus::{HistogramVec, register_histogram_vec_with_registry};
+use prometheus::{IntCounterVec, register_int_counter_vec_with_registry};
 use std::sync::Arc;
 
 pub struct Metrics {

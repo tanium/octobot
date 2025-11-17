@@ -8,8 +8,8 @@ use crate::git_clone_manager::GitCloneManager;
 use crate::worker;
 use octobot_lib::errors::*;
 use octobot_lib::github;
-use octobot_lib::github::api::GithubSessionFactory;
 use octobot_lib::github::Commit;
+use octobot_lib::github::api::GithubSessionFactory;
 use octobot_lib::metrics::{self, Metrics};
 
 pub async fn comment_force_push(

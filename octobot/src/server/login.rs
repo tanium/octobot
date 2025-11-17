@@ -11,7 +11,7 @@ use octobot_lib::errors::*;
 use octobot_lib::passwd;
 
 use crate::http_util;
-use crate::server::http::{parse_json, Filter, FilterResult, Handler};
+use crate::server::http::{Filter, FilterResult, Handler, parse_json};
 use crate::server::sessions::Sessions;
 
 pub struct LoginHandler {

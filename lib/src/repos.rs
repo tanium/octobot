@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use log::error;
 use rusqlite::types::ToSql;
-use rusqlite::{named_params, Connection, Row, Transaction};
+use rusqlite::{Connection, Row, Transaction, named_params};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::config_db::ConfigDatabase;
@@ -414,7 +414,7 @@ impl RepoConfig {
 mod tests {
     use super::*;
     use github;
-    use tempfile::{tempdir, TempDir};
+    use tempfile::{TempDir, tempdir};
 
     fn new_test() -> (RepoConfig, TempDir) {
         let temp_dir = tempdir().unwrap();

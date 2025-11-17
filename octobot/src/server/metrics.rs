@@ -32,7 +32,7 @@ impl MetricsScrapeHandler {
                     return Some((
                         StatusCode::BAD_REQUEST,
                         format!("Invalid authorization header: {}", e),
-                    ))
+                    ));
                 }
             },
             None => return Some((StatusCode::UNAUTHORIZED, "No authorization header".into())),

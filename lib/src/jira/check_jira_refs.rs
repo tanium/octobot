@@ -56,7 +56,10 @@ async fn do_check_jira_refs(
                 projects[0]
             )
         } else {
-            format!("Expected a JIRA reference in a commit message for at least one of the following projects: {}", projects.join(", "))
+            format!(
+                "Expected a JIRA reference in a commit message for at least one of the following projects: {}",
+                projects.join(", ")
+            )
         };
         run.output = Some(github::CheckOutput::new("Missing JIRA reference", &msg));
     } else {

@@ -25,8 +25,7 @@ jobs:
       with:
         profile: minimal
         toolchain: 1.84.0
-        override: true
-        components: rustfmt, clippy
+        override: false
 
     - name: Build
       uses: actions-rs/cargo@v1

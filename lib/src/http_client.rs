@@ -8,8 +8,8 @@ use serde::ser::Serialize;
 use crate::errors::*;
 use crate::metrics;
 
-pub use reqwest::header::HeaderMap;
 pub use reqwest::Response;
+pub use reqwest::header::HeaderMap;
 
 pub struct HTTPClient {
     pub api_base: String,

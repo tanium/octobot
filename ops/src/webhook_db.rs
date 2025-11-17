@@ -2,10 +2,10 @@ use std::sync::Mutex;
 use std::time::SystemTime;
 
 use anyhow::anyhow;
-use rusqlite::types::ToSql;
 use rusqlite::Connection;
+use rusqlite::types::ToSql;
 
-use octobot_lib::db::{migrations, Database};
+use octobot_lib::db::{Database, migrations};
 use octobot_lib::errors::*;
 
 use crate::util;
@@ -142,7 +142,7 @@ mod tests {
     use std::{path::PathBuf, time::Duration};
 
     use super::*;
-    use tempfile::{tempdir, TempDir};
+    use tempfile::{TempDir, tempdir};
 
     fn new_test() -> (WebhookDatabase, PathBuf, TempDir) {
         let temp_dir = tempdir().unwrap();
