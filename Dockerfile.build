@@ -30,6 +30,7 @@ WORKDIR /usr/src/app
 # only do downloads and library compiles once
 COPY Cargo.toml .
 COPY Cargo.lock .
+COPY rust-toolchain.toml .
 
 COPY ldap/Cargo.toml ldap/
 COPY lib/Cargo.toml lib/
