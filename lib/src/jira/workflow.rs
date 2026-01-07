@@ -446,7 +446,7 @@ fn find_relevant_versions(
 
 async fn try_get_issue_state(key: &str, jira: &dyn jira::api::Session) -> Option<jira::Status> {
     match jira.get_issue(key).await {
-        Ok(issue) => issue.status,
+        Ok(issue) => Some(issue.fields.status),
         Err(e) => {
             error!("Error getting JIRA [{}] {}", key, e);
             None

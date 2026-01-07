@@ -159,7 +159,7 @@ impl JiraSession {
 impl Session for JiraSession {
     async fn get_issue(&self, key: &str) -> Result<Issue> {
         self.client
-            .get::<Issue>(&format!("/issue/{}", key))
+            .get::<Issue>(&format!("/issue/{}?fields=status", key))
             .await
             .map_err(|e| anyhow!("Error creating getting issue [{}]: {}", key, e))
     }
