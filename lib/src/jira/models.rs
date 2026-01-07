@@ -3,7 +3,13 @@ use serde_derive::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Issue {
     pub key: String,
-    pub status: Option<Status>,
+    pub fields: Fields,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Fields {
+    // NOTE: if you add more fields, update get_issue to request them
+    pub status: Status,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

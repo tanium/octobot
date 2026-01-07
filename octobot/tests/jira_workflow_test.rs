@@ -65,9 +65,11 @@ fn new_push_commit(msg: &str, hash: &str) -> github::PushCommit {
 fn new_issue(key: &str, status: Option<&str>) -> Issue {
     Issue {
         key: key.into(),
-        status: status.map(|s| Status {
-            name: s.to_string(),
-        }),
+        fields: Fields {
+            status: Status {
+                name: status.unwrap_or_default().to_string(),
+            },
+        },
     }
 }
 

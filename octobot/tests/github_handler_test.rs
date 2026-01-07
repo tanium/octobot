@@ -14,7 +14,7 @@ use octobot_lib::config::{Config, JiraAuth, JiraConfig};
 use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github::api::Session;
 use octobot_lib::github::*;
-use octobot_lib::jira;
+use octobot_lib::jira::{self};
 use octobot_lib::repos;
 use octobot_lib::slack::SlackRecipient;
 use octobot_ops::force_push::{self, ForcePushRequest};
@@ -2248,7 +2248,11 @@ async fn test_team_members_cache() {
 fn new_issue(key: &str) -> jira::Issue {
     jira::Issue {
         key: key.into(),
-        status: None,
+        fields: jira::Fields {
+            status: jira::Status {
+                name: "Triaged".to_string(),
+            },
+        },
     }
 }
 
