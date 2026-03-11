@@ -16,17 +16,41 @@ pub struct MergedVersion {
     pub version_id: Option<String>,
 }
 
+fn cmp_pre_release_identifiers(a: &str, b: &str) -> Ordering {
+    let a_parts: Vec<&str> = a.split('.').collect();
+    let b_parts: Vec<&str> = b.split('.').collect();
+
+    for (ap, bp) in a_parts.iter().zip(b_parts.iter()) {
+        let result = match (ap.parse::<u64>(), bp.parse::<u64>()) {
+            (Ok(an), Ok(bn)) => an.cmp(&bn),
+            (Ok(_), Err(_)) => Ordering::Less,
+            (Err(_), Ok(_)) => Ordering::Greater,
+            (Err(_), Err(_)) => ap.cmp(bp),
+        };
+        if result != Ordering::Equal {
+            return result;
+        }
+    }
+
+    a_parts.len().cmp(&b_parts.len())
+}
+
 impl Version {
     pub fn parse(version_str: &str) -> Option<Version> {
-        let (numeric_str, pre_release) = match version_str.find('-') {
+        let without_build = match version_str.find('+') {
+            Some(pos) => &version_str[..pos],
+            None => version_str,
+        };
+
+        let (numeric_str, pre_release) = match without_build.find('-') {
             Some(pos) => {
-                let pre = &version_str[pos + 1..];
+                let pre = &without_build[pos + 1..];
                 if pre.is_empty() {
                     return None;
                 }
-                (&version_str[..pos], Some(pre.to_string()))
+                (&without_build[..pos], Some(pre.to_string()))
             }
-            None => (version_str, None),
+            None => (without_build, None),
         };
 
         let parts = numeric_str
@@ -103,7 +127,6 @@ impl PartialOrd for Version {
 
 impl Ord for Version {
     fn cmp(&self, other: &Version) -> Ordering {
-        // Note: this is always going to be at least 3.
         let min_len = cmp::min(self.parts.len(), other.parts.len());
         for i in 0..min_len {
             let result = self.parts[i].cmp(&other.parts[i]);
@@ -112,7 +135,6 @@ impl Ord for Version {
             }
         }
 
-        // Check remaining numeric parts for non-zero values
         if self.parts.len() != other.parts.len() {
             let longer_parts;
             let nonzero_answer;
@@ -134,7 +156,7 @@ impl Ord for Version {
             (None, None) => Ordering::Equal,
             (Some(_), None) => Ordering::Less,
             (None, Some(_)) => Ordering::Greater,
-            (Some(a), Some(b)) => a.cmp(b),
+            (Some(a), Some(b)) => cmp_pre_release_identifiers(a, b),
         }
     }
 }
@@ -193,6 +215,17 @@ mod tests {
     }
 
     #[test]
+    fn test_version_parse_build_metadata_stripped() {
+        let v = Version::parse("1.2.3+build.7").unwrap();
+        assert_eq!("1.2.3", v.to_string());
+        assert!(!v.is_pre_release());
+
+        let v = Version::parse("1.2.3-rc.1+build.123").unwrap();
+        assert_eq!("1.2.3-rc.1", v.to_string());
+        assert_eq!(Some("rc.1"), v.pre_release());
+    }
+
+    #[test]
     fn test_version_parse_no_pre_release() {
         let v = Version::parse("1.2.3").unwrap();
         assert_eq!(None, v.pre_release());
@@ -243,6 +276,14 @@ mod tests {
     fn test_version_pre_release_ordering() {
         assert!(Version::parse("1.2.3-alpha").unwrap() < Version::parse("1.2.3-beta").unwrap());
         assert!(Version::parse("1.2.3-main").unwrap() < Version::parse("1.2.3-staging").unwrap());
+    }
+
+    #[test]
+    fn test_version_pre_release_semver_identifier_ordering() {
+        assert!(Version::parse("1.2.3-rc.2").unwrap() < Version::parse("1.2.3-rc.10").unwrap());
+        assert!(Version::parse("1.2.3-alpha.1").unwrap() < Version::parse("1.2.3-alpha.beta").unwrap());
+        assert!(Version::parse("1.2.3-1").unwrap() < Version::parse("1.2.3-alpha").unwrap());
+        assert!(Version::parse("1.2.3-alpha").unwrap() < Version::parse("1.2.3-alpha.1").unwrap());
     }
 
     #[test]
