@@ -16,25 +16,6 @@ pub struct MergedVersion {
     pub version_id: Option<String>,
 }
 
-fn cmp_pre_release_identifiers(a: &str, b: &str) -> Ordering {
-    let a_parts: Vec<&str> = a.split('.').collect();
-    let b_parts: Vec<&str> = b.split('.').collect();
-
-    for (ap, bp) in a_parts.iter().zip(b_parts.iter()) {
-        let result = match (ap.parse::<u64>(), bp.parse::<u64>()) {
-            (Ok(an), Ok(bn)) => an.cmp(&bn),
-            (Ok(_), Err(_)) => Ordering::Less,
-            (Err(_), Ok(_)) => Ordering::Greater,
-            (Err(_), Err(_)) => ap.cmp(bp),
-        };
-        if result != Ordering::Equal {
-            return result;
-        }
-    }
-
-    a_parts.len().cmp(&b_parts.len())
-}
-
 impl Version {
     pub fn parse(version_str: &str) -> Option<Version> {
         let without_build = match version_str.find('+') {
@@ -136,6 +117,8 @@ impl Ord for Version {
             }
         }
 
+        // if all else is equal, but one of the Versions has more elements,
+        // see if any are non-zero making it greater
         if self.parts.len() != other.parts.len() {
             let longer_parts;
             let nonzero_answer;
@@ -169,6 +152,25 @@ impl Serialize for Version {
     {
         serializer.serialize_str(&self.to_string())
     }
+}
+
+fn cmp_pre_release_identifiers(a: &str, b: &str) -> Ordering {
+    let prerelease_parts_a: Vec<&str> = a.split('.').collect();
+    let prerelease_parts_b: Vec<&str> = b.split('.').collect();
+
+    for (part_a, part_b) in prerelease_parts_a.iter().zip(prerelease_parts_b.iter()) {
+        let result = match (part_a.parse::<u64>(), part_b.parse::<u64>()) {
+            (Ok(num_a), Ok(num_b)) => num_a.cmp(&num_b),
+            (Ok(_), Err(_)) => Ordering::Less,
+            (Err(_), Ok(_)) => Ordering::Greater,
+            (Err(_), Err(_)) => part_a.cmp(part_b),
+        };
+        if result != Ordering::Equal {
+            return result;
+        }
+    }
+
+    prerelease_parts_a.len().cmp(&prerelease_parts_b.len())
 }
 
 #[cfg(test)]

@@ -322,8 +322,8 @@ impl Handler for GithubHandler {
 
         // Try to remap issues which are PRs as pull requests. This gives us access to PR information
         // like reviewers which do not exist for issues.
-        if let Some(ref issue) = data.issue
-            && data.pull_request.is_none() && issue.html_url.contains("/pull/") {
+        if let Some(ref issue) = data.issue {
+            if data.pull_request.is_none() && issue.html_url.contains("/pull/") {
                 data.pull_request = match github_session
                     .get_pull_request(repository.owner.login(), &repository.name, issue.number)
                     .await
@@ -338,11 +338,12 @@ impl Handler for GithubHandler {
                     }
                 };
             }
+        }
 
         // refetch PR if present to get requested reviewers: they don't come on each webhook :cry:
         let mut changed_pr = None;
-        if let Some(ref pull_request) = data.pull_request
-            && (pull_request.requested_reviewers.is_none() || pull_request.reviews.is_none()) {
+        if let Some(ref pull_request) = data.pull_request {
+            if pull_request.requested_reviewers.is_none() || pull_request.reviews.is_none() {
                 match github_session
                     .get_pull_request(
                         repository.owner.login(),
@@ -371,6 +372,7 @@ impl Handler for GithubHandler {
                     Err(e) => error!("Error refetching pull request to get reviewers: {}", e),
                 };
             }
+        }
         if let Some(changed_pr) = changed_pr {
             data.pull_request = Some(changed_pr);
         }
@@ -666,9 +668,9 @@ impl GithubEventHandler {
                     self.action == "opened" || self.action == "ready_for_review";
 
                 // Mark JIRAs in review for PR open
-                if is_pull_request_first_ready
-                    && let Some(ref jira_config) = self.config.jira
-                        && let Some(ref jira_session) = self.jira_session {
+                if is_pull_request_first_ready {
+                    if let Some(ref jira_config) = self.config.jira {
+                        if let Some(ref jira_session) = self.jira_session {
                             if commits.len() > MAX_COMMITS_FOR_JIRA_CONSIDERATION {
                                 let msg = format!(
                                     "Too many commits on Pull Request #{}. Ignoring JIRAs.",
@@ -693,6 +695,8 @@ impl GithubEventHandler {
                                 .await;
                             }
                         }
+                    }
+                }
 
                 // Check for jira reference on ready for review and PR title rename
                 // (since JIRA check ignore is based on PR title)
@@ -726,23 +730,25 @@ impl GithubEventHandler {
     }
 
     async fn handle_pr_review_comment(&self) -> EventResponse {
-        if let Some(ref pull_request) = self.data.pull_request
-            && let Some(ref comment) = self.data.comment
-                && self.action == "created" {
+        if let Some(ref pull_request) = self.data.pull_request {
+            if let Some(ref comment) = self.data.comment {
+                if self.action == "created" {
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
 
                     self.do_pull_request_comment(&pull_request, &comment, branch_name, &commits)
                         .await;
                 }
+            }
+        }
 
         (StatusCode::OK, "pr_review_comment".into())
     }
 
     async fn handle_pr_review(&self) -> EventResponse {
-        if let Some(ref pull_request) = self.data.pull_request
-            && let Some(ref review) = self.data.review
-                && self.action == "submitted" {
+        if let Some(ref pull_request) = self.data.pull_request {
+            if let Some(ref review) = self.data.review {
+                if self.action == "submitted" {
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
 
@@ -803,6 +809,8 @@ impl GithubEventHandler {
                         vec![self.build_thread_guid(pull_request.number)],
                     );
                 }
+            }
+        }
 
         (StatusCode::OK, "pr_review".into())
     }
@@ -864,9 +872,9 @@ impl GithubEventHandler {
     }
 
     async fn handle_commit_comment(&self) -> EventResponse {
-        if let Some(ref comment) = self.data.comment
-            && self.action == "created"
-                && let Some(ref commit_id) = comment.commit_id {
+        if let Some(ref comment) = self.data.comment {
+            if self.action == "created" {
+                if let Some(ref commit_id) = comment.commit_id {
                     let commit: &str = &commit_id[0..7];
                     let commit_url = format!("{}/commit/{}", self.repository.html_url, commit_id);
                     let commit_path = if let Some(ref path) = comment.path {
@@ -929,13 +937,15 @@ impl GithubEventHandler {
                         thread_guids,
                     );
                 }
+            }
+        }
 
         (StatusCode::OK, "commit_comment".into())
     }
 
     async fn handle_issue_comment(&self) -> EventResponse {
-        if let Some(ref comment) = self.data.comment
-            && self.action == "created" {
+        if let Some(ref comment) = self.data.comment {
+            if self.action == "created" {
                 // Check to see if we remapped this "issue" to a PR
                 if let Some(ref pr) = self.data.pull_request {
                     let branch_name = &pr.base.ref_name;
@@ -952,6 +962,7 @@ impl GithubEventHandler {
                         .await;
                 }
             }
+        }
         (StatusCode::OK, "issue_comment".into())
     }
 
@@ -1100,8 +1111,8 @@ impl GithubEventHandler {
                 .is_empty();
 
             // Mark JIRAs as merged
-            if is_versioned_branch && has_jira_projects
-                && let Some(ref commits) = self.data.commits {
+            if is_versioned_branch && has_jira_projects {
+                if let Some(ref commits) = self.data.commits {
                     let msg = repo_version::req(
                         &self.repository,
                         &branch_name,
@@ -1110,6 +1121,7 @@ impl GithubEventHandler {
                     );
                     self.repo_version.send(msg);
                 }
+            }
         }
 
         (StatusCode::OK, "push".into())
