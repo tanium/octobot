@@ -422,6 +422,7 @@ fn find_relevant_versions(
         .filter(|v| {
             v.major() == target_version.major()
                 && v.minor() == target_version.minor()
+                && v.pre_release() == target_version.pre_release()
                 && v < &target_version
         })
         .max()
