@@ -351,13 +351,12 @@ impl MergeVersions {
             }
         };
 
-        if !merge_req.dry_run {
-            if let Err(e) =
+        if !merge_req.dry_run
+            && let Err(e) =
                 jira::workflow::sort_versions(&merge_req.project, jira_sess.borrow()).await
             {
                 error!("Error sorting versions: {}", e);
             }
-        }
 
         let version_url = match all_relevant_versions.version_id {
             Some(id) => Some(format!(
