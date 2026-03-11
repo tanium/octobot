@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -8,9 +7,10 @@ use log::error;
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
 
-use octobot_lib::config::{Config, JiraAuth, JiraConfig};
+use octobot_lib::config::{Config, JiraConfig};
 use octobot_lib::errors::*;
 use octobot_lib::jira;
+use octobot_lib::jira::api::Session as JiraSession;
 use octobot_lib::repos::RepoInfo;
 use octobot_lib::users::UserInfo;
 use octobot_lib::version;
@@ -230,19 +230,17 @@ impl RepoAdmin {
 
 pub struct MergeVersions {
     config: Arc<Config>,
+    jira_session: Option<Arc<dyn JiraSession>>,
 }
 
 impl MergeVersions {
-    pub fn new(config: Arc<Config>) -> Box<MergeVersions> {
-        Box::new(MergeVersions { config })
+    pub fn new(config: Arc<Config>, jira_session: Option<Arc<dyn JiraSession>>) -> Box<MergeVersions> {
+        Box::new(MergeVersions { config, jira_session })
     }
 }
 
 #[derive(Deserialize, Clone)]
 struct MergeVersionsReq {
-    admin_user: Option<String>,
-    admin_pass: Option<String>,
-    admin_token: Option<String>,
     project: String,
     version: String,
     dry_run: bool,
@@ -251,7 +249,6 @@ struct MergeVersionsReq {
 #[derive(Serialize, Clone)]
 struct MergeVersionsResp {
     jira_base: String,
-    login_suffix: Option<String>,
     versions: HashMap<String, Vec<version::Version>>,
     version_url: Option<String>,
     error: Option<String>,
@@ -261,7 +258,6 @@ impl MergeVersionsResp {
     fn new(jira_config: &JiraConfig) -> Self {
         Self {
             jira_base: jira_config.base_url.clone(),
-            login_suffix: jira_config.login_suffix.clone(),
             versions: HashMap::new(),
             version_url: None,
             error: None,
@@ -296,38 +292,17 @@ impl Handler for MergeVersions {
 impl MergeVersions {
     // TODO: This returns error codes as HTTP 400, so we want to not hide the error message
     async fn do_handle(&self, merge_req: MergeVersionsReq) -> Response<Body> {
-        let config = self.config.clone();
-        // make a copy of the jira config so we can modify the auth
-        let mut jira_config: JiraConfig = match config.jira {
-            Some(ref j) => j.clone(),
+        let jira_config: &JiraConfig = match self.config.jira {
+            Some(ref j) => j,
             None => return http_util::new_bad_req_resp("No JIRA config"),
         };
 
-        let resp = MergeVersionsResp::new(&jira_config);
-
-        if !merge_req.dry_run {
-            match (
-                merge_req.admin_token,
-                merge_req.admin_user,
-                merge_req.admin_pass,
-            ) {
-                (Some(token), _, _) => jira_config.auth = JiraAuth::Token(token),
-                (None, Some(username), Some(password)) => {
-                    jira_config.auth = JiraAuth::Basic { username, password }
-                }
-                _ => {
-                    return self.make_resp(resp.set_error("JIRA auth required for non dry-run"));
-                }
-            }
-        }
-
-        let jira_sess = match jira::api::JiraSession::new(&jira_config, None).await {
-            Ok(j) => j,
-            Err(e) => {
-                return self
-                    .make_resp(resp.set_error(&format!("Error creating JIRA session: {}", e)));
-            }
+        let jira_sess = match self.jira_session {
+            Some(ref s) => s,
+            None => return http_util::new_bad_req_resp("No JIRA session"),
         };
+
+        let resp = MergeVersionsResp::new(jira_config);
 
         let dry_run_mode = if merge_req.dry_run {
             jira::workflow::DryRunMode::DryRun
@@ -338,7 +313,7 @@ impl MergeVersions {
         let all_relevant_versions = match jira::workflow::merge_pending_versions(
             &merge_req.version,
             &merge_req.project,
-            jira_sess.borrow(),
+            jira_sess.as_ref(),
             dry_run_mode,
         )
         .await
@@ -353,7 +328,7 @@ impl MergeVersions {
 
         if !merge_req.dry_run {
             if let Err(e) =
-                jira::workflow::sort_versions(&merge_req.project, jira_sess.borrow()).await
+                jira::workflow::sort_versions(&merge_req.project, jira_sess.as_ref()).await
             {
                 error!("Error sorting versions: {}", e);
             }

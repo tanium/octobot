@@ -428,18 +428,6 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
 
   function init() {
     $scope.reset();
-    $scope.req.admin_user = loggedInUser();
-
-    $('#auth-modal').on('shown.bs.modal', function () {
-      $('#auth-password').focus()
-    });
-    // clear the password before show and after hide
-    $('#auth-modal').on('show.bs.modal', function() {
-        $scope.req.admin_pass = "";
-    });
-    $('#auth-modal').on('hidden.bs.modal', function() {
-        $scope.req.admin_pass = "";
-    });
   }
 
   $scope.reset = function() {
@@ -449,7 +437,6 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
     $scope.req = {
       project: "",
       version: "",
-      admin_pass: "",
     };
 
     $scope.lastVersion = null;
@@ -462,16 +449,11 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
       project: $scope.req.project,
       version: $scope.req.version,
       dry_run: !!dryRun,
-      admin_user: $scope.req.admin_user,
-      admin_pass: $scope.req.admin_pass,
     };
     return sessionHttp.post('/api/merge-versions', req).then(function(resp) {
       $scope.processing = false;
       if (!jiraBase && resp.data.jira_base) {
         jiraBase = resp.data.jira_base;
-      }
-      if (resp.data.login_suffix) {
-        $scope.req.admin_user = loggedInUser() + resp.data.login_suffix;
       }
       if (resp.data.error) {
         throw(resp.data.error)
@@ -513,13 +495,13 @@ app.controller('VersionsController', function($rootScope, $scope, sessionHttp, n
     if ($scope.dryRun) {
       mergeVersionsDryRun();
     } else {
-      $('#auth-modal').modal('show');
+      $('#confirm-modal').modal('show');
     }
   }
 
   $scope.modalSubmit = function() {
       mergeVersionsForReal();
-      $('#auth-modal').modal('hide');
+      $('#confirm-modal').modal('hide');
   }
 
   $scope.submitText = function() {

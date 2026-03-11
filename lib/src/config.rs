@@ -101,8 +101,6 @@ pub struct JiraConfig {
     pub pending_versions_field: Option<String>,
     // optional name of role to restrict octobot comment visibility. (e.g. "Developers")
     pub restrict_comment_visibility_to_role: Option<String>,
-    // optional suffix to add to the username for the login dialog (e.g. "@company.com")
-    pub login_suffix: Option<String>,
 }
 
 impl<'de> Deserialize<'de> for JiraConfig {
@@ -125,7 +123,6 @@ impl<'de> Deserialize<'de> for JiraConfig {
             pub fix_versions_field: Option<String>,
             pub pending_versions_field: Option<String>,
             pub restrict_comment_visibility_to_role: Option<String>,
-            pub login_suffix: Option<String>,
         }
 
         let c = Config::deserialize(deserializer)?;
@@ -161,7 +158,6 @@ impl<'de> Deserialize<'de> for JiraConfig {
             fix_versions_field: c.fix_versions_field.unwrap_or_else(|| "fixVersions".into()),
             pending_versions_field: c.pending_versions_field,
             restrict_comment_visibility_to_role: c.restrict_comment_visibility_to_role,
-            login_suffix: c.login_suffix,
         })
     }
 }
