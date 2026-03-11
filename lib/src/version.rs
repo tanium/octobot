@@ -288,7 +288,9 @@ mod tests {
     #[test]
     fn test_version_pre_release_semver_identifier_ordering() {
         assert!(Version::parse("1.2.3-rc.2").unwrap() < Version::parse("1.2.3-rc.10").unwrap());
-        assert!(Version::parse("1.2.3-alpha.1").unwrap() < Version::parse("1.2.3-alpha.beta").unwrap());
+        assert!(
+            Version::parse("1.2.3-alpha.1").unwrap() < Version::parse("1.2.3-alpha.beta").unwrap()
+        );
         assert!(Version::parse("1.2.3-1").unwrap() < Version::parse("1.2.3-alpha").unwrap());
         assert!(Version::parse("1.2.3-alpha").unwrap() < Version::parse("1.2.3-alpha.1").unwrap());
     }
