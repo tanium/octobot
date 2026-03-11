@@ -76,8 +76,8 @@ impl Handler for LoginHandler {
         let login_req: LoginRequest = parse_json(req).await?;
 
         let mut success = None;
-        if let Some(ref admin) = config.admin {
-            if admin.name == login_req.username {
+        if let Some(ref admin) = config.admin
+            && admin.name == login_req.username {
                 if passwd::verify_password(&login_req.password, &admin.salt, &admin.pass_hash) {
                     info!("Admin auth success");
                     success = Some(true);
@@ -86,10 +86,9 @@ impl Handler for LoginHandler {
                     success = Some(false);
                 }
             }
-        }
 
-        if success.is_none() {
-            if let Some(ref ldap) = config.ldap {
+        if success.is_none()
+            && let Some(ref ldap) = config.ldap {
                 match octobot_ldap::auth(&login_req.username, &login_req.password, ldap) {
                     Ok(true) => {
                         info!("LDAP auth successfor user: {}", login_req.username);
@@ -99,7 +98,6 @@ impl Handler for LoginHandler {
                     Err(e) => error!("Error authenticating to LDAP: {}", e),
                 };
             }
-        }
 
         if success == Some(true) {
             let sess_id = sessions.new_session();
