@@ -234,8 +234,14 @@ pub struct MergeVersions {
 }
 
 impl MergeVersions {
-    pub fn new(config: Arc<Config>, jira_session: Option<Arc<dyn JiraSession>>) -> Box<MergeVersions> {
-        Box::new(MergeVersions { config, jira_session })
+    pub fn new(
+        config: Arc<Config>,
+        jira_session: Option<Arc<dyn JiraSession>>,
+    ) -> Box<MergeVersions> {
+        Box::new(MergeVersions {
+            config,
+            jira_session,
+        })
     }
 }
 
