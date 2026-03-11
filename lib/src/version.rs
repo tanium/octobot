@@ -38,14 +38,15 @@ fn cmp_pre_release_identifiers(a: &str, b: &str) -> Ordering {
 impl Version {
     pub fn parse(version_str: &str) -> Option<Version> {
         let without_build = match version_str.find('+') {
-            Some(pos) => &version_str[..pos],
+            Some(pos) if pos + 1 < version_str.len() => &version_str[..pos],
+            Some(_) => return None,
             None => version_str,
         };
 
         let (numeric_str, pre_release) = match without_build.find('-') {
             Some(pos) => {
                 let pre = &without_build[pos + 1..];
-                if pre.is_empty() {
+                if pre.is_empty() || pre.split('.').any(|id| id.is_empty()) {
                     return None;
                 }
                 (&without_build[..pos], Some(pre.to_string()))
@@ -212,6 +213,10 @@ mod tests {
     fn test_version_parse_pre_release_invalid() {
         assert!(Version::parse("1.2.3-").is_none());
         assert!(Version::parse("-beta").is_none());
+        assert!(Version::parse("1.2.3-foo..bar").is_none());
+        assert!(Version::parse("1.2.3-.foo").is_none());
+        assert!(Version::parse("1.2.3-foo.").is_none());
+        assert!(Version::parse("1.2.3+").is_none());
     }
 
     #[test]
