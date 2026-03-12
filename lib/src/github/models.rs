@@ -183,6 +183,10 @@ impl Repo {
     pub fn archived(&self) -> bool {
         self.archived.unwrap_or(false)
     }
+
+    pub fn organization_id(&self) -> u32 {
+        self.owner.id
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

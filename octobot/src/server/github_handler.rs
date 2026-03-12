@@ -65,6 +65,7 @@ pub struct GithubEventHandler {
 }
 
 struct TeamCacheEntry {
+    team: github::Team,
     users: Vec<github::User>,
     expiry: Instant,
 }
@@ -82,20 +83,36 @@ impl TeamsCache {
         }
     }
 
-    pub fn insert(&self, repo: &github::Repo, team_id: u32, users: Vec<github::User>) {
+    pub fn insert(&self, repo: &github::Repo, team: &github::Team, users: Vec<github::User>) {
         let mut hash = self.members.lock().unwrap();
+        for u in users.iter() {
+            info!(
+                "Caching new team entry. user: {}, team: {} (id: {}; org_id: {})",
+                u.login(),
+                team.slug,
+                team.id,
+                repo.organization_id()
+            );
+        }
         let entry = TeamCacheEntry {
             users,
+            team: team.clone(),
             expiry: Instant::now().add(self.ttl),
         };
-        hash.insert((repo.owner.id, team_id), entry);
+        hash.insert((repo.organization_id(), team.id), entry);
     }
 
     pub fn get(&self, repo: &github::Repo, team_id: u32) -> Option<Vec<github::User>> {
-        let key = (repo.owner.id, team_id);
+        let key = (repo.organization_id(), team_id);
         let mut hash = self.members.lock().unwrap();
         let entry = hash.get(&key)?;
         if Instant::now() > entry.expiry {
+            info!(
+                "Evicting team cache entry for team {} (id: {}, org_id: {})",
+                entry.team.slug,
+                team_id,
+                repo.organization_id()
+            );
             hash.remove(&key);
             return None;
         }
@@ -389,7 +406,7 @@ impl Handler for GithubHandler {
             pr_merge,
             repo_version,
             force_push,
-            team_members_cache: TeamsCache::new(Duration::from_secs(3600)),
+            team_members_cache: TeamsCache::new(Duration::from_secs(1800)),
         };
 
         match handler.handle_event().await {
@@ -520,7 +537,7 @@ impl GithubEventHandler {
                 match team_members {
                     Ok(m) => {
                         participants.extend(m.clone());
-                        self.team_members_cache.insert(repo, t.id, m);
+                        self.team_members_cache.insert(repo, &t, m);
                     }
                     Err(e) => {
                         error!("Error getting team members: {}", e);
