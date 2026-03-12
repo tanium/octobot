@@ -171,7 +171,7 @@ pub async fn try_merge_pull_request(
 
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
-    let new_pr = session
+    let new_pr = match session
         .create_pull_request(
             owner,
             repo,
@@ -180,7 +180,29 @@ pub async fn try_merge_pull_request(
             &pr_branch_name,
             &req.target_branch,
         )
-        .await?;
+        .await
+    {
+        Ok(pr) => pr,
+        Err(e) => {
+            let err_str = e.to_string();
+            let is_head_validation_error = err_str.contains(r#""field":"head","code":"invalid"#);
+            if is_head_validation_error {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                session
+                    .create_pull_request(
+                        owner,
+                        repo,
+                        &title,
+                        &body,
+                        &pr_branch_name,
+                        &req.target_branch,
+                    )
+                    .await?
+            } else {
+                return Err(e);
+            }
+        }
+    };
 
     let mut assignees: Vec<String> = pull_request
         .assignees
