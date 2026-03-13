@@ -228,7 +228,7 @@ pub async fn try_merge_pull_request(
                     break; // don't retry for unexpected errors
                 }
                 if attempt < MAX_ATTEMPTS {
-                     {
+                    {
                         tokio::time::sleep(std::time::Duration::from_secs(SLEEP_SECONDS)).await;
                     }
                 }
