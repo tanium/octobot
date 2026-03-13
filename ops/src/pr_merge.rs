@@ -5,6 +5,7 @@ use anyhow::anyhow;
 use conventional::{Commit, Simple as _};
 use log::{error, info};
 use regex::Regex;
+use serde::Deserialize;
 
 use crate::git::Git;
 use crate::git_clone_manager::GitCloneManager;
@@ -16,6 +17,42 @@ use octobot_lib::errors::*;
 use octobot_lib::github;
 use octobot_lib::github::api::{GithubSessionFactory, Session};
 use octobot_lib::metrics::{self, Metrics};
+
+/// GitHub API error response (subset of fields we care about).
+#[derive(Debug, Deserialize)]
+struct GithubErrorResponse {
+    message: Option<String>,
+    errors: Option<Vec<GithubErrorEntry>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubErrorEntry {
+    field: Option<String>,
+    code: Option<String>,
+}
+
+fn is_head_validation_error(err_str: &str) -> bool {
+    const PREFIX: &str = "Response body: ";
+    let body = match err_str.split(PREFIX).nth(1) {
+        Some(s) => s.trim(),
+        None => return false,
+    };
+    let response: GithubErrorResponse = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    if response.message.as_deref() != Some("Validation Failed") {
+        return false;
+    }
+    response
+        .errors
+        .as_deref()
+        .map_or(false, |errors| {
+            errors.iter().any(|e| {
+                e.field.as_deref() == Some("head") && e.code.as_deref() == Some("invalid")
+            })
+        })
+}
 
 async fn clone_and_merge_pull_request<'a>(
     github_app: &'a dyn GithubSessionFactory,
@@ -171,38 +208,41 @@ pub async fn try_merge_pull_request(
 
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
-    let new_pr = match session
-        .create_pull_request(
-            owner,
-            repo,
-            &title,
-            &body,
-            &pr_branch_name,
-            &req.target_branch,
-        )
-        .await
-    {
-        Ok(pr) => pr,
-        Err(e) => {
-            let err_str = e.to_string();
-            let is_head_validation_error = err_str.contains(r#""field":"head","code":"invalid"#);
-            if is_head_validation_error {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                session
-                    .create_pull_request(
-                        owner,
-                        repo,
-                        &title,
-                        &body,
-                        &pr_branch_name,
-                        &req.target_branch,
-                    )
-                    .await?
-            } else {
-                return Err(e);
+
+    const MAX_ATTEMPTS: u32 = 2;
+    let mut last_error = None;
+    let mut new_pr = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match session
+            .create_pull_request(
+                owner,
+                repo,
+                &title,
+                &body,
+                &pr_branch_name,
+                &req.target_branch,
+            )
+            .await
+        {
+            Ok(pr) => {
+                new_pr = Some(pr);
+                break;
+            }
+            Err(e) => {
+                last_error = Some(e);
+                if attempt < MAX_ATTEMPTS {
+                    let err_str = last_error.as_ref().unwrap().to_string();
+                    if is_head_validation_error(&err_str) {
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        continue;
+                    }
+                }
+                break;
             }
         }
-    };
+    }
+
+    let new_pr = new_pr.ok_or_else(|| last_error.unwrap())?;
 
     let mut assignees: Vec<String> = pull_request
         .assignees
