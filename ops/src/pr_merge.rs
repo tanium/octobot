@@ -32,12 +32,7 @@ struct GithubErrorEntry {
 }
 
 fn is_head_validation_error(err_str: &str) -> bool {
-    const PREFIX: &str = "Response body: ";
-    let body = match err_str.split(PREFIX).nth(1) {
-        Some(s) => s.trim(),
-        None => return false,
-    };
-    let response: GithubErrorResponse = match serde_json::from_str(body) {
+    let response: GithubErrorResponse = match serde_json::from_str(err_str) {
         Ok(r) => r,
         Err(_) => return false,
     };
