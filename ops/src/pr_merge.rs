@@ -205,8 +205,7 @@ pub async fn try_merge_pull_request(
     let repo = &req.repo.name;
 
     const MAX_ATTEMPTS: u32 = 2;
-    let mut last_error = None;
-    let mut new_pr = None;
+    let mut new_pr = Err(anyhow!("No attempt to create pull request made"));
     for attempt in 1..=MAX_ATTEMPTS {
         match session
             .create_pull_request(
@@ -220,24 +219,21 @@ pub async fn try_merge_pull_request(
             .await
         {
             Ok(pr) => {
-                new_pr = Some(pr);
+                new_pr = Ok(pr);
                 break;
             }
             Err(e) => {
-                last_error = Some(e);
+                if !is_head_validation_error(&e.to_string()) {
+                    break; // don't retry for unexpected errors
+                }
                 if attempt < MAX_ATTEMPTS {
-                    let err_str = last_error.as_ref().unwrap().to_string();
-                    if is_head_validation_error(&err_str) {
+                     {
                         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                        continue;
                     }
                 }
-                break;
             }
         }
     }
-
-    let new_pr = new_pr.ok_or_else(|| last_error.unwrap())?;
 
     let mut assignees: Vec<String> = pull_request
         .assignees
