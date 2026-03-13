@@ -205,6 +205,7 @@ pub async fn try_merge_pull_request(
     let repo = &req.repo.name;
 
     const MAX_ATTEMPTS: u32 = 2;
+    const SLEEP_SECONDS: u64 = 1;
     let mut new_pr = Err(anyhow!("No attempt to create pull request made"));
     for attempt in 1..=MAX_ATTEMPTS {
         match session
@@ -228,7 +229,7 @@ pub async fn try_merge_pull_request(
                 }
                 if attempt < MAX_ATTEMPTS {
                      {
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        tokio::time::sleep(std::time::Duration::from_secs(SLEEP_SECONDS)).await;
                     }
                 }
             }
