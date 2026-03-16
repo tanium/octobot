@@ -21,7 +21,6 @@ use octobot_lib::metrics::{self, Metrics};
 /// GitHub API error response (subset of fields we care about).
 #[derive(Debug, Deserialize)]
 struct GithubErrorResponse {
-    message: Option<String>,
     errors: Option<Vec<GithubErrorEntry>>,
 }
 
