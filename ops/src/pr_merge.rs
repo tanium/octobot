@@ -414,10 +414,12 @@ async fn create_pr_with_retry(
             )
             .await;
         match &new_pr {
-            Ok(pr) => return Ok(pr.clone()),
+            Ok(_) => {
+                break
+            }
             Err(e) => {
                 if !is_head_validation_error(&e.to_string()) {
-                    return Err(new_pr.unwrap_err()); // don't retry for unexpected errors
+                    break; // don't retry for unexpected errors
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
