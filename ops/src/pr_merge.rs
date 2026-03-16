@@ -374,7 +374,7 @@ async fn create_pr_with_retry(
     target_branch: &str
 ) -> Result<github::PullRequest> {
     let mut new_pr = Err(anyhow!("No attempt to create pull request made"));
-    for _ in 1..=2 {
+    for i in 1..=2 {
         new_pr = session
             .create_pull_request(
                 owner,
@@ -393,7 +393,10 @@ async fn create_pr_with_retry(
                 if !is_head_validation_error(&e.to_string()) {
                     break; // don't retry for unexpected errors
                 }
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                if i != 2 {
+                    info!("waiting to retry create_pull_request due to head validation error: {}", e);
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
             }
         }
     }
