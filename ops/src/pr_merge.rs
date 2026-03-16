@@ -201,7 +201,7 @@ pub async fn try_merge_pull_request(
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
 
-    let mut new_pr = Err(anyhow!("No attempt to create pull request made"));
+    let mut pr_attempt = Err(anyhow!("No attempt to create pull request made"));
     for attempt in 1..=2 {
         match session
             .create_pull_request(
@@ -215,7 +215,7 @@ pub async fn try_merge_pull_request(
             .await
         {
             Ok(pr) => {
-                new_pr = Ok(pr);
+                pr_attempt = Ok(pr);
                 break;
             }
             Err(e) => {
@@ -226,6 +226,7 @@ pub async fn try_merge_pull_request(
             }
         }
     }
+    let new_pr = pr_attempt?;
 
     let mut assignees: Vec<String> = pull_request
         .assignees
