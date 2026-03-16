@@ -36,9 +36,6 @@ fn is_head_validation_error(err_str: &str) -> bool {
         Ok(r) => r,
         Err(_) => return false,
     };
-    if response.message.as_deref() != Some("Validation Failed") {
-        return false;
-    }
     response
         .errors
         .as_deref()
@@ -204,10 +201,8 @@ pub async fn try_merge_pull_request(
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
 
-    const MAX_ATTEMPTS: u32 = 2;
-    const SLEEP_SECONDS: u64 = 1;
     let mut new_pr = Err(anyhow!("No attempt to create pull request made"));
-    for attempt in 1..=MAX_ATTEMPTS {
+    for attempt in 1..=2 {
         match session
             .create_pull_request(
                 owner,
@@ -225,13 +220,9 @@ pub async fn try_merge_pull_request(
             }
             Err(e) => {
                 if !is_head_validation_error(&e.to_string()) {
-                    break; // don't retry for unexpected errors
+                    return Err(e); // don't retry for unexpected errors
                 }
-                if attempt < MAX_ATTEMPTS {
-                    {
-                        tokio::time::sleep(std::time::Duration::from_secs(SLEEP_SECONDS)).await;
-                    }
-                }
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
         }
     }
