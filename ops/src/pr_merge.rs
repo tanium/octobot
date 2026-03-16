@@ -201,32 +201,15 @@ pub async fn try_merge_pull_request(
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
 
-    let mut pr_attempt = Err(anyhow!("No attempt to create pull request made"));
-    for attempt in 1..=2 {
-        match session
-            .create_pull_request(
-                owner,
-                repo,
-                &title,
-                &body,
-                &pr_branch_name,
-                &req.target_branch,
-            )
-            .await
-        {
-            Ok(pr) => {
-                pr_attempt = Ok(pr);
-                break;
-            }
-            Err(e) => {
-                if !is_head_validation_error(&e.to_string()) {
-                    return Err(e); // don't retry for unexpected errors
-                }
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
-        }
-    }
-    let new_pr = pr_attempt?;
+    let new_pr = create_pr_with_retry(
+        session,
+        owner,
+        repo,
+        &title,
+        &body,
+        &pr_branch_name,
+        &req.target_branch
+    ).await?;
 
     let mut assignees: Vec<String> = pull_request
         .assignees
@@ -407,6 +390,42 @@ fn make_merge_desc(
     body += format!("(cherry-picked from {}, PR #{})", commit_hash, pr_number).as_str();
 
     (title, body)
+}
+
+async fn create_pr_with_retry(
+    session: &dyn Session,
+    owner: &str,
+    repo: &str,
+    title: &str,
+    body: &str,
+    pr_branch_name: &str,
+    target_branch: &str
+) -> Result<github::PullRequest> {
+    let mut new_pr = Err(anyhow!("No attempt to create pull request made"));
+    for _ in 1..=2 {
+        new_pr = session
+            .create_pull_request(
+                owner,
+                repo,
+                title,
+                body,
+                pr_branch_name,
+                &target_branch,
+            )
+            .await;
+        match new_pr {
+            Ok(pr) => {
+                return Ok(pr);
+            }
+            Err(e) => {
+                if !is_head_validation_error(&e.to_string()) {
+                    return Err(e); // don't retry for unexpected errors
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        }
+    }
+    new_pr
 }
 
 #[derive(Debug, PartialEq)]
