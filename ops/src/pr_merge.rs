@@ -18,33 +18,6 @@ use octobot_lib::github;
 use octobot_lib::github::api::{GithubSessionFactory, Session};
 use octobot_lib::metrics::{self, Metrics};
 
-/// GitHub API error response (subset of fields we care about).
-#[derive(Debug, Deserialize)]
-struct GithubErrorResponse {
-    errors: Option<Vec<GithubErrorEntry>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GithubErrorEntry {
-    field: Option<String>,
-    code: Option<String>,
-}
-
-fn is_head_validation_error(err_str: &str) -> bool {
-    let response: GithubErrorResponse = match serde_json::from_str(err_str) {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
-    response
-        .errors
-        .as_deref()
-        .map_or(false, |errors| {
-            errors.iter().any(|e| {
-                e.field.as_deref() == Some("head") && e.code.as_deref() == Some("invalid")
-            })
-        })
-}
-
 async fn clone_and_merge_pull_request<'a>(
     github_app: &'a dyn GithubSessionFactory,
     clone_mgr: &'a GitCloneManager,
@@ -425,6 +398,33 @@ async fn create_pr_with_retry(
         }
     }
     new_pr
+}
+
+/// GitHub API error response (subset of fields we care about).
+#[derive(Debug, Deserialize)]
+struct GithubErrorResponse {
+    errors: Option<Vec<GithubErrorEntry>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubErrorEntry {
+    field: Option<String>,
+    code: Option<String>,
+}
+
+fn is_head_validation_error(err_str: &str) -> bool {
+    let response: GithubErrorResponse = match serde_json::from_str(err_str) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    response
+        .errors
+        .as_deref()
+        .map_or(false, |errors| {
+            errors.iter().any(|e| {
+                e.field.as_deref() == Some("head") && e.code.as_deref() == Some("invalid")
+            })
+        })
 }
 
 #[derive(Debug, PartialEq)]
