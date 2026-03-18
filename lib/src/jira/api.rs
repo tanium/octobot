@@ -388,29 +388,43 @@ impl Session for JiraSession {
         &self,
         project: &str,
     ) -> Result<HashMap<String, Vec<version::Version>>> {
+        let mut result: HashMap<String, Vec<version::Version>> = HashMap::new();
+
         if let Some(ref field) = self.pending_versions_field.clone() {
             if let Some(ref field_id) = self.pending_versions_field_id {
                 let jql = format!("(project = \"{}\") and \"{}\" is not EMPTY", project, field);
-                let search = self
-                    .client
-                    .get::<serde_json::Value>(&format!(
-                        "/search?maxResults=5000&jql={}",
-                        utf8_percent_encode(&jql, NON_ALPHANUMERIC)
-                    ))
-                    .await
-                    .map_err(|e| {
-                        anyhow!(
-                            "Error finding pending pending versions for project {}: {}",
-                            project,
-                            e
-                        )
-                    })?;
+                let encoded_jql = utf8_percent_encode(&jql, NON_ALPHANUMERIC).to_string();
 
-                return Ok(parse_pending_versions(&search, field_id));
+                let mut start_at: usize = 0;
+                let max_results: usize = 100;
+
+                loop {
+                    let search = self
+                        .client
+                        .get::<serde_json::Value>(&format!(
+                            "/search?maxResults={}&startAt={}&jql={}",
+                            max_results, start_at, encoded_jql
+                        ))
+                        .await
+                        .map_err(|e| {
+                            anyhow!("Error finding pending versions for project {project}: {e}")
+                        })?;
+
+                    let page = parse_pending_versions(&search, field_id);
+                    let page_len = search["issues"].as_array().map(|a| a.len()).unwrap_or(0);
+                    result.extend(page);
+
+                    let total = search["total"].as_u64().unwrap_or(0) as usize;
+                    start_at += page_len;
+
+                    if page_len == 0 || start_at >= total {
+                        break;
+                    }
+                }
             }
         }
 
-        Ok(HashMap::new())
+        Ok(result)
     }
 }
 
