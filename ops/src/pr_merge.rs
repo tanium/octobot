@@ -180,8 +180,9 @@ pub async fn try_merge_pull_request(
         &title,
         &body,
         &pr_branch_name,
-        &req.target_branch
-    ).await?;
+        &req.target_branch,
+    )
+    .await?;
 
     let mut assignees: Vec<String> = pull_request
         .assignees
@@ -371,36 +372,19 @@ async fn create_pr_with_retry(
     title: &str,
     body: &str,
     pr_branch_name: &str,
-    target_branch: &str
+    target_branch: &str,
 ) -> Result<github::PullRequest> {
-    let mut new_pr = Err(anyhow!("No attempt to create pull request made"));
-    for i in 1..=2 {
-        new_pr = session
-            .create_pull_request(
-                owner,
-                repo,
-                title,
-                body,
-                pr_branch_name,
-                &target_branch,
-            )
-            .await;
-        match &new_pr {
-            Ok(_) => {
-                break
-            }
-            Err(e) => {
-                if !is_head_validation_error(&e.to_string()) {
-                    break; // don't retry for unexpected errors
-                }
-                if i != 2 {
-                    info!("waiting to retry create_pull_request due to head validation error: {}", e);
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                }
-            }
+    let make_pr =
+        || session.create_pull_request(owner, repo, title, body, pr_branch_name, target_branch);
+    match make_pr().await {
+        Ok(pr) => Ok(pr),
+        Err(e) if has_head_validation_error(&e.to_string()) => {
+            info!("waiting and retrying create_pull_request due to head validation error: {e}",);
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            make_pr().await
         }
+        Err(e) => Err(e),
     }
-    new_pr
 }
 
 /// GitHub API error response (subset of fields we care about).
@@ -415,19 +399,16 @@ struct GithubErrorEntry {
     code: Option<String>,
 }
 
-fn is_head_validation_error(err_str: &str) -> bool {
+fn has_head_validation_error(err_str: &str) -> bool {
     let response: GithubErrorResponse = match serde_json::from_str(err_str) {
         Ok(r) => r,
         Err(_) => return false,
     };
-    response
-        .errors
-        .as_deref()
-        .map_or(false, |errors| {
-            errors.iter().any(|e| {
-                e.field.as_deref() == Some("head") && e.code.as_deref() == Some("invalid")
-            })
-        })
+    response.errors.as_deref().is_some_and(|errors| {
+        errors
+            .iter()
+            .any(|e| e.field.as_deref() == Some("head") && e.code.as_deref() == Some("invalid"))
+    })
 }
 
 #[derive(Debug, PartialEq)]
