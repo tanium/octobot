@@ -5,7 +5,6 @@ use anyhow::anyhow;
 use conventional::{Commit, Simple as _};
 use log::{error, info};
 use regex::Regex;
-use serde::Deserialize;
 
 use crate::git::Git;
 use crate::git_clone_manager::GitCloneManager;
@@ -378,37 +377,12 @@ async fn create_pr_with_retry(
         || session.create_pull_request(owner, repo, title, body, pr_branch_name, target_branch);
     match make_pr().await {
         Ok(pr) => Ok(pr),
-        Err(e) if has_head_validation_error(&e.to_string()) => {
-            info!("waiting and retrying create_pull_request due to head validation error: {e}",);
+        Err(e) => {
+            info!("retrying create_pull_request after 1s due to error: {e}",);
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             make_pr().await
         }
-        Err(e) => Err(e),
     }
-}
-
-/// GitHub API error response (subset of fields we care about).
-#[derive(Debug, Deserialize)]
-struct GithubErrorResponse {
-    errors: Option<Vec<GithubErrorEntry>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GithubErrorEntry {
-    field: Option<String>,
-    code: Option<String>,
-}
-
-fn has_head_validation_error(err_str: &str) -> bool {
-    let response: GithubErrorResponse = match serde_json::from_str(err_str) {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
-    response.errors.as_deref().is_some_and(|errors| {
-        errors
-            .iter()
-            .any(|e| e.field.as_deref() == Some("head") && e.code.as_deref() == Some("invalid"))
-    })
 }
 
 #[derive(Debug, PartialEq)]
