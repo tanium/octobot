@@ -407,11 +407,7 @@ impl Session for JiraSession {
                         ))
                         .await
                         .map_err(|e| {
-                            anyhow!(
-                                "Error finding pending versions for project {}: {}",
-                                project,
-                                e
-                            )
+                            anyhow!("Error finding pending versions for project {project}: {e}")
                         })?;
 
                     let page = parse_pending_versions(&search, field_id);
