@@ -347,6 +347,89 @@ async fn test_transition_issues_only_if_necessary() {
 }
 
 #[tokio::test]
+async fn test_submit_for_review_pr_title_feat() {
+    let test = new_test();
+    let mut pr = new_pr();
+    pr.title = "feat(SER-1): add new widget".into();
+    let projects = vec!["SER".to_string()];
+    // Commit has no Jira reference -- the key comes solely from the PR title
+    let commit = new_commit("Add new widget implementation", "aabbccddee");
+
+    test.jira.mock_comment_issue(
+        "SER-1",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+    test.jira
+        .mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
+
+    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config).await;
+}
+
+#[tokio::test]
+async fn test_submit_for_review_pr_title_prefix() {
+    let test = new_test();
+    let mut pr = new_pr();
+    pr.title = "SER-1: add new widget".into();
+    let projects = vec!["SER".to_string()];
+    let commit = new_commit("Add new widget implementation", "aabbccddee");
+
+    test.jira.mock_comment_issue(
+        "SER-1",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+    test.jira
+        .mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
+
+    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config).await;
+}
+
+#[tokio::test]
+async fn test_submit_for_review_pr_body_fix() {
+    let test = new_test();
+    let mut pr = new_pr();
+    pr.title = "Add new widget".into();
+    pr.body = Some("Fix [SER-1] This resolves the widget issue".into());
+    let projects = vec!["SER".to_string()];
+    let commit = new_commit("Add new widget implementation", "aabbccddee");
+
+    test.jira.mock_comment_issue(
+        "SER-1",
+        "Review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
+    test.jira
+        .mock_get_issue("SER-1", Ok(new_issue("SER-1", None)));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("001", "progress1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("001"), Ok(()));
+    test.jira
+        .mock_get_transitions("SER-1", Ok(vec![new_transition("002", "reviewing1")]));
+    test.jira
+        .mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
+
+    jira::workflow::submit_for_review(&pr, &[commit], &projects, &test.jira, &test.config).await;
+}
+
+#[tokio::test]
 async fn test_add_pending_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];

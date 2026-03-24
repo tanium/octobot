@@ -33,32 +33,41 @@ fn get_jira_keys(strings: Vec<String>, projects: &[String]) -> Vec<String> {
     all_keys
 }
 
-fn get_fixed_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
+fn extract_fixed_jira_refs(messages: &[&str], projects: &[String]) -> Vec<String> {
     // Fix [ABC-123][OTHER-567], [YEAH-999]
     let re =
         Regex::new(r"(?i)(?:Fix(?:es|ed)?):?\s*(?-i)((\[?([A-Z0-9]+-[0-9]+)(?:\]|\b)[\s,]*)+)")
             .unwrap();
 
-    // first extract jiras with fix markers
     let mut all_refs = vec![];
-    for c in commits {
-        all_refs.extend(re.captures_iter(c.message()).map(|c| c[1].to_string()));
+    for msg in messages {
+        all_refs.extend(re.captures_iter(msg).map(|c| c[1].to_string()));
+    }
+
+    get_jira_keys(all_refs, projects)
+}
+
+fn get_fixed_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
+    let messages: Vec<&str> = commits.iter().map(|c| c.message()).collect();
+    extract_fixed_jira_refs(&messages, projects)
+}
+
+fn extract_mentioned_jira_refs(messages: &[&str], projects: &[String]) -> Vec<String> {
+    // See [ABC-123][OTHER-567], [YEAH-999]
+    let re =
+        Regex::new(r"(?i)(?:See):?\s*(?-i)((\[?([A-Z0-9]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
+
+    let mut all_refs = vec![];
+    for msg in messages {
+        all_refs.extend(re.captures_iter(msg).map(|c| c[1].to_string()));
     }
 
     get_jira_keys(all_refs, projects)
 }
 
 fn get_mentioned_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
-    // See [ABC-123][OTHER-567], [YEAH-999]
-    let re = Regex::new(r"(?i)(?:See):?\s*(?-i)((\[?([A-Z0-9]+-[0-9]+)(?:\]|\b)[\s,]*)+)").unwrap();
-
-    // first extract jiras with see markers
-    let mut all_refs = vec![];
-    for c in commits {
-        all_refs.extend(re.captures_iter(c.message()).map(|c| c[1].to_string()));
-    }
-
-    get_jira_keys(all_refs, projects)
+    let messages: Vec<&str> = commits.iter().map(|c| c.message()).collect();
+    extract_mentioned_jira_refs(&messages, projects)
 }
 
 fn get_referenced_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec<String> {
@@ -76,6 +85,32 @@ pub(crate) fn get_all_jira_keys<T: CommitLike>(commits: &[T], projects: &[String
         commits.iter().map(|c| c.message().to_string()).collect(),
         projects,
     )
+}
+
+fn get_fixed_jira_keys_from_pr_title(title: &str, projects: &[String]) -> Vec<String> {
+    // feat(ABC-123): ... or fix(ABC-123): ... or ABC-123: ...
+    let re_conv = Regex::new(r"(?i)^(?:fix|feat)\((?-i)([A-Z0-9]+-[0-9]+)\)").unwrap();
+    let re_prefix = Regex::new(r"^([A-Z0-9]+-[0-9]+):").unwrap();
+
+    let mut all_refs = vec![];
+    if let Some(c) = re_conv.captures(title) {
+        all_refs.push(c[1].to_string());
+    }
+    if let Some(c) = re_prefix.captures(title) {
+        all_refs.push(c[1].to_string());
+    }
+
+    get_jira_keys(all_refs, projects)
+}
+
+pub(crate) fn get_all_jira_keys_with_extras<T: CommitLike>(
+    commits: &[T],
+    extra_strings: &[&str],
+    projects: &[String],
+) -> Vec<String> {
+    let mut strings: Vec<String> = commits.iter().map(|c| c.message().to_string()).collect();
+    strings.extend(extra_strings.iter().map(|s| s.to_string()));
+    get_jira_keys(strings, projects)
 }
 
 pub fn references_jira<T: CommitLike>(commits: &[T], project: &str) -> bool {
@@ -111,11 +146,22 @@ pub async fn submit_for_review(
     let review_states = &config.review_states;
     let progress_states = &config.progress_states;
 
-    for key in get_fixed_jira_keys(commits, projects) {
+    let mut pr_texts: Vec<&str> = vec![&pr.title];
+    if let Some(ref body) = pr.body {
+        pr_texts.push(body);
+    }
+
+    let mut fixed_keys = get_fixed_jira_keys(commits, projects);
+    fixed_keys.extend(extract_fixed_jira_refs(&pr_texts, projects));
+    fixed_keys.extend(get_fixed_jira_keys_from_pr_title(&pr.title, projects));
+    fixed_keys.sort();
+    fixed_keys.dedup();
+
+    for key in &fixed_keys {
         // add comment
         if let Err(e) = jira
             .comment_issue(
-                &key,
+                key,
                 &format!(
                     "Review submitted for branch {}: {}",
                     pr.base.ref_name, pr.html_url
@@ -127,7 +173,7 @@ pub async fn submit_for_review(
             continue; // give up on transitioning if we can't comment.
         }
 
-        let issue_state = try_get_issue_state(&key, jira).await;
+        let issue_state = try_get_issue_state(key, jira).await;
 
         if issue_state
             .as_ref()
@@ -144,19 +190,31 @@ pub async fn submit_for_review(
 
         // try to transition to in-progress
         if needs_transition(&issue_state, progress_states) {
-            try_transition(&key, progress_states, jira).await;
+            try_transition(key, progress_states, jira).await;
         }
 
         // try transition to pending-review
-        try_transition(&key, review_states, jira).await;
+        try_transition(key, review_states, jira).await;
     }
 
-    let mentioned = get_mentioned_jira_keys(commits, projects);
-    for key in get_referenced_jira_keys(commits, projects) {
+    // Mentioned keys: from commits + PR title/body
+    let mut mentioned = get_mentioned_jira_keys(commits, projects);
+    mentioned.extend(extract_mentioned_jira_refs(&pr_texts, projects));
+    mentioned.sort();
+    mentioned.dedup();
+
+    // All keys from commits + PR title/body, minus fixed keys = referenced
+    let all_keys = get_all_jira_keys_with_extras(commits, &pr_texts, projects);
+    let referenced: Vec<String> = all_keys
+        .into_iter()
+        .filter(|k| !fixed_keys.contains(k))
+        .collect();
+
+    for key in &referenced {
         // add comment
         if let Err(e) = jira
             .comment_issue(
-                &key,
+                key,
                 &format!(
                     "Referenced by review submitted for branch {}: {}",
                     pr.base.ref_name, pr.html_url
@@ -168,11 +226,11 @@ pub async fn submit_for_review(
             continue; // give up on transitioning if we can't comment.
         }
 
-        if mentioned.contains(&key) {
+        if mentioned.contains(key) {
             continue; // don't transition
         }
 
-        let issue_state = try_get_issue_state(&key, jira).await;
+        let issue_state = try_get_issue_state(key, jira).await;
 
         if issue_state
             .as_ref()
@@ -188,7 +246,7 @@ pub async fn submit_for_review(
         }
 
         // try to transition to in-progress
-        try_transition(&key, progress_states, jira).await;
+        try_transition(key, progress_states, jira).await;
     }
 }
 
@@ -630,6 +688,93 @@ mod tests {
         assert_eq!("SERVER", get_jira_project("SERVER-123"));
         assert_eq!("BUILD", get_jira_project("BUILD"));
         assert_eq!("doesn't match", get_jira_project("doesn't match"));
+    }
+
+    #[test]
+    fn test_get_fixed_jira_keys_from_pr_title() {
+        let projects = vec!["KEY".to_string(), "OTHER".to_string()];
+
+        assert_eq!(
+            vec!["KEY-123"],
+            get_fixed_jira_keys_from_pr_title("feat(KEY-123): add feature", &projects)
+        );
+        assert_eq!(
+            vec!["KEY-456"],
+            get_fixed_jira_keys_from_pr_title("fix(KEY-456): fix bug", &projects)
+        );
+        assert_eq!(
+            vec!["KEY-789"],
+            get_fixed_jira_keys_from_pr_title("KEY-789: do something", &projects)
+        );
+        assert_eq!(
+            vec!["KEY-123"],
+            get_fixed_jira_keys_from_pr_title("FIX(KEY-123): fix bug", &projects)
+        );
+        assert_eq!(
+            vec!["KEY-123"],
+            get_fixed_jira_keys_from_pr_title("FEAT(KEY-123): add feature", &projects)
+        );
+        assert_eq!(
+            Vec::<String>::new(),
+            get_fixed_jira_keys_from_pr_title("something feat(KEY-123): add feature", &projects)
+        );
+        assert_eq!(
+            Vec::<String>::new(),
+            get_fixed_jira_keys_from_pr_title("feat(NOPE-123): add feature", &projects)
+        );
+        assert_eq!(
+            Vec::<String>::new(),
+            get_fixed_jira_keys_from_pr_title("chore(KEY-123): cleanup", &projects)
+        );
+        assert_eq!(
+            Vec::<String>::new(),
+            get_fixed_jira_keys_from_pr_title("Add new feature for KEY-123", &projects)
+        );
+    }
+
+    #[test]
+    fn test_extract_fixed_jira_refs_from_strings() {
+        let projects = vec!["KEY".to_string()];
+
+        assert_eq!(
+            vec!["KEY-123"],
+            extract_fixed_jira_refs(&["This PR: Fix [KEY-123]"], &projects)
+        );
+        assert_eq!(
+            vec!["KEY-123", "KEY-456"],
+            extract_fixed_jira_refs(&["Fix [KEY-123]", "Also Fixes [KEY-456]"], &projects)
+        );
+    }
+
+    #[test]
+    fn test_extract_mentioned_jira_refs_from_strings() {
+        let projects = vec!["KEY".to_string()];
+
+        assert_eq!(
+            vec!["KEY-789"],
+            extract_mentioned_jira_refs(&["See [KEY-789]"], &projects)
+        );
+    }
+
+    #[test]
+    fn test_get_all_jira_keys_with_extras() {
+        let projects = vec!["KEY".to_string()];
+        let commit = {
+            let mut c = Commit::new();
+            c.commit.message = "Fix [KEY-1]".into();
+            c
+        };
+
+        assert_eq!(
+            vec!["KEY-1", "KEY-2"],
+            get_all_jira_keys_with_extras(&[commit], &["Also KEY-2"], &projects)
+        );
+
+        let empty: Vec<Commit> = vec![];
+        assert_eq!(
+            vec!["KEY-3"],
+            get_all_jira_keys_with_extras(&empty, &["feat(KEY-3): add feature"], &projects)
+        );
     }
 
     #[test]

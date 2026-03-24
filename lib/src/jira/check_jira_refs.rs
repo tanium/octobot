@@ -47,7 +47,12 @@ async fn do_check_jira_refs(
         None,
     );
 
-    if jira::workflow::get_all_jira_keys(commits, projects).is_empty() {
+    let mut pr_texts: Vec<&str> = vec![&pull_request.title];
+    if let Some(ref body) = pull_request.body {
+        pr_texts.push(body);
+    }
+
+    if jira::workflow::get_all_jira_keys_with_extras(commits, &pr_texts, projects).is_empty() {
         run = run.completed(github::Conclusion::Neutral);
 
         let msg = if projects.len() == 1 {
