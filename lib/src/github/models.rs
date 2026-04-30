@@ -233,6 +233,8 @@ pub struct PullRequest {
     pub requested_teams: Option<Vec<Team>>,
     pub reviews: Option<Vec<Review>>,
     pub draft: Option<bool>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 // https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests-files
@@ -259,6 +261,8 @@ impl PullRequest {
             head: BranchRef::new(""),
             base: BranchRef::new(""),
             draft: None,
+            created_at: None,
+            updated_at: None,
         }
     }
 
