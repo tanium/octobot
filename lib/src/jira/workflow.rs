@@ -422,6 +422,7 @@ fn find_relevant_versions(
         .filter(|v| {
             v.major() == target_version.major()
                 && v.minor() == target_version.minor()
+                && v.pre_release() == target_version.pre_release()
                 && v < &target_version
         })
         .max()
@@ -431,6 +432,14 @@ fn find_relevant_versions(
     pending_versions
         .iter()
         .filter_map(|version| {
+            if target_version.is_pre_release() {
+                if version.pre_release() != target_version.pre_release() {
+                    return None;
+                }
+            } else if version.is_pre_release() {
+                return None;
+            }
+
             if version.major() == target_version.major()
                 && version.minor() == target_version.minor()
                 && version <= target_version
@@ -741,6 +750,82 @@ mod tests {
             version::Version::parse("3.4.0.2001").unwrap(),
         ];
         let expected: Vec<version::Version> = vec![version::Version::parse("3.4.0.1500").unwrap()];
+        assert_eq!(
+            expected,
+            find_relevant_versions(&target_version, &pending_versions, &real_versions)
+        );
+    }
+
+    #[test]
+    fn test_find_relevant_versions_skips_pre_release() {
+        let target_version = version::Version::parse("2026.3.11").unwrap();
+        let real_versions = vec![];
+        let pending_versions = vec![
+            version::Version::parse("2026.3.10").unwrap(),
+            version::Version::parse("2026.3.11").unwrap(),
+            version::Version::parse("2026.3.11-main").unwrap(),
+            version::Version::parse("2026.3.11-staging").unwrap(),
+        ];
+        let expected: Vec<version::Version> = vec![
+            version::Version::parse("2026.3.10").unwrap(),
+            version::Version::parse("2026.3.11").unwrap(),
+        ];
+        assert_eq!(
+            expected,
+            find_relevant_versions(&target_version, &pending_versions, &real_versions)
+        );
+    }
+
+    #[test]
+    fn test_find_relevant_versions_pre_release_only() {
+        let target_version = version::Version::parse("2026.3.11").unwrap();
+        let real_versions = vec![];
+        let pending_versions = vec![
+            version::Version::parse("2026.3.11-main").unwrap(),
+            version::Version::parse("2026.3.11-staging").unwrap(),
+        ];
+        let expected: Vec<version::Version> = vec![];
+        assert_eq!(
+            expected,
+            find_relevant_versions(&target_version, &pending_versions, &real_versions)
+        );
+    }
+
+    #[test]
+    fn test_find_relevant_versions_mixed_with_real() {
+        let target_version = version::Version::parse("3.4.0.1000").unwrap();
+        let real_versions = vec![jira::Version::new("3.4.0.400")];
+        let pending_versions = vec![
+            version::Version::parse("3.4.0.500").unwrap(),
+            version::Version::parse("3.4.0.500-main").unwrap(),
+            version::Version::parse("3.4.0.600").unwrap(),
+            version::Version::parse("3.4.0.700-staging").unwrap(),
+        ];
+        let expected: Vec<version::Version> = vec![
+            version::Version::parse("3.4.0.500").unwrap(),
+            version::Version::parse("3.4.0.600").unwrap(),
+        ];
+        assert_eq!(
+            expected,
+            find_relevant_versions(&target_version, &pending_versions, &real_versions)
+        );
+    }
+
+    #[test]
+    fn test_find_relevant_versions_pre_release_channel_isolation() {
+        let target_version = version::Version::parse("2026.3.11-staging").unwrap();
+        let real_versions = vec![];
+        let pending_versions = vec![
+            version::Version::parse("2026.3.10-main").unwrap(),
+            version::Version::parse("2026.3.10-staging").unwrap(),
+            version::Version::parse("2026.3.11-main").unwrap(),
+            version::Version::parse("2026.3.11-staging").unwrap(),
+            version::Version::parse("2026.3.11").unwrap(),
+        ];
+        let expected: Vec<version::Version> = vec![
+            version::Version::parse("2026.3.10-staging").unwrap(),
+            version::Version::parse("2026.3.11-staging").unwrap(),
+        ];
         assert_eq!(
             expected,
             find_relevant_versions(&target_version, &pending_versions, &real_versions)
