@@ -417,6 +417,9 @@ fn find_relevant_versions(
     pending_versions: &[version::Version],
     real_versions: &[jira::Version],
 ) -> Vec<version::Version> {
+    // For pre-release targets, real versions (which have no pre-release suffix) will never
+    // match, so the cutoff defaults to 0.0.0.0. This is intentional: pre-release channels
+    // are continuous and unbounded by shipped releases.
     let latest_prior_real_version = parse_jira_versions(real_versions)
         .iter()
         .filter(|v| {
@@ -432,11 +435,7 @@ fn find_relevant_versions(
     pending_versions
         .iter()
         .filter_map(|version| {
-            if target_version.is_pre_release() {
-                if version.pre_release() != target_version.pre_release() {
-                    return None;
-                }
-            } else if version.is_pre_release() {
+            if version.pre_release() != target_version.pre_release() {
                 return None;
             }
 

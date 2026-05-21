@@ -24,6 +24,8 @@ impl Version {
             None => version_str,
         };
 
+        // Intentionally relaxed: we only reject empty identifiers, not leading zeros or
+        // non-alphanumeric chars, since internal version strings may not follow strict SemVer.
         let (numeric_str, pre_release) = match without_build.find('-') {
             Some(pos) => {
                 let pre = &without_build[pos + 1..];
