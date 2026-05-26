@@ -107,6 +107,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         config.clone(),
         ui_sessions.clone(),
         github_handler_state.clone(),
+        jira_api.clone(),
         slack_api.clone(),
         metrics.clone(),
     );

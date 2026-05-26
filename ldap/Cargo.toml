@@ -14,5 +14,5 @@ octobot_lib = { path = "../lib" }
 log = "0.4.19"
 openldap = "1.2.2"
 regex = "1.9.3"
-rpassword = "7.2.0"
+rpassword = "7.5.0"
 anyhow = { version = "1.0.72", features = ["backtrace"] }

@@ -4,6 +4,7 @@ use maplit::hashmap;
 use std::sync::Arc;
 
 use octobot_lib::config::Config;
+use octobot_lib::jira::api::Session as JiraSession;
 use octobot_lib::metrics;
 use octobot_ops::util;
 
@@ -21,6 +22,7 @@ pub struct OctobotService {
     config: Arc<Config>,
     ui_sessions: Arc<Sessions>,
     github_handler_state: Arc<GithubHandlerState>,
+    jira_session: Option<Arc<dyn JiraSession>>,
     slack: Arc<octobot_ops::slack::Slack>,
     metrics: Arc<metrics::Metrics>,
 }
@@ -30,6 +32,7 @@ impl OctobotService {
         config: Arc<Config>,
         ui_sessions: Arc<Sessions>,
         github_handler_state: Arc<GithubHandlerState>,
+        jira_session: Option<Arc<dyn JiraSession>>,
         slack: Arc<octobot_ops::slack::Slack>,
         metrics: Arc<metrics::Metrics>,
     ) -> OctobotService {
@@ -37,6 +40,7 @@ impl OctobotService {
             config,
             ui_sessions,
             github_handler_state,
+            jira_session,
             slack,
             metrics,
         }
@@ -113,7 +117,7 @@ impl OctobotService {
                     }
 
                     (&Method::POST, "/api/merge-versions") => {
-                        admin::MergeVersions::new(self.config.clone())
+                        admin::MergeVersions::new(self.config.clone(), self.jira_session.clone())
                     }
 
                     _ => Box::new(NotFoundHandler),

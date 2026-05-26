@@ -171,16 +171,17 @@ pub async fn try_merge_pull_request(
 
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
-    let new_pr = session
-        .create_pull_request(
-            owner,
-            repo,
-            &title,
-            &body,
-            &pr_branch_name,
-            &req.target_branch,
-        )
-        .await?;
+
+    let new_pr = create_pr_with_retry(
+        session,
+        owner,
+        repo,
+        &title,
+        &body,
+        &pr_branch_name,
+        &req.target_branch,
+    )
+    .await?;
 
     let mut assignees: Vec<String> = pull_request
         .assignees
@@ -361,6 +362,27 @@ fn make_merge_desc(
     body += format!("(cherry-picked from {}, PR #{})", commit_hash, pr_number).as_str();
 
     (title, body)
+}
+
+async fn create_pr_with_retry(
+    session: &dyn Session,
+    owner: &str,
+    repo: &str,
+    title: &str,
+    body: &str,
+    pr_branch_name: &str,
+    target_branch: &str,
+) -> Result<github::PullRequest> {
+    let make_pr =
+        || session.create_pull_request(owner, repo, title, body, pr_branch_name, target_branch);
+    match make_pr().await {
+        Ok(pr) => Ok(pr),
+        Err(e) => {
+            info!("retrying create_pull_request after 1s due to error: {e}",);
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            make_pr().await
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

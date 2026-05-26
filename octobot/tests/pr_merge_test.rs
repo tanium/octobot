@@ -546,15 +546,17 @@ async fn test_pr_merge_backport_failure() {
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
 
-    test.github.mock_create_pull_request(
-        "the-owner",
-        "the-repo",
-        "master->1.0: I made a change",
-        &format!("(cherry-picked from {}, PR #123)", commit1),
-        "my-feature-branch-1.0",
-        "release/1.0",
-        Err(anyhow!("bad stuff")),
-    );
+    for _ in 0..2 {
+        test.github.mock_create_pull_request(
+            "the-owner",
+            "the-repo",
+            "master->1.0: I made a change",
+            &format!("(cherry-picked from {}, PR #123)", commit1),
+            "my-feature-branch-1.0",
+            "release/1.0",
+            Err(anyhow!("bad stuff")),
+        );
+    }
 
     test.github.mock_comment_pull_request(
         "the-owner",
