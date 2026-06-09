@@ -124,7 +124,7 @@ async fn test_pr_merge_basic() {
     );
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[], &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -196,7 +196,7 @@ async fn test_pr_merge_author_is_assignee() {
     );
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[], &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -295,7 +295,7 @@ if (true)    {
     );
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[], &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -399,7 +399,7 @@ if (true) {
     );
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[], &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -483,7 +483,7 @@ async fn test_pr_merge_conventional_commit() {
     );
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[], &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -590,7 +590,7 @@ async fn test_pr_merge_backport_failure() {
     ]);
 
     let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
-    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[], &[]);
     pr_merge::merge_pull_request(
         &test.git.git,
         &test.github,
@@ -599,4 +599,178 @@ async fn test_pr_merge_backport_failure() {
         test.slack.new_sender(),
     )
     .await;
+}
+
+#[tokio::test]
+async fn test_pr_merge_with_follows_pr() {
+    let (test, _temp_dir) = new_test();
+
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("prereq.txt", "prerequisite content", "Prerequisite change");
+    let prereq_commit = test.git.git.current_commit().unwrap();
+
+    test.git
+        .add_repo_file("file.txt", "main content", "Main change");
+    let main_commit = test.git.git.current_commit().unwrap();
+
+    let mut followed_pr = github::PullRequest::new();
+    followed_pr.number = 50;
+    followed_pr.merged = Some(true);
+    followed_pr.merge_commit_sha = Some(prereq_commit.clone());
+    followed_pr.base = github::BranchRef::new("master");
+
+    test.github.get_pull_request(
+        "the-owner",
+        "the-repo",
+        50,
+        Ok(followed_pr),
+    );
+
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(main_commit.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.user = github::User::new("the-pr-author");
+    let pr = pr;
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 789;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: Main change",
+        &format!("(cherry-picked from {}, PR #123)", main_commit),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        789,
+        vec!["the-pr-author".into()],
+        Ok(()),
+    );
+
+    let labels = vec![
+        github::Label::new("follows-pr-50"),
+        github::Label::new("backport-1.0"),
+    ];
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[], &labels);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
+
+        "",
+        test.git
+            .run_git(&["diff", "master", "origin/my-feature-branch-1.0"])
+    );
+
+    let log = test
+        .git
+        .run_git(&["log", "--oneline", "origin/my-feature-branch-1.0"]);
+    assert!(
+        log.contains("Prerequisite change"),
+        "Log should contain prereq commit: {}",
+        log
+    );
+    assert!(
+        log.contains("Main change"),
+        "Log should contain main commit: {}",
+        log
+    );
+}
+
+#[tokio::test]
+async fn test_pr_merge_with_follows_commit() {
+    let (test, _temp_dir) = new_test();
+
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("prereq.txt", "prerequisite content", "Prerequisite via commit");
+    let prereq_commit = test.git.git.current_commit().unwrap();
+
+    test.git
+        .add_repo_file("file.txt", "main content", "Main change via commit ref");
+    let main_commit = test.git.git.current_commit().unwrap();
+
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(main_commit.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.body = Some(format!("This follows commit {}", prereq_commit));
+    pr.user = github::User::new("the-pr-author");
+    let pr = pr;
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 789;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: Main change via commit ref",
+        &format!("(cherry-picked from {}, PR #123)", main_commit),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        789,
+        vec!["the-pr-author".into()],
+        Ok(()),
+    );
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[], &[]);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
+
+    assert_eq!(
+        "",
+        test.git
+            .run_git(&["diff", "master", "origin/my-feature-branch-1.0"])
+    );
+
+    let log = test
+        .git
+        .run_git(&["log", "--oneline", "origin/my-feature-branch-1.0"]);
+    assert!(
+        log.contains("Prerequisite via commit"),
+        "Log should contain prereq commit: {}",
+        log
+    );
+    assert!(
+        log.contains("Main change via commit ref"),
+        "Log should contain main commit: {}",
+        log
+    );
 }

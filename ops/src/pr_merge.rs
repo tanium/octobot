@@ -15,7 +15,176 @@ use octobot_lib::config::Config;
 use octobot_lib::errors::*;
 use octobot_lib::github;
 use octobot_lib::github::api::{GithubSessionFactory, Session};
+use octobot_lib::github::CommitLike;
 use octobot_lib::metrics::{self, Metrics};
+
+#[derive(Debug, Clone, PartialEq)]
+enum FollowsRef {
+    PullRequest(u32),
+    Commit(String),
+}
+
+struct ResolvedFollow {
+    commit_sha: String,
+    pr_number: Option<u32>,
+    orig_base_branch: Option<String>,
+}
+
+fn parse_follows_refs(
+    labels: &[github::Label],
+    pr_body: Option<&str>,
+    commits: &[github::Commit],
+    repo_full_name: &str,
+) -> Vec<FollowsRef> {
+    let mut refs = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let label_pr_re = Regex::new(r"^follows-pr-(\d+)$").unwrap();
+    let label_commit_re = Regex::new(r"^follows-commit-([0-9a-f]{7,40})$").unwrap();
+
+    for label in labels {
+        let name = &label.name;
+        if let Some(caps) = label_pr_re.captures(name) {
+            let num: u32 = caps[1].parse().unwrap();
+            let r = FollowsRef::PullRequest(num);
+            if seen.insert(r.clone()) {
+                refs.push(r);
+            }
+        } else if let Some(caps) = label_commit_re.captures(name) {
+            let hash = caps[1].to_string();
+            let r = FollowsRef::Commit(hash);
+            if seen.insert(r.clone()) {
+                refs.push(r);
+            }
+        }
+    }
+
+    let text_pr_re = Regex::new(r"(?i)follows[\s-]+pr[\s-]+(\d+)").unwrap();
+    let text_commit_re = Regex::new(r"(?i)follows[\s-]+commit[\s-]+([0-9a-f]{7,40})").unwrap();
+
+    let escaped_name = regex::escape(repo_full_name);
+    let link_pr_re = Regex::new(
+        &format!(r"(?i)follows\s+https://github\.com/{}/pull/(\d+)", escaped_name),
+    )
+    .unwrap();
+    let link_commit_re = Regex::new(
+        &format!(
+            r"(?i)follows\s+https://github\.com/{}/commit/([0-9a-f]{{7,40}})",
+            escaped_name
+        ),
+    )
+    .unwrap();
+
+    let mut parse_text = |text: &str| {
+        for caps in text_pr_re.captures_iter(text) {
+            let num: u32 = caps[1].parse().unwrap();
+            let r = FollowsRef::PullRequest(num);
+            if seen.insert(r.clone()) {
+                refs.push(r);
+            }
+        }
+        for caps in text_commit_re.captures_iter(text) {
+            let hash = caps[1].to_string();
+            let r = FollowsRef::Commit(hash);
+            if seen.insert(r.clone()) {
+                refs.push(r);
+            }
+        }
+        for caps in link_pr_re.captures_iter(text) {
+            let num: u32 = caps[1].parse().unwrap();
+            let r = FollowsRef::PullRequest(num);
+            if seen.insert(r.clone()) {
+                refs.push(r);
+            }
+        }
+        for caps in link_commit_re.captures_iter(text) {
+            let hash = caps[1].to_string();
+            let r = FollowsRef::Commit(hash);
+            if seen.insert(r.clone()) {
+                refs.push(r);
+            }
+        }
+    };
+
+    if let Some(body) = pr_body {
+        parse_text(body);
+    }
+
+    for commit in commits {
+        parse_text(commit.message());
+    }
+
+    refs
+}
+
+impl std::hash::Hash for FollowsRef {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            FollowsRef::PullRequest(n) => {
+                0u8.hash(state);
+                n.hash(state);
+            }
+            FollowsRef::Commit(s) => {
+                1u8.hash(state);
+                s.hash(state);
+            }
+        }
+    }
+}
+
+impl Eq for FollowsRef {}
+
+async fn resolve_follows(
+    refs: &[FollowsRef],
+    session: &dyn Session,
+    owner: &str,
+    repo: &str,
+) -> Result<Vec<ResolvedFollow>> {
+    let mut resolved = Vec::new();
+    for follow_ref in refs {
+        match follow_ref {
+            FollowsRef::PullRequest(number) => {
+                let pr = session.get_pull_request(owner, repo, *number).await?;
+                if !pr.is_merged() {
+                    return Err(anyhow!(
+                        "Followed PR #{} is not merged.",
+                        number
+                    ));
+                }
+                let sha = pr.merge_commit_sha.ok_or_else(|| {
+                    anyhow!("Followed PR #{} has no merge commit.", number)
+                })?;
+                resolved.push(ResolvedFollow {
+                    commit_sha: sha,
+                    pr_number: Some(*number),
+                    orig_base_branch: Some(pr.base.ref_name.clone()),
+                });
+            }
+            FollowsRef::Commit(hash) => {
+                resolved.push(ResolvedFollow {
+                    commit_sha: hash.clone(),
+                    pr_number: None,
+                    orig_base_branch: None,
+                });
+            }
+        }
+    }
+    Ok(resolved)
+}
+
+/// Compare whitespace modes and return the "worst" one.
+/// Ordering: empty < "ignore-space-change" < "ignore-all-space"
+fn worst_whitespace_mode<'a>(a: &'a str, b: &'a str) -> &'a str {
+    fn rank(mode: &str) -> u8 {
+        match mode {
+            "" => 0,
+            "ignore-space-change" => 1,
+            "ignore-all-space" => 2,
+            _ => 0,
+        }
+    }
+    if rank(b) > rank(a) { b } else { a }
+}
 
 async fn clone_and_merge_pull_request<'a>(
     github_app: &'a dyn GithubSessionFactory,
@@ -157,15 +326,73 @@ pub async fn try_merge_pull_request(
         ));
     }
 
-    let (title, body, whitespace_mode) = cherry_pick(
+    let follows_refs = parse_follows_refs(
+        &req.labels,
+        req.pull_request.body.as_deref(),
+        &req.commits,
+        &req.repo.full_name,
+    );
+
+    let resolved_follows = if !follows_refs.is_empty() {
+        let owner = req.repo.owner.login();
+        let repo_name = &req.repo.name;
+        resolve_follows(&follows_refs, session, owner, repo_name).await?
+    } else {
+        vec![]
+    };
+
+    setup_cherry_pick_branch(git, &pr_branch_name, &req.target_branch)?;
+
+    let mut overall_whitespace_mode = String::new();
+
+    for follow in &resolved_follows {
+        let remote_target = format!("origin/{}", req.target_branch);
+        match git.does_branch_contain(&follow.commit_sha, &remote_target) {
+            Ok(true) => {
+                info!(
+                    "Followed commit {} is already on target branch {}, skipping",
+                    follow.commit_sha, req.target_branch
+                );
+                continue;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                info!(
+                    "Could not check if commit {} is on branch {}: {}, proceeding with cherry-pick",
+                    follow.commit_sha, req.target_branch, e
+                );
+            }
+        }
+
+        let orig_base = follow
+            .orig_base_branch
+            .as_deref()
+            .unwrap_or(&pull_request.base.ref_name);
+
+        let (_title, _body, ws_mode) = cherry_pick_single(
+            git,
+            &follow.commit_sha,
+            follow.pr_number,
+            &req.target_branch,
+            orig_base,
+            &req.release_branch_prefix,
+        )?;
+
+        overall_whitespace_mode =
+            worst_whitespace_mode(&overall_whitespace_mode, &ws_mode).to_string();
+    }
+
+    let (title, body, ws_mode) = cherry_pick_single(
         git,
         merge_commit_sha,
-        &pr_branch_name,
-        pull_request.number,
+        Some(pull_request.number),
         &req.target_branch,
         &pull_request.base.ref_name,
         &req.release_branch_prefix,
     )?;
+
+    let whitespace_mode =
+        worst_whitespace_mode(&overall_whitespace_mode, &ws_mode).to_string();
 
     git.run(&["push", "origin", &format!("HEAD:{}", pr_branch_name)])?;
 
@@ -233,17 +460,19 @@ pub async fn try_merge_pull_request(
     Ok(new_pr)
 }
 
-pub fn cherry_pick(
+fn setup_cherry_pick_branch(git: &Git, pr_branch_name: &str, target_branch: &str) -> Result<()> {
+    git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch))?;
+    Ok(())
+}
+
+fn cherry_pick_single(
     git: &Git,
     commit_hash: &str,
-    pr_branch_name: &str,
-    pr_number: u32,
+    pr_number: Option<u32>,
     target_branch: &str,
     orig_base_branch: &str,
     release_branch_prefix: &str,
 ) -> Result<(String, String, String)> {
-    git.checkout_branch(pr_branch_name, &format!("origin/{}", target_branch))?;
-
     let (user, email) = git.get_commit_author(commit_hash)?;
     let email = format!("user.email={}", email);
     let user = format!("user.name={}", user);
@@ -292,6 +521,29 @@ pub fn cherry_pick(
     Ok((title, body, whitespace_mode.into()))
 }
 
+pub fn cherry_pick(
+    git: &Git,
+    commit_hash: &str,
+    pr_branch_name: &str,
+    pr_number: u32,
+    target_branch: &str,
+    orig_base_branch: &str,
+    release_branch_prefix: &str,
+) -> Result<(String, String, String)> {
+    setup_cherry_pick_branch(git, pr_branch_name, target_branch)?;
+    cherry_pick_single(
+        git,
+        commit_hash,
+        Some(pr_number),
+        target_branch,
+        orig_base_branch,
+        release_branch_prefix,
+    )
+}
+
+fn is_merge_commit(git: &Git, commit_hash: &str) -> Result<bool> {
+    let output = git.run(&["rev-list", "--parents", "-1", commit_hash])?;
+
 fn do_cherry_pick(
     git: &Git,
     commit_hash: &str,
@@ -300,9 +552,14 @@ fn do_cherry_pick(
 ) -> Result<String> {
     git.run(&["reset", "--hard"])?;
 
+    let merge = is_merge_commit(git, commit_hash).unwrap_or(false);
+
     let mut args = vec!["-c", "merge.renameLimit=999999"];
     args.extend(user_opts.iter());
     args.extend(["cherry-pick", "--allow-empty"].iter());
+    if merge {
+        args.extend(["-m", "1"].iter());
+    }
     args.extend(opts);
     args.push(commit_hash);
 
@@ -312,7 +569,7 @@ fn do_cherry_pick(
 fn make_merge_desc(
     orig_desc: (String, String),
     commit_hash: &str,
-    pr_number: u32,
+    pr_number: Option<u32>,
     target_branch: &str,
     orig_base_branch: &str,
     release_branch_prefix: &str,
@@ -359,7 +616,11 @@ fn make_merge_desc(
     if !body.is_empty() {
         body += "\n\n";
     }
-    body += format!("(cherry-picked from {}, PR #{})", commit_hash, pr_number).as_str();
+    let cherry_pick_note = match pr_number {
+        Some(n) => format!("(cherry-picked from {}, PR #{})", commit_hash, n),
+        None => format!("(cherry-picked from {})", commit_hash),
+    };
+    body += &cherry_pick_note;
 
     (title, body)
 }
@@ -392,6 +653,7 @@ pub struct PRMergeRequest {
     pub target_branch: String,
     pub release_branch_prefix: String,
     pub commits: Vec<github::Commit>,
+    pub labels: Vec<github::Label>,
 }
 
 struct Runner {
@@ -408,6 +670,7 @@ pub fn req(
     target_branch: &str,
     release_branch_prefix: &str,
     commits: &[github::Commit],
+    labels: &[github::Label],
 ) -> PRMergeRequest {
     PRMergeRequest {
         repo: repo.clone(),
@@ -415,6 +678,7 @@ pub fn req(
         target_branch: target_branch.to_string(),
         release_branch_prefix: release_branch_prefix.to_string(),
         commits: commits.into(),
+        labels: labels.into(),
     }
 }
 
@@ -463,7 +727,7 @@ mod tests {
                 String::from("here is more data about it"),
             ),
             "abcdef",
-            99,
+            Some(99),
             "release/target_branch",
             "source_branch",
             "release/",
@@ -481,7 +745,7 @@ mod tests {
         let desc = make_merge_desc(
             (String::from("Yay, I made a change (#99)"), String::from("")),
             "abcdef",
-            99,
+            Some(99),
             "the-release-target_branch",
             "source_branch",
             "the-release-",
@@ -496,7 +760,7 @@ mod tests {
         let desc = make_merge_desc(
             (String::from("Yay, I made a change (#99)"), String::from("")),
             "abcdef",
-            99,
+            Some(99),
             "other_branch",
             "source_branch",
             "release/",
@@ -511,7 +775,7 @@ mod tests {
         let desc = make_merge_desc(
             (String::from("Yay, I made a change (#99)"), String::from("")),
             "abcdef",
-            99,
+            Some(99),
             "release-other_branch",
             "release-source_branch",
             "release-",
@@ -529,7 +793,7 @@ mod tests {
                 String::from(""),
             ),
             "abcdef",
-            99,
+            Some(99),
             "other_branch",
             "source_branch",
             "release/",
@@ -549,7 +813,7 @@ mod tests {
                 String::from(""),
             ),
             "abcdef",
-            99,
+            Some(99),
             "other_branch",
             "source_branch",
             "release/",
@@ -557,5 +821,115 @@ mod tests {
 
         assert_eq!(desc.0, "source_branch->other_branch: Yay, I made a change");
         assert_eq!(desc.1, "(cherry-picked from abcdef, PR #99)");
+    }
+
+    #[test]
+    fn test_make_merge_desc_no_pr_number() {
+        let desc = make_merge_desc(
+            (String::from("Some commit message"), String::from("")),
+            "abc1234",
+            None,
+            "release/1.0",
+            "master",
+            "release/",
+        );
+
+        assert_eq!(desc.0, "master->1.0: Some commit message");
+        assert_eq!(desc.1, "(cherry-picked from abc1234)");
+    }
+
+    #[test]
+    fn test_parse_follows_refs_labels() {
+        let labels = vec![
+            github::Label::new("follows-pr-199"),
+            github::Label::new("follows-commit-abc123f"),
+            github::Label::new("backport-1.0"),
+            github::Label::new("follows-pr-200"),
+        ];
+        let refs = parse_follows_refs(&labels, None, &[], "owner/repo");
+        assert_eq!(
+            refs,
+            vec![
+                FollowsRef::PullRequest(199),
+                FollowsRef::Commit("abc123f".to_string()),
+                FollowsRef::PullRequest(200),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_follows_refs_text() {
+        let body = "This PR follows pr 123 and also follows commit deadbeef";
+        let refs = parse_follows_refs(&[], Some(body), &[], "owner/repo");
+        assert_eq!(
+            refs,
+            vec![
+                FollowsRef::PullRequest(123),
+                FollowsRef::Commit("deadbeef".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_follows_refs_text_flexible_formats() {
+        let body = "follows-pr-42\nfollows pr-55\nfollows-pr 77";
+        let refs = parse_follows_refs(&[], Some(body), &[], "owner/repo");
+        assert_eq!(
+            refs,
+            vec![
+                FollowsRef::PullRequest(42),
+                FollowsRef::PullRequest(55),
+                FollowsRef::PullRequest(77),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_follows_refs_commit_messages() {
+        let mut commit = github::Commit::new();
+        commit.commit.message = "fix stuff\n\nfollows pr 300".to_string();
+        let refs = parse_follows_refs(&[], None, &[commit], "owner/repo");
+        assert_eq!(refs, vec![FollowsRef::PullRequest(300)]);
+    }
+
+    #[test]
+    fn test_parse_follows_refs_links() {
+        let body = "follows https://github.com/owner/repo/pull/123\nfollows https://github.com/owner/repo/commit/abc1234";
+        let refs = parse_follows_refs(&[], Some(body), &[], "owner/repo");
+        assert_eq!(
+            refs,
+            vec![
+                FollowsRef::PullRequest(123),
+                FollowsRef::Commit("abc1234".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_follows_refs_links_other_repo_ignored() {
+        let body = "follows https://github.com/other/repo/pull/123";
+        let refs = parse_follows_refs(&[], Some(body), &[], "owner/repo");
+        assert_eq!(refs, vec![]);
+    }
+
+    #[test]
+    fn test_parse_follows_refs_dedup() {
+        let labels = vec![github::Label::new("follows-pr-123")];
+        let body = "follows pr 123";
+        let refs = parse_follows_refs(&labels, Some(body), &[], "owner/repo");
+        assert_eq!(refs, vec![FollowsRef::PullRequest(123)]);
+    }
+
+    #[test]
+    fn test_parse_follows_refs_case_insensitive() {
+        let body = "Follows PR 42\nFOLLOWS COMMIT abc1234";
+        let refs = parse_follows_refs(&[], Some(body), &[], "owner/repo");
+        assert_eq!(
+            refs,
+            vec![
+                FollowsRef::PullRequest(42),
+                FollowsRef::Commit("abc1234".to_string()),
+            ]
+        );
     }
 }

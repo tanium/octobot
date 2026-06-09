@@ -51,6 +51,16 @@ impl GithubHandlerTest {
         branches: Vec<String>,
         commits: Vec<Commit>,
     ) {
+        self.expect_will_merge_branches_with_labels(release_branch_prefix, branches, commits, &[]);
+    }
+
+    fn expect_will_merge_branches_with_labels(
+        &mut self,
+        release_branch_prefix: &str,
+        branches: Vec<String>,
+        commits: Vec<Commit>,
+        labels: &[Label],
+    ) {
         let repo = &self.handler.repository;
         let pr = &self.handler.data.pull_request.as_ref().unwrap();
 
@@ -61,6 +71,7 @@ impl GithubHandlerTest {
                 &branch,
                 release_branch_prefix,
                 &commits,
+                labels,
             ));
         }
     }
@@ -1563,7 +1574,14 @@ async fn test_pull_request_merged_backport_labels() {
         ),
     ]);
 
-    test.expect_will_merge_branches(
+    let all_labels = vec![
+        Label::new("other"),
+        Label::new("backport-1.0"),
+        Label::new("BACKPORT-2.0"),
+        Label::new("BACKport-other-thing"),
+        Label::new("non-matching"),
+    ];
+    test.expect_will_merge_branches_with_labels(
         "release/",
         vec![
             "release/1.0".into(),
@@ -1571,6 +1589,7 @@ async fn test_pull_request_merged_backport_labels() {
             "release/other-thing".into(),
         ],
         commits,
+        &all_labels,
     );
 
     let resp = test.handler.handle_event().await.unwrap();
@@ -1674,7 +1693,14 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
         ),
     ]);
 
-    test.expect_will_merge_branches(
+    let all_labels = vec![
+        Label::new("other"),
+        Label::new("backport-1.0"),
+        Label::new("BACKPORT-2.0"),
+        Label::new("BACKport-other-thing"),
+        Label::new("non-matching"),
+    ];
+    test.expect_will_merge_branches_with_labels(
         "the-other-prefix-",
         vec![
             "the-other-prefix-1.0".into(),
@@ -1682,6 +1708,7 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
             "the-other-prefix-other-thing".into(),
         ],
         commits,
+        &all_labels,
     );
 
     let resp = test.handler.handle_event().await.unwrap();
@@ -1702,7 +1729,15 @@ async fn test_pull_request_merged_retroactively_labeled() {
 
     let commits = test.mock_pull_request_commits();
 
-    test.expect_will_merge_branches("release/", vec!["release/7.123".into()], commits);
+    let all_labels = vec![Label::new("backport-7.123")];
+    test.github.mock_get_pull_request_labels(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(all_labels.clone()),
+    );
+
+    test.expect_will_merge_branches_with_labels("release/", vec!["release/7.123".into()], commits, &all_labels);
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1722,7 +1757,15 @@ async fn test_pull_request_merged_master_branch() {
 
     let commits = test.mock_pull_request_commits();
 
-    test.expect_will_merge_branches("release/", vec!["master".into()], commits);
+    let all_labels = vec![Label::new("backport-master")];
+    test.github.mock_get_pull_request_labels(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(all_labels.clone()),
+    );
+
+    test.expect_will_merge_branches_with_labels("release/", vec!["master".into()], commits, &all_labels);
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1742,7 +1785,15 @@ async fn test_pull_request_merged_develop_branch() {
 
     let commits = test.mock_pull_request_commits();
 
-    test.expect_will_merge_branches("release/", vec!["develop".into()], commits);
+    let all_labels = vec![Label::new("backport-develop")];
+    test.github.mock_get_pull_request_labels(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(all_labels.clone()),
+    );
+
+    test.expect_will_merge_branches_with_labels("release/", vec!["develop".into()], commits, &all_labels);
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1762,7 +1813,15 @@ async fn test_pull_request_merged_main_branch() {
 
     let commits = test.mock_pull_request_commits();
 
-    test.expect_will_merge_branches("release/", vec!["main".into()], commits);
+    let all_labels = vec![Label::new("backport-main")];
+    test.github.mock_get_pull_request_labels(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(all_labels.clone()),
+    );
+
+    test.expect_will_merge_branches_with_labels("release/", vec!["main".into()], commits, &all_labels);
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);

@@ -718,7 +718,22 @@ impl GithubEventHandler {
             let release_branch_prefix = self.config.repos().release_branch_prefix(&self.repository);
             if self.action == "labeled" {
                 if let Some(ref label) = self.data.label {
-                    self.merge_pull_request(pull_request, label, &release_branch_prefix, &commits);
+                    let all_labels = match self
+                        .github_session
+                        .get_pull_request_labels(
+                            self.repository.owner.login(),
+                            &self.repository.name,
+                            pull_request.number,
+                        )
+                        .await
+                    {
+                        Ok(l) => l,
+                        Err(e) => {
+                            error!("Error getting Pull Request labels: {}", e);
+                            vec![label.clone()]
+                        }
+                    };
+                    self.merge_pull_request(pull_request, label, &release_branch_prefix, &commits, &all_labels);
                 }
             } else if verb == Some("merged".to_string()) {
                 self.merge_pull_request_all_labels(pull_request, &release_branch_prefix, &commits)
@@ -1165,7 +1180,7 @@ impl GithubEventHandler {
         };
 
         for label in &labels {
-            self.merge_pull_request(pull_request, label, release_branch_prefix, commits);
+            self.merge_pull_request(pull_request, label, release_branch_prefix, commits, &labels);
         }
     }
 
@@ -1175,6 +1190,7 @@ impl GithubEventHandler {
         label: &github::Label,
         release_branch_prefix: &str,
         commits: &[github::Commit],
+        labels: &[github::Label],
     ) {
         if !pull_request.is_merged() {
             return;
@@ -1197,6 +1213,7 @@ impl GithubEventHandler {
             &target_branch,
             release_branch_prefix,
             commits,
+            labels,
         );
         self.pr_merge.send(req);
     }
