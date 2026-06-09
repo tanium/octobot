@@ -543,6 +543,8 @@ pub fn cherry_pick(
 
 fn is_merge_commit(git: &Git, commit_hash: &str) -> Result<bool> {
     let output = git.run(&["rev-list", "--parents", "-1", commit_hash])?;
+    Ok(output.split_whitespace().count() > 2)
+}
 
 fn do_cherry_pick(
     git: &Git,

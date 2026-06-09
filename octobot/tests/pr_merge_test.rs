@@ -676,6 +676,7 @@ async fn test_pr_merge_with_follows_pr() {
     )
     .await;
 
+    assert_eq!(
         "",
         test.git
             .run_git(&["diff", "master", "origin/my-feature-branch-1.0"])
