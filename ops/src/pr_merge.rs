@@ -199,10 +199,18 @@ pub async fn try_merge_pull_request(
         assignees.push(pull_request.user.login().to_string());
     }
 
+    // Errors past this point must not fail the backport: the backport PR has
+    // already been created, so returning Err here would cause a misleading
+    // "failed backport" comment to be posted on the original PR.
+
     if !assignees.is_empty() {
-        session
-            .assign_pull_request(owner, repo, new_pr.number, assignees)
-            .await?;
+        let res = retry_once("assign_pull_request", || {
+            session.assign_pull_request(owner, repo, new_pr.number, assignees.clone())
+        })
+        .await;
+        if let Err(e) = res {
+            error!("Error assigning backport PR #{}: {}", new_pr.number, e);
+        }
     }
 
     let mut reviewers: Vec<String> = pull_request
@@ -212,9 +220,16 @@ pub async fn try_merge_pull_request(
         .collect();
     reviewers.retain(|r| r != pull_request.user.login());
     if !reviewers.is_empty() {
-        session
-            .request_review(owner, repo, new_pr.number, reviewers)
-            .await?;
+        let res = retry_once("request_review", || {
+            session.request_review(owner, repo, new_pr.number, reviewers.clone())
+        })
+        .await;
+        if let Err(e) = res {
+            error!(
+                "Error requesting reviewers on backport PR #{}: {}",
+                new_pr.number, e
+            );
+        }
     }
 
     if !whitespace_mode.is_empty() {
@@ -364,6 +379,21 @@ fn make_merge_desc(
     (title, body)
 }
 
+async fn retry_once<F, Fut, T>(label: &str, mut f: F) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    match f().await {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            info!("retrying {label} after 1s due to error: {e}");
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            f().await
+        }
+    }
+}
+
 async fn create_pr_with_retry(
     session: &dyn Session,
     owner: &str,
@@ -373,16 +403,10 @@ async fn create_pr_with_retry(
     pr_branch_name: &str,
     target_branch: &str,
 ) -> Result<github::PullRequest> {
-    let make_pr =
-        || session.create_pull_request(owner, repo, title, body, pr_branch_name, target_branch);
-    match make_pr().await {
-        Ok(pr) => Ok(pr),
-        Err(e) => {
-            info!("retrying create_pull_request after 1s due to error: {e}",);
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            make_pr().await
-        }
-    }
+    retry_once("create_pull_request", || {
+        session.create_pull_request(owner, repo, title, body, pr_branch_name, target_branch)
+    })
+    .await
 }
 
 #[derive(Debug, PartialEq)]

@@ -509,6 +509,200 @@ async fn test_pr_merge_conventional_commit() {
     );
 }
 
+// Repeated failures from `assign_pull_request` must not be reported as a
+// failed backport: the backport PR already exists, so a "failed-backport"
+// comment/label on the original PR would be misleading. (MockGithub panics
+// on unexpected comment/label calls, which is what enforces this.)
+#[tokio::test]
+async fn test_pr_merge_assign_failure_does_not_fail_backport() {
+    let (test, _temp_dir) = new_test();
+
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
+
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.title = "The Title".into();
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(commit1.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.assignees = vec![github::User::new("user1")];
+    pr.user = github::User::new("the-pr-author");
+    let pr = pr;
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 456;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: I made a change",
+        &format!("(cherry-picked from {}, PR #123)", commit1),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    // Both attempts (initial + retry) return errors.
+    for _ in 0..2 {
+        test.github.mock_assign_pull_request(
+            "the-owner",
+            "the-repo",
+            456,
+            vec!["user1".into(), "the-pr-author".into()],
+            Err(anyhow!("nope")),
+        );
+    }
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
+}
+
+// Same as above but for `request_review`.
+#[tokio::test]
+async fn test_pr_merge_request_review_failure_does_not_fail_backport() {
+    let (test, _temp_dir) = new_test();
+
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
+
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.title = "The Title".into();
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(commit1.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
+    pr.user = github::User::new("the-pr-author");
+    let pr = pr;
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 456;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: I made a change",
+        &format!("(cherry-picked from {}, PR #123)", commit1),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["the-pr-author".into()],
+        Ok(()),
+    );
+
+    for _ in 0..2 {
+        test.github.mock_request_review(
+            "the-owner",
+            "the-repo",
+            456,
+            vec!["reviewer1".into()],
+            Err(anyhow!("nope")),
+        );
+    }
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
+}
+
+// Verify the retry is single-shot, not infinite, and that a transient
+// failure on the first attempt is recovered when the second succeeds.
+#[tokio::test]
+async fn test_pr_merge_assign_succeeds_on_retry() {
+    let (test, _temp_dir) = new_test();
+
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
+
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(commit1.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.assignees = vec![github::User::new("user1")];
+    pr.user = github::User::new("the-pr-author");
+    let pr = pr;
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 456;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: I made a change",
+        &format!("(cherry-picked from {}, PR #123)", commit1),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["user1".into(), "the-pr-author".into()],
+        Err(anyhow!("transient")),
+    );
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["user1".into(), "the-pr-author".into()],
+        Ok(()),
+    );
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn test_pr_merge_backport_failure() {
     let (mut test, _temp_dir) = new_test();
