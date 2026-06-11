@@ -201,7 +201,17 @@ pub async fn try_merge_pull_request(
 
     // Errors past this point must not fail the backport: the backport PR has
     // already been created, so returning Err here would cause a misleading
-    // "failed backport" comment to be posted on the original PR.
+    // "failed backport" comment to be posted on the original PR. Instead,
+    // collect what failed and post a single comment on the backport PR so
+    // the owner knows to finish those steps by hand.
+    let mut manual_steps: Vec<String> = Vec::new();
+
+    let mut reviewers: Vec<String> = pull_request
+        .all_reviewers()
+        .into_iter()
+        .map(|a| a.login().to_string())
+        .collect();
+    reviewers.retain(|r| r != pull_request.user.login());
 
     if !assignees.is_empty() {
         let res = retry_once("assign_pull_request", || {
@@ -210,15 +220,18 @@ pub async fn try_merge_pull_request(
         .await;
         if let Err(e) = res {
             error!("Error assigning backport PR #{}: {}", new_pr.number, e);
+            manual_steps.push(format!(
+                "Assign {}: `{}`",
+                assignees
+                    .iter()
+                    .map(|a| format!("@{}", a))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                e
+            ));
         }
     }
 
-    let mut reviewers: Vec<String> = pull_request
-        .all_reviewers()
-        .into_iter()
-        .map(|a| a.login().to_string())
-        .collect();
-    reviewers.retain(|r| r != pull_request.user.login());
     if !reviewers.is_empty() {
         let res = retry_once("request_review", || {
             session.request_review(owner, repo, new_pr.number, reviewers.clone())
@@ -227,6 +240,31 @@ pub async fn try_merge_pull_request(
         if let Err(e) = res {
             error!(
                 "Error requesting reviewers on backport PR #{}: {}",
+                new_pr.number, e
+            );
+            manual_steps.push(format!(
+                "Request review from {}: `{}`",
+                reviewers
+                    .iter()
+                    .map(|r| format!("@{}", r))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                e
+            ));
+        }
+    }
+
+    if !manual_steps.is_empty() {
+        let msg = format!(
+            "Backport bot could not complete the following on this PR; please do them manually:\n\n- {}",
+            manual_steps.join("\n- ")
+        );
+        if let Err(e) = session
+            .comment_pull_request(owner, repo, new_pr.number, &msg)
+            .await
+        {
+            error!(
+                "Error commenting manual-steps notice on backport PR #{}: {}",
                 new_pr.number, e
             );
         }
