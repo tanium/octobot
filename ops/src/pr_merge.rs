@@ -208,6 +208,7 @@ pub async fn try_merge_pull_request(
     let mut reviewers: Vec<String> = pull_request
         .all_reviewers()
         .into_iter()
+        .filter(|a| !a.is_bot())
         .map(|a| a.login().to_string())
         .collect();
     reviewers.retain(|r| r != pull_request.user.login());
