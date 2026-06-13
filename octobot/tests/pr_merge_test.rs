@@ -151,7 +151,7 @@ async fn test_pr_merge_basic() {
 }
 
 #[tokio::test]
-async fn test_pr_merge_skips_bot_reviewers() {
+async fn test_pr_merge_skips_bots() {
     let (test, _temp_dir) = new_test();
 
     // setup a release branch
@@ -171,10 +171,17 @@ async fn test_pr_merge_skips_bot_reviewers() {
     pr.head = github::BranchRef::new("my-feature-branch");
     pr.base = github::BranchRef::new("master");
 
-    let mut bot_reviewer = github::User::new("some-bot[bot]");
+    let mut bot_reviewer = github::User::new("review-bot[bot]");
     bot_reviewer.user_type = Some("Bot".into());
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1"), bot_reviewer]);
-    pr.user = github::User::new("the-pr-author");
+
+    let mut bot_assignee = github::User::new("assign-bot[bot]");
+    bot_assignee.user_type = Some("Bot".into());
+    pr.assignees = vec![github::User::new("user1"), bot_assignee];
+
+    let mut bot_author = github::User::new("author-bot[bot]");
+    bot_author.user_type = Some("Bot".into());
+    pr.user = bot_author;
     let pr = pr;
 
     let mut new_pr = github::PullRequest::new();
@@ -191,11 +198,12 @@ async fn test_pr_merge_skips_bot_reviewers() {
         Ok(new_pr),
     );
 
+    // bot assignee and bot author must both be filtered, leaving only user1
     test.github.mock_assign_pull_request(
         "the-owner",
         "the-repo",
         456,
-        vec!["the-pr-author".into()],
+        vec!["user1".into()],
         Ok(()),
     );
 
