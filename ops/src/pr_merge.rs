@@ -199,11 +199,12 @@ pub async fn try_merge_pull_request(
         assignees.push(pull_request.user.login().to_string());
     }
 
-    if !assignees.is_empty() {
-        session
-            .assign_pull_request(owner, repo, new_pr.number, assignees)
-            .await?;
-    }
+    // Errors past this point must not fail the backport: the backport PR has
+    // already been created, so returning Err here would cause a misleading
+    // "failed backport" comment to be posted on the original PR. Instead,
+    // collect what failed and post a single comment on the backport PR so
+    // the owner knows to finish those steps by hand.
+    let mut manual_steps: Vec<String> = Vec::new();
 
     let mut reviewers: Vec<String> = pull_request
         .all_reviewers()
@@ -211,10 +212,62 @@ pub async fn try_merge_pull_request(
         .map(|a| a.login().to_string())
         .collect();
     reviewers.retain(|r| r != pull_request.user.login());
+
+    if !assignees.is_empty() {
+        let res = retry_once("assign_pull_request", || {
+            session.assign_pull_request(owner, repo, new_pr.number, assignees.clone())
+        })
+        .await;
+        if let Err(e) = res {
+            error!("Error assigning backport PR #{}: {}", new_pr.number, e);
+            manual_steps.push(format!(
+                "Assign {}: `{}`",
+                assignees
+                    .iter()
+                    .map(|a| format!("@{}", a))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                e
+            ));
+        }
+    }
+
     if !reviewers.is_empty() {
-        session
-            .request_review(owner, repo, new_pr.number, reviewers)
-            .await?;
+        let res = retry_once("request_review", || {
+            session.request_review(owner, repo, new_pr.number, reviewers.clone())
+        })
+        .await;
+        if let Err(e) = res {
+            error!(
+                "Error requesting reviewers on backport PR #{}: {}",
+                new_pr.number, e
+            );
+            manual_steps.push(format!(
+                "Request review from {}: `{}`",
+                reviewers
+                    .iter()
+                    .map(|r| format!("@{}", r))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                e
+            ));
+        }
+    }
+
+    if !manual_steps.is_empty() {
+        let msg = format!(
+            "Backport bot could not complete the following on this PR; please do them manually:\n\n- {}",
+            manual_steps.join("\n- ")
+        );
+        if let Err(e) = session
+            .comment_pull_request(owner, repo, new_pr.number, &msg)
+            .await
+        {
+            error!(
+                "Error commenting manual-steps notice on backport PR #{}: {}",
+                new_pr.number, e
+            );
+        }
     }
 
     if !whitespace_mode.is_empty() {
@@ -364,6 +417,21 @@ fn make_merge_desc(
     (title, body)
 }
 
+async fn retry_once<F, Fut, T>(label: &str, mut f: F) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    match f().await {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            info!("retrying {label} after 1s due to error: {e}");
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            f().await
+        }
+    }
+}
+
 async fn create_pr_with_retry(
     session: &dyn Session,
     owner: &str,
@@ -373,16 +441,10 @@ async fn create_pr_with_retry(
     pr_branch_name: &str,
     target_branch: &str,
 ) -> Result<github::PullRequest> {
-    let make_pr =
-        || session.create_pull_request(owner, repo, title, body, pr_branch_name, target_branch);
-    match make_pr().await {
-        Ok(pr) => Ok(pr),
-        Err(e) => {
-            info!("retrying create_pull_request after 1s due to error: {e}",);
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            make_pr().await
-        }
-    }
+    retry_once("create_pull_request", || {
+        session.create_pull_request(owner, repo, title, body, pr_branch_name, target_branch)
+    })
+    .await
 }
 
 #[derive(Debug, PartialEq)]
