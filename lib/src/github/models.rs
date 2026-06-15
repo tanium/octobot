@@ -113,6 +113,8 @@ pub struct User {
     pub id: u32,
     pub login: Option<String>,
     pub name: Option<String>,
+    #[serde(rename = "type", default)]
+    pub user_type: Option<String>,
 }
 
 impl User {
@@ -121,6 +123,7 @@ impl User {
             id: 0,
             login: Some(login.to_string()),
             name: Some(login.to_string()),
+            user_type: None,
         }
     }
 
@@ -129,6 +132,10 @@ impl User {
             .as_deref()
             .or(self.name.as_deref())
             .unwrap_or_default()
+    }
+
+    pub fn is_bot(&self) -> bool {
+        self.user_type.as_deref() == Some("Bot")
     }
 }
 

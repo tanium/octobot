@@ -151,6 +151,84 @@ async fn test_pr_merge_basic() {
 }
 
 #[tokio::test]
+async fn test_pr_merge_skips_bots() {
+    let (test, _temp_dir) = new_test();
+
+    // setup a release branch
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    // make a new commit on master
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
+
+    // pretend this came from a PR
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(commit1.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+
+    let mut bot_reviewer = github::User::new("review-bot[bot]");
+    bot_reviewer.user_type = Some("Bot".into());
+    pr.requested_reviewers = Some(vec![github::User::new("reviewer1"), bot_reviewer]);
+
+    let mut bot_assignee = github::User::new("assign-bot[bot]");
+    bot_assignee.user_type = Some("Bot".into());
+    pr.assignees = vec![github::User::new("user1"), bot_assignee];
+
+    let mut bot_author = github::User::new("author-bot[bot]");
+    bot_author.user_type = Some("Bot".into());
+    pr.user = bot_author;
+    let pr = pr;
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 456;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: I made a change",
+        &format!("(cherry-picked from {}, PR #123)", commit1),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    // bot assignee and bot author must both be filtered, leaving only user1
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["user1".into()],
+        Ok(()),
+    );
+
+    // the bot reviewer must be filtered out, leaving only reviewer1
+    test.github.mock_request_review(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["reviewer1".into()],
+        Ok(()),
+    );
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn test_pr_merge_author_is_assignee() {
     let (test, _temp_dir) = new_test();
 

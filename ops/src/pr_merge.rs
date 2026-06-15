@@ -186,6 +186,7 @@ pub async fn try_merge_pull_request(
     let mut assignees: Vec<String> = pull_request
         .assignees
         .iter()
+        .filter(|a| !a.is_bot())
         .map(|a| a.login().to_string())
         .collect();
 
@@ -194,6 +195,7 @@ pub async fn try_merge_pull_request(
     // in any way.  To raise the visibility, add the original PR author
     // to the list of assignees
     if !pull_request.user.login().is_empty()
+        && !pull_request.user.is_bot()
         && !assignees.contains(&pull_request.user.login().to_string())
     {
         assignees.push(pull_request.user.login().to_string());
@@ -209,6 +211,7 @@ pub async fn try_merge_pull_request(
     let mut reviewers: Vec<String> = pull_request
         .all_reviewers()
         .into_iter()
+        .filter(|a| !a.is_bot())
         .map(|a| a.login().to_string())
         .collect();
     reviewers.retain(|r| r != pull_request.user.login());
