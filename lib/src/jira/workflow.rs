@@ -289,9 +289,12 @@ pub async fn add_pending_version(
     jira: &dyn jira::api::Session,
 ) {
     if let Some(version) = maybe_version {
+        let fixed = get_fixed_jira_keys(commits, projects);
         let mentioned = get_mentioned_jira_keys(commits, projects);
         for key in get_all_jira_keys(commits, projects) {
-            if mentioned.contains(&key) {
+            // Fixed wins over mentioned: a commit that fixes an issue may also say
+            // "See KEY-1" in its body, and it should still get the pending version.
+            if mentioned.contains(&key) && !fixed.contains(&key) {
                 // don't add a pending version
                 continue;
             }
