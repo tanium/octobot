@@ -327,6 +327,23 @@ async fn test_ping() {
     assert_eq!((StatusCode::OK, "ping".into()), resp);
 }
 
+#[test]
+fn test_handles_matches_dispatched_events() {
+    for event in [
+        "ping",
+        "pull_request",
+        "pull_request_review_comment",
+        "pull_request_review",
+        "commit_comment",
+        "issue_comment",
+        "push",
+    ] {
+        assert!(GithubEventHandler::handles(event), "{}", event);
+    }
+    assert!(!GithubEventHandler::handles("check_run"));
+    assert!(!GithubEventHandler::handles("status"));
+}
+
 #[tokio::test]
 async fn test_commit_comment_with_path() {
     let mut test = new_test();

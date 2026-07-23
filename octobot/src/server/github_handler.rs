@@ -298,6 +298,11 @@ impl Handler for GithubHandler {
             None => return http_util::new_msg_resp(StatusCode::OK, "no repository, ignored"),
         };
 
+        // Bail before creating a session: unhandled events shouldn't cost API calls.
+        if !GithubEventHandler::handles(&event) {
+            return http_util::new_msg_resp(StatusCode::OK, format!("Unhandled event: {}", event));
+        }
+
         let github_session = match github_app
             .new_session(repository.owner.login(), &repository.name)
             .await
@@ -402,6 +407,21 @@ impl Handler for GithubHandler {
 type EventResponse = (StatusCode, String);
 
 impl GithubEventHandler {
+    // Must match the events dispatched in handle_event.
+    const HANDLED_EVENTS: &'static [&'static str] = &[
+        "ping",
+        "pull_request",
+        "pull_request_review_comment",
+        "pull_request_review",
+        "commit_comment",
+        "issue_comment",
+        "push",
+    ];
+
+    pub fn handles(event: &str) -> bool {
+        Self::HANDLED_EVENTS.contains(&event)
+    }
+
     pub async fn handle_event(&self) -> Option<EventResponse> {
         info!(
             "Received event: {}{}{}",
