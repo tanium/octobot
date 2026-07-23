@@ -184,6 +184,8 @@ impl CachedToken {
 
 pub struct GithubApp {
     host: String,
+    // Derived from `host` except in tests, which point it at a local mock server.
+    api_base: String,
     app_id: u32,
     // DER formatted API private key
     app_key: Vec<u8>,
@@ -208,6 +210,7 @@ impl GithubApp {
     ) -> Result<GithubApp> {
         let mut github = GithubApp {
             host: host.into(),
+            api_base: api_base(host),
             app_id,
             app_key: app_key.into(),
             app: None,
@@ -228,6 +231,19 @@ impl GithubApp {
         Ok(github)
     }
 
+    #[cfg(test)]
+    fn new_for_test(api_base: &str, app_key: &[u8]) -> GithubApp {
+        GithubApp {
+            host: "github.test".into(),
+            api_base: api_base.into(),
+            app_id: 1,
+            app_key: app_key.into(),
+            app: None,
+            metrics: None,
+            tokens: Mutex::new(HashMap::new()),
+        }
+    }
+
     fn new_client(&self) -> Result<HTTPClient> {
         let jwt_token = jwt::new_token(self.app_id, &self.app_key)?;
 
@@ -241,7 +257,7 @@ impl GithubApp {
             format!("Bearer {}", jwt_token).parse().unwrap(),
         );
 
-        let client = HTTPClient::new_with_headers(&api_base(&self.host), headers)?;
+        let client = HTTPClient::new_with_headers(&self.api_base, headers)?;
         if let Some(ref m) = self.metrics {
             Ok(client.with_metrics(
                 m.github_api_responses.clone(),
@@ -253,7 +269,8 @@ impl GithubApp {
     }
 
     async fn new_token(&self, installation_url: &str) -> Result<String> {
-        // Installation ids never change, so a stale entry still avoids the lookup.
+        // A stale entry still avoids the installation lookup: ids only change if
+        // the app is reinstalled, which the retry below recovers from.
         let cached_id = {
             let tokens = self.tokens.lock().unwrap();
             match tokens.get(installation_url) {
@@ -263,27 +280,64 @@ impl GithubApp {
             }
         };
 
+        let client = self.new_client()?;
+
+        let installation_id = match cached_id {
+            Some(id) => id,
+            None => {
+                self.lookup_installation_id(&client, installation_url)
+                    .await?
+            }
+        };
+
+        match self
+            .mint_token(&client, installation_url, installation_id)
+            .await
+        {
+            Err(e) if cached_id.is_some() => {
+                // The cached id may be stale (e.g. app reinstalled): evict it and
+                // retry once with a fresh installation lookup.
+                info!(
+                    "Token mint failed for cached installation id {} ({}); retrying with fresh lookup",
+                    installation_id, e
+                );
+                self.tokens.lock().unwrap().remove(installation_url);
+                let installation_id = self
+                    .lookup_installation_id(&client, installation_url)
+                    .await?;
+                self.mint_token(&client, installation_url, installation_id)
+                    .await
+            }
+            result => result,
+        }
+    }
+
+    async fn lookup_installation_id(
+        &self,
+        client: &HTTPClient,
+        installation_url: &str,
+    ) -> Result<u32> {
         // All we care about for now is the installation id
         #[derive(Deserialize, Debug)]
         struct Installation {
             id: u32,
         }
 
+        let installation: Installation = client.get(installation_url).await?;
+        Ok(installation.id)
+    }
+
+    async fn mint_token(
+        &self,
+        client: &HTTPClient,
+        installation_url: &str,
+        installation_id: u32,
+    ) -> Result<String> {
         #[derive(Deserialize)]
         struct AccessToken {
             token: String,
             expires_at: String,
         }
-
-        let client = self.new_client()?;
-
-        let installation_id = match cached_id {
-            Some(id) => id,
-            None => {
-                let installation: Installation = client.get(installation_url).await?;
-                installation.id
-            }
-        };
 
         // Get a new access token for this id
         let token: AccessToken = client
@@ -293,16 +347,23 @@ impl GithubApp {
             )
             .await?;
 
-        let expires_at = time::OffsetDateTime::parse(&token.expires_at, &Rfc3339)?;
-        let mut tokens = self.tokens.lock().unwrap();
-        tokens.insert(
-            installation_url.to_string(),
-            CachedToken {
-                installation_id,
-                token: token.token.clone(),
-                expires_at,
-            },
-        );
+        // The token is valid either way; an unparseable expiry only means we can't cache it.
+        match time::OffsetDateTime::parse(&token.expires_at, &Rfc3339) {
+            Ok(expires_at) => {
+                self.tokens.lock().unwrap().insert(
+                    installation_url.to_string(),
+                    CachedToken {
+                        installation_id,
+                        token: token.token.clone(),
+                        expires_at,
+                    },
+                );
+            }
+            Err(e) => error!(
+                "Failed to parse access token expires_at '{}': {}",
+                token.expires_at, e
+            ),
+        }
         Ok(token.token)
     }
 }
@@ -1180,6 +1241,164 @@ mod tests {
         assert!(token(time::Duration::hours(1)).is_fresh());
         assert!(!token(time::Duration::minutes(4)).is_fresh());
         assert!(!token(time::Duration::minutes(-10)).is_fresh());
+    }
+
+    // Throwaway key used only to sign JWTs in tests; grants access to nothing.
+    const TEST_APP_KEY: &[u8] = include_bytes!("fixtures/app_key_for_tests.pem");
+
+    const INSTALLATION_PATH: &str = "/repos/some-org/some-repo/installation";
+
+    fn expires_in(offset: time::Duration) -> String {
+        (time::OffsetDateTime::now_utc() + offset)
+            .format(&Rfc3339)
+            .unwrap()
+    }
+
+    fn token_body(token: &str, expires_at: &str) -> String {
+        format!(
+            r#"{{"token": "{}", "expires_at": "{}"}}"#,
+            token, expires_at
+        )
+    }
+
+    #[tokio::test]
+    async fn test_new_token_caches_until_expiry() {
+        let mut server = mockito::Server::new_async().await;
+        let app = GithubApp::new_for_test(&server.url(), TEST_APP_KEY);
+
+        let lookup = server
+            .mock("GET", INSTALLATION_PATH)
+            .with_body(r#"{"id": 42}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let mint = server
+            .mock("POST", "/app/installations/42/access_tokens")
+            .with_body(token_body("token-1", &expires_in(time::Duration::hours(1))))
+            .expect(1)
+            .create_async()
+            .await;
+
+        let token = app.get_token_repo("some-org", "some-repo").await.unwrap();
+        assert_eq!("token-1", token);
+
+        // Second session for the same repo is served entirely from cache.
+        let token = app.get_token_repo("some-org", "some-repo").await.unwrap();
+        assert_eq!("token-1", token);
+
+        lookup.assert_async().await;
+        mint.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_new_token_refresh_reuses_installation_id() {
+        let mut server = mockito::Server::new_async().await;
+        let app = GithubApp::new_for_test(&server.url(), TEST_APP_KEY);
+
+        let lookup = server
+            .mock("GET", INSTALLATION_PATH)
+            .with_body(r#"{"id": 42}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        // Expires within the freshness margin, so it is immediately stale.
+        let mint = server
+            .mock("POST", "/app/installations/42/access_tokens")
+            .with_body(token_body(
+                "token-1",
+                &expires_in(time::Duration::minutes(1)),
+            ))
+            .expect(2)
+            .create_async()
+            .await;
+
+        app.get_token_repo("some-org", "some-repo").await.unwrap();
+        // The stale token forces a re-mint, but not a second installation lookup.
+        app.get_token_repo("some-org", "some-repo").await.unwrap();
+
+        lookup.assert_async().await;
+        mint.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_new_token_evicts_stale_installation_id() {
+        let mut server = mockito::Server::new_async().await;
+        let app = GithubApp::new_for_test(&server.url(), TEST_APP_KEY);
+
+        // Prime the cache with installation id 42 and an immediately-stale token.
+        let lookup = server
+            .mock("GET", INSTALLATION_PATH)
+            .with_body(r#"{"id": 42}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let mint = server
+            .mock("POST", "/app/installations/42/access_tokens")
+            .with_body(token_body("token-1", &expires_in(time::Duration::ZERO)))
+            .expect(1)
+            .create_async()
+            .await;
+
+        let token = app.get_token_repo("some-org", "some-repo").await.unwrap();
+        assert_eq!("token-1", token);
+        lookup.remove_async().await;
+        mint.remove_async().await;
+
+        // The app was "reinstalled": id 42 is dead, a fresh lookup returns 43.
+        let dead_mint = server
+            .mock("POST", "/app/installations/42/access_tokens")
+            .with_status(404)
+            .expect(1)
+            .create_async()
+            .await;
+        let new_lookup = server
+            .mock("GET", INSTALLATION_PATH)
+            .with_body(r#"{"id": 43}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let new_mint = server
+            .mock("POST", "/app/installations/43/access_tokens")
+            .with_body(token_body("token-2", &expires_in(time::Duration::hours(1))))
+            .expect(1)
+            .create_async()
+            .await;
+
+        let token = app.get_token_repo("some-org", "some-repo").await.unwrap();
+        assert_eq!("token-2", token);
+
+        dead_mint.assert_async().await;
+        new_lookup.assert_async().await;
+        new_mint.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_new_token_unparseable_expiry_returns_token_uncached() {
+        let mut server = mockito::Server::new_async().await;
+        let app = GithubApp::new_for_test(&server.url(), TEST_APP_KEY);
+
+        // A bad expiry must not fail the mint; it only disables caching,
+        // so the second call repeats both the lookup and the mint.
+        let lookup = server
+            .mock("GET", INSTALLATION_PATH)
+            .with_body(r#"{"id": 42}"#)
+            .expect(2)
+            .create_async()
+            .await;
+        let mint = server
+            .mock("POST", "/app/installations/42/access_tokens")
+            .with_body(token_body("token-1", "not-a-timestamp"))
+            .expect(2)
+            .create_async()
+            .await;
+
+        for _ in 0..2 {
+            let token = app.get_token_repo("some-org", "some-repo").await.unwrap();
+            assert_eq!("token-1", token);
+        }
+
+        lookup.assert_async().await;
+        mint.assert_async().await;
     }
 
     #[test]
