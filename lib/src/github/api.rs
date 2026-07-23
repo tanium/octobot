@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, bail};
 use async_trait::async_trait;
@@ -6,6 +6,7 @@ use log::{error, info};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
+use time::format_description::well_known::Rfc3339;
 
 use crate::errors::*;
 use crate::github::models::*;
@@ -166,6 +167,21 @@ pub fn api_base(host: &str) -> String {
     }
 }
 
+// Refresh cached tokens early to allow for clock skew and in-flight use.
+const TOKEN_EXPIRY_MARGIN: time::Duration = time::Duration::minutes(5);
+
+struct CachedToken {
+    installation_id: u32,
+    token: String,
+    expires_at: time::OffsetDateTime,
+}
+
+impl CachedToken {
+    fn is_fresh(&self) -> bool {
+        time::OffsetDateTime::now_utc() + TOKEN_EXPIRY_MARGIN < self.expires_at
+    }
+}
+
 pub struct GithubApp {
     host: String,
     app_id: u32,
@@ -173,6 +189,7 @@ pub struct GithubApp {
     app_key: Vec<u8>,
     app: Option<App>,
     metrics: Option<Arc<Metrics>>,
+    tokens: Mutex<HashMap<String, CachedToken>>,
 }
 
 pub struct GithubOauthApp {
@@ -195,6 +212,7 @@ impl GithubApp {
             app_key: app_key.into(),
             app: None,
             metrics,
+            tokens: Mutex::new(HashMap::new()),
         };
 
         github.app = Some(
@@ -235,7 +253,15 @@ impl GithubApp {
     }
 
     async fn new_token(&self, installation_url: &str) -> Result<String> {
-        let client = self.new_client()?;
+        // Installation ids never change, so a stale entry still avoids the lookup.
+        let cached_id = {
+            let tokens = self.tokens.lock().unwrap();
+            match tokens.get(installation_url) {
+                Some(t) if t.is_fresh() => return Ok(t.token.clone()),
+                Some(t) => Some(t.installation_id),
+                None => None,
+            }
+        };
 
         // All we care about for now is the installation id
         #[derive(Deserialize, Debug)]
@@ -246,17 +272,37 @@ impl GithubApp {
         #[derive(Deserialize)]
         struct AccessToken {
             token: String,
+            expires_at: String,
         }
 
-        let installation: Installation = client.get(installation_url).await?;
+        let client = self.new_client()?;
+
+        let installation_id = match cached_id {
+            Some(id) => id,
+            None => {
+                let installation: Installation = client.get(installation_url).await?;
+                installation.id
+            }
+        };
 
         // Get a new access token for this id
         let token: AccessToken = client
             .post(
-                &format!("/app/installations/{}/access_tokens", installation.id),
+                &format!("/app/installations/{}/access_tokens", installation_id),
                 &String::new(),
             )
             .await?;
+
+        let expires_at = time::OffsetDateTime::parse(&token.expires_at, &Rfc3339)?;
+        let mut tokens = self.tokens.lock().unwrap();
+        tokens.insert(
+            installation_url.to_string(),
+            CachedToken {
+                installation_id,
+                token: token.token.clone(),
+                expires_at,
+            },
+        );
         Ok(token.token)
     }
 }
@@ -1122,6 +1168,19 @@ fn parse_next_cursor(res: &reqwest::Response) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_cached_token_freshness() {
+        let token = |offset: time::Duration| CachedToken {
+            installation_id: 1,
+            token: "t".into(),
+            expires_at: time::OffsetDateTime::now_utc() + offset,
+        };
+
+        assert!(token(time::Duration::hours(1)).is_fresh());
+        assert!(!token(time::Duration::minutes(4)).is_fresh());
+        assert!(!token(time::Duration::minutes(-10)).is_fresh());
+    }
 
     #[test]
     fn test_parse_link() {
