@@ -1260,6 +1260,7 @@ dependencies = [
  "log",
  "maplit",
  "mockito",
+ "openssl",
  "percent-encoding",
  "prometheus",
  "regex",

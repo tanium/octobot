@@ -1243,8 +1243,16 @@ mod tests {
         assert!(!token(time::Duration::minutes(-10)).is_fresh());
     }
 
-    // Throwaway key used only to sign JWTs in tests; grants access to nothing.
-    const TEST_APP_KEY: &[u8] = include_bytes!("fixtures/app_key_for_tests.pem");
+    // Throwaway key used only to sign JWTs in tests; generated once per test run.
+    fn test_app_key() -> &'static [u8] {
+        static KEY: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+        KEY.get_or_init(|| {
+            openssl::rsa::Rsa::generate(2048)
+                .unwrap()
+                .private_key_to_pem()
+                .unwrap()
+        })
+    }
 
     const INSTALLATION_PATH: &str = "/repos/some-org/some-repo/installation";
 
@@ -1264,7 +1272,7 @@ mod tests {
     #[tokio::test]
     async fn test_new_token_caches_until_expiry() {
         let mut server = mockito::Server::new_async().await;
-        let app = GithubApp::new_for_test(&server.url(), TEST_APP_KEY);
+        let app = GithubApp::new_for_test(&server.url(), test_app_key());
 
         let lookup = server
             .mock("GET", INSTALLATION_PATH)
@@ -1293,7 +1301,7 @@ mod tests {
     #[tokio::test]
     async fn test_new_token_refresh_reuses_installation_id() {
         let mut server = mockito::Server::new_async().await;
-        let app = GithubApp::new_for_test(&server.url(), TEST_APP_KEY);
+        let app = GithubApp::new_for_test(&server.url(), test_app_key());
 
         let lookup = server
             .mock("GET", INSTALLATION_PATH)
@@ -1323,7 +1331,7 @@ mod tests {
     #[tokio::test]
     async fn test_new_token_evicts_stale_installation_id() {
         let mut server = mockito::Server::new_async().await;
-        let app = GithubApp::new_for_test(&server.url(), TEST_APP_KEY);
+        let app = GithubApp::new_for_test(&server.url(), test_app_key());
 
         // Prime the cache with installation id 42 and an immediately-stale token.
         let lookup = server
@@ -1373,9 +1381,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_new_token_failed_retry_leaves_cache_evicted() {
+        let mut server = mockito::Server::new_async().await;
+        let app = GithubApp::new_for_test(&server.url(), test_app_key());
+
+        // Prime the cache with installation id 42 and an immediately-stale token.
+        let lookup = server
+            .mock("GET", INSTALLATION_PATH)
+            .with_body(r#"{"id": 42}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let mint = server
+            .mock("POST", "/app/installations/42/access_tokens")
+            .with_body(token_body("token-1", &expires_in(time::Duration::ZERO)))
+            .expect(1)
+            .create_async()
+            .await;
+
+        let token = app.get_token_repo("some-org", "some-repo").await.unwrap();
+        assert_eq!("token-1", token);
+        lookup.remove_async().await;
+        mint.remove_async().await;
+
+        // The mint fails and so does the retry's fresh lookup: the error must
+        // propagate and the stale entry must stay evicted, not reappear.
+        let dead_mint = server
+            .mock("POST", "/app/installations/42/access_tokens")
+            .with_status(404)
+            .expect(1)
+            .create_async()
+            .await;
+        let failed_lookup = server
+            .mock("GET", INSTALLATION_PATH)
+            .with_status(500)
+            .expect(1)
+            .create_async()
+            .await;
+
+        app.get_token_repo("some-org", "some-repo")
+            .await
+            .unwrap_err();
+        dead_mint.assert_async().await;
+        failed_lookup.assert_async().await;
+        dead_mint.remove_async().await;
+        failed_lookup.remove_async().await;
+
+        // The next call starts cold: a fresh lookup, not a mint against id 42.
+        let new_lookup = server
+            .mock("GET", INSTALLATION_PATH)
+            .with_body(r#"{"id": 43}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let new_mint = server
+            .mock("POST", "/app/installations/43/access_tokens")
+            .with_body(token_body("token-2", &expires_in(time::Duration::hours(1))))
+            .expect(1)
+            .create_async()
+            .await;
+
+        let token = app.get_token_repo("some-org", "some-repo").await.unwrap();
+        assert_eq!("token-2", token);
+
+        new_lookup.assert_async().await;
+        new_mint.assert_async().await;
+    }
+
+    #[tokio::test]
     async fn test_new_token_unparseable_expiry_returns_token_uncached() {
         let mut server = mockito::Server::new_async().await;
-        let app = GithubApp::new_for_test(&server.url(), TEST_APP_KEY);
+        let app = GithubApp::new_for_test(&server.url(), test_app_key());
 
         // A bad expiry must not fail the mint; it only disables caching,
         // so the second call repeats both the lookup and the mint.
