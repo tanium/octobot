@@ -406,20 +406,33 @@ impl Handler for GithubHandler {
 
 type EventResponse = (StatusCode, String);
 
-impl GithubEventHandler {
-    // Must match the events dispatched in handle_event.
-    const HANDLED_EVENTS: &'static [&'static str] = &[
-        "ping",
-        "pull_request",
-        "pull_request_review_comment",
-        "pull_request_review",
-        "commit_comment",
-        "issue_comment",
-        "push",
-    ];
+// Single source of truth for which webhook events are handled and by what:
+// generates both `handles()` (checked before creating a session) and the
+// dispatch in `handle_event`, so the two cannot drift apart.
+macro_rules! github_event_handlers {
+    ($( $event:literal => $handler:ident ),* $(,)?) => {
+        pub fn handles(event: &str) -> bool {
+            matches!(event, $( $event )|*)
+        }
 
-    pub fn handles(event: &str) -> bool {
-        Self::HANDLED_EVENTS.contains(&event)
+        async fn dispatch_event(&self) -> Option<EventResponse> {
+            match self.event.as_str() {
+                $( $event => Some(self.$handler().await), )*
+                _ => None,
+            }
+        }
+    };
+}
+
+impl GithubEventHandler {
+    github_event_handlers! {
+        "ping" => handle_ping,
+        "pull_request" => handle_pr,
+        "pull_request_review_comment" => handle_pr_review_comment,
+        "pull_request_review" => handle_pr_review,
+        "commit_comment" => handle_commit_comment,
+        "issue_comment" => handle_issue_comment,
+        "push" => handle_push,
     }
 
     pub async fn handle_event(&self) -> Option<EventResponse> {
@@ -429,23 +442,7 @@ impl GithubEventHandler {
             if self.action.is_empty() { "" } else { "." },
             self.action
         );
-        if self.event == "ping" {
-            Some(self.handle_ping())
-        } else if self.event == "pull_request" {
-            Some(self.handle_pr().await)
-        } else if self.event == "pull_request_review_comment" {
-            Some(self.handle_pr_review_comment().await)
-        } else if self.event == "pull_request_review" {
-            Some(self.handle_pr_review().await)
-        } else if self.event == "commit_comment" {
-            Some(self.handle_commit_comment().await)
-        } else if self.event == "issue_comment" {
-            Some(self.handle_issue_comment().await)
-        } else if self.event == "push" {
-            Some(self.handle_push().await)
-        } else {
-            None
-        }
+        self.dispatch_event().await
     }
 
     // This defaults to using the github name if no slack name is configured, since this is not
@@ -565,7 +562,7 @@ impl GithubEventHandler {
         reviewer_names
     }
 
-    fn handle_ping(&self) -> EventResponse {
+    async fn handle_ping(&self) -> EventResponse {
         (StatusCode::OK, "ping".into())
     }
 

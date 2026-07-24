@@ -327,19 +327,12 @@ async fn test_ping() {
     assert_eq!((StatusCode::OK, "ping".into()), resp);
 }
 
+// `handles()` and the dispatch table are generated from the same macro table,
+// so they cannot drift; this just sanity-checks the generated predicate.
 #[test]
-fn test_handles_matches_dispatched_events() {
-    for event in [
-        "ping",
-        "pull_request",
-        "pull_request_review_comment",
-        "pull_request_review",
-        "commit_comment",
-        "issue_comment",
-        "push",
-    ] {
-        assert!(GithubEventHandler::handles(event), "{}", event);
-    }
+fn test_handles() {
+    assert!(GithubEventHandler::handles("ping"));
+    assert!(GithubEventHandler::handles("push"));
     assert!(!GithubEventHandler::handles("check_run"));
     assert!(!GithubEventHandler::handles("status"));
 }

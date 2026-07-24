@@ -32,4 +32,8 @@ time = "0.3.47"
 anyhow = { version = "1.0.72", features = ["backtrace"] }
 
 [dev-dependencies]
+mockito = "1"
+# Already in the dependency tree via reqwest/native-tls; used to generate a test app key.
+openssl = "0.10"
 tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
