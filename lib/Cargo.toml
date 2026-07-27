@@ -29,6 +29,7 @@ prometheus = { version = "0.13.3", features = ["process"] }
 maplit = "1.0.2"
 hex = "0.4.3"
 time = "0.3.47"
+tokio = { version = "1", features = ["time"] }
 anyhow = { version = "1.0.72", features = ["backtrace"] }
 
 [dev-dependencies]
