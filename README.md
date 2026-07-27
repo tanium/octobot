@@ -54,8 +54,13 @@ config.toml
     [jira]
     # required to enable jira support
     host = "jira.company.com"
+    # for on-premise jira: username/password.
+    # for jira cloud: the account email as username and an API token as password.
     username = <jira username>
     password = <jira password>
+    # alternatively, for on-premise jira only: a personal access token.
+    # (jira cloud does not support bearer tokens)
+    #token = <personal access token>
 
     # optional. shown here with defaults:
     progress_states = [ "In Progress" ]
@@ -103,6 +108,7 @@ Addenda
 ### Tested configurations
 
 Tested with GitHub Enterprise as well as GitHub.com and primarily with on-premise JIRA.
+Both on-premise JIRA and JIRA Cloud are supported.
 
 ### License
 
