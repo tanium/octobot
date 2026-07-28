@@ -50,6 +50,7 @@ pub enum JiraVersionPosition {
 
 pub struct JiraSession {
     pub client: HTTPClient,
+    is_cloud: bool,
     fix_versions_field: String,
     pending_versions_field: Option<String>,
     pending_versions_field_id: Option<String>,
@@ -57,7 +58,23 @@ pub struct JiraSession {
 }
 
 #[derive(Deserialize)]
-struct AuthResp {}
+struct Myself {
+    #[serde(rename = "displayName")]
+    display_name: Option<String>,
+}
+
+#[derive(Deserialize, PartialEq)]
+enum DeploymentType {
+    Cloud,
+    Server,
+}
+
+#[derive(Deserialize)]
+struct ServerInfo {
+    // Optional: older on-prem jira may not report a deployment type at all.
+    #[serde(rename = "deploymentType")]
+    deployment_type: Option<DeploymentType>,
+}
 
 fn lookup_field(field: &str, fields: &[Field]) -> Result<String> {
     fields
@@ -75,64 +92,53 @@ impl JiraSession {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
 
-        // First check that the auth is good
-        match &config.auth {
+        // Note: Jira Cloud does not support bearer tokens: use basic auth with an API
+        // token as the password instead.
+        let auth_header = match &config.auth {
             JiraAuth::Basic { username, password } => {
-                let req = LoginReq {
-                    username: username.clone(),
-                    password: password.clone(),
-                };
-
-                let client = HTTPClient::new_with_headers(&api_base, headers.clone())?;
-                let client = match metrics {
-                    None => client,
-                    Some(ref m) => client
-                        .with_metrics(m.jira_api_responses.clone(), m.jira_api_duration.clone()),
-                };
-
-                #[derive(Serialize)]
-                struct LoginReq {
-                    username: String,
-                    password: String,
-                }
-
-                client
-                    .post::<AuthResp, LoginReq>(&format!("{}/rest/auth/1/session", jira_base), &req)
-                    .await
-                    .map_err(|e| anyhow!("Error authenticating to JIRA: {}", e))?;
-
-                info!("Logged into JIRA");
-
                 let auth = base64::engine::general_purpose::STANDARD
                     .encode(format!("{}:{}", username, password));
-                headers.insert(
-                    reqwest::header::AUTHORIZATION,
-                    format!("Basic {}", auth).parse().unwrap(),
-                );
+                format!("Basic {}", auth)
             }
-            crate::config::JiraAuth::Token(token) => {
-                headers.insert(
-                    reqwest::header::AUTHORIZATION,
-                    format!("Bearer {}", token).parse().unwrap(),
-                );
-                let client = HTTPClient::new_with_headers(&api_base, headers.clone())?;
-                client
-                    .get::<AuthResp>(&format!("{}/rest/auth/1/session", jira_base))
-                    .await
-                    .map_err(|e| anyhow!("Error authenticating to JIRA: {}", e))?;
+            JiraAuth::Token(token) => format!("Bearer {}", token),
+        };
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            auth_header
+                .parse()
+                .map_err(|e| anyhow!("Invalid auth header: {}", e))?,
+        );
 
-                info!("Logged into JIRA");
-            }
-        }
-
-        // Now create our actual client
-        let client = HTTPClient::new_with_headers(&api_base, headers.clone())?;
+        let client = HTTPClient::new_with_headers(&api_base, headers)?;
         let client = match metrics {
             None => client,
             Some(ref m) => {
                 client.with_metrics(m.jira_api_responses.clone(), m.jira_api_duration.clone())
             }
         };
+
+        // Check that the auth is good: /myself exists on both cloud and on-prem jira.
+        let myself = client
+            .get::<Myself>("/myself")
+            .await
+            .map_err(|e| anyhow!("Error authenticating to JIRA: {}", e))?;
+
+        info!(
+            "Logged into JIRA as \"{}\"",
+            myself.display_name.as_deref().unwrap_or("unknown")
+        );
+
+        // Detecting the deployment type must succeed: guessing wrong would break
+        // cloud-only API paths for the whole lifetime of the session.
+        let server_info = client
+            .get::<ServerInfo>("/serverInfo")
+            .await
+            .map_err(|e| anyhow!("Error getting JIRA server info: {}", e))?;
+        let is_cloud = server_info.deployment_type == Some(DeploymentType::Cloud);
+        info!(
+            "JIRA deployment type: {}",
+            if is_cloud { "cloud" } else { "server" }
+        );
 
         let fields = client.get::<Vec<Field>>("/field").await?;
 
@@ -147,11 +153,16 @@ impl JiraSession {
 
         Ok(JiraSession {
             client,
+            is_cloud,
             fix_versions_field,
             pending_versions_field: config.pending_versions_field.clone(),
             pending_versions_field_id,
             restrict_comment_visibility_to_role: config.restrict_comment_visibility_to_role.clone(),
         })
+    }
+
+    pub fn is_cloud(&self) -> bool {
+        self.is_cloud
     }
 }
 
@@ -459,6 +470,186 @@ fn parse_pending_versions(
 mod tests {
     use super::*;
     use maplit::hashmap;
+
+    fn test_jira_config(url: &str, auth: JiraAuth) -> JiraConfig {
+        JiraConfig {
+            base_url: url.into(),
+            auth,
+            progress_states: vec![],
+            review_states: vec![],
+            resolved_states: vec![],
+            frozen_states: vec![],
+            fixed_resolutions: vec![],
+            fix_versions_field: "fixVersions".into(),
+            pending_versions_field: None,
+            restrict_comment_visibility_to_role: None,
+        }
+    }
+
+    async fn mock_fields(server: &mut mockito::Server) -> mockito::Mock {
+        server
+            .mock("GET", "/rest/api/2/field")
+            .with_body(r#"[{"id": "fixVersions", "name": "Fix Version/s"}]"#)
+            .create_async()
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_new_session_basic_auth_cloud() {
+        let mut server = mockito::Server::new_async().await;
+
+        let expected_auth = format!(
+            "Basic {}",
+            base64::engine::general_purpose::STANDARD.encode("me@company.com:api-token")
+        );
+
+        let myself = server
+            .mock("GET", "/rest/api/2/myself")
+            .match_header("authorization", expected_auth.as_str())
+            .with_body(r#"{"displayName": "Octo Bot"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let server_info = server
+            .mock("GET", "/rest/api/2/serverInfo")
+            .with_body(r#"{"deploymentType": "Cloud"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let fields = mock_fields(&mut server).await;
+
+        let config = test_jira_config(
+            &server.url(),
+            JiraAuth::Basic {
+                username: "me@company.com".into(),
+                password: "api-token".into(),
+            },
+        );
+        let session = JiraSession::new(&config, None).await.unwrap();
+        assert!(session.is_cloud());
+
+        myself.assert_async().await;
+        server_info.assert_async().await;
+        fields.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_new_session_token_auth_server() {
+        let mut server = mockito::Server::new_async().await;
+
+        let myself = server
+            .mock("GET", "/rest/api/2/myself")
+            .match_header("authorization", "Bearer the-token")
+            .with_body(r#"{"displayName": "Octo Bot"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        // no deploymentType: older jira servers may not report one
+        let server_info = server
+            .mock("GET", "/rest/api/2/serverInfo")
+            .with_body(r#"{}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let fields = mock_fields(&mut server).await;
+
+        let config = test_jira_config(&server.url(), JiraAuth::Token("the-token".into()));
+        let session = JiraSession::new(&config, None).await.unwrap();
+        assert!(!session.is_cloud());
+
+        myself.assert_async().await;
+        server_info.assert_async().await;
+        fields.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_new_session_bad_auth() {
+        let mut server = mockito::Server::new_async().await;
+
+        let myself = server
+            .mock("GET", "/rest/api/2/myself")
+            .with_status(401)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let config = test_jira_config(&server.url(), JiraAuth::Token("expired".into()));
+        let err = match JiraSession::new(&config, None).await {
+            Ok(_) => panic!("expected auth error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("Error authenticating to JIRA"),
+            "unexpected error: {}",
+            err
+        );
+
+        myself.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_new_session_server_info_error() {
+        let mut server = mockito::Server::new_async().await;
+
+        let myself = server
+            .mock("GET", "/rest/api/2/myself")
+            .with_body(r#"{"displayName": "Octo Bot"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let server_info = server
+            .mock("GET", "/rest/api/2/serverInfo")
+            .with_status(500)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let config = test_jira_config(&server.url(), JiraAuth::Token("the-token".into()));
+        let err = match JiraSession::new(&config, None).await {
+            Ok(_) => panic!("expected server info error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("Error getting JIRA server info"),
+            "unexpected error: {}",
+            err
+        );
+
+        myself.assert_async().await;
+        server_info.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_new_session_unrecognized_deployment_type() {
+        let mut server = mockito::Server::new_async().await;
+
+        let myself = server
+            .mock("GET", "/rest/api/2/myself")
+            .with_body(r#"{"displayName": "Octo Bot"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let server_info = server
+            .mock("GET", "/rest/api/2/serverInfo")
+            .with_body(r#"{"deploymentType": "Mainframe"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let config = test_jira_config(&server.url(), JiraAuth::Token("the-token".into()));
+        let err = match JiraSession::new(&config, None).await {
+            Ok(_) => panic!("expected deployment type error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("Error getting JIRA server info"),
+            "unexpected error: {}",
+            err
+        );
+
+        myself.assert_async().await;
+        server_info.assert_async().await;
+    }
 
     #[test]
     fn test_parse_pending_versions() {
