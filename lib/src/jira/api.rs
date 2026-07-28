@@ -63,10 +63,17 @@ struct Myself {
     display_name: Option<String>,
 }
 
+#[derive(Deserialize, PartialEq)]
+enum DeploymentType {
+    Cloud,
+    Server,
+}
+
 #[derive(Deserialize)]
 struct ServerInfo {
+    // Optional: older on-prem jira may not report a deployment type at all.
     #[serde(rename = "deploymentType")]
-    deployment_type: Option<String>,
+    deployment_type: Option<DeploymentType>,
 }
 
 fn lookup_field(field: &str, fields: &[Field]) -> Result<String> {
@@ -127,7 +134,7 @@ impl JiraSession {
             .get::<ServerInfo>("/serverInfo")
             .await
             .map_err(|e| anyhow!("Error getting JIRA server info: {}", e))?;
-        let is_cloud = server_info.deployment_type.as_deref() == Some("Cloud");
+        let is_cloud = server_info.deployment_type == Some(DeploymentType::Cloud);
         info!(
             "JIRA deployment type: {}",
             if is_cloud { "cloud" } else { "server" }
@@ -600,6 +607,38 @@ mod tests {
         let config = test_jira_config(&server.url(), JiraAuth::Token("the-token".into()));
         let err = match JiraSession::new(&config, None).await {
             Ok(_) => panic!("expected server info error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("Error getting JIRA server info"),
+            "unexpected error: {}",
+            err
+        );
+
+        myself.assert_async().await;
+        server_info.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_new_session_unrecognized_deployment_type() {
+        let mut server = mockito::Server::new_async().await;
+
+        let myself = server
+            .mock("GET", "/rest/api/2/myself")
+            .with_body(r#"{"displayName": "Octo Bot"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let server_info = server
+            .mock("GET", "/rest/api/2/serverInfo")
+            .with_body(r#"{"deploymentType": "Mainframe"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let config = test_jira_config(&server.url(), JiraAuth::Token("the-token".into()));
+        let err = match JiraSession::new(&config, None).await {
+            Ok(_) => panic!("expected deployment type error"),
             Err(e) => e,
         };
         assert!(
