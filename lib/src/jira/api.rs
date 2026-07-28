@@ -125,7 +125,7 @@ impl JiraSession {
 
         info!(
             "Logged into JIRA as \"{}\"",
-            myself.display_name.unwrap_or_default()
+            myself.display_name.as_deref().unwrap_or("unknown")
         );
 
         // Detecting the deployment type must succeed: guessing wrong would break
