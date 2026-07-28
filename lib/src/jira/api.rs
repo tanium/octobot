@@ -121,16 +121,13 @@ impl JiraSession {
             myself.display_name.unwrap_or_default()
         );
 
-        let is_cloud = match client.get::<ServerInfo>("/serverInfo").await {
-            Ok(info) => info.deployment_type.as_deref() == Some("Cloud"),
-            Err(e) => {
-                log::warn!(
-                    "Error getting JIRA server info; assuming server deployment: {}",
-                    e
-                );
-                false
-            }
-        };
+        // Detecting the deployment type must succeed: guessing wrong would break
+        // cloud-only API paths for the whole lifetime of the session.
+        let server_info = client
+            .get::<ServerInfo>("/serverInfo")
+            .await
+            .map_err(|e| anyhow!("Error getting JIRA server info: {}", e))?;
+        let is_cloud = server_info.deployment_type.as_deref() == Some("Cloud");
         info!(
             "JIRA deployment type: {}",
             if is_cloud { "cloud" } else { "server" }
@@ -581,6 +578,38 @@ mod tests {
         );
 
         myself.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_new_session_server_info_error() {
+        let mut server = mockito::Server::new_async().await;
+
+        let myself = server
+            .mock("GET", "/rest/api/2/myself")
+            .with_body(r#"{"displayName": "Octo Bot"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let server_info = server
+            .mock("GET", "/rest/api/2/serverInfo")
+            .with_status(500)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let config = test_jira_config(&server.url(), JiraAuth::Token("the-token".into()));
+        let err = match JiraSession::new(&config, None).await {
+            Ok(_) => panic!("expected server info error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("Error getting JIRA server info"),
+            "unexpected error: {}",
+            err
+        );
+
+        myself.assert_async().await;
+        server_info.assert_async().await;
     }
 
     #[test]
