@@ -426,7 +426,10 @@ const SEARCH_MAX_RESULTS: usize = 100;
 // Backstop for cursor pagination in case a misbehaving server returns fresh
 // page tokens forever. Set high enough (100k issues) to never trigger on real
 // data: results must be complete, so hitting it is an error, not a truncation.
+#[cfg(not(test))]
 const SEARCH_MAX_PAGES: usize = 1000;
+#[cfg(test)]
+const SEARCH_MAX_PAGES: usize = 3;
 
 impl JiraSession {
     async fn search_pending_versions_server(
@@ -494,8 +497,11 @@ impl JiraSession {
 
             // A missing/null nextPageToken indicates the last page.
             let new_token = search["nextPageToken"].as_str().map(|s| s.to_string());
-            if new_token.is_none() || new_token == next_page_token {
+            if new_token.is_none() {
                 return Ok(result);
+            }
+            if new_token == next_page_token {
+                return Err(anyhow!("Jira search repeated page token {new_token:?}"));
             }
             next_page_token = new_token;
         }
@@ -872,6 +878,108 @@ mod tests {
         );
 
         page.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_find_pending_versions_cloud_repeated_token() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Cloud").await;
+
+        let page1 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::Any)
+            .match_request(|req| !req.path_and_query().contains("nextPageToken"))
+            .with_body(
+                r#"{"nextPageToken": "tok", "issues": [
+                    {"key": "PRJ-1", "fields": {"customfield_100": "1.2"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        // a server stuck returning the same page token must error, not
+        // silently return partial results
+        let page2 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "nextPageToken".into(),
+                "tok".into(),
+            ))
+            .with_body(r#"{"nextPageToken": "tok", "issues": []}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let err = match session.find_pending_versions("PRJ").await {
+            Ok(_) => panic!("expected repeated page token error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("repeated page token"),
+            "unexpected error: {}",
+            err
+        );
+
+        page1.assert_async().await;
+        page2.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_find_pending_versions_cloud_too_many_pages() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Cloud").await;
+
+        let page1 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::Any)
+            .match_request(|req| !req.path_and_query().contains("nextPageToken"))
+            .with_body(
+                r#"{"nextPageToken": "t1", "issues": [
+                    {"key": "PRJ-1", "fields": {"customfield_100": "1.2"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let page2 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "nextPageToken".into(),
+                "t1".into(),
+            ))
+            .with_body(r#"{"nextPageToken": "t2", "issues": []}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        // a server handing out fresh tokens forever must hit the page cap
+        // (SEARCH_MAX_PAGES = 3 in tests) and error rather than loop
+        let page3 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "nextPageToken".into(),
+                "t2".into(),
+            ))
+            .with_body(r#"{"nextPageToken": "t3", "issues": []}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let err = match session.find_pending_versions("PRJ").await {
+            Ok(_) => panic!("expected too many pages error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("did not terminate"),
+            "unexpected error: {}",
+            err
+        );
+
+        page1.assert_async().await;
+        page2.assert_async().await;
+        page3.assert_async().await;
     }
 
     #[tokio::test]
