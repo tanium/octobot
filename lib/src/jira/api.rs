@@ -423,6 +423,10 @@ impl Session for JiraSession {
 }
 
 const SEARCH_MAX_RESULTS: usize = 100;
+// Backstop for cursor pagination in case a misbehaving server returns fresh
+// page tokens forever. Set high enough (100k issues) to never trigger on real
+// data: results must be complete, so hitting it is an error, not a truncation.
+const SEARCH_MAX_PAGES: usize = 1000;
 
 impl JiraSession {
     async fn search_pending_versions_server(
@@ -470,9 +474,11 @@ impl JiraSession {
 
         let mut next_page_token: Option<String> = None;
 
-        loop {
+        for _ in 0..SEARCH_MAX_PAGES {
+            // The issue key must be requested explicitly: /search/jql returns
+            // only the fields asked for.
             let mut url = format!(
-                "/search/jql?maxResults={}&fields={}&jql={}",
+                "/search/jql?maxResults={}&fields=key,{}&jql={}",
                 SEARCH_MAX_RESULTS, field_id, encoded_jql
             );
             if let Some(ref token) = next_page_token {
@@ -489,12 +495,14 @@ impl JiraSession {
             // A missing/null nextPageToken indicates the last page.
             let new_token = search["nextPageToken"].as_str().map(|s| s.to_string());
             if new_token.is_none() || new_token == next_page_token {
-                break;
+                return Ok(result);
             }
             next_page_token = new_token;
         }
 
-        Ok(result)
+        Err(anyhow!(
+            "Jira search did not terminate after {SEARCH_MAX_PAGES} pages"
+        ))
     }
 }
 
@@ -794,8 +802,9 @@ mod tests {
             .mock("GET", "/rest/api/2/search/jql")
             .match_query(mockito::Matcher::AllOf(vec![
                 mockito::Matcher::UrlEncoded("jql".into(), jql.into()),
-                mockito::Matcher::UrlEncoded("fields".into(), "customfield_100".into()),
+                mockito::Matcher::UrlEncoded("fields".into(), "key,customfield_100".into()),
             ]))
+            .match_request(|req| !req.path_and_query().contains("nextPageToken"))
             .with_body(
                 r#"{"nextPageToken": "tok+2", "issues": [
                     {"key": "PRJ-1", "fields": {"customfield_100": "1.2, 3.4"}}
@@ -834,6 +843,35 @@ mod tests {
 
         page1.assert_async().await;
         page2.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_find_pending_versions_cloud_single_page() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Cloud").await;
+
+        // no nextPageToken: a single page is also the last page
+        let page = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::Any)
+            .with_body(
+                r#"{"issues": [
+                    {"key": "PRJ-1", "fields": {"customfield_100": "1.2"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let expected = hashmap! {
+            "PRJ-1".to_string() => vec![version::Version::parse("1.2").unwrap()],
+        };
+        assert_eq!(
+            expected,
+            session.find_pending_versions("PRJ").await.unwrap()
+        );
+
+        page.assert_async().await;
     }
 
     #[tokio::test]
