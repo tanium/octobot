@@ -363,6 +363,36 @@ async fn test_add_pending_version() {
 }
 
 #[tokio::test]
+async fn test_add_pending_version_fixed_before_mentioned() {
+    let test = new_test();
+    let projects = vec!["SER".to_string()];
+    let commit = new_push_commit(
+        "Fix [SER-1] I fixed it.\n\nSee SER-1 for the full write-up. (See: SER-33)",
+        "aabbccddee",
+    );
+
+    // SER-1 is both fixed and mentioned: it gets a pending version.
+    // SER-33 is only mentioned: it does not.
+    test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
+
+    jira::workflow::add_pending_version(Some("5.6.7"), &[commit], &projects, &test.jira).await;
+}
+
+#[tokio::test]
+async fn test_add_pending_version_mentioned_before_fixed() {
+    let test = new_test();
+    let projects = vec!["SER".to_string()];
+    let commit = new_push_commit(
+        "See SER-1 for background.\n\nFix [SER-1] I fixed it.",
+        "aabbccddee",
+    );
+
+    test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
+
+    jira::workflow::add_pending_version(Some("5.6.7"), &[commit], &projects, &test.jira).await;
+}
+
+#[tokio::test]
 async fn test_merge_pending_versions_for_real() {
     let test = new_test();
 
