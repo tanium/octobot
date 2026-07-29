@@ -242,15 +242,34 @@ impl Session for JiraSession {
     }
 
     async fn add_version(&self, proj: &str, version: &str) -> Result<Version> {
+        #[derive(Deserialize)]
+        struct ProjectResp {
+            id: String,
+        }
+
         #[derive(Serialize)]
         struct AddVersionReq {
             name: String,
-            project: String,
+            #[serde(rename = "projectId")]
+            project_id: u64,
         }
+
+        // Creating a version by project key is deprecated on Jira Cloud: use the
+        // numeric project id.
+        let project = self
+            .client
+            .get::<ProjectResp>(&format!("/project/{}", proj))
+            .await
+            .map_err(|e| anyhow!("Error looking up project {}: {}", proj, e))?;
+
+        let project_id = project
+            .id
+            .parse::<u64>()
+            .map_err(|e| anyhow!("Invalid id \"{}\" for project {}: {}", project.id, proj, e))?;
 
         let req = AddVersionReq {
             name: version.into(),
-            project: proj.into(),
+            project_id,
         };
         self.client
             .post::<Version, AddVersionReq>("/version", &req)
@@ -743,6 +762,37 @@ mod tests {
 
         myself.assert_async().await;
         server_info.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_add_version_uses_project_id() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Cloud").await;
+
+        let project = server
+            .mock("GET", "/rest/api/2/project/PRJ")
+            .with_body(r#"{"id": "10500", "key": "PRJ"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let create = server
+            .mock("POST", "/rest/api/2/version")
+            .match_body(mockito::Matcher::Json(json!({
+                "name": "1.2.3",
+                "projectId": 10500
+            })))
+            .with_body(r#"{"self": "http://jira/version/400", "id": "400", "name": "1.2.3"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let version = session.add_version("PRJ", "1.2.3").await.unwrap();
+        assert_eq!("400", version.id);
+        assert_eq!("1.2.3", version.name);
+
+        project.assert_async().await;
+        create.assert_async().await;
     }
 
     #[tokio::test]
