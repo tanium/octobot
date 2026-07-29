@@ -399,43 +399,116 @@ impl Session for JiraSession {
         &self,
         project: &str,
     ) -> Result<HashMap<String, Vec<version::Version>>> {
+        let (field, field_id) = match (
+            &self.pending_versions_field,
+            &self.pending_versions_field_id,
+        ) {
+            (Some(field), Some(field_id)) => (field, field_id),
+            _ => return Ok(HashMap::new()),
+        };
+
+        let jql = format!("(project = \"{}\") and \"{}\" is not EMPTY", project, field);
+        let encoded_jql = utf8_percent_encode(&jql, NON_ALPHANUMERIC).to_string();
+
+        let result = if self.is_cloud {
+            self.search_pending_versions_cloud(&encoded_jql, field_id)
+                .await
+        } else {
+            self.search_pending_versions_server(&encoded_jql, field_id)
+                .await
+        };
+
+        result.map_err(|e| anyhow!("Error finding pending versions for project {project}: {e}"))
+    }
+}
+
+const SEARCH_MAX_RESULTS: usize = 100;
+// Backstop for cursor pagination in case a misbehaving server returns fresh
+// page tokens forever. Set high enough (100k issues) to never trigger on real
+// data: results must be complete, so hitting it is an error, not a truncation.
+#[cfg(not(test))]
+const SEARCH_MAX_PAGES: usize = 1000;
+#[cfg(test)]
+const SEARCH_MAX_PAGES: usize = 3;
+
+impl JiraSession {
+    async fn search_pending_versions_server(
+        &self,
+        encoded_jql: &str,
+        field_id: &str,
+    ) -> Result<HashMap<String, Vec<version::Version>>> {
         let mut result: HashMap<String, Vec<version::Version>> = HashMap::new();
 
-        if let Some(ref field) = self.pending_versions_field.clone() {
-            if let Some(ref field_id) = self.pending_versions_field_id {
-                let jql = format!("(project = \"{}\") and \"{}\" is not EMPTY", project, field);
-                let encoded_jql = utf8_percent_encode(&jql, NON_ALPHANUMERIC).to_string();
+        let mut start_at: usize = 0;
 
-                let mut start_at: usize = 0;
-                let max_results: usize = 100;
+        loop {
+            let search = self
+                .client
+                .get::<serde_json::Value>(&format!(
+                    "/search?maxResults={}&startAt={}&jql={}",
+                    SEARCH_MAX_RESULTS, start_at, encoded_jql
+                ))
+                .await?;
 
-                loop {
-                    let search = self
-                        .client
-                        .get::<serde_json::Value>(&format!(
-                            "/search?maxResults={}&startAt={}&jql={}",
-                            max_results, start_at, encoded_jql
-                        ))
-                        .await
-                        .map_err(|e| {
-                            anyhow!("Error finding pending versions for project {project}: {e}")
-                        })?;
+            let page = parse_pending_versions(&search, field_id);
+            let page_len = search["issues"].as_array().map(|a| a.len()).unwrap_or(0);
+            result.extend(page);
 
-                    let page = parse_pending_versions(&search, field_id);
-                    let page_len = search["issues"].as_array().map(|a| a.len()).unwrap_or(0);
-                    result.extend(page);
+            let total = search["total"].as_u64().unwrap_or(0) as usize;
+            start_at += page_len;
 
-                    let total = search["total"].as_u64().unwrap_or(0) as usize;
-                    start_at += page_len;
-
-                    if page_len == 0 || start_at >= total {
-                        break;
-                    }
-                }
+            if page_len == 0 || start_at >= total {
+                break;
             }
         }
 
         Ok(result)
+    }
+
+    // Jira Cloud only supports the /search/jql endpoint, which uses cursor-based
+    // pagination and returns only explicitly requested fields; on-prem jira only
+    // supports /search.
+    async fn search_pending_versions_cloud(
+        &self,
+        encoded_jql: &str,
+        field_id: &str,
+    ) -> Result<HashMap<String, Vec<version::Version>>> {
+        let mut result: HashMap<String, Vec<version::Version>> = HashMap::new();
+
+        let mut next_page_token: Option<String> = None;
+
+        for _ in 0..SEARCH_MAX_PAGES {
+            // The issue key must be requested explicitly: /search/jql returns
+            // only the fields asked for.
+            let mut url = format!(
+                "/search/jql?maxResults={}&fields=key,{}&jql={}",
+                SEARCH_MAX_RESULTS, field_id, encoded_jql
+            );
+            if let Some(ref token) = next_page_token {
+                url += &format!(
+                    "&nextPageToken={}",
+                    utf8_percent_encode(token, NON_ALPHANUMERIC)
+                );
+            }
+
+            let search = self.client.get::<serde_json::Value>(&url).await?;
+
+            result.extend(parse_pending_versions(&search, field_id));
+
+            // A missing/null nextPageToken indicates the last page.
+            let new_token = search["nextPageToken"].as_str().map(|s| s.to_string());
+            if new_token.is_none() {
+                return Ok(result);
+            }
+            if new_token == next_page_token {
+                return Err(anyhow!("Jira search repeated page token {new_token:?}"));
+            }
+            next_page_token = new_token;
+        }
+
+        Err(anyhow!(
+            "Jira search did not terminate after {SEARCH_MAX_PAGES} pages"
+        ))
     }
 }
 
@@ -489,9 +562,30 @@ mod tests {
     async fn mock_fields(server: &mut mockito::Server) -> mockito::Mock {
         server
             .mock("GET", "/rest/api/2/field")
-            .with_body(r#"[{"id": "fixVersions", "name": "Fix Version/s"}]"#)
+            .with_body(
+                r#"[{"id": "fixVersions", "name": "Fix Version/s"},
+                    {"id": "customfield_100", "name": "Pending Versions"}]"#,
+            )
             .create_async()
             .await
+    }
+
+    async fn new_test_session(server: &mut mockito::Server, deployment_type: &str) -> JiraSession {
+        server
+            .mock("GET", "/rest/api/2/myself")
+            .with_body(r#"{"displayName": "Octo Bot"}"#)
+            .create_async()
+            .await;
+        server
+            .mock("GET", "/rest/api/2/serverInfo")
+            .with_body(format!(r#"{{"deploymentType": "{}"}}"#, deployment_type))
+            .create_async()
+            .await;
+        mock_fields(server).await;
+
+        let mut config = test_jira_config(&server.url(), JiraAuth::Token("the-token".into()));
+        config.pending_versions_field = Some("Pending Versions".into());
+        JiraSession::new(&config, None).await.unwrap()
     }
 
     #[tokio::test]
@@ -649,6 +743,278 @@ mod tests {
 
         myself.assert_async().await;
         server_info.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_find_pending_versions_server() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Server").await;
+
+        let jql = r#"(project = "PRJ") and "Pending Versions" is not EMPTY"#;
+
+        let page1 = server
+            .mock("GET", "/rest/api/2/search")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("jql".into(), jql.into()),
+                mockito::Matcher::UrlEncoded("startAt".into(), "0".into()),
+            ]))
+            .with_body(
+                r#"{"total": 3, "issues": [
+                    {"key": "PRJ-1", "fields": {"customfield_100": "1.2, 3.4"}},
+                    {"key": "PRJ-2", "fields": {"customfield_100": "5.6"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let page2 = server
+            .mock("GET", "/rest/api/2/search")
+            .match_query(mockito::Matcher::UrlEncoded("startAt".into(), "2".into()))
+            .with_body(
+                r#"{"total": 3, "issues": [
+                    {"key": "PRJ-3", "fields": {"customfield_100": "7.8"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let expected = hashmap! {
+            "PRJ-1".to_string() => vec![
+                version::Version::parse("1.2").unwrap(),
+                version::Version::parse("3.4").unwrap(),
+            ],
+            "PRJ-2".to_string() => vec![version::Version::parse("5.6").unwrap()],
+            "PRJ-3".to_string() => vec![version::Version::parse("7.8").unwrap()],
+        };
+        assert_eq!(
+            expected,
+            session.find_pending_versions("PRJ").await.unwrap()
+        );
+
+        page1.assert_async().await;
+        page2.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_find_pending_versions_cloud() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Cloud").await;
+
+        let jql = r#"(project = "PRJ") and "Pending Versions" is not EMPTY"#;
+
+        let page1 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("jql".into(), jql.into()),
+                mockito::Matcher::UrlEncoded("fields".into(), "key,customfield_100".into()),
+            ]))
+            .match_request(|req| !req.path_and_query().contains("nextPageToken"))
+            .with_body(
+                r#"{"nextPageToken": "tok+2", "issues": [
+                    {"key": "PRJ-1", "fields": {"customfield_100": "1.2, 3.4"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let page2 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "nextPageToken".into(),
+                "tok+2".into(),
+            ))
+            .with_body(
+                r#"{"issues": [
+                    {"key": "PRJ-2", "fields": {"customfield_100": "5.6"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let expected = hashmap! {
+            "PRJ-1".to_string() => vec![
+                version::Version::parse("1.2").unwrap(),
+                version::Version::parse("3.4").unwrap(),
+            ],
+            "PRJ-2".to_string() => vec![version::Version::parse("5.6").unwrap()],
+        };
+        assert_eq!(
+            expected,
+            session.find_pending_versions("PRJ").await.unwrap()
+        );
+
+        page1.assert_async().await;
+        page2.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_find_pending_versions_cloud_single_page() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Cloud").await;
+
+        // no nextPageToken: a single page is also the last page
+        let page = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::Any)
+            .with_body(
+                r#"{"issues": [
+                    {"key": "PRJ-1", "fields": {"customfield_100": "1.2"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let expected = hashmap! {
+            "PRJ-1".to_string() => vec![version::Version::parse("1.2").unwrap()],
+        };
+        assert_eq!(
+            expected,
+            session.find_pending_versions("PRJ").await.unwrap()
+        );
+
+        page.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_find_pending_versions_cloud_repeated_token() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Cloud").await;
+
+        let page1 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::Any)
+            .match_request(|req| !req.path_and_query().contains("nextPageToken"))
+            .with_body(
+                r#"{"nextPageToken": "tok", "issues": [
+                    {"key": "PRJ-1", "fields": {"customfield_100": "1.2"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        // a server stuck returning the same page token must error, not
+        // silently return partial results
+        let page2 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "nextPageToken".into(),
+                "tok".into(),
+            ))
+            .with_body(r#"{"nextPageToken": "tok", "issues": []}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let err = match session.find_pending_versions("PRJ").await {
+            Ok(_) => panic!("expected repeated page token error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("repeated page token"),
+            "unexpected error: {}",
+            err
+        );
+
+        page1.assert_async().await;
+        page2.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_find_pending_versions_cloud_too_many_pages() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Cloud").await;
+
+        let page1 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::Any)
+            .match_request(|req| !req.path_and_query().contains("nextPageToken"))
+            .with_body(
+                r#"{"nextPageToken": "t1", "issues": [
+                    {"key": "PRJ-1", "fields": {"customfield_100": "1.2"}}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let page2 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "nextPageToken".into(),
+                "t1".into(),
+            ))
+            .with_body(r#"{"nextPageToken": "t2", "issues": []}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        // a server handing out fresh tokens forever must hit the page cap
+        // (SEARCH_MAX_PAGES = 3 in tests) and error rather than loop
+        let page3 = server
+            .mock("GET", "/rest/api/2/search/jql")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "nextPageToken".into(),
+                "t2".into(),
+            ))
+            .with_body(r#"{"nextPageToken": "t3", "issues": []}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let err = match session.find_pending_versions("PRJ").await {
+            Ok(_) => panic!("expected too many pages error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("did not terminate"),
+            "unexpected error: {}",
+            err
+        );
+
+        page1.assert_async().await;
+        page2.assert_async().await;
+        page3.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_find_pending_versions_no_field_configured() {
+        let mut server = mockito::Server::new_async().await;
+        server
+            .mock("GET", "/rest/api/2/myself")
+            .with_body(r#"{"displayName": "Octo Bot"}"#)
+            .create_async()
+            .await;
+        server
+            .mock("GET", "/rest/api/2/serverInfo")
+            .with_body(r#"{"deploymentType": "Cloud"}"#)
+            .create_async()
+            .await;
+        mock_fields(&mut server).await;
+
+        // no search requests expected at all
+        let search = server
+            .mock("GET", mockito::Matcher::Regex("/search".into()))
+            .expect(0)
+            .create_async()
+            .await;
+
+        let config = test_jira_config(&server.url(), JiraAuth::Token("the-token".into()));
+        let session = JiraSession::new(&config, None).await.unwrap();
+
+        assert!(
+            session
+                .find_pending_versions("PRJ")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        search.assert_async().await;
     }
 
     #[test]
