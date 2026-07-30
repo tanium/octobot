@@ -100,7 +100,7 @@ async fn test_submit_for_review() {
     let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_commit(
-        "Fix [SER-1] I fixed it. And also relates to [CLI-9999][OTHER-999]",
+        "Fix [SER-1] I fixed it. And also [CLI-9999][OTHER-999]",
         "aabbccddee",
     );
 
@@ -130,7 +130,7 @@ async fn test_submit_for_review() {
     test.jira
         .mock_transition_issue("SER-1", &new_transition_req("002"), Ok(()));
 
-    // mentioned JIRAs should go to in-progress but not "pending review"
+    // referenced JIRAs should go to in-progress but not "pending review"
     test.jira
         .mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
     test.jira
@@ -224,7 +224,8 @@ async fn test_resolve_issue_with_resolution() {
                    Included in version 5.6.7";
     test.jira.mock_comment_issue("SER2-1", comment1, Ok(()));
 
-    let comment2 = "Referenced by commit merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
+    // CLI-45 is a bare key in the commit body: comment-only
+    let comment2 = "Mentioned by commit merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
                    {quote}Fix [SER2-1] I fixed it.{quote}\n\
                    Included in version 5.6.7";
     test.jira.mock_comment_issue("CLI-45", comment2, Ok(()));
@@ -276,7 +277,7 @@ async fn test_transition_issues_only_if_necessary() {
     let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_commit(
-        "Fix [SER-1][SER-2][SER-3] I fixed it. And also relates to [CLI-9999][CLI-9998][OTHER-999]. See [CLI-1]",
+        "Fix [SER-1][SER-2][SER-3] I fixed it. See [CLI-1]\n\nRelates to [CLI-9999][CLI-9998][OTHER-999]\nthis also relates to CLI-55 somehow",
         "aabbccddee",
     );
 
@@ -312,6 +313,13 @@ async fn test_transition_issues_only_if_necessary() {
         "Referenced by review submitted for branch master: http://the-pr",
         Ok(()),
     );
+    // "relates to" mid-line does not count: CLI-55 is a bare key in the commit body,
+    // so it only gets a comment -- no issue lookup and no transition
+    test.jira.mock_comment_issue(
+        "CLI-55",
+        "Mentioned by review submitted for branch master: http://the-pr",
+        Ok(()),
+    );
 
     test.jira
         .mock_get_issue("SER-1", Ok(new_issue("SER-1", Some("reviewing1"))));
@@ -341,7 +349,7 @@ async fn test_transition_issues_only_if_necessary() {
     test.jira
         .mock_transition_issue("SER-3", &new_transition_req("002"), Ok(()));
 
-    // mentioned JIRAs should go to in-progress but not "pending review"
+    // referenced JIRAs should go to in-progress but not "pending review"
     test.jira
         .mock_get_transitions("CLI-9999", Ok(vec![new_transition("001", "progress1")]));
     test.jira
