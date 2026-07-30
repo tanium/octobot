@@ -295,7 +295,8 @@ async fn test_transition_issues_only_if_necessary() {
         "Review submitted for branch master: http://the-pr",
         Ok(()),
     );
-    // "See:" references should be mentioned but not transitioned
+    // "See" is no longer special: CLI-1 is a bare key in the commit title,
+    // so it gets referenced like the others
     test.jira.mock_comment_issue(
         "CLI-1",
         "Referenced by review submitted for branch master: http://the-pr",
@@ -318,6 +319,9 @@ async fn test_transition_issues_only_if_necessary() {
         .mock_get_issue("SER-2", Ok(new_issue("SER-2", Some("progress1"))));
     test.jira
         .mock_get_issue("SER-3", Ok(new_issue("SER-3", None)));
+    // already in progress: no transition needed
+    test.jira
+        .mock_get_issue("CLI-1", Ok(new_issue("CLI-1", Some("progress1"))));
     test.jira
         .mock_get_issue("CLI-9998", Ok(new_issue("CLI-9998", Some("progress1"))));
     test.jira
@@ -351,12 +355,14 @@ async fn test_add_pending_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_push_commit(
-        "Fix [SER-1] I fixed it.\n\nand it is kinda related to [CLI-45][OTHER-999] (See: CLI-123)",
+        "Fix [SER-1] I fixed it.\n\nPart of [CLI-45][OTHER-999]\nRelates to CLI-77\n\nAlso mentions CLI-123 in the body: comment only",
         "aabbccddee",
     );
 
     test.jira
         .mock_add_pending_version("CLI-45", "5.6.7", Ok(()));
+    test.jira
+        .mock_add_pending_version("CLI-77", "5.6.7", Ok(()));
     test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
 
     jira::workflow::add_pending_version(Some("5.6.7"), &[commit], &projects, &test.jira).await;
