@@ -12,9 +12,11 @@ to release branches for you. All you have to do is label pull requests with
 to "release/1.0" and open up a new PR for you.
 
 Yet still more, octobot also wants to help improve JIRA issue tracking.
-If a PR is submitted with jira issues in the title, they will be commented on and
+If a PR is submitted with jira issues in its commits, they will be commented on and
 transitioned to in-progress/pending-review. When the PR is merged, they will be
-commented on again with the PR title/body, and transitioned to Resolved: Fixed.
+commented on again, given a pending fix version, and issues marked as fixed will be
+transitioned to Resolved: Fixed. See [JIRA commit references](#jira-commit-references)
+for the exact rules.
 
 Setup
 -----
@@ -101,6 +103,34 @@ When SSL is enabled, the plain HTTP port will always redirect to HTTPS.
 
 It should be noted that the SSL implementation is very particular about certificates and SNI.
 Make sure your SSL certificate has a subjectAltName that matches your octobot's hostname exactly.
+
+JIRA commit references
+----------------------
+
+How a JIRA key is mentioned in a commit message determines what octobot does with it:
+
+| Mention                                    | Behavior             |
+|--------------------------------------------|----------------------|
+| `Fixes ABC-123` (anywhere)                 | reference + resolve  |
+| `Part of ABC-123` (anywhere)               | reference            |
+| `Relates to ABC-123` (at start of a line)  | reference            |
+| Bare `ABC-123` in the commit title         | reference            |
+| Bare `ABC-123` in the commit body          | comment only         |
+
+- **reference**: octobot comments on the issue, transitions it to in-progress when the
+  PR is submitted, and adds a pending fix version when the PR is merged.
+- **resolve**: additionally, the issue is transitioned to pending-review when the PR is
+  submitted, and to Resolved: Fixed when the PR is merged.
+- **comment only**: octobot comments on the issue, but does not transition it or add
+  any versions.
+
+Markers are case-insensitive, allow an optional colon, and accept multiple keys,
+e.g. `Fixes: [ABC-123][ABC-456], ABC-789`. Keys must directly follow the marker:
+prose in between (e.g. `part of the ABC-123 epic`) does not count, and the key is
+treated as a bare mention.
+
+Note: `Relates to` is a temporary migration measure and is only recognized at the
+start of a line; treat it as deprecated in favor of `Part of`.
 
 Addenda
 -------
