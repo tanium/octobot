@@ -11,6 +11,24 @@ use crate::metrics;
 pub use reqwest::Response;
 pub use reqwest::header::HeaderMap;
 
+/// Error response from an HTTP request, preserving the status code so that
+/// callers can match on it (via `err.downcast_ref::<HttpError>()`) instead of
+/// parsing the message.
+#[derive(Debug)]
+pub struct HttpError {
+    pub status: reqwest::StatusCode,
+    pub message: String,
+    pub body: String,
+}
+
+impl std::fmt::Display for HttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}. Response body: {}", self.message, self.body)
+    }
+}
+
+impl std::error::Error for HttpError {}
+
 pub struct HTTPClient {
     pub api_base: String,
     pub client: reqwest::Client,
@@ -221,10 +239,15 @@ impl HTTPClient {
         match res.error_for_status_ref() {
             Ok(_) => Ok(res),
             Err(e) => {
-                self.maybe_record_status(res.status().as_str());
+                let status = res.status();
+                self.maybe_record_status(status.as_str());
                 let err: Result<()> = self.make_clean_err(e);
-                let text = res.text().await.unwrap_or_default();
-                bail!("{}. Response body: {}", err.unwrap_err(), text);
+                let body = res.text().await.unwrap_or_default();
+                Err(anyhow::Error::new(HttpError {
+                    status,
+                    message: err.unwrap_err().to_string(),
+                    body,
+                }))
             }
         }
     }

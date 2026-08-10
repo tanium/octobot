@@ -13,7 +13,7 @@ use serde_json::json;
 
 use crate::config::{JiraAuth, JiraConfig};
 use crate::errors::*;
-use crate::http_client::HTTPClient;
+use crate::http_client::{HTTPClient, HttpError};
 use crate::jira::models::*;
 use crate::metrics::Metrics;
 use crate::version;
@@ -275,10 +275,20 @@ impl Session for JiraSession {
             .post::<Version, AddVersionReq>("/version", &req)
             .await
             .map_err(|e| {
+                // Jira reports a missing "manage versions" permission as a 404 with a
+                // misleading "Project with key 'null' does not exist" message.
+                let hint = match e.downcast_ref::<HttpError>() {
+                    Some(http_err) if http_err.status == reqwest::StatusCode::NOT_FOUND => {
+                        " (either this project does not exist or this account lacks \
+                         permission to manage versions in it)"
+                    }
+                    _ => "",
+                };
                 anyhow!(
-                    "Error adding version {} to project {}: {}",
+                    "Error adding version {} to project {}{}: {}",
                     version,
                     proj,
+                    hint,
                     e
                 )
             })
@@ -511,6 +521,12 @@ impl JiraSession {
             }
 
             let search = self.client.get::<serde_json::Value>(&url).await?;
+
+            debug!(
+                "jira search page: {} issues, nextPageToken present: {}",
+                search["issues"].as_array().map(|a| a.len()).unwrap_or(0),
+                !search["nextPageToken"].is_null()
+            );
 
             result.extend(parse_pending_versions(&search, field_id));
 
@@ -790,6 +806,49 @@ mod tests {
         let version = session.add_version("PRJ", "1.2.3").await.unwrap();
         assert_eq!("400", version.id);
         assert_eq!("1.2.3", version.name);
+
+        project.assert_async().await;
+        create.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_add_version_404_includes_permission_hint() {
+        let mut server = mockito::Server::new_async().await;
+        let session = new_test_session(&mut server, "Cloud").await;
+
+        let project = server
+            .mock("GET", "/rest/api/2/project/PRJ")
+            .with_body(r#"{"id": "10500", "key": "PRJ"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        // Jira Cloud responds like this when the account lacks the
+        // "manage versions" permission, even though the project exists.
+        let create = server
+            .mock("POST", "/rest/api/2/version")
+            .with_status(404)
+            .with_body(
+                r#"{"errorMessages":["Project with key 'null' either does not exist or you do not have permission to create versions in it."],"errors":{}}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let err = match session.add_version("PRJ", "1.2.3").await {
+            Ok(_) => panic!("expected 404 error"),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            err.contains("lacks permission to manage versions"),
+            "missing permission hint: {}",
+            err
+        );
+        assert!(
+            err.contains("project PRJ"),
+            "missing correct project key: {}",
+            err
+        );
 
         project.assert_async().await;
         create.assert_async().await;
