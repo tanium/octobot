@@ -30,7 +30,7 @@ serde_json = "1.0.104"
 thread-id = "4.1.0"
 tokio = { version = "1.43.1", features = ["rt", "rt-multi-thread", "macros"] }
 async-trait = "0.1.72"
-prometheus = "0.13.3"
+prometheus = "0.14.0"
 maplit = "1.0.2"
 time = "0.3.47"
 hex = "0.4.3"
