@@ -5,8 +5,9 @@
 //! - `Part of ABC-123` (anywhere): comment + pending version + transition.
 //! - `Relates to ABC-123` (only at the start of a line): same as "part of";
 //!   a temporary migration measure.
+//! - `See ABC-123` (anywhere): comment only.
 //! - Bare `ABC-123` in the commit title: same as "part of".
-//! - Bare `ABC-123` in the commit body: comment only.
+//! - Bare `ABC-123` in the commit body: no action.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -75,8 +76,9 @@ fn get_title_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Vec
 }
 
 // The three tiers of jira keys found in a set of commits. Every key in the commits lands
-// in exactly one tier, and a key in a stronger tier is excluded from the weaker ones:
-// fixed > referenced > commented.
+// in at most one tier, and a key in a stronger tier is excluded from the weaker ones:
+// fixed > referenced > commented. Bare keys mentioned only in commit bodies land in no
+// tier and get no action.
 struct JiraKeys {
     // Marked with "fix": commented, given a pending version, transitioned to
     // pending-review on submit, and resolved as fixed on merge.
@@ -84,7 +86,7 @@ struct JiraKeys {
     // Marked with "part of" (or line-start "relates to"), or bare in a commit title:
     // commented, given a pending version, and transitioned to in-progress on submit.
     referenced: Vec<String>,
-    // Bare keys mentioned only in commit bodies: commented, nothing else.
+    // Marked with "see": commented, nothing else.
     commented: Vec<String>,
 }
 
@@ -99,7 +101,8 @@ fn classify_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Jira
     let mut referenced = merge_keys(merge_keys(part_of, relates_to), titled);
     referenced.retain(|key| !fixed.contains(key));
 
-    let mut commented = get_all_jira_keys(commits, projects);
+    // "See" keys get a plain comment, with no transition or pending version.
+    let mut commented = get_marked_jira_keys(commits, r"(?i)\bSee", projects);
     commented.retain(|key| !fixed.contains(key) && !referenced.contains(key));
 
     JiraKeys {
@@ -623,9 +626,9 @@ mod tests {
             vec!["KEY-1", "KEY-2", "KEY-3", "KEY-4", "KEY-5", "KEY-6"],
             keys.fixed
         );
-        // bare keys in the body get comments only
+        // bare keys get no action
         assert_eq!(Vec::<String>::new(), keys.referenced);
-        assert_eq!(vec!["KEY-7"], keys.commented);
+        assert_eq!(Vec::<String>::new(), keys.commented);
     }
 
     #[test]
@@ -636,9 +639,9 @@ mod tests {
             "KEY-1, KEY-2:Some thing that also fixed\n\nAlso [KEY-3], OTHER-5".into();
         let keys = classify_jira_keys(&[commit], &projects);
         assert_eq!(Vec::<String>::new(), keys.fixed);
-        // bare keys in the title are references, bare keys in the body are comment-only
+        // bare keys in the title are references; bare keys in the body get no action
         assert_eq!(vec!["KEY-1", "KEY-2"], keys.referenced);
-        assert_eq!(vec!["KEY-3", "OTHER-5"], keys.commented);
+        assert_eq!(Vec::<String>::new(), keys.commented);
     }
 
     #[test]
@@ -659,10 +662,10 @@ mod tests {
         let mut commit = Commit::new();
         commit.commit.message = "Add the thing\n\nhotfix KEY-1 is the counterpart of KEY-2".into();
         let keys = classify_jira_keys(&[commit], &projects);
-        // "hotfix" and "counterpart of" are not markers
+        // "hotfix" and "counterpart of" are not markers, so these are bare keys: no action
         assert_eq!(Vec::<String>::new(), keys.fixed);
         assert_eq!(Vec::<String>::new(), keys.referenced);
-        assert_eq!(vec!["KEY-1", "KEY-2"], keys.commented);
+        assert_eq!(Vec::<String>::new(), keys.commented);
     }
 
     #[test]
@@ -674,16 +677,17 @@ mod tests {
                 .into();
         let keys = classify_jira_keys(&[commit], &projects);
         assert_eq!(vec!["KEY-1", "KEY-2", "KEY-4"], keys.referenced);
-        // "relates to" mid-line does not count as a reference
-        assert_eq!(vec!["KEY-3"], keys.commented);
+        // "relates to" mid-line does not count: KEY-3 is a bare key, so it gets no action
+        assert_eq!(Vec::<String>::new(), keys.commented);
     }
 
     #[test]
-    pub fn test_get_jira_keys_see_is_not_special() {
+    pub fn test_get_jira_keys_see_is_comment_only() {
         let projects = vec!["KEY".to_string()];
         let mut commit = Commit::new();
         commit.commit.message = "KEY-1: Add the thing\n\nSee [KEY-2], KEY-3".into();
         let keys = classify_jira_keys(&[commit], &projects);
+        // KEY-1 is a bare title key: still a reference. "See" keys get a comment only.
         assert_eq!(vec!["KEY-1"], keys.referenced);
         assert_eq!(vec!["KEY-2", "KEY-3"], keys.commented);
     }
@@ -696,10 +700,11 @@ mod tests {
         let mut commit2 = Commit::new();
         commit2.commit.message = "Clean up the thing\n\nMore about KEY-1 and KEY-2".into();
 
-        // a key referenced in any commit title wins over a bare body mention in another
+        // a bare key in any commit title is a reference; a bare key mentioned only in
+        // another commit's body gets no action
         let keys = classify_jira_keys(&[commit1, commit2], &projects);
         assert_eq!(vec!["KEY-1"], keys.referenced);
-        assert_eq!(vec!["KEY-2"], keys.commented);
+        assert_eq!(Vec::<String>::new(), keys.commented);
     }
 
     #[test]

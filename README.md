@@ -114,8 +114,9 @@ How a JIRA key is mentioned in a commit message determines what octobot does wit
 | `Fixes ABC-123` (anywhere)                 | reference + resolve  |
 | `Part of ABC-123` (anywhere)               | reference            |
 | `Relates to ABC-123` (at start of a line)  | reference            |
+| `See ABC-123` (anywhere)                   | comment only         |
 | Bare `ABC-123` in the commit title         | reference            |
-| Bare `ABC-123` in the commit body          | comment only         |
+| Bare `ABC-123` in the commit body          | no action            |
 
 - **reference**: octobot comments on the issue, transitions it to in-progress when the
   PR is submitted, and adds a pending fix version when the PR is merged.
@@ -123,6 +124,7 @@ How a JIRA key is mentioned in a commit message determines what octobot does wit
   submitted, and to Resolved: Fixed when the PR is merged.
 - **comment only**: octobot comments on the issue, but does not transition it or add
   any versions.
+- **no action**: octobot does nothing with the key.
 
 Markers are case-insensitive, allow an optional colon, and accept multiple keys,
 e.g. `Fixes: [ABC-123][ABC-456], ABC-789`. Keys must directly follow the marker:

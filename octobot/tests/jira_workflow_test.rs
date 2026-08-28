@@ -99,6 +99,7 @@ async fn test_submit_for_review() {
     let test = new_test();
     let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
+    // CLI-9999 is a bare key in the commit title: it gets referenced
     let commit = new_commit(
         "Fix [SER-1] I fixed it. And also [CLI-9999][OTHER-999]",
         "aabbccddee",
@@ -224,11 +225,7 @@ async fn test_resolve_issue_with_resolution() {
                    Included in version 5.6.7";
     test.jira.mock_comment_issue("SER2-1", comment1, Ok(()));
 
-    // CLI-45 is a bare key in the commit body: comment-only
-    let comment2 = "Mentioned by commit merged into branch release/99: [aabbccd|http://the-commit/aabbccddee]\n\
-                   {quote}Fix [SER2-1] I fixed it.{quote}\n\
-                   Included in version 5.6.7";
-    test.jira.mock_comment_issue("CLI-45", comment2, Ok(()));
+    // CLI-45 is a bare key in the commit body: no action, not even a comment
 
     let mut trans = new_transition("003", "resolved1");
     trans.fields = Some(TransitionFields {
@@ -296,8 +293,8 @@ async fn test_transition_issues_only_if_necessary() {
         "Review submitted for branch master: http://the-pr",
         Ok(()),
     );
-    // "See" is no longer special: CLI-1 is a bare key in the commit title,
-    // so it gets referenced like the others
+    // CLI-1 is a bare key in the commit title, so it gets referenced -- the "See" marker
+    // does not downgrade a title key
     test.jira.mock_comment_issue(
         "CLI-1",
         "Referenced by review submitted for branch master: http://the-pr",
@@ -314,12 +311,7 @@ async fn test_transition_issues_only_if_necessary() {
         Ok(()),
     );
     // "relates to" mid-line does not count: CLI-55 is a bare key in the commit body,
-    // so it only gets a comment -- no issue lookup and no transition
-    test.jira.mock_comment_issue(
-        "CLI-55",
-        "Mentioned by review submitted for branch master: http://the-pr",
-        Ok(()),
-    );
+    // so it gets no action at all
 
     test.jira
         .mock_get_issue("SER-1", Ok(new_issue("SER-1", Some("reviewing1"))));
@@ -362,8 +354,10 @@ async fn test_transition_issues_only_if_necessary() {
 async fn test_add_pending_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
+    // Bare CLI-123 gets no action and so no pending version; only the fixed and
+    // referenced (part of / relates to) keys get one.
     let commit = new_push_commit(
-        "Fix [SER-1] I fixed it.\n\nPart of [CLI-45][OTHER-999]\nRelates to CLI-77\n\nAlso mentions CLI-123 in the body: comment only",
+        "Fix [SER-1] I fixed it.\n\nPart of [CLI-45][OTHER-999]\nRelates to CLI-77\n\nAlso mentions bare CLI-123 in the body",
         "aabbccddee",
     );
 
