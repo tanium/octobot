@@ -109,7 +109,8 @@ impl JiraSession {
                 .map_err(|e| anyhow!("Invalid auth header: {}", e))?,
         );
 
-        let client = HTTPClient::new_with_headers(&api_base, headers)?;
+        // Jira Cloud enforces rate limits; retry when throttled.
+        let client = HTTPClient::new_with_headers(&api_base, headers)?.with_retry_rate_limits();
         let client = match metrics {
             None => client,
             Some(ref m) => {
