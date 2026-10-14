@@ -5,7 +5,6 @@ use std::time::{Duration, Instant, SystemTime};
 
 use hyper::{Body, Request, Response, StatusCode};
 use log::{error, info, warn};
-use regex::Regex;
 use serde_json;
 use tokio;
 
@@ -1197,9 +1196,8 @@ impl GithubEventHandler {
             return;
         }
 
-        let re = Regex::new(r"(?i)backport-(.+)").unwrap();
-        let backport = match re.captures(&label.name) {
-            Some(c) => c[1].to_string(),
+        let backport = match pr_merge::backport_label_target(&label.name) {
+            Some(b) => b,
             None => return,
         };
         let target_branch = if github::is_main_branch(&backport) {

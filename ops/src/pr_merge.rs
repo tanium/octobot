@@ -17,6 +17,30 @@ use octobot_lib::github;
 use octobot_lib::github::api::{GithubSessionFactory, Session};
 use octobot_lib::metrics::{self, Metrics};
 
+const FAILED_BACKPORT_LABEL: &str = "failed-backport";
+
+/// Returns the branch suffix named by a backport label (e.g. "1.0" for
+/// "backport-1.0"), or None if the label is not a backport label.
+pub fn backport_label_target(label: &str) -> Option<String> {
+    let re = Regex::new(r"(?i)backport-(.+)").unwrap();
+    re.captures(label).map(|c| c[1].to_string())
+}
+
+/// Labels on the source PR that should be copied to its backport PRs:
+/// everything except the labels that drive the backport bot itself.
+fn labels_to_propagate(pull_request: &github::PullRequest) -> Vec<String> {
+    pull_request
+        .labels
+        .iter()
+        .flatten()
+        .map(|l| l.name.clone())
+        .filter(|name| {
+            backport_label_target(name).is_none()
+                && !name.eq_ignore_ascii_case(FAILED_BACKPORT_LABEL)
+        })
+        .collect()
+}
+
 async fn clone_and_merge_pull_request<'a>(
     github_app: &'a dyn GithubSessionFactory,
     clone_mgr: &'a GitCloneManager,
@@ -110,7 +134,7 @@ pub async fn merge_pull_request<'a>(
                 req.repo.owner.login(),
                 &req.repo.name,
                 req.pull_request.number,
-                vec!["failed-backport".to_string()],
+                vec![FAILED_BACKPORT_LABEL.to_string()],
             )
             .await
         {
@@ -250,6 +274,29 @@ pub async fn try_merge_pull_request(
                 reviewers
                     .iter()
                     .map(|r| format!("@{}", r))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                e
+            ));
+        }
+    }
+
+    let labels = labels_to_propagate(pull_request);
+    if !labels.is_empty() {
+        let res = retry_once("add_pull_request_labels", || {
+            session.add_pull_request_labels(owner, repo, new_pr.number, labels.clone())
+        })
+        .await;
+        if let Err(e) = res {
+            error!(
+                "Error adding labels to backport PR #{}: {}",
+                new_pr.number, e
+            );
+            manual_steps.push(format!(
+                "Add labels {}: `{}`",
+                labels
+                    .iter()
+                    .map(|l| format!("`{}`", l))
                     .collect::<Vec<_>>()
                     .join(", "),
                 e
@@ -519,6 +566,21 @@ impl worker::Runner<PRMergeRequest> for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_labels_to_propagate() {
+        let mut pr = github::PullRequest::new();
+        assert!(labels_to_propagate(&pr).is_empty());
+
+        pr.labels = Some(vec![
+            github::Label::new("backport-1.0"),
+            github::Label::new("Backport-master"),
+            github::Label::new("failed-backport"),
+            github::Label::new("skip-windows"),
+            github::Label::new("docs"),
+        ]);
+        assert_eq!(labels_to_propagate(&pr), vec!["skip-windows", "docs"]);
+    }
 
     #[test]
     fn test_make_merge_desc() {
