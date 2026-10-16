@@ -876,6 +876,154 @@ async fn test_pr_merge_assign_succeeds_on_retry() {
     .await;
 }
 
+// Labels on the source PR are copied to the backport PR, except for the
+// labels that drive the backport bot itself.
+#[tokio::test]
+async fn test_pr_merge_propagates_labels() {
+    let (test, _temp_dir) = new_test();
+
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
+
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(commit1.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.user = github::User::new("the-pr-author");
+    pr.labels = Some(vec![
+        github::Label::new("backport-1.0"),
+        github::Label::new("skip-windows"),
+        github::Label::new("failed-backport"),
+        github::Label::new("docs"),
+    ]);
+    let pr = pr;
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 456;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: I made a change",
+        &format!("(cherry-picked from {}, PR #123)", commit1),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["the-pr-author".into()],
+        Ok(()),
+    );
+
+    test.github.mock_add_pull_request_labels(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["skip-windows".into(), "docs".into()],
+        Ok(()),
+    );
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
+}
+
+// A failure to add labels must not fail the backport; it is listed in the
+// manual-steps comment on the backport PR instead.
+#[tokio::test]
+async fn test_pr_merge_label_failure_does_not_fail_backport() {
+    let (test, _temp_dir) = new_test();
+
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
+
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(commit1.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.user = github::User::new("the-pr-author");
+    pr.labels = Some(vec![
+        github::Label::new("backport-1.0"),
+        github::Label::new("skip-windows"),
+    ]);
+    let pr = pr;
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 456;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: I made a change",
+        &format!("(cherry-picked from {}, PR #123)", commit1),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["the-pr-author".into()],
+        Ok(()),
+    );
+
+    for _ in 0..2 {
+        test.github.mock_add_pull_request_labels(
+            "the-owner",
+            "the-repo",
+            456,
+            vec!["skip-windows".into()],
+            Err(anyhow!("label-broke")),
+        );
+    }
+
+    test.github.mock_comment_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        "Backport bot could not complete the following on this PR; please do them manually:\n\n- Add labels `skip-windows`: `label-broke`",
+        Ok(()),
+    );
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn test_pr_merge_backport_failure() {
     let (mut test, _temp_dir) = new_test();
