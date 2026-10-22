@@ -314,3 +314,100 @@ fn test_peace_and_quiet_teams() {
         vec!["some-user/some-repo/1".to_string()],
     );
 }
+
+fn thread_direct_messages(config: &Config, github_name: &str) {
+    let mut user = config.users().lookup_info(github_name).unwrap();
+    user.thread_direct_messages = true;
+    config.users_write().update(&user).unwrap();
+}
+
+#[test]
+fn test_threads_direct_messages() {
+    let (config, _temp) = new_test();
+    thread_direct_messages(&config, "the-owner");
+
+    let slack = MockSlack::new(vec![slack::req(
+        SlackRecipient::user_mention("the.owner"),
+        "hello there",
+        &[],
+        Some("some-user/some-repo/1".to_string()),
+        true,
+    )]);
+    let messenger = messenger::new(config, slack.new_sender());
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &github::Repo::new(),
+        Participants::new(),
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![
+            "some-user/some-repo/1".to_string(),
+            "some-user/some-repo/2".to_string(),
+        ],
+    );
+}
+
+#[test]
+fn test_threads_direct_messages_per_user() {
+    let (config, _temp) = new_test();
+    config.users_write().insert("assign1", "assign1").unwrap();
+    thread_direct_messages(&config, "assign1");
+
+    let slack = MockSlack::new(vec![
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            "hello there",
+            &[],
+            Some("some-user/some-repo/1".to_string()),
+            true,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.owner"),
+            "hello there",
+            &[],
+            None,
+            false,
+        ),
+    ]);
+    let messenger = messenger::new(config, slack.new_sender());
+
+    let mut p = Participants::new();
+    p.add_user(github::User::new("assign1"));
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &github::Repo::new(),
+        p,
+        "",
+        &Vec::<github::Commit>::new(),
+        vec!["some-user/some-repo/1".to_string()],
+    );
+}
+
+#[test]
+fn test_send_to_owner_not_threaded() {
+    let (config, _temp) = new_test();
+    thread_direct_messages(&config, "the-owner");
+
+    let slack = MockSlack::new(vec![slack::req(
+        SlackRecipient::user_mention("the.owner"),
+        "hello there",
+        &[],
+        None,
+        false,
+    )]);
+    let messenger = messenger::new(config, slack.new_sender());
+    messenger.send_to_owner(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::Repo::new(),
+        "",
+        &Vec::<github::Commit>::new(),
+    );
+}

@@ -114,6 +114,9 @@ impl Messenger {
             return;
         }
 
+        // A commit can belong to several PRs; one DM thread is enough.
+        let dm_thread_guid = thread_guids.first().cloned();
+
         self.send_to_channel(msg, attachments, repo, branch, commits, thread_guids, false);
 
         participants.add_user(item_owner.clone());
@@ -122,7 +125,7 @@ impl Messenger {
         participants.remove(sender.login());
         participants.remove("octobot");
 
-        self.send_to_slackbots(participants, repo, msg, attachments);
+        self.send_to_slackbots(participants, repo, msg, attachments, dm_thread_guid);
     }
 
     fn is_ignored_user(&self, user: &github::User) -> bool {
@@ -155,6 +158,7 @@ impl Messenger {
             repo,
             msg,
             attachments,
+            None,
         );
     }
 
@@ -207,6 +211,7 @@ impl Messenger {
         repo: &github::Repo,
         msg: &str,
         attachments: &[SlackAttachment],
+        thread_guid: Option<String>,
     ) {
         for (_, user) in users.users.iter() {
             let is_team_member = match user.participant_type {
@@ -221,8 +226,15 @@ impl Messenger {
             );
 
             if let Some(user_dm) = user_dm {
-                self.slack
-                    .send(slack::req(user_dm, msg, attachments, None, false));
+                let thread_guid = thread_guid.clone().filter(|_| user_dm.use_threads);
+                let initial_thread = thread_guid.is_some();
+                self.slack.send(slack::req(
+                    user_dm.recipient,
+                    msg,
+                    attachments,
+                    thread_guid,
+                    initial_thread,
+                ));
             }
         }
     }
