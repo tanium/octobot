@@ -100,7 +100,7 @@ impl Metrics {
 
             jira_api_duration: register_histogram_vec_with_registry!(
                 "jira_api_request_duration",
-                "jira API responses",
+                "Duration of jira API requests",
                 &["method", "path"],
                 http_duration_buckets(),
                 registry.as_ref()
