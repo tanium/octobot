@@ -20,12 +20,15 @@ pub struct UserInfo {
     pub muted_repos: Vec<String>,
     #[serde(default)]
     pub thread_direct_messages: bool,
+    #[serde(default)]
+    pub group_review_direct_messages: bool,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DirectMessage {
     pub recipient: SlackRecipient,
     pub use_threads: bool,
+    pub group_reviews: bool,
 }
 
 #[derive(Clone)]
@@ -51,6 +54,7 @@ impl UserInfo {
             mute_team_direct_messages: false,
             muted_repos,
             thread_direct_messages: false,
+            group_review_direct_messages: false,
         }
     }
 }
@@ -67,7 +71,7 @@ impl UserConfig {
     pub fn insert_info(&mut self, user: &UserInfo) -> Result<()> {
         let conn = self.db.connect()?;
         conn.execute(
-            "INSERT INTO users (github_name, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO users (github_name, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             [
                 &user.github,
                 &user.slack_name,
@@ -77,6 +81,7 @@ impl UserConfig {
                 &user.muted_repos.join(","),
                 &db::to_tinyint(user.mute_team_direct_messages) as &dyn ToSql,
                 &db::to_tinyint(user.thread_direct_messages) as &dyn ToSql,
+                &db::to_tinyint(user.group_review_direct_messages) as &dyn ToSql,
             ],
         )
         .map_err(|e| anyhow!("Error inserting user {}: {}", user.github, e))?;
@@ -87,7 +92,7 @@ impl UserConfig {
     pub fn update(&mut self, user: &UserInfo) -> Result<()> {
         let conn = self.db.connect()?;
         conn.execute(
-            "UPDATE users set github_name = ?1, slack_name = ?2, slack_id = ?3, email = ?4, mute_direct_messages = ?5, muted_repos = ?6, mute_team_dm = ?8, thread_dm = ?9 where id = ?7",
+            "UPDATE users set github_name = ?1, slack_name = ?2, slack_id = ?3, email = ?4, mute_direct_messages = ?5, muted_repos = ?6, mute_team_dm = ?8, thread_dm = ?9, group_review_dm = ?10 where id = ?7",
             [
                 &user.github,
                 &user.slack_name,
@@ -98,6 +103,7 @@ impl UserConfig {
                 &user.id,
                 &db::to_tinyint(user.mute_team_direct_messages) as &dyn ToSql,
                 &db::to_tinyint(user.thread_direct_messages) as &dyn ToSql,
+                &db::to_tinyint(user.group_review_direct_messages) as &dyn ToSql,
             ],
         ).map_err(|e| anyhow!("Error updating user {}: {}", user.github, e))?;
 
@@ -138,6 +144,7 @@ impl UserConfig {
             Some(DirectMessage {
                 recipient,
                 use_threads: u.thread_direct_messages,
+                group_reviews: u.group_review_direct_messages,
             })
         })
     }
@@ -145,7 +152,7 @@ impl UserConfig {
     pub fn get_all(&self) -> Result<Vec<UserInfo>> {
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id, slack_name, slack_id, email, github_name, mute_direct_messages, muted_repos, mute_team_dm, thread_dm FROM users ORDER BY github_name",
+            "SELECT id, slack_name, slack_id, email, github_name, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm FROM users ORDER BY github_name",
         )?;
         let found = stmt.query_map([], |row| {
             Ok(UserInfo {
@@ -163,6 +170,7 @@ impl UserConfig {
                     .filter(|s| !s.is_empty())
                     .collect(),
                 thread_direct_messages: db::to_bool(row.get(8)?),
+                group_review_direct_messages: db::to_bool(row.get(9)?),
             })
         })?;
 
@@ -188,7 +196,7 @@ impl UserConfig {
         let github_name = github_name.to_string();
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm FROM users where github_name = ?1",
+            "SELECT id, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm FROM users where github_name = ?1",
         )?;
         let found = stmt.query_map([&github_name], |row| {
             Ok(UserInfo {
@@ -206,6 +214,7 @@ impl UserConfig {
                     .filter(|s| !s.is_empty())
                     .collect(),
                 thread_direct_messages: db::to_bool(row.get(7)?),
+                group_review_direct_messages: db::to_bool(row.get(8)?),
             })
         })?;
 
@@ -231,6 +240,7 @@ mod tests {
         DirectMessage {
             recipient,
             use_threads,
+            group_reviews: false,
         }
     }
 
@@ -338,5 +348,29 @@ mod tests {
         users.update(&info).unwrap();
 
         assert!(!users.get_all().unwrap()[0].thread_direct_messages);
+    }
+
+    #[test]
+    fn test_group_review_direct_messages() {
+        let (mut users, _temp) = new_test();
+
+        let mut info = UserInfo::new("some-git-user", "the-slacker", "1234", "", Vec::new());
+        info.group_review_direct_messages = true;
+        users.insert_info(&info).unwrap();
+
+        assert_eq!(
+            Some(DirectMessage {
+                recipient: SlackRecipient::new("1234", "the-slacker"),
+                use_threads: false,
+                group_reviews: true,
+            }),
+            users.slack_direct_message("some-git-user", false, &"org/repo".into())
+        );
+
+        let mut info = users.lookup_info("some-git-user").unwrap();
+        info.group_review_direct_messages = false;
+        users.update(&info).unwrap();
+
+        assert!(!users.get_all().unwrap()[0].group_review_direct_messages);
     }
 }

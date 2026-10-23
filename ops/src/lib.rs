@@ -11,6 +11,7 @@ pub mod messenger;
 pub mod migrate_slack;
 pub mod pr_merge;
 pub mod repo_version;
+pub mod review_group;
 pub mod slack;
 mod slack_db;
 mod slack_db_migrations;
