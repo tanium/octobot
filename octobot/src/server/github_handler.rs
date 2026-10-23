@@ -648,7 +648,7 @@ impl GithubEventHandler {
 
                 if !pull_request.is_draft() {
                     let msg = format!("Pull Request {}", verb);
-                    let thread_guid = self.build_thread_guid(pull_request.number);
+                    let thread = self.build_thread(&pull_request);
                     match notify_mode {
                         NotifyMode::Channel => self.messenger.send_to_channel(
                             &msg,
@@ -656,7 +656,7 @@ impl GithubEventHandler {
                             &self.repository,
                             branch_name,
                             &commits,
-                            vec![thread_guid],
+                            vec![thread],
                             self.action == "opened",
                         ),
 
@@ -669,7 +669,7 @@ impl GithubEventHandler {
                             self.all_participants(&pull_request, &commits).await,
                             branch_name,
                             &commits,
-                            vec![thread_guid],
+                            vec![thread],
                         ),
 
                         NotifyMode::None => (),
@@ -823,7 +823,7 @@ impl GithubEventHandler {
                         participants,
                         branch_name,
                         &commits,
-                        vec![self.build_thread_guid(pull_request.number)],
+                        vec![self.build_thread(&pull_request)],
                     );
                 }
             }
@@ -884,7 +884,7 @@ impl GithubEventHandler {
             participants,
             branch_name,
             commits,
-            vec![self.build_thread_guid(pull_request.number())],
+            vec![self.build_thread(pull_request)],
         );
     }
 
@@ -938,10 +938,7 @@ impl GithubEventHandler {
                             return (StatusCode::OK, "push [no PR]".into());
                         }
                     };
-                    let thread_guids = commit_prs
-                        .into_iter()
-                        .map(|pr| self.build_thread_guid(pr.number))
-                        .collect();
+                    let threads = commit_prs.iter().map(|pr| self.build_thread(&pr)).collect();
                     self.messenger.send_to_all(
                         &msg,
                         &attachments,
@@ -951,7 +948,7 @@ impl GithubEventHandler {
                         Participants::new(),
                         branch_name,
                         &commits,
-                        thread_guids,
+                        threads,
                     );
                 }
             }
@@ -1087,7 +1084,7 @@ impl GithubEventHandler {
                             self.all_participants(&pull_request, &commits).await,
                             &branch_name,
                             &commits,
-                            vec![self.build_thread_guid(pull_request.number)],
+                            vec![self.build_thread(&pull_request)],
                         );
 
                         if self.data.forced()
@@ -1218,12 +1215,27 @@ impl GithubEventHandler {
         self.pr_merge.send(req);
     }
 
-    fn build_thread_guid(&self, number: u32) -> String {
-        format!(
+    fn build_thread(&self, pull_request: &dyn github::PullRequestLike) -> messenger::Thread {
+        let guid = format!(
             "{}/{}/{}",
             self.repository.owner.login(),
             self.repository.name,
-            number
-        )
+            pull_request.number()
+        );
+        // Issues share the comment path; only real pull requests get a root message.
+        if !pull_request.has_commits() {
+            return messenger::Thread::new(&guid);
+        }
+
+        let attachment = SlackAttachmentBuilder::new("")
+            .title(format!(
+                "Pull Request #{}: \"{}\"",
+                pull_request.number(),
+                pull_request.title()
+            ))
+            .title_link(pull_request.html_url())
+            .build();
+
+        messenger::Thread::for_pull_request(&guid, attachment)
     }
 }

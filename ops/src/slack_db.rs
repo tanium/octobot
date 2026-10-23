@@ -39,13 +39,21 @@ impl SlackDatabase {
 
         let conn = self.connect()?;
 
-        let thread = conn
+        let thread: Option<String> = conn
             .query_row(
                 "SELECT thread FROM pull_request_threads WHERE guid = ?1 AND channel = ?2 LIMIT 1",
                 [&thread_guid, &slack_channel],
                 |row| row.get(0),
             )
             .unwrap_or(None);
+
+        if thread.is_some() {
+            conn.execute(
+                "UPDATE pull_request_threads SET timestamp = CURRENT_TIMESTAMP WHERE guid = ?1 AND channel = ?2",
+                [&thread_guid, &slack_channel],
+            )
+            .map_err(|e| anyhow!("Error refreshing slack thread {}: {}", thread_guid, e))?;
+        }
 
         Ok(thread)
     }
@@ -146,6 +154,34 @@ mod tests {
         assert_eq!(
             None,
             db.lookup_previous_thread("org/repo/2", "U123").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_lookup_refreshes_thread() {
+        let (db, _temp) = new_test();
+
+        db.connect()
+            .unwrap()
+            .execute(
+                r#"INSERT INTO pull_request_threads (guid, channel, thread, timestamp)
+                    VALUES ('org/repo/1', 'U123', '1111.1111', datetime('now', '-31 days'))"#,
+                [],
+            )
+            .unwrap();
+
+        assert!(
+            db.lookup_previous_thread("org/repo/1", "U123")
+                .unwrap()
+                .is_some()
+        );
+
+        let day = Duration::from_secs(24 * 3600);
+        db.clean(SystemTime::now() - 30 * day).unwrap();
+
+        assert_eq!(
+            Some("1111.1111".to_string()),
+            db.lookup_previous_thread("org/repo/1", "U123").unwrap()
         );
     }
 }

@@ -2,7 +2,7 @@ use log::info;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::slack::{self, SlackAttachment, SlackRequest};
+use crate::slack::{self, SlackAttachment, SlackRequest, ThreadRoot};
 use crate::util;
 use crate::worker::Worker;
 use octobot_lib::config::Config;
@@ -87,6 +87,32 @@ impl Participants {
     }
 }
 
+/**
+ * A slack thread key. When `pull_request` is set and a channel has no thread for the key yet,
+ * a "New thread for Pull Request" message is posted first to start one.
+ */
+#[derive(Clone)]
+pub struct Thread {
+    guid: String,
+    pull_request: Option<SlackAttachment>,
+}
+
+impl Thread {
+    pub fn new(guid: &str) -> Thread {
+        Thread {
+            guid: guid.to_string(),
+            pull_request: None,
+        }
+    }
+
+    pub fn for_pull_request(guid: &str, pull_request: SlackAttachment) -> Thread {
+        Thread {
+            guid: guid.to_string(),
+            pull_request: Some(pull_request),
+        }
+    }
+}
+
 pub fn new(config: Arc<Config>, slack: Arc<dyn Worker<SlackRequest>>) -> Messenger {
     Messenger {
         slack: slack.clone(),
@@ -107,7 +133,7 @@ impl Messenger {
         mut participants: Participants,
         branch: &str,
         commits: &[T],
-        thread_guids: Vec<String>,
+        threads: Vec<Thread>,
     ) {
         if self.is_ignored_user(sender) {
             info!("Ignoring message from ignored user: {}", sender.login(),);
@@ -115,9 +141,9 @@ impl Messenger {
         }
 
         // A commit can belong to several PRs; one DM thread is enough.
-        let dm_thread_guid = thread_guids.first().cloned();
+        let dm_thread_guid = threads.first().map(|t| t.guid.clone());
 
-        self.send_to_channel(msg, attachments, repo, branch, commits, thread_guids, false);
+        self.send_to_channel(msg, attachments, repo, branch, commits, threads, false);
 
         participants.add_user(item_owner.clone());
 
@@ -144,15 +170,7 @@ impl Messenger {
         branch: &str,
         commits: &[T],
     ) {
-        self.send_to_channel(
-            msg,
-            attachments,
-            repo,
-            branch,
-            commits,
-            Vec::<String>::new(),
-            false,
-        );
+        self.send_to_channel(msg, attachments, repo, branch, commits, Vec::new(), false);
         self.send_to_slackbots(
             Participants::single(item_owner.clone()),
             repo,
@@ -170,36 +188,44 @@ impl Messenger {
         repo: &github::Repo,
         branch: &str,
         commits: &[T],
-        thread_guids: Vec<String>,
+        threads: Vec<Thread>,
         initial_thread: bool,
     ) {
         // We can use the thread_guid to see if threads have been used in the past within the
         //  slack db, but that wouldn't respect the users' choice if they change the setting later.
-        let use_threads = self.config.repos().notify_use_threads(repo) && !thread_guids.is_empty();
+        let use_threads = self.config.repos().notify_use_threads(repo) && !threads.is_empty();
+        let repo_link = util::make_link(&repo.html_url, &repo.full_name);
 
         for channel in self.config.repos().lookup_channels(repo, branch, commits) {
-            let channel_msg = format!(
-                "{} ({})",
-                msg,
-                util::make_link(&repo.html_url, &repo.full_name)
-            );
+            let recipient = SlackRecipient::new(&channel, &channel);
+            let channel_msg = format!("{} ({})", msg, repo_link);
             if !use_threads {
                 self.slack.send(slack::req(
-                    SlackRecipient::new(&channel, &channel),
+                    recipient,
                     &channel_msg,
                     attachments,
                     None,
                     initial_thread,
                 ));
-            } else {
-                for thread_guid in &thread_guids {
-                    self.slack.send(slack::req(
-                        SlackRecipient::new(&channel, &channel),
-                        &channel_msg,
-                        attachments,
-                        Some(thread_guid.to_owned()),
-                        initial_thread,
-                    ));
+                continue;
+            }
+
+            for thread in &threads {
+                let req = slack::req(
+                    recipient.clone(),
+                    &channel_msg,
+                    attachments,
+                    Some(thread.guid.clone()),
+                    initial_thread,
+                );
+                match &thread.pull_request {
+                    Some(pr) if !initial_thread => {
+                        self.slack.send(req.with_thread_root(ThreadRoot {
+                            msg: format!("New thread for Pull Request ({})", repo_link),
+                            attachments: vec![pr.clone()],
+                        }))
+                    }
+                    _ => self.slack.send(req),
                 }
             }
         }

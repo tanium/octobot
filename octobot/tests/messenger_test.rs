@@ -2,16 +2,17 @@ mod mocks;
 
 use std::sync::Arc;
 
-use octobot_ops::messenger::Participants;
+use octobot_ops::messenger::{Participants, Thread};
 use tempfile::{TempDir, tempdir};
 
 use mocks::mock_slack::MockSlack;
 use octobot_lib::config::Config;
 use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github;
+use octobot_lib::repos::RepoInfo;
 use octobot_lib::slack::SlackRecipient;
 use octobot_ops::messenger;
-use octobot_ops::slack;
+use octobot_ops::slack::{self, SlackAttachmentBuilder, ThreadRoot};
 
 fn new_test() -> (Arc<Config>, TempDir) {
     let temp_dir = tempdir().unwrap();
@@ -52,7 +53,7 @@ fn test_sends_to_owner() {
         Participants::new(),
         "",
         &Vec::<github::Commit>::new(),
-        vec!["some-user/some-repo/1".to_string()],
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -78,7 +79,7 @@ fn test_sends_to_mapped_usernames() {
         Participants::new(),
         "",
         &Vec::<github::Commit>::new(),
-        vec!["some-user/some-repo/1".to_string()],
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -119,7 +120,7 @@ fn test_sends_to_owner_with_channel() {
         Participants::new(),
         "",
         &Vec::<github::Commit>::new(),
-        vec!["some-user/some-repo/1".to_string()],
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -166,7 +167,7 @@ fn test_sends_to_assignees() {
         p,
         "",
         &Vec::<github::Commit>::new(),
-        vec!["some-user/some-repo/1".to_string()],
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -199,7 +200,7 @@ fn test_does_not_send_to_event_sender() {
         p,
         "",
         &Vec::<github::Commit>::new(),
-        vec!["some-user/some-repo/1".to_string()],
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -239,7 +240,7 @@ fn test_sends_only_once() {
         p,
         "",
         &Vec::<github::Commit>::new(),
-        vec!["some-user/some-repo/1".to_string()],
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -275,7 +276,7 @@ fn test_peace_and_quiet() {
         p,
         "",
         &Vec::<github::Commit>::new(),
-        vec!["some-user/some-repo/1".to_string()],
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -311,7 +312,7 @@ fn test_peace_and_quiet_teams() {
         p,
         "",
         &Vec::<github::Commit>::new(),
-        vec!["some-user/some-repo/1".to_string()],
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -344,8 +345,8 @@ fn test_threads_direct_messages() {
         "",
         &Vec::<github::Commit>::new(),
         vec![
-            "some-user/some-repo/1".to_string(),
-            "some-user/some-repo/2".to_string(),
+            Thread::new("some-user/some-repo/1"),
+            Thread::new("some-user/some-repo/2"),
         ],
     );
 }
@@ -385,7 +386,7 @@ fn test_threads_direct_messages_per_user() {
         p,
         "",
         &Vec::<github::Commit>::new(),
-        vec!["some-user/some-repo/1".to_string()],
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -409,5 +410,114 @@ fn test_send_to_owner_not_threaded() {
         &github::Repo::new(),
         "",
         &Vec::<github::Commit>::new(),
+    );
+}
+
+fn threaded_channel_test() -> (Arc<Config>, TempDir, github::Repo, Thread, ThreadRoot) {
+    let (config, temp) = new_test();
+    config
+        .repos_write()
+        .insert_info(
+            &RepoInfo::new("the-owner/the-repo", "the-review-channel").with_use_threads(true),
+        )
+        .unwrap();
+
+    let pr = SlackAttachmentBuilder::new("")
+        .title("Pull Request #1: \"The PR\"")
+        .title_link("http://the-pr")
+        .build();
+    let root = ThreadRoot {
+        msg: "New thread for Pull Request (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)".into(),
+        attachments: vec![pr.clone()],
+    };
+    let repo = github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap();
+
+    (
+        config,
+        temp,
+        repo,
+        Thread::for_pull_request("the-owner/the-repo/1", pr),
+        root,
+    )
+}
+
+#[test]
+fn test_channel_thread_root() {
+    let (config, _temp, repo, thread, root) = threaded_channel_test();
+
+    let slack = MockSlack::new(vec![
+        slack::req(
+            SlackRecipient::by_name("the-review-channel"),
+            "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
+            &[],
+            Some("the-owner/the-repo/1".to_string()),
+            false,
+        )
+        .with_thread_root(root),
+        slack::req(
+            SlackRecipient::user_mention("the.owner"),
+            "hello there",
+            &[],
+            None,
+            false,
+        ),
+    ]);
+    let messenger = messenger::new(config, slack.new_sender());
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &repo,
+        Participants::new(),
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![thread],
+    );
+}
+
+#[test]
+fn test_channel_initial_thread_has_no_root() {
+    let (config, _temp, repo, thread, _root) = threaded_channel_test();
+
+    let slack = MockSlack::new(vec![slack::req(
+        SlackRecipient::by_name("the-review-channel"),
+        "opened (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
+        &[],
+        Some("the-owner/the-repo/1".to_string()),
+        true,
+    )]);
+    let messenger = messenger::new(config, slack.new_sender());
+    messenger.send_to_channel(
+        "opened",
+        &[],
+        &repo,
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![thread],
+        true,
+    );
+}
+
+#[test]
+fn test_thread_without_pull_request_has_no_root() {
+    let (config, _temp, repo, _thread, _root) = threaded_channel_test();
+
+    let slack = MockSlack::new(vec![slack::req(
+        SlackRecipient::by_name("the-review-channel"),
+        "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
+        &[],
+        Some("the-owner/the-repo/1".to_string()),
+        false,
+    )]);
+    let messenger = messenger::new(config, slack.new_sender());
+    messenger.send_to_channel(
+        "hello there",
+        &[],
+        &repo,
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![Thread::new("the-owner/the-repo/1")],
+        false,
     );
 }
