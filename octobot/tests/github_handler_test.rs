@@ -21,12 +21,24 @@ use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::messenger;
 use octobot_ops::pr_merge::{self, PRMergeRequest};
 use octobot_ops::repo_version::{self, RepoVersionRequest};
-use octobot_ops::slack::{self, SlackAttachmentBuilder};
+use octobot_ops::slack::{self, SlackAttachmentBuilder, ThreadRoot};
 
 mod mocks;
 
 // this message gets appended only to review channel messages, not to slackbots
 const REPO_MSG: &str = "(<http://the-github-host/some-user/some-repo|some-user/some-repo>)";
+
+fn thread_root(repo_msg: &str, number: u32) -> ThreadRoot {
+    ThreadRoot {
+        msg: format!("New thread for Pull Request {}", repo_msg),
+        attachments: vec![
+            SlackAttachmentBuilder::new("")
+                .title(format!("Pull Request #{}: \"The PR\"", number))
+                .title_link("http://the-pr")
+                .build(),
+        ],
+    }
+}
 
 fn the_repo() -> Repo {
     Repo::parse("http://the-github-host/some-user/some-repo").unwrap()
@@ -375,7 +387,8 @@ async fn test_commit_comment_with_path() {
                 .build()],
             Some("some-user/some-repo/32".to_string()),
         false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::by_name("the-reviews-channel"),
             &format!("Comment on \"src/main.rs\" (<http://the-github-host/some-user/some-repo/commit/abcdef00001111|abcdef0>) {}", REPO_MSG),
@@ -385,7 +398,8 @@ async fn test_commit_comment_with_path() {
                 .build()],
             Some("some-user/some-repo/99".to_string()),
         false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 99)),
     ]);
 
     let resp = test.handler.handle_event().await.unwrap();
@@ -424,6 +438,7 @@ async fn test_commit_comment_with_path_that_is_included_in_multiple_prs() {
             Some("some-user/some-repo/32".to_string()),
         false,
         )
+        .with_thread_root(thread_root(REPO_MSG, 32))
     ]);
 
     let resp = test.handler.handle_event().await.unwrap();
@@ -563,7 +578,8 @@ async fn test_pull_request_comment() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -628,7 +644,8 @@ async fn test_pull_request_review_commented() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -760,7 +777,8 @@ async fn test_pull_request_review_approved() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -825,7 +843,8 @@ async fn test_pull_request_review_changes_requested() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -915,7 +934,8 @@ async fn test_pull_request_closed() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -967,13 +987,16 @@ async fn test_pull_request_reopened() {
     ];
     let msg = "Pull Request reopened";
 
-    test.slack.expect(vec![slack::req(
-        SlackRecipient::by_name("the-reviews-channel"),
-        &format!("{} {}", msg, REPO_MSG),
-        &attach,
-        Some("some-user/some-repo/32".to_string()),
-        false,
-    )]);
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Some("some-user/some-repo/32".to_string()),
+            false,
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
+    ]);
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1005,7 +1028,8 @@ async fn test_pull_request_ready_for_review() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -1101,7 +1125,8 @@ async fn test_pull_request_assigned() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -1160,13 +1185,16 @@ async fn test_pull_request_unassigned() {
     ];
     let msg = "Pull Request unassigned";
 
-    test.slack.expect(vec![slack::req(
-        SlackRecipient::by_name("the-reviews-channel"),
-        &format!("{} {}", msg, REPO_MSG),
-        &attach,
-        Some("some-user/some-repo/32".to_string()),
-        false,
-    )]);
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Some("some-user/some-repo/32".to_string()),
+            false,
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
+    ]);
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
@@ -1201,7 +1229,8 @@ async fn test_pull_request_review_requested() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -1287,7 +1316,8 @@ async fn test_pull_request_review_no_username() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -1388,7 +1418,8 @@ async fn test_pull_request_merged_error_getting_labels() {
             &attach1,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg1,
@@ -1467,7 +1498,8 @@ async fn test_pull_request_merged_no_labels() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -1542,7 +1574,8 @@ async fn test_pull_request_merged_backport_labels() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -1653,7 +1686,8 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
             &attach,
             Some("some-user/custom-branches-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(repo_msg, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -1874,7 +1908,8 @@ async fn test_push_with_pr() {
             &attach1,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -1909,7 +1944,8 @@ async fn test_push_with_pr() {
             &attach2,
             Some("some-user/some-repo/99".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 99)),
         slack::req(
             SlackRecipient::user_mention("assign2"),
             msg,
@@ -1976,7 +2012,8 @@ async fn test_push_force_notify() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -2142,7 +2179,8 @@ async fn test_team_members_cache() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,
@@ -2206,7 +2244,8 @@ async fn test_team_members_cache() {
             &attach,
             Some("some-user/some-repo/32".to_string()),
             false,
-        ),
+        )
+        .with_thread_root(thread_root(REPO_MSG, 32)),
         slack::req(
             SlackRecipient::user_mention("assign1"),
             msg,

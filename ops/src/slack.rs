@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use anyhow::bail;
 use log::{debug, error, info};
@@ -129,6 +130,11 @@ impl Slack {
         }
     }
 
+    pub fn clean(&self, expiration: SystemTime) -> Result<()> {
+        self.slack_db.lock().unwrap().clean(expiration)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub async fn send(
         &self,
         channel_id: &str,
@@ -137,17 +143,17 @@ impl Slack {
         attachments: Vec<SlackAttachment>,
         initial_thread: bool,
         thread_guid: &str,
+        thread_root: Option<ThreadRoot>,
     ) {
-        let parent_thread;
+        let mut parent_thread = self.lookup_thread(thread_guid, channel_id);
+
+        if parent_thread.is_none()
+            && !thread_guid.is_empty()
+            && let Some(root) = thread_root
         {
-            let slack_db = self.slack_db.lock().unwrap();
-            parent_thread = match slack_db.lookup_previous_thread(thread_guid, channel_id) {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("Error looking up slack thread: {}", e);
-                    None
-                }
-            };
+            parent_thread = self
+                .start_thread(channel_id, channel_name, root, thread_guid)
+                .await;
         }
 
         let slack_msg = SlackMessage {
@@ -162,36 +168,88 @@ impl Slack {
             return;
         }
 
+        let Some(thread) = self.post(&slack_msg, channel_name).await else {
+            return;
+        };
+
+        if initial_thread && !thread_guid.is_empty() && parent_thread.is_none() {
+            let slack_db = self.slack_db.lock().unwrap();
+            slack_db
+                .insert_thread(thread_guid, channel_id, &thread)
+                .ok();
+        }
+    }
+
+    fn lookup_thread(&self, thread_guid: &str, channel_id: &str) -> Option<String> {
+        let slack_db = self.slack_db.lock().unwrap();
+        match slack_db.lookup_previous_thread(thread_guid, channel_id) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error looking up slack thread: {}", e);
+                None
+            }
+        }
+    }
+
+    async fn start_thread(
+        &self,
+        channel_id: &str,
+        channel_name: &str,
+        root: ThreadRoot,
+        thread_guid: &str,
+    ) -> Option<String> {
+        let root_msg = SlackMessage {
+            text: root.msg,
+            attachments: root.attachments,
+            channel: channel_id.to_string(),
+            thread_ts: None,
+        };
+        let thread = self.post(&root_msg, channel_name).await?;
+
+        let slack_db = self.slack_db.lock().unwrap();
+        if slack_db
+            .insert_thread(thread_guid, channel_id, &thread)
+            .is_ok()
+        {
+            return Some(thread);
+        }
+
+        // A concurrent send started this thread first; reply to that one instead.
+        match slack_db.lookup_previous_thread(thread_guid, channel_id) {
+            Ok(Some(existing)) => Some(existing),
+            _ => Some(thread),
+        }
+    }
+
+    async fn post(&self, slack_msg: &SlackMessage, channel_name: &str) -> Option<String> {
         debug!("Sending message to #{}", channel_name);
 
-        let res: Result<SlackResponse> = self.client.post("/chat.postMessage", &slack_msg).await;
+        let res: Result<SlackResponse> = self.client.post("/chat.postMessage", slack_msg).await;
         match res {
-            Ok(r) => {
-                if r.ok {
-                    let thread = r.ts.unwrap_or_default();
-                    info!(
-                        "Successfully sent slack message to {}, ts: \"{}\"",
-                        channel_name, thread
-                    );
-                    if initial_thread && !thread_guid.is_empty() && parent_thread.is_none() {
-                        let slack_db = self.slack_db.lock().unwrap();
-                        slack_db
-                            .insert_thread(thread_guid, channel_id, thread.as_str())
-                            .ok();
-                    }
-                } else {
-                    error!(
-                        "Error sending slack message to {}: {} ({})",
-                        channel_name,
-                        channel_id,
-                        r.error.unwrap_or_default(),
-                    )
-                }
+            Ok(r) if r.ok => {
+                let thread = r.ts.unwrap_or_default();
+                info!(
+                    "Successfully sent slack message to {}, ts: \"{}\"",
+                    channel_name, thread
+                );
+                Some(thread)
             }
-            Err(e) => error!(
-                "Error sending slack message to {} ({}): {}",
-                channel_name, channel_id, e
-            ),
+            Ok(r) => {
+                error!(
+                    "Error sending slack message to {}: {} ({})",
+                    channel_name,
+                    slack_msg.channel,
+                    r.error.unwrap_or_default(),
+                );
+                None
+            }
+            Err(e) => {
+                error!(
+                    "Error sending slack message to {} ({}): {}",
+                    channel_name, slack_msg.channel, e
+                );
+                None
+            }
         }
     }
 
@@ -287,6 +345,22 @@ pub struct SlackRequest {
     pub msg: String,
     pub attachments: Vec<SlackAttachment>,
     pub initial_thread: bool,
+    pub thread_root: Option<ThreadRoot>,
+}
+
+impl SlackRequest {
+    pub fn with_thread_root(self, thread_root: ThreadRoot) -> SlackRequest {
+        SlackRequest {
+            thread_root: Some(thread_root),
+            ..self
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ThreadRoot {
+    pub msg: String,
+    pub attachments: Vec<SlackAttachment>,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
@@ -326,6 +400,7 @@ pub fn req(
         msg: msg.into(),
         attachments: attachments.into(),
         initial_thread,
+        thread_root: None,
     }
 }
 
@@ -344,6 +419,7 @@ impl worker::Runner<SlackRequest> for Runner {
                 req.attachments,
                 req.initial_thread,
                 req.thread_guid.unwrap_or_default().as_str(),
+                req.thread_root,
             )
             .await;
     }

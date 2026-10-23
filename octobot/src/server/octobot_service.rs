@@ -2,6 +2,7 @@ use hyper::{self, Body, Method, Request, Response};
 use log::{debug, info};
 use maplit::hashmap;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use octobot_lib::config::Config;
 use octobot_lib::jira::api::Session as JiraSession;
@@ -48,6 +49,11 @@ impl OctobotService {
 
     pub fn clean(&self) {
         self.github_handler_state.clean();
+
+        let day = Duration::from_secs(24 * 3600);
+        if let Err(e) = self.slack.clean(SystemTime::now() - 30 * day) {
+            log::error!("Failed to clean slack db: {}", e);
+        }
     }
 }
 
