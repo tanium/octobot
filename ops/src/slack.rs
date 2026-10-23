@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use anyhow::bail;
 use log::{debug, error, info};
@@ -127,6 +128,10 @@ impl Slack {
             slack_db: Mutex::new(slack_db),
             recent_messages: Mutex::new(Vec::new()),
         }
+    }
+
+    pub fn clean(&self, expiration: SystemTime) -> Result<()> {
+        self.slack_db.lock().unwrap().clean(expiration)
     }
 
     pub async fn send(
