@@ -95,7 +95,7 @@ impl Git {
         Ok(())
     }
 
-    // checking a branch named |new_branch_name| and ensure it is up to date with |source_ref|
+    // check out a branch named |new_branch_name| and ensure it is up to date with |source_ref|
     // |source_ref| can be a commit hash or an origin/branch-name.
     pub fn checkout_branch(&self, new_branch_name: &str, source_ref: &str) -> Result<()> {
         self.run(&["checkout", "-B", new_branch_name, source_ref])?;
