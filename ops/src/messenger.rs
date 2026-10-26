@@ -141,7 +141,10 @@ impl Messenger {
         }
 
         // A commit can belong to several PRs; one DM thread is enough.
-        let dm_thread_guid = threads.first().map(|t| t.guid.clone());
+        let dm_thread_guid = threads
+            .iter()
+            .find(|t| t.pull_request.is_some())
+            .map(|t| t.guid.clone());
 
         self.send_to_channel(msg, attachments, repo, branch, commits, threads, false);
 

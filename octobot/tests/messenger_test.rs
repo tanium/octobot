@@ -322,6 +322,10 @@ fn thread_direct_messages(config: &Config, github_name: &str) {
     config.users_write().update(&user).unwrap();
 }
 
+fn pr_thread(guid: &str) -> Thread {
+    Thread::for_pull_request(guid, SlackAttachmentBuilder::new("").build())
+}
+
 #[test]
 fn test_threads_direct_messages() {
     let (config, _temp) = new_test();
@@ -345,9 +349,35 @@ fn test_threads_direct_messages() {
         "",
         &Vec::<github::Commit>::new(),
         vec![
-            Thread::new("some-user/some-repo/1"),
-            Thread::new("some-user/some-repo/2"),
+            pr_thread("some-user/some-repo/1"),
+            pr_thread("some-user/some-repo/2"),
         ],
+    );
+}
+
+#[test]
+fn test_issue_direct_messages_not_threaded() {
+    let (config, _temp) = new_test();
+    thread_direct_messages(&config, "the-owner");
+
+    let slack = MockSlack::new(vec![slack::req(
+        SlackRecipient::user_mention("the.owner"),
+        "hello there",
+        &[],
+        None,
+        false,
+    )]);
+    let messenger = messenger::new(config, slack.new_sender());
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &github::Repo::new(),
+        Participants::new(),
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![Thread::new("some-user/some-repo/1")],
     );
 }
 
@@ -386,7 +416,7 @@ fn test_threads_direct_messages_per_user() {
         p,
         "",
         &Vec::<github::Commit>::new(),
-        vec![Thread::new("some-user/some-repo/1")],
+        vec![pr_thread("some-user/some-repo/1")],
     );
 }
 
