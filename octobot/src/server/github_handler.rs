@@ -770,7 +770,7 @@ impl GithubEventHandler {
                             .build();
                         ReviewItem::comment(
                             id,
-                            comment.id.unwrap_or_default(),
+                            comment.id,
                             &self.review_msg(pull_request, &comment.user),
                             grouped,
                         )
@@ -800,7 +800,6 @@ impl GithubEventHandler {
 
                     // just a comment. should just be handled by regular comment handler.
                     let review_msg = self.review_msg(pull_request, &review.user);
-                    let grouped = review.id.map(|id| ReviewItem::submitted(id, &review_msg));
 
                     if review.state == "commented" {
                         self.do_pull_request_comment(
@@ -808,7 +807,7 @@ impl GithubEventHandler {
                             &review,
                             branch_name,
                             &commits,
-                            grouped,
+                            Some(ReviewItem::commented(review.id, &review_msg)),
                         )
                         .await;
                         return (StatusCode::OK, "pr_review [comment]".into());
@@ -853,7 +852,7 @@ impl GithubEventHandler {
                     }
 
                     self.messenger.send_review_to_all(
-                        grouped.as_ref(),
+                        Some(&ReviewItem::submitted(review.id, &review_msg)),
                         &msg,
                         &attachments,
                         &pull_request.user,

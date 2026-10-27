@@ -398,8 +398,7 @@ pub trait CommentLike: Send + Sync {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Review {
-    #[serde(default)]
-    pub id: Option<u64>,
+    pub id: u64,
     pub state: String,
     pub body: Option<String>,
     pub html_url: String,
@@ -409,7 +408,7 @@ pub struct Review {
 impl Review {
     pub fn new(body: &str, user: User) -> Review {
         Review {
-            id: None,
+            id: 0,
             state: "COMMENTED".into(),
             body: Some(body.into()),
             html_url: String::new(),
@@ -434,8 +433,7 @@ impl CommentLike for &Review {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Comment {
-    #[serde(default)]
-    pub id: Option<u64>,
+    pub id: u64,
     #[serde(default)]
     pub pull_request_review_id: Option<u64>,
     pub commit_id: Option<String>,

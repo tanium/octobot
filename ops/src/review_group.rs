@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use octobot_lib::slack::SlackRecipient;
+use tokio::time::Instant;
 
 use crate::slack::{self, SlackAttachment, SlackRequest, Threading};
+use crate::util;
 use crate::worker::Worker;
 
 const MAX_COMMENTS: usize = 10;
@@ -12,7 +14,13 @@ const MAX_COMMENTS: usize = 10;
 pub struct ReviewItem {
     review_id: u64,
     default_msg: String,
-    comment: Option<(u64, SlackAttachment)>,
+    part: Part,
+}
+
+enum Part {
+    Comment(u64, SlackAttachment),
+    Submitted,
+    Commented,
 }
 
 impl ReviewItem {
@@ -25,7 +33,7 @@ impl ReviewItem {
         ReviewItem {
             review_id,
             default_msg: default_msg.to_string(),
-            comment: Some((comment_id, comment)),
+            part: Part::Comment(comment_id, comment),
         }
     }
 
@@ -33,7 +41,15 @@ impl ReviewItem {
         ReviewItem {
             review_id,
             default_msg: default_msg.to_string(),
-            comment: None,
+            part: Part::Submitted,
+        }
+    }
+
+    pub fn commented(review_id: u64, default_msg: &str) -> ReviewItem {
+        ReviewItem {
+            review_id,
+            default_msg: default_msg.to_string(),
+            part: Part::Commented,
         }
     }
 }
@@ -77,6 +93,7 @@ impl ReviewGroups {
     /**
      * Must be called from within a tokio runtime.
      * A submitted item's `msg` and `attachments` become the head of the grouped DM.
+     * A commented item's `attachments` do too, under its `default_msg`.
      * Comments are listed in comment id order, not arrival order.
      */
     pub fn add(
@@ -100,9 +117,12 @@ impl ReviewGroups {
                 generation: 0,
             });
 
-            match &item.comment {
-                Some(comment) => entry.comments.push(comment.clone()),
-                None => entry.header = Some((msg.to_string(), attachments.to_vec())),
+            match &item.part {
+                Part::Comment(id, comment) => entry.comments.push((*id, comment.clone())),
+                Part::Submitted => entry.header = Some((msg.to_string(), attachments.to_vec())),
+                Part::Commented => {
+                    entry.header = Some((item.default_msg.clone(), attachments.to_vec()))
+                }
             }
             entry.generation += 1;
 
@@ -130,17 +150,21 @@ impl ReviewGroups {
         let mut comments = entry.comments;
         comments.sort_by_key(|(id, _)| *id);
         let hidden = comments.len().saturating_sub(MAX_COMMENTS);
+        let more = comments.get(MAX_COMMENTS).map(|(_, first_hidden)| {
+            let text = format!("...and {} more comments", hidden);
+            match &first_hidden.title_link {
+                Some(url) => util::make_link(url, &text),
+                None => text,
+            }
+        });
         attachments.extend(
             comments
                 .into_iter()
                 .take(MAX_COMMENTS)
                 .map(|(_, comment)| comment),
         );
-        if hidden > 0 {
-            attachments.push(SlackAttachment::new(&format!(
-                "...and {} more comments",
-                hidden
-            )));
+        if let Some(more) = more {
+            attachments.push(SlackAttachment::new(&more));
         }
 
         self.slack.send(slack::req(
@@ -155,6 +179,7 @@ impl ReviewGroups {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::slack::SlackAttachmentBuilder;
 
     struct Capture {
         reqs: Mutex<Vec<SlackRequest>>,
@@ -164,14 +189,6 @@ mod tests {
         fn send(&self, req: SlackRequest) {
             self.reqs.lock().unwrap().push(req);
         }
-    }
-
-    fn run<F: std::future::Future<Output = ()>>(f: F) {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()
-            .unwrap()
-            .block_on(f);
     }
 
     fn new_test(quiet_ms: u64, max_wait_ms: u64) -> (Arc<Capture>, Arc<ReviewGroups>) {
@@ -198,156 +215,173 @@ mod tests {
         SlackRecipient::new("U1", "alice")
     }
 
-    #[test]
-    fn test_groups_comments_and_review_into_one_message() {
-        run(async {
-            let (capture, groups) = new_test(50, 1000);
-            let state = SlackAttachment::new("Review: Changes Requested");
+    #[tokio::test(start_paused = true)]
+    async fn test_groups_comments_and_review_into_one_message() {
+        let (capture, groups) = new_test(50, 1000);
+        let state = SlackAttachment::new("Review: Changes Requested");
 
-            groups.add(
-                &comment("one"),
+        groups.add(
+            &comment("one"),
+            user(),
+            Threading::Flat,
+            "Comment on PR",
+            &[],
+        );
+        groups.add(
+            &comment("two"),
+            user(),
+            Threading::Flat,
+            "Comment on PR",
+            &[],
+        );
+        groups.add(
+            &ReviewItem::submitted(1, "carol reviewed PR"),
+            user(),
+            Threading::Flat,
+            "carol requested changes to PR",
+            std::slice::from_ref(&state),
+        );
+
+        wait_ms(20).await;
+        assert!(capture.reqs.lock().unwrap().is_empty());
+
+        wait_ms(100).await;
+        assert_eq!(
+            vec![slack::req(
                 user(),
-                Threading::Flat,
-                "Comment on PR",
-                &[],
-            );
-            groups.add(
-                &comment("two"),
-                user(),
-                Threading::Flat,
-                "Comment on PR",
-                &[],
-            );
-            groups.add(
-                &ReviewItem::submitted(1, "carol reviewed PR"),
-                user(),
-                Threading::Flat,
                 "carol requested changes to PR",
-                std::slice::from_ref(&state),
-            );
-
-            wait_ms(20).await;
-            assert!(capture.reqs.lock().unwrap().is_empty());
-
-            wait_ms(100).await;
-            assert_eq!(
-                vec![slack::req(
-                    user(),
-                    "carol requested changes to PR",
-                    &[
-                        state,
-                        SlackAttachment::new("one"),
-                        SlackAttachment::new("two")
-                    ],
-                    Threading::Flat,
-                )],
-                *capture.reqs.lock().unwrap()
-            );
-        });
-    }
-
-    #[test]
-    fn test_comments_only_use_default_message_and_thread() {
-        run(async {
-            let (capture, groups) = new_test(20, 1000);
-
-            groups.add(
-                &comment("one"),
-                user(),
-                Threading::Root("org/repo/1".into()),
-                "Comment on PR",
-                &[],
-            );
-
-            wait_ms(80).await;
-            assert_eq!(
-                vec![slack::req(
-                    user(),
-                    "carol reviewed PR",
-                    &[SlackAttachment::new("one")],
-                    Threading::Root("org/repo/1".into()),
-                )],
-                *capture.reqs.lock().unwrap()
-            );
-        });
-    }
-
-    #[test]
-    fn test_separate_reviews_and_users_are_separate_messages() {
-        run(async {
-            let (capture, groups) = new_test(20, 1000);
-            let other =
-                ReviewItem::comment(2, 0, "dave reviewed PR", SlackAttachment::new("other"));
-
-            groups.add(&comment("one"), user(), Threading::Flat, "", &[]);
-            groups.add(
-                &comment("one"),
-                SlackRecipient::new("U2", "bob"),
+                &[
+                    state,
+                    SlackAttachment::new("one"),
+                    SlackAttachment::new("two")
+                ],
                 Threading::Flat,
-                "",
-                &[],
-            );
-            groups.add(&other, user(), Threading::Flat, "", &[]);
-
-            wait_ms(80).await;
-            assert_eq!(3, capture.reqs.lock().unwrap().len());
-        });
+            )],
+            *capture.reqs.lock().unwrap()
+        );
     }
 
-    #[test]
-    fn test_comments_sorted_by_id() {
-        run(async {
-            let (capture, groups) = new_test(20, 1000);
+    #[tokio::test(start_paused = true)]
+    async fn test_comments_only_use_default_message_and_thread() {
+        let (capture, groups) = new_test(20, 1000);
 
-            for (id, text) in [(889, "third"), (882, "first"), (886, "second")] {
-                let item = ReviewItem::comment(1, id, "", SlackAttachment::new(text));
-                groups.add(&item, user(), Threading::Flat, "", &[]);
-            }
+        groups.add(
+            &comment("one"),
+            user(),
+            Threading::Root("org/repo/1".into()),
+            "Comment on PR",
+            &[],
+        );
 
-            wait_ms(80).await;
-            let reqs = capture.reqs.lock().unwrap();
-            let texts: Vec<&str> = reqs[0]
-                .attachments
-                .iter()
-                .map(|a| a.text.as_str())
-                .collect();
-            assert_eq!(vec!["first", "second", "third"], texts);
-        });
+        wait_ms(80).await;
+        assert_eq!(
+            vec![slack::req(
+                user(),
+                "carol reviewed PR",
+                &[SlackAttachment::new("one")],
+                Threading::Root("org/repo/1".into()),
+            )],
+            *capture.reqs.lock().unwrap()
+        );
     }
 
-    #[test]
-    fn test_caps_listed_comments() {
-        run(async {
-            let (capture, groups) = new_test(20, 1000);
+    #[tokio::test(start_paused = true)]
+    async fn test_separate_reviews_and_users_are_separate_messages() {
+        let (capture, groups) = new_test(20, 1000);
+        let other = ReviewItem::comment(2, 0, "dave reviewed PR", SlackAttachment::new("other"));
 
-            for i in 0..12 {
-                groups.add(&comment(&i.to_string()), user(), Threading::Flat, "", &[]);
-            }
+        groups.add(&comment("one"), user(), Threading::Flat, "", &[]);
+        groups.add(
+            &comment("one"),
+            SlackRecipient::new("U2", "bob"),
+            Threading::Flat,
+            "",
+            &[],
+        );
+        groups.add(&other, user(), Threading::Flat, "", &[]);
 
-            wait_ms(80).await;
-            let reqs = capture.reqs.lock().unwrap();
-            assert_eq!(1, reqs.len());
-            assert_eq!(MAX_COMMENTS + 1, reqs[0].attachments.len());
-            assert_eq!(
-                "...and 2 more comments",
-                reqs[0].attachments[MAX_COMMENTS].text
-            );
-        });
+        wait_ms(80).await;
+        assert_eq!(3, capture.reqs.lock().unwrap().len());
     }
 
-    #[test]
-    fn test_max_wait_sends_without_waiting_for_quiet() {
-        run(async {
-            let (capture, groups) = new_test(60, 100);
+    #[tokio::test(start_paused = true)]
+    async fn test_comments_sorted_by_id() {
+        let (capture, groups) = new_test(20, 1000);
 
-            for _ in 0..4 {
-                groups.add(&comment("tick"), user(), Threading::Flat, "", &[]);
-                wait_ms(40).await;
-            }
+        for (id, text) in [(889, "third"), (882, "first"), (886, "second")] {
+            let item = ReviewItem::comment(1, id, "", SlackAttachment::new(text));
+            groups.add(&item, user(), Threading::Flat, "", &[]);
+        }
 
-            let reqs = capture.reqs.lock().unwrap();
-            assert_eq!(1, reqs.len());
-            assert_eq!(3, reqs[0].attachments.len());
-        });
+        wait_ms(80).await;
+        let reqs = capture.reqs.lock().unwrap();
+        let texts: Vec<&str> = reqs[0]
+            .attachments
+            .iter()
+            .map(|a| a.text.as_str())
+            .collect();
+        assert_eq!(vec!["first", "second", "third"], texts);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_caps_listed_comments() {
+        let (capture, groups) = new_test(20, 1000);
+
+        for i in 0..12 {
+            let attachment = SlackAttachmentBuilder::new(&i.to_string())
+                .title_link(format!("http://comment/{}", i))
+                .build();
+            let item = ReviewItem::comment(1, i, "", attachment);
+            groups.add(&item, user(), Threading::Flat, "", &[]);
+        }
+
+        wait_ms(80).await;
+        let reqs = capture.reqs.lock().unwrap();
+        assert_eq!(1, reqs.len());
+        assert_eq!(MAX_COMMENTS + 1, reqs[0].attachments.len());
+        assert_eq!(
+            "<http://comment/10|...and 2 more comments>",
+            reqs[0].attachments[MAX_COMMENTS].text
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_commented_review_uses_default_message() {
+        let (capture, groups) = new_test(20, 1000);
+        let body = SlackAttachment::new("looks close");
+
+        groups.add(&comment("one"), user(), Threading::Flat, "", &[]);
+        groups.add(
+            &ReviewItem::commented(1, "carol reviewed PR"),
+            user(),
+            Threading::Flat,
+            "Comment on PR",
+            std::slice::from_ref(&body),
+        );
+
+        wait_ms(80).await;
+        assert_eq!(
+            vec![slack::req(
+                user(),
+                "carol reviewed PR",
+                &[body, SlackAttachment::new("one")],
+                Threading::Flat,
+            )],
+            *capture.reqs.lock().unwrap()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_max_wait_sends_without_waiting_for_quiet() {
+        let (capture, groups) = new_test(60, 100);
+
+        for _ in 0..4 {
+            groups.add(&comment("tick"), user(), Threading::Flat, "", &[]);
+            wait_ms(40).await;
+        }
+
+        let reqs = capture.reqs.lock().unwrap();
+        assert_eq!(1, reqs.len());
+        assert_eq!(3, reqs[0].attachments.len());
     }
 }

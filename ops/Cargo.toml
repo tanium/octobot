@@ -29,4 +29,4 @@ anyhow = { version = "1.0.72", features = ["backtrace"] }
 maplit = "1.0.2"
 tempfile = "3"
 mockito = "1"
-tokio = { version = "1.43.1", features = ["macros", "rt", "sync", "time"] }
+tokio = { version = "1.43.1", features = ["macros", "rt", "sync", "test-util", "time"] }
