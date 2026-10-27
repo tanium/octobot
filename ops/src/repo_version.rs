@@ -285,7 +285,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                 &req.repo,
                                 &req.branch,
                                 &req.commits,
-                                vec![req.repo.html_url.to_string()],
+                                vec![messenger::Thread::new(&req.repo.html_url)],
                                 false,
                             );
                         } else {

@@ -13,7 +13,7 @@ use octobot_lib::github;
 use octobot_lib::repos;
 use octobot_lib::slack::SlackRecipient;
 use octobot_ops::pr_merge;
-use octobot_ops::slack::{self, SlackAttachmentBuilder};
+use octobot_ops::slack::{self, SlackAttachmentBuilder, Threading};
 
 use anyhow::anyhow;
 
@@ -951,8 +951,7 @@ async fn test_pr_merge_backport_failure() {
                 .title_link("")
                 .color("danger")
                 .build()],
-            None,
-            false,
+            Threading::Flat,
         )
     ]);
 
