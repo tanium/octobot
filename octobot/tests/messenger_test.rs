@@ -306,7 +306,7 @@ fn test_peace_and_quiet_teams() {
 
 fn thread_direct_messages(config: &Config, github_name: &str) {
     let mut user = config.users().lookup_info(github_name).unwrap();
-    user.thread_direct_messages = true;
+    user.thread_direct_messages = Some(true);
     config.users_write().update(&user).unwrap();
 }
 

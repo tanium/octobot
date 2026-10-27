@@ -8,6 +8,9 @@ use crate::db;
 use crate::errors::*;
 use crate::slack::SlackRecipient;
 
+// Applies to users who have never set thread_direct_messages.
+pub const THREAD_DIRECT_MESSAGES_DEFAULT: bool = false;
+
 #[derive(Deserialize, Serialize, Clone)]
 pub struct UserInfo {
     pub id: Option<i32>,
@@ -19,7 +22,7 @@ pub struct UserInfo {
     pub mute_team_direct_messages: bool,
     pub muted_repos: Vec<String>,
     #[serde(default)]
-    pub thread_direct_messages: bool,
+    pub thread_direct_messages: Option<bool>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -50,7 +53,7 @@ impl UserInfo {
             mute_direct_messages: false,
             mute_team_direct_messages: false,
             muted_repos,
-            thread_direct_messages: false,
+            thread_direct_messages: None,
         }
     }
 }
@@ -76,7 +79,7 @@ impl UserConfig {
                 &db::to_tinyint(user.mute_direct_messages) as &dyn ToSql,
                 &user.muted_repos.join(","),
                 &db::to_tinyint(user.mute_team_direct_messages) as &dyn ToSql,
-                &db::to_tinyint(user.thread_direct_messages) as &dyn ToSql,
+                &user.thread_direct_messages.map(db::to_tinyint) as &dyn ToSql,
             ],
         )
         .map_err(|e| anyhow!("Error inserting user {}: {}", user.github, e))?;
@@ -97,7 +100,7 @@ impl UserConfig {
                 &user.muted_repos.join(","),
                 &user.id,
                 &db::to_tinyint(user.mute_team_direct_messages) as &dyn ToSql,
-                &db::to_tinyint(user.thread_direct_messages) as &dyn ToSql,
+                &user.thread_direct_messages.map(db::to_tinyint) as &dyn ToSql,
             ],
         ).map_err(|e| anyhow!("Error updating user {}: {}", user.github, e))?;
 
@@ -137,7 +140,9 @@ impl UserConfig {
             };
             Some(DirectMessage {
                 recipient,
-                use_threads: u.thread_direct_messages,
+                use_threads: u
+                    .thread_direct_messages
+                    .unwrap_or(THREAD_DIRECT_MESSAGES_DEFAULT),
             })
         })
     }
@@ -162,7 +167,7 @@ impl UserConfig {
                     .map(|s| s.trim().to_owned())
                     .filter(|s| !s.is_empty())
                     .collect(),
-                thread_direct_messages: db::to_bool(row.get(8)?),
+                thread_direct_messages: row.get::<usize, Option<i32>>(8)?.map(db::to_bool),
             })
         })?;
 
@@ -205,7 +210,7 @@ impl UserConfig {
                     .map(|s| s.trim().to_owned())
                     .filter(|s| !s.is_empty())
                     .collect(),
-                thread_direct_messages: db::to_bool(row.get(7)?),
+                thread_direct_messages: row.get::<usize, Option<i32>>(7)?.map(db::to_bool),
             })
         })?;
 
@@ -318,26 +323,40 @@ mod tests {
     fn test_thread_direct_messages() {
         let (mut users, _temp) = new_test();
 
-        let mut info = UserInfo::new("some-git-user", "the-slacker", "1234", "", Vec::new());
-        info.thread_direct_messages = true;
+        let info = UserInfo::new("some-git-user", "the-slacker", "1234", "", Vec::new());
         users.insert_info(&info).unwrap();
 
-        assert!(
-            users
-                .lookup_info("some-git-user")
-                .unwrap()
-                .thread_direct_messages
+        let thread_dm = |users: &UserConfig| {
+            let looked_up = users.lookup_info("some-git-user").unwrap();
+            assert_eq!(
+                looked_up.thread_direct_messages,
+                users.get_all().unwrap()[0].thread_direct_messages
+            );
+            looked_up.thread_direct_messages
+        };
+
+        assert_eq!(None, thread_dm(&users));
+        assert_eq!(
+            Some(dm(
+                SlackRecipient::new("1234", "the-slacker"),
+                THREAD_DIRECT_MESSAGES_DEFAULT
+            )),
+            users.slack_direct_message("some-git-user", false, &"org/repo".into())
         );
+
+        let mut info = users.lookup_info("some-git-user").unwrap();
+        info.thread_direct_messages = Some(true);
+        users.update(&info).unwrap();
+
+        assert_eq!(Some(true), thread_dm(&users));
         assert_eq!(
             Some(dm(SlackRecipient::new("1234", "the-slacker"), true)),
             users.slack_direct_message("some-git-user", false, &"org/repo".into())
         );
-        assert!(users.get_all().unwrap()[0].thread_direct_messages);
 
-        let mut info = users.lookup_info("some-git-user").unwrap();
-        info.thread_direct_messages = false;
+        info.thread_direct_messages = Some(false);
         users.update(&info).unwrap();
 
-        assert!(!users.get_all().unwrap()[0].thread_direct_messages);
+        assert_eq!(Some(false), thread_dm(&users));
     }
 }
