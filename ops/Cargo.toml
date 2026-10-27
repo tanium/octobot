@@ -17,7 +17,7 @@ log = "0.4.19"
 regex = "1.9.3"
 serde = "1.0.183"
 serde_derive = "1.0.183"
-tokio = { version = "1.43.1", features = ["rt", "time"] }
+tokio = { version = "1.43.1", features = ["rt", "sync", "time"] }
 unidiff = "0.3.3"
 reqwest = { version = "0.11.18", features = ["json"] }
 async-trait = "0.1.72"
@@ -28,3 +28,5 @@ anyhow = { version = "1.0.72", features = ["backtrace"] }
 [dev-dependencies]
 maplit = "1.0.2"
 tempfile = "3"
+mockito = "1"
+tokio = { version = "1.43.1", features = ["macros", "rt", "sync", "time"] }

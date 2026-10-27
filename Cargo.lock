@@ -1287,6 +1287,7 @@ dependencies = [
  "hyper 0.14.32",
  "log",
  "maplit",
+ "mockito",
  "octobot_lib",
  "regex",
  "reqwest",

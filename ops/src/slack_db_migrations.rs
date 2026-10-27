@@ -12,5 +12,6 @@ pub fn all_migrations() -> Vec<Box<dyn Migration>> {
     );
     "#),
         sql(r#"create index pull_request_threads_timestamp on pull_request_threads (timestamp)"#),
+        sql(r#"update pull_request_threads set timestamp = CURRENT_TIMESTAMP"#),
     ]
 }

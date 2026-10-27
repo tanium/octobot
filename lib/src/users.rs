@@ -332,6 +332,7 @@ mod tests {
             Some(dm(SlackRecipient::new("1234", "the-slacker"), true)),
             users.slack_direct_message("some-git-user", false, &"org/repo".into())
         );
+        assert!(users.get_all().unwrap()[0].thread_direct_messages);
 
         let mut info = users.lookup_info("some-git-user").unwrap();
         info.thread_direct_messages = false;

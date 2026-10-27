@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
@@ -100,6 +101,15 @@ pub struct Slack {
     client: Arc<HTTPClient>,
     recent_messages: Mutex<Vec<SlackMessage>>,
     slack_db: Mutex<SlackDatabase>,
+    thread_locks: Mutex<HashMap<ThreadKey, Arc<tokio::sync::Mutex<()>>>>,
+}
+
+type ThreadKey = (String, String);
+
+enum Posted {
+    Sent(String),
+    Rejected,
+    Failed,
 }
 
 const TRIM_MESSAGES_AT: usize = 200;
@@ -107,6 +117,15 @@ const TRIM_MESSAGES_TO: usize = 20;
 
 impl Slack {
     pub fn new(bot_token: String, slack_db_path: String, metrics: Arc<Metrics>) -> Slack {
+        Slack::new_with_url("https://slack.com/api", bot_token, slack_db_path, metrics)
+    }
+
+    pub fn new_with_url(
+        api_base: &str,
+        bot_token: String,
+        slack_db_path: String,
+        metrics: Arc<Metrics>,
+    ) -> Slack {
         let slack_db = SlackDatabase::new(&slack_db_path).expect("init slack db");
 
         let mut headers = reqwest::header::HeaderMap::new();
@@ -116,7 +135,7 @@ impl Slack {
         );
 
         let client = Arc::new(
-            HTTPClient::new_with_headers("https://slack.com/api", headers)
+            HTTPClient::new_with_headers(api_base, headers)
                 .unwrap()
                 .with_metrics(
                     metrics.slack_api_responses.clone(),
@@ -127,6 +146,7 @@ impl Slack {
             client,
             slack_db: Mutex::new(slack_db),
             recent_messages: Mutex::new(Vec::new()),
+            thread_locks: Mutex::new(HashMap::new()),
         }
     }
 
@@ -134,26 +154,75 @@ impl Slack {
         self.slack_db.lock().unwrap().clean(expiration)
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn send(
         &self,
         channel_id: &str,
         channel_name: &str,
         msg: &str,
         attachments: Vec<SlackAttachment>,
-        initial_thread: bool,
+        threading: Threading,
+    ) {
+        let Some(thread_guid) = threading.guid().map(str::to_string) else {
+            let slack_msg = SlackMessage {
+                text: msg.to_string(),
+                attachments,
+                channel: channel_id.to_string(),
+                thread_ts: None,
+            };
+            self.post_unique(&slack_msg, channel_name).await;
+            return;
+        };
+
+        // Held from lookup through save so concurrent sends for one PR agree on its thread.
+        let key = (thread_guid.clone(), channel_id.to_string());
+        let lock = self
+            .thread_locks
+            .lock()
+            .unwrap()
+            .entry(key.clone())
+            .or_default()
+            .clone();
+        {
+            let _guard = lock.lock().await;
+            self.send_threaded(
+                channel_id,
+                channel_name,
+                msg,
+                attachments,
+                &thread_guid,
+                threading,
+            )
+            .await;
+        }
+
+        let mut locks = self.thread_locks.lock().unwrap();
+        if Arc::strong_count(&lock) == 2 {
+            locks.remove(&key);
+        }
+    }
+
+    async fn send_threaded(
+        &self,
+        channel_id: &str,
+        channel_name: &str,
+        msg: &str,
+        attachments: Vec<SlackAttachment>,
         thread_guid: &str,
-        thread_root: Option<ThreadRoot>,
+        threading: Threading,
     ) {
         let mut parent_thread = self.lookup_thread(thread_guid, channel_id);
+        let mut start_with_msg = false;
 
-        if parent_thread.is_none()
-            && !thread_guid.is_empty()
-            && let Some(root) = thread_root
-        {
-            parent_thread = self
-                .start_thread(channel_id, channel_name, root, thread_guid)
-                .await;
+        if parent_thread.is_none() {
+            match threading {
+                Threading::ReplyOrStart(_, root) => {
+                    parent_thread = self
+                        .start_thread(channel_id, channel_name, root, thread_guid)
+                        .await;
+                }
+                Threading::Root(_) => start_with_msg = true,
+                Threading::Reply(_) | Threading::Flat => (),
+            }
         }
 
         let slack_msg = SlackMessage {
@@ -163,20 +232,22 @@ impl Slack {
             thread_ts: parent_thread.clone(),
         };
 
-        if !self.is_unique(&slack_msg) {
-            info!("Skipping duplicate message to {}", channel_name);
-            return;
-        }
-
-        let Some(thread) = self.post(&slack_msg, channel_name).await else {
-            return;
-        };
-
-        if initial_thread && !thread_guid.is_empty() && parent_thread.is_none() {
-            let slack_db = self.slack_db.lock().unwrap();
-            slack_db
-                .insert_thread(thread_guid, channel_id, &thread)
-                .ok();
+        match self.post_unique(&slack_msg, channel_name).await {
+            Posted::Sent(_) if parent_thread.is_some() => {
+                self.touch_thread(thread_guid, channel_id);
+            }
+            Posted::Sent(thread) if start_with_msg => {
+                self.save_thread(thread_guid, channel_id, &thread);
+            }
+            Posted::Rejected if parent_thread.is_some() => {
+                // A thread Slack won't reply to shouldn't swallow the message.
+                let top_level = SlackMessage {
+                    thread_ts: None,
+                    ..slack_msg
+                };
+                self.post(&top_level, channel_name).await;
+            }
+            _ => (),
         }
     }
 
@@ -204,24 +275,36 @@ impl Slack {
             channel: channel_id.to_string(),
             thread_ts: None,
         };
-        let thread = self.post(&root_msg, channel_name).await?;
+        let Posted::Sent(thread) = self.post(&root_msg, channel_name).await else {
+            return None;
+        };
+        self.save_thread(thread_guid, channel_id, &thread);
+        Some(thread)
+    }
 
+    fn save_thread(&self, thread_guid: &str, channel_id: &str, thread: &str) {
         let slack_db = self.slack_db.lock().unwrap();
-        if slack_db
-            .insert_thread(thread_guid, channel_id, &thread)
-            .is_ok()
-        {
-            return Some(thread);
-        }
-
-        // A concurrent send started this thread first; reply to that one instead.
-        match slack_db.lookup_previous_thread(thread_guid, channel_id) {
-            Ok(Some(existing)) => Some(existing),
-            _ => Some(thread),
+        if let Err(e) = slack_db.insert_thread(thread_guid, channel_id, thread) {
+            error!("{}", e);
         }
     }
 
-    async fn post(&self, slack_msg: &SlackMessage, channel_name: &str) -> Option<String> {
+    fn touch_thread(&self, thread_guid: &str, channel_id: &str) {
+        let slack_db = self.slack_db.lock().unwrap();
+        if let Err(e) = slack_db.touch_thread(thread_guid, channel_id) {
+            error!("{}", e);
+        }
+    }
+
+    async fn post_unique(&self, slack_msg: &SlackMessage, channel_name: &str) -> Posted {
+        if !self.is_unique(slack_msg) {
+            info!("Skipping duplicate message to {}", channel_name);
+            return Posted::Failed;
+        }
+        self.post(slack_msg, channel_name).await
+    }
+
+    async fn post(&self, slack_msg: &SlackMessage, channel_name: &str) -> Posted {
         debug!("Sending message to #{}", channel_name);
 
         let res: Result<SlackResponse> = self.client.post("/chat.postMessage", slack_msg).await;
@@ -232,7 +315,7 @@ impl Slack {
                     "Successfully sent slack message to {}, ts: \"{}\"",
                     channel_name, thread
                 );
-                Some(thread)
+                Posted::Sent(thread)
             }
             Ok(r) => {
                 error!(
@@ -241,14 +324,14 @@ impl Slack {
                     slack_msg.channel,
                     r.error.unwrap_or_default(),
                 );
-                None
+                Posted::Rejected
             }
             Err(e) => {
                 error!(
                     "Error sending slack message to {} ({}): {}",
                     channel_name, slack_msg.channel, e
                 );
-                None
+                Posted::Failed
             }
         }
     }
@@ -341,18 +424,30 @@ impl Slack {
 #[derive(Debug, PartialEq, Clone)]
 pub struct SlackRequest {
     pub channel: SlackRecipient,
-    pub thread_guid: Option<String>,
     pub msg: String,
     pub attachments: Vec<SlackAttachment>,
-    pub initial_thread: bool,
-    pub thread_root: Option<ThreadRoot>,
+    pub threading: Threading,
 }
 
-impl SlackRequest {
-    pub fn with_thread_root(self, thread_root: ThreadRoot) -> SlackRequest {
-        SlackRequest {
-            thread_root: Some(thread_root),
-            ..self
+// How a message joins the thread stored for a (guid, channel) pair.
+#[derive(Debug, PartialEq, Clone)]
+pub enum Threading {
+    Flat,
+    // Reply if the thread exists, otherwise post top-level without starting one.
+    Reply(String),
+    // Reply if the thread exists, otherwise this message starts it.
+    Root(String),
+    // Reply if the thread exists, otherwise post the root, start the thread with it, and reply.
+    ReplyOrStart(String, ThreadRoot),
+}
+
+impl Threading {
+    pub fn guid(&self) -> Option<&str> {
+        match self {
+            Threading::Flat => None,
+            Threading::Reply(guid) | Threading::Root(guid) | Threading::ReplyOrStart(guid, _) => {
+                Some(guid)
+            }
         }
     }
 }
@@ -391,16 +486,13 @@ pub fn req(
     channel: SlackRecipient,
     msg: &str,
     attachments: &[SlackAttachment],
-    thread_guid: Option<String>,
-    initial_thread: bool,
+    threading: Threading,
 ) -> SlackRequest {
     SlackRequest {
         channel,
-        thread_guid,
         msg: msg.into(),
         attachments: attachments.into(),
-        initial_thread,
-        thread_root: None,
+        threading,
     }
 }
 
@@ -417,10 +509,214 @@ impl worker::Runner<SlackRequest> for Runner {
                 &req.channel.name,
                 &req.msg,
                 req.attachments,
-                req.initial_thread,
-                req.thread_guid.unwrap_or_default().as_str(),
-                req.thread_root,
+                req.threading,
             )
             .await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use mockito::{Matcher, Mock, Server};
+    use serde_json::json;
+    use tempfile::{TempDir, tempdir};
+
+    use super::*;
+
+    const GUID: &str = "org/repo/1";
+    const CHANNEL: &str = "C123";
+
+    fn new_test(server: &Server) -> (Slack, TempDir) {
+        let dir = tempdir().unwrap();
+        let db = dir.path().join("slack.sqlite3");
+        let slack = Slack::new_with_url(
+            &server.url(),
+            "token".into(),
+            db.to_string_lossy().into(),
+            Metrics::new(),
+        );
+        (slack, dir)
+    }
+
+    async fn expect_post(server: &mut Server, body: serde_json::Value, resp: &str) -> Mock {
+        server
+            .mock("POST", "/chat.postMessage")
+            .match_body(Matcher::PartialJson(body))
+            .with_body(resp)
+            .expect(1)
+            .create_async()
+            .await
+    }
+
+    fn root() -> ThreadRoot {
+        ThreadRoot {
+            msg: "root".into(),
+            attachments: vec![],
+        }
+    }
+
+    fn saved_thread(slack: &Slack) -> Option<String> {
+        let db = slack.slack_db.lock().unwrap();
+        db.lookup_previous_thread(GUID, CHANNEL).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_reply_or_start_posts_root_then_reply() {
+        let mut server = Server::new_async().await;
+        let (slack, _dir) = new_test(&server);
+        let root_post = expect_post(
+            &mut server,
+            json!({"text": "root", "thread_ts": null}),
+            r#"{"ok": true, "ts": "1.0"}"#,
+        )
+        .await;
+        let reply = expect_post(
+            &mut server,
+            json!({"text": "hello", "thread_ts": "1.0"}),
+            r#"{"ok": true, "ts": "2.0"}"#,
+        )
+        .await;
+
+        let threading = Threading::ReplyOrStart(GUID.into(), root());
+        slack
+            .send(CHANNEL, "chan", "hello", vec![], threading)
+            .await;
+
+        root_post.assert_async().await;
+        reply.assert_async().await;
+        assert_eq!(Some("1.0".to_string()), saved_thread(&slack));
+    }
+
+    #[tokio::test]
+    async fn test_reply_uses_existing_thread() {
+        let mut server = Server::new_async().await;
+        let (slack, _dir) = new_test(&server);
+        slack.save_thread(GUID, CHANNEL, "1.0");
+        let reply = expect_post(
+            &mut server,
+            json!({"text": "hello", "thread_ts": "1.0"}),
+            r#"{"ok": true, "ts": "2.0"}"#,
+        )
+        .await;
+
+        let threading = Threading::ReplyOrStart(GUID.into(), root());
+        slack
+            .send(CHANNEL, "chan", "hello", vec![], threading)
+            .await;
+
+        reply.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_root_starts_thread_with_message() {
+        let mut server = Server::new_async().await;
+        let (slack, _dir) = new_test(&server);
+        let post = expect_post(
+            &mut server,
+            json!({"text": "hello", "thread_ts": null}),
+            r#"{"ok": true, "ts": "3.0"}"#,
+        )
+        .await;
+
+        let threading = Threading::Root(GUID.into());
+        slack
+            .send(CHANNEL, "chan", "hello", vec![], threading)
+            .await;
+
+        post.assert_async().await;
+        assert_eq!(Some("3.0".to_string()), saved_thread(&slack));
+    }
+
+    #[tokio::test]
+    async fn test_reply_without_thread_stays_top_level() {
+        let mut server = Server::new_async().await;
+        let (slack, _dir) = new_test(&server);
+        let post = expect_post(
+            &mut server,
+            json!({"text": "hello", "thread_ts": null}),
+            r#"{"ok": true, "ts": "3.0"}"#,
+        )
+        .await;
+
+        let threading = Threading::Reply(GUID.into());
+        slack
+            .send(CHANNEL, "chan", "hello", vec![], threading)
+            .await;
+
+        post.assert_async().await;
+        assert_eq!(None, saved_thread(&slack));
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_sends_share_one_thread() {
+        let mut server = Server::new_async().await;
+        let (slack, _dir) = new_test(&server);
+        let root_post = expect_post(
+            &mut server,
+            json!({"text": "root", "thread_ts": null}),
+            r#"{"ok": true, "ts": "1.0"}"#,
+        )
+        .await;
+        let first = expect_post(
+            &mut server,
+            json!({"text": "one", "thread_ts": "1.0"}),
+            r#"{"ok": true, "ts": "2.0"}"#,
+        )
+        .await;
+        let second = expect_post(
+            &mut server,
+            json!({"text": "two", "thread_ts": "1.0"}),
+            r#"{"ok": true, "ts": "3.0"}"#,
+        )
+        .await;
+
+        tokio::join!(
+            slack.send(
+                CHANNEL,
+                "chan",
+                "one",
+                vec![],
+                Threading::ReplyOrStart(GUID.into(), root())
+            ),
+            slack.send(
+                CHANNEL,
+                "chan",
+                "two",
+                vec![],
+                Threading::ReplyOrStart(GUID.into(), root())
+            ),
+        );
+
+        root_post.assert_async().await;
+        first.assert_async().await;
+        second.assert_async().await;
+        assert!(slack.thread_locks.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_rejected_reply_falls_back_to_top_level() {
+        let mut server = Server::new_async().await;
+        let (slack, _dir) = new_test(&server);
+        slack.save_thread(GUID, CHANNEL, "1.0");
+        let reply = expect_post(
+            &mut server,
+            json!({"text": "hello", "thread_ts": "1.0"}),
+            r#"{"ok": false, "error": "thread_not_found"}"#,
+        )
+        .await;
+        let top_level = expect_post(
+            &mut server,
+            json!({"text": "hello", "thread_ts": null}),
+            r#"{"ok": true, "ts": "2.0"}"#,
+        )
+        .await;
+
+        let threading = Threading::Reply(GUID.into());
+        slack
+            .send(CHANNEL, "chan", "hello", vec![], threading)
+            .await;
+
+        reply.assert_async().await;
+        top_level.assert_async().await;
     }
 }

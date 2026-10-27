@@ -2,7 +2,7 @@ use log::info;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::slack::{self, SlackAttachment, SlackRequest, ThreadRoot};
+use crate::slack::{self, SlackAttachment, SlackRequest, ThreadRoot, Threading};
 use crate::util;
 use crate::worker::Worker;
 use octobot_lib::config::Config;
@@ -207,29 +207,30 @@ impl Messenger {
                     recipient,
                     &channel_msg,
                     attachments,
-                    None,
-                    initial_thread,
+                    Threading::Flat,
                 ));
                 continue;
             }
 
             for thread in &threads {
-                let req = slack::req(
+                let guid = thread.guid.clone();
+                let threading = match &thread.pull_request {
+                    _ if initial_thread => Threading::Root(guid),
+                    Some(pr) => Threading::ReplyOrStart(
+                        guid,
+                        ThreadRoot {
+                            msg: format!("New thread for Pull Request ({})", repo_link),
+                            attachments: vec![pr.clone()],
+                        },
+                    ),
+                    None => Threading::Reply(guid),
+                };
+                self.slack.send(slack::req(
                     recipient.clone(),
                     &channel_msg,
                     attachments,
-                    Some(thread.guid.clone()),
-                    initial_thread,
-                );
-                match &thread.pull_request {
-                    Some(pr) if !initial_thread => {
-                        self.slack.send(req.with_thread_root(ThreadRoot {
-                            msg: format!("New thread for Pull Request ({})", repo_link),
-                            attachments: vec![pr.clone()],
-                        }))
-                    }
-                    _ => self.slack.send(req),
-                }
+                    threading,
+                ));
             }
         }
     }
@@ -255,15 +256,12 @@ impl Messenger {
             );
 
             if let Some(user_dm) = user_dm {
-                let thread_guid = thread_guid.clone().filter(|_| user_dm.use_threads);
-                let initial_thread = thread_guid.is_some();
-                self.slack.send(slack::req(
-                    user_dm.recipient,
-                    msg,
-                    attachments,
-                    thread_guid,
-                    initial_thread,
-                ));
+                let threading = match &thread_guid {
+                    Some(guid) if user_dm.use_threads => Threading::Root(guid.clone()),
+                    _ => Threading::Flat,
+                };
+                self.slack
+                    .send(slack::req(user_dm.recipient, msg, attachments, threading));
             }
         }
     }

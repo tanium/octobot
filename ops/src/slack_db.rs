@@ -47,15 +47,17 @@ impl SlackDatabase {
             )
             .unwrap_or(None);
 
-        if thread.is_some() {
-            conn.execute(
-                "UPDATE pull_request_threads SET timestamp = CURRENT_TIMESTAMP WHERE guid = ?1 AND channel = ?2",
-                [&thread_guid, &slack_channel],
-            )
-            .map_err(|e| anyhow!("Error refreshing slack thread {}: {}", thread_guid, e))?;
-        }
-
         Ok(thread)
+    }
+
+    pub fn touch_thread(&self, thread_guid: &str, slack_channel: &str) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE pull_request_threads SET timestamp = CURRENT_TIMESTAMP WHERE guid = ?1 AND channel = ?2",
+            [thread_guid, slack_channel],
+        )
+        .map_err(|e| anyhow!("Error refreshing slack thread {}: {}", thread_guid, e))?;
+        Ok(())
     }
 
     pub fn insert_thread(
@@ -158,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lookup_refreshes_thread() {
+    fn test_touch_refreshes_thread() {
         let (db, _temp) = new_test();
 
         db.connect()
@@ -170,11 +172,7 @@ mod tests {
             )
             .unwrap();
 
-        assert!(
-            db.lookup_previous_thread("org/repo/1", "U123")
-                .unwrap()
-                .is_some()
-        );
+        db.touch_thread("org/repo/1", "U123").unwrap();
 
         let day = Duration::from_secs(24 * 3600);
         db.clean(SystemTime::now() - 30 * day).unwrap();

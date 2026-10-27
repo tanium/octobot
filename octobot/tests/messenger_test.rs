@@ -12,7 +12,7 @@ use octobot_lib::github;
 use octobot_lib::repos::RepoInfo;
 use octobot_lib::slack::SlackRecipient;
 use octobot_ops::messenger;
-use octobot_ops::slack::{self, SlackAttachmentBuilder, ThreadRoot};
+use octobot_ops::slack::{self, SlackAttachmentBuilder, ThreadRoot, Threading};
 
 fn new_test() -> (Arc<Config>, TempDir) {
     let temp_dir = tempdir().unwrap();
@@ -40,8 +40,7 @@ fn test_sends_to_owner() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        None,
-        false,
+        Threading::Flat,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
@@ -65,8 +64,7 @@ fn test_sends_to_mapped_usernames() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        None,
-        false,
+        Threading::Flat,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
 
@@ -98,15 +96,13 @@ fn test_sends_to_owner_with_channel() {
             SlackRecipient::by_name("the-review-channel"),
             "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
             &[],
-            None,
-            false,
+            Threading::Flat,
         ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
-            None,
-            false,
+            Threading::Flat,
         ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -136,22 +132,19 @@ fn test_sends_to_assignees() {
             SlackRecipient::user_mention("assign1"),
             "hello there",
             &[],
-            None,
-            false,
+            Threading::Flat,
         ),
         slack::req(
             SlackRecipient::user_mention("assign2"),
             "hello there",
             &[],
-            None,
-            false,
+            Threading::Flat,
         ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
-            None,
-            false,
+            Threading::Flat,
         ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -182,8 +175,7 @@ fn test_does_not_send_to_event_sender() {
         SlackRecipient::user_mention("userB"),
         "hello there",
         &[],
-        None,
-        false,
+        Threading::Flat,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     // Note: 'userA' is owner, sender, and assignee. (i.e. commented on a PR that he opened and is
@@ -215,15 +207,13 @@ fn test_sends_only_once() {
             SlackRecipient::user_mention("assign2"),
             "hello there",
             &[],
-            None,
-            false,
+            Threading::Flat,
         ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
-            None,
-            false,
+            Threading::Flat,
         ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -259,8 +249,7 @@ fn test_peace_and_quiet() {
         SlackRecipient::user_mention("assign2"),
         "hello there",
         &[],
-        None,
-        false,
+        Threading::Flat,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
 
@@ -295,8 +284,7 @@ fn test_peace_and_quiet_teams() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        None,
-        false,
+        Threading::Flat,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
 
@@ -335,8 +323,7 @@ fn test_threads_direct_messages() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        Some("some-user/some-repo/1".to_string()),
-        true,
+        Threading::Root("some-user/some-repo/1".to_string()),
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
@@ -364,8 +351,7 @@ fn test_issue_direct_messages_not_threaded() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        None,
-        false,
+        Threading::Flat,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
@@ -392,15 +378,13 @@ fn test_threads_direct_messages_per_user() {
             SlackRecipient::user_mention("assign1"),
             "hello there",
             &[],
-            Some("some-user/some-repo/1".to_string()),
-            true,
+            Threading::Root("some-user/some-repo/1".to_string()),
         ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
-            None,
-            false,
+            Threading::Flat,
         ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -429,8 +413,7 @@ fn test_send_to_owner_not_threaded() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        None,
-        false,
+        Threading::Flat,
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_owner(
@@ -480,16 +463,13 @@ fn test_channel_thread_root() {
             SlackRecipient::by_name("the-review-channel"),
             "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
             &[],
-            Some("the-owner/the-repo/1".to_string()),
-            false,
-        )
-        .with_thread_root(root),
+            Threading::ReplyOrStart("the-owner/the-repo/1".to_string(), root),
+        ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),
             "hello there",
             &[],
-            None,
-            false,
+            Threading::Flat,
         ),
     ]);
     let messenger = messenger::new(config, slack.new_sender());
@@ -514,8 +494,7 @@ fn test_channel_initial_thread_has_no_root() {
         SlackRecipient::by_name("the-review-channel"),
         "opened (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
         &[],
-        Some("the-owner/the-repo/1".to_string()),
-        true,
+        Threading::Root("the-owner/the-repo/1".to_string()),
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_channel(
@@ -537,8 +516,7 @@ fn test_thread_without_pull_request_has_no_root() {
         SlackRecipient::by_name("the-review-channel"),
         "hello there (<http://git.foo.com/the-owner/the-repo|the-owner/the-repo>)",
         &[],
-        Some("the-owner/the-repo/1".to_string()),
-        false,
+        Threading::Reply("the-owner/the-repo/1".to_string()),
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_channel(
