@@ -899,8 +899,6 @@ async fn test_pr_merge_propagates_labels() {
     pr.labels = Some(vec![
         github::Label::new("backport-1.0"),
         github::Label::new("skip-windows"),
-        github::Label::new("failed-backport"),
-        github::Label::new("docs"),
     ]);
     let pr = pr;
 
@@ -930,7 +928,7 @@ async fn test_pr_merge_propagates_labels() {
         "the-owner",
         "the-repo",
         456,
-        vec!["skip-windows".into(), "docs".into()],
+        vec!["skip-windows".into()],
         Ok(()),
     );
 

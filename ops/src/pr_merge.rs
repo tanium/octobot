@@ -22,7 +22,7 @@ const FAILED_BACKPORT_LABEL: &str = "failed-backport";
 /// Returns the branch suffix named by a backport label (e.g. "1.0" for
 /// "backport-1.0"), or None if the label is not a backport label.
 pub fn backport_label_target(label: &str) -> Option<String> {
-    let re = Regex::new(r"(?i)backport-(.+)").unwrap();
+    let re = Regex::new(r"(?i)^backport-(.+)").unwrap();
     re.captures(label).map(|c| c[1].to_string())
 }
 
@@ -568,6 +568,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_backport_label_target() {
+        assert_eq!(backport_label_target("backport-1.0"), Some("1.0".into()));
+        assert_eq!(
+            backport_label_target("Backport-master"),
+            Some("master".into())
+        );
+        assert_eq!(backport_label_target("backport-"), None);
+        assert_eq!(backport_label_target("failed-backport"), None);
+        assert_eq!(backport_label_target("needs-backport-review"), None);
+    }
+
+    #[test]
     fn test_labels_to_propagate() {
         let mut pr = github::PullRequest::new();
         assert!(labels_to_propagate(&pr).is_empty());
@@ -577,9 +589,12 @@ mod tests {
             github::Label::new("Backport-master"),
             github::Label::new("failed-backport"),
             github::Label::new("skip-windows"),
-            github::Label::new("docs"),
+            github::Label::new("needs-backport-review"),
         ]);
-        assert_eq!(labels_to_propagate(&pr), vec!["skip-windows", "docs"]);
+        assert_eq!(
+            labels_to_propagate(&pr),
+            vec!["skip-windows", "needs-backport-review"]
+        );
     }
 
     #[test]
