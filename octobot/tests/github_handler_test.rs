@@ -281,6 +281,7 @@ fn some_pr() -> Option<PullRequest> {
             repo: the_repo(),
         },
         draft: None,
+        labels: None,
     })
 }
 
