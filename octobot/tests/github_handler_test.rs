@@ -21,6 +21,7 @@ use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::messenger;
 use octobot_ops::pr_merge::{self, PRMergeRequest};
 use octobot_ops::repo_version::{self, RepoVersionRequest};
+use octobot_ops::review_group::ReviewGroups;
 use octobot_ops::slack::{self, SlackAttachmentBuilder, ThreadRoot, Threading};
 
 mod mocks;
@@ -355,6 +356,8 @@ async fn test_commit_comment_with_path() {
     test.handler.event = "commit_comment".into();
     test.handler.action = "created".into();
     test.handler.data.comment = Some(Comment {
+        id: None,
+        pull_request_review_id: None,
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
         body: Some("I think this file should change".into()),
@@ -408,6 +411,8 @@ async fn test_commit_comment_with_path_that_is_included_in_multiple_prs() {
     test.handler.event = "commit_comment".into();
     test.handler.action = "created".into();
     test.handler.data.comment = Some(Comment {
+        id: None,
+        pull_request_review_id: None,
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
         body: Some("I think this file should change".into()),
@@ -445,6 +450,8 @@ async fn test_commit_comment_no_path() {
     test.handler.event = "commit_comment".into();
     test.handler.action = "created".into();
     test.handler.data.comment = Some(Comment {
+        id: None,
+        pull_request_review_id: None,
         commit_id: Some("abcdef00001111".into()),
         path: None,
         body: Some("I think this file should change".into()),
@@ -489,6 +496,8 @@ async fn test_issue_comment() {
         assignees: vec![User::new("assign1"), User::new("joe-reviewer")],
     });
     test.handler.data.comment = Some(Comment {
+        id: None,
+        pull_request_review_id: None,
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
         body: Some("I think this file should change, cc: @mentioned-participant".into()),
@@ -543,6 +552,8 @@ async fn test_pull_request_comment() {
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.comment = Some(Comment {
+        id: None,
+        pull_request_review_id: None,
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
         body: Some("I think this file should change, cc: @mentioned-participant".into()),
@@ -601,12 +612,107 @@ async fn test_pull_request_comment() {
 }
 
 #[tokio::test]
+async fn test_pull_request_review_comment_grouped() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.comment = Some(Comment {
+        id: None,
+        pull_request_review_id: Some(77),
+        commit_id: Some("abcdef00001111".into()),
+        path: Some("src/main.rs".into()),
+        body: Some("I think this file should change".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.mock_pull_request_commits();
+
+    let mut assign1 = test.config.users().lookup_info("assign1").unwrap();
+    assign1.group_review_direct_messages = Some(true);
+    test.config.users_write().update(&assign1).unwrap();
+
+    let grouped = Arc::new(CaptureSlack::default());
+    test.handler.messenger = messenger::new(test.config.clone(), test.slack.new_sender())
+        .with_review_groups(ReviewGroups::new(
+            grouped.clone(),
+            Duration::from_millis(20),
+            Duration::from_secs(1),
+        ));
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("I think this file should change")
+            .title("joe.reviewer said:")
+            .title_link("http://the-comment")
+            .build(),
+    ];
+    let msg = "Comment on \"<http://the-pr|The PR>\"";
+
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Threading::ReplyOrStart(
+                "some-user/some-repo/32".to_string(),
+                thread_root(REPO_MSG, 32),
+            ),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
+    assert!(grouped.reqs.lock().unwrap().is_empty());
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        vec![slack::req(
+            SlackRecipient::user_mention("assign1"),
+            "joe.reviewer reviewed PR \"<http://the-pr|The PR>\"",
+            &[
+                SlackAttachmentBuilder::new("I think this file should change")
+                    .title("src/main.rs")
+                    .title_link("http://the-comment")
+                    .build(),
+            ],
+            Threading::Flat,
+        )],
+        *grouped.reqs.lock().unwrap()
+    );
+}
+
+#[derive(Default)]
+struct CaptureSlack {
+    reqs: std::sync::Mutex<Vec<slack::SlackRequest>>,
+}
+
+impl octobot_ops::worker::Worker<slack::SlackRequest> for CaptureSlack {
+    fn send(&self, req: slack::SlackRequest) {
+        self.reqs.lock().unwrap().push(req);
+    }
+}
+
+#[tokio::test]
 async fn test_pull_request_review_commented() {
     let mut test = new_test();
     test.handler.event = "pull_request_review".into();
     test.handler.action = "submitted".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.review = Some(Review {
+        id: Some(77),
         state: "commented".into(),
         body: Some("I think this file should change, cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
@@ -670,6 +776,8 @@ async fn test_pull_request_comments_ignore_empty_messages() {
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.comment = Some(Comment {
+        id: None,
+        pull_request_review_id: None,
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
         body: Some("".into()),
@@ -692,6 +800,8 @@ async fn test_pull_request_comments_ignore_octobot() {
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.comment = Some(Comment {
+        id: None,
+        pull_request_review_id: None,
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
         body: Some("I think this file should change, cc: @mentioned-participant".into()),
@@ -714,6 +824,8 @@ async fn test_pull_request_comments_ignore_user() {
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.comment = Some(Comment {
+        id: None,
+        pull_request_review_id: None,
         commit_id: Some("abcdef00001111".into()),
         path: Some("src/main.rs".into()),
         body: Some("I think this file should change, cc: @mentioned-participant".into()),
@@ -736,6 +848,7 @@ async fn test_pull_request_review_approved() {
     test.handler.action = "submitted".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.review = Some(Review {
+        id: Some(77),
         state: "approved".into(),
         body: Some("I like it! cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
@@ -800,6 +913,7 @@ async fn test_pull_request_review_changes_requested() {
     test.handler.action = "submitted".into();
     test.handler.data.pull_request = some_pr();
     test.handler.data.review = Some(Review {
+        id: Some(77),
         state: "changes_requested".into(),
         body: Some("It needs some work! cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),

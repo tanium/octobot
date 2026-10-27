@@ -2,6 +2,7 @@ use log::info;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use crate::review_group::{ReviewGroups, ReviewItem};
 use crate::slack::{self, SlackAttachment, SlackRequest, ThreadRoot, Threading};
 use crate::util;
 use crate::worker::Worker;
@@ -12,6 +13,7 @@ use octobot_lib::slack::SlackRecipient;
 pub struct Messenger {
     config: Arc<Config>,
     slack: Arc<dyn Worker<SlackRequest>>,
+    review_groups: Option<Arc<ReviewGroups>>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -117,14 +119,54 @@ pub fn new(config: Arc<Config>, slack: Arc<dyn Worker<SlackRequest>>) -> Messeng
     Messenger {
         slack: slack.clone(),
         config,
+        review_groups: None,
     }
 }
 
 impl Messenger {
+    pub fn with_review_groups(self, review_groups: Arc<ReviewGroups>) -> Messenger {
+        Messenger {
+            review_groups: Some(review_groups),
+            ..self
+        }
+    }
+
     // TODO
     #[allow(clippy::too_many_arguments)]
     pub fn send_to_all<T: github::CommitLike>(
         &self,
+        msg: &str,
+        attachments: &[SlackAttachment],
+        item_owner: &github::User,
+        sender: &github::User,
+        repo: &github::Repo,
+        participants: Participants,
+        branch: &str,
+        commits: &[T],
+        threads: Vec<Thread>,
+    ) {
+        self.send_review_to_all(
+            None,
+            msg,
+            attachments,
+            item_owner,
+            sender,
+            repo,
+            participants,
+            branch,
+            commits,
+            threads,
+        );
+    }
+
+    /**
+     * Like `send_to_all`. With a `review`, DMs to users who group review messages are held and
+     * sent as one message per review.
+     */
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_review_to_all<T: github::CommitLike>(
+        &self,
+        review: Option<&ReviewItem>,
         msg: &str,
         attachments: &[SlackAttachment],
         item_owner: &github::User,
@@ -154,7 +196,7 @@ impl Messenger {
         participants.remove(sender.login());
         participants.remove("octobot");
 
-        self.send_to_slackbots(participants, repo, msg, attachments, dm_thread_guid);
+        self.send_to_slackbots(participants, repo, msg, attachments, dm_thread_guid, review);
     }
 
     fn is_ignored_user(&self, user: &github::User) -> bool {
@@ -179,6 +221,7 @@ impl Messenger {
             repo,
             msg,
             attachments,
+            None,
             None,
         );
     }
@@ -242,6 +285,7 @@ impl Messenger {
         msg: &str,
         attachments: &[SlackAttachment],
         thread_guid: Option<String>,
+        review: Option<&ReviewItem>,
     ) {
         for (_, user) in users.users.iter() {
             let is_team_member = match user.participant_type {
@@ -260,6 +304,14 @@ impl Messenger {
                     Some(guid) if user_dm.use_threads => Threading::Root(guid.clone()),
                     _ => Threading::Flat,
                 };
+                if user_dm.group_reviews
+                    && let Some(review) = review
+                    && let Some(groups) = &self.review_groups
+                {
+                    groups.add(review, user_dm.recipient, threading, msg, attachments);
+                    continue;
+                }
+
                 self.slack
                     .send(slack::req(user_dm.recipient, msg, attachments, threading));
             }
