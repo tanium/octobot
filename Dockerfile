@@ -1,5 +1,8 @@
 FROM ubuntu:22.04
 
+# links the GHCR package to its source repo
+LABEL org.opencontainers.image.source=https://github.com/tanium/octobot
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 # install run deps

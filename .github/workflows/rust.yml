@@ -48,3 +48,30 @@ jobs:
       with:
         command: clippy
         args: --no-deps
+
+  publish:
+    needs: build
+    if: github.repository == 'tanium/octobot' && github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout sources
+      uses: actions/checkout@v4
+
+    - name: Build image
+      run: ./build.py
+
+    - name: Log in to GHCR
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+    - name: Push image
+      run: |
+        image=ghcr.io/${{ github.repository }}
+        docker tag octobot:latest $image:${{ github.sha }}
+        docker tag octobot:latest $image:latest
+        docker push --all-tags $image
