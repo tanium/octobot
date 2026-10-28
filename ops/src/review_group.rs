@@ -9,7 +9,8 @@ use crate::slack::{self, SlackAttachment, SlackRequest, Threading};
 use crate::util;
 use crate::worker::Worker;
 
-const MAX_COMMENTS: usize = 10;
+// Slack rejects a message with more attachments than this.
+const MAX_ATTACHMENTS: usize = 100;
 
 pub struct ReviewItem {
     review_id: u64,
@@ -54,11 +55,9 @@ impl ReviewItem {
     }
 }
 
-/**
- * Holds review events for users who group review DMs and sends one DM per (review, user) once
- * the review has had no new events for `quiet`, or `max_wait` after its first event.
- * Held events live only in memory and are lost on restart.
- */
+/// Holds review events for users who group review DMs and sends one DM per (review, user) once
+/// the review has had no new events for `quiet`, or `max_wait` after its first event.
+/// Held events live only in memory and are lost on restart.
 pub struct ReviewGroups {
     slack: Arc<dyn Worker<SlackRequest>>,
     quiet: Duration,
@@ -90,12 +89,10 @@ impl ReviewGroups {
         })
     }
 
-    /**
-     * Must be called from within a tokio runtime.
-     * A submitted item's `msg` and `attachments` become the head of the grouped DM.
-     * A commented item's `attachments` do too, under its `default_msg`.
-     * Comments are listed in comment id order, not arrival order.
-     */
+    /// Must be called from within a tokio runtime.
+    /// A submitted item's `msg` and `attachments` become the head of the grouped DM.
+    /// A commented item's `attachments` do too, under its `default_msg`.
+    /// Comments are listed in comment id order, not arrival order.
     pub fn add(
         self: &Arc<Self>,
         item: &ReviewItem,
@@ -149,8 +146,13 @@ impl ReviewGroups {
         let (msg, mut attachments) = entry.header.unwrap_or((entry.default_msg, vec![]));
         let mut comments = entry.comments;
         comments.sort_by_key(|(id, _)| *id);
-        let hidden = comments.len().saturating_sub(MAX_COMMENTS);
-        let more = comments.get(MAX_COMMENTS).map(|(_, first_hidden)| {
+        let listed = if attachments.len() + comments.len() <= MAX_ATTACHMENTS {
+            comments.len()
+        } else {
+            MAX_ATTACHMENTS.saturating_sub(attachments.len() + 1)
+        };
+        let hidden = comments.len() - listed;
+        let more = comments.get(listed).map(|(_, first_hidden)| {
             let text = format!("...and {} more comments", hidden);
             match &first_hidden.title_link {
                 Some(url) => util::make_link(url, &text),
@@ -160,7 +162,7 @@ impl ReviewGroups {
         attachments.extend(
             comments
                 .into_iter()
-                .take(MAX_COMMENTS)
+                .take(listed)
                 .map(|(_, comment)| comment),
         );
         if let Some(more) = more {
@@ -327,7 +329,7 @@ mod tests {
     async fn test_caps_listed_comments() {
         let (capture, groups) = new_test(20, 1000);
 
-        for i in 0..12 {
+        for i in 0..101 {
             let attachment = SlackAttachmentBuilder::new(&i.to_string())
                 .title_link(format!("http://comment/{}", i))
                 .build();
@@ -338,10 +340,10 @@ mod tests {
         wait_ms(80).await;
         let reqs = capture.reqs.lock().unwrap();
         assert_eq!(1, reqs.len());
-        assert_eq!(MAX_COMMENTS + 1, reqs[0].attachments.len());
+        assert_eq!(MAX_ATTACHMENTS, reqs[0].attachments.len());
         assert_eq!(
-            "<http://comment/10|...and 2 more comments>",
-            reqs[0].attachments[MAX_COMMENTS].text
+            "<http://comment/99|...and 2 more comments>",
+            reqs[0].attachments[MAX_ATTACHMENTS - 1].text
         );
     }
 

@@ -89,10 +89,8 @@ impl Participants {
     }
 }
 
-/**
- * A slack thread key. When `pull_request` is set and a channel has no thread for the key yet,
- * a "New thread for Pull Request" message is posted first to start one.
- */
+/// A slack thread key. When `pull_request` is set and a channel has no thread for the key yet,
+/// a "New thread for Pull Request" message is posted first to start one.
 #[derive(Clone)]
 pub struct Thread {
     guid: String,
@@ -159,10 +157,8 @@ impl Messenger {
         );
     }
 
-    /**
-     * Like `send_to_all`. With a `review`, DMs to users who group review messages are held and
-     * sent as one message per review.
-     */
+    /// Like `send_to_all`. With a `review`, DMs to users who group review messages are held and
+    /// sent as one message per review.
     #[allow(clippy::too_many_arguments)]
     pub fn send_review_to_all<T: github::CommitLike>(
         &self,
