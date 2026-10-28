@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use anyhow::anyhow;
 use log::error;
 use rusqlite::types::ToSql;
@@ -22,6 +24,8 @@ pub struct UserInfo {
     pub mute_direct_messages: bool,
     pub mute_team_direct_messages: bool,
     pub muted_repos: Vec<String>,
+    #[serde(default)]
+    pub muted_teams: Vec<String>,
     #[serde(default)]
     pub thread_direct_messages: Option<bool>,
     #[serde(default)]
@@ -57,6 +61,7 @@ impl UserInfo {
             mute_direct_messages: false,
             mute_team_direct_messages: false,
             muted_repos,
+            muted_teams: vec![],
             thread_direct_messages: None,
             group_review_direct_messages: None,
         }
@@ -75,7 +80,7 @@ impl UserConfig {
     pub fn insert_info(&mut self, user: &UserInfo) -> Result<()> {
         let conn = self.db.connect()?;
         conn.execute(
-            "INSERT INTO users (github_name, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO users (github_name, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             [
                 &user.github,
                 &user.slack_name,
@@ -86,6 +91,7 @@ impl UserConfig {
                 &db::to_tinyint(user.mute_team_direct_messages) as &dyn ToSql,
                 &user.thread_direct_messages.map(db::to_tinyint) as &dyn ToSql,
                 &user.group_review_direct_messages.map(db::to_tinyint) as &dyn ToSql,
+                &user.muted_teams.join(","),
             ],
         )
         .map_err(|e| anyhow!("Error inserting user {}: {}", user.github, e))?;
@@ -96,7 +102,7 @@ impl UserConfig {
     pub fn update(&mut self, user: &UserInfo) -> Result<()> {
         let conn = self.db.connect()?;
         conn.execute(
-            "UPDATE users set github_name = ?1, slack_name = ?2, slack_id = ?3, email = ?4, mute_direct_messages = ?5, muted_repos = ?6, mute_team_dm = ?8, thread_dm = ?9, group_review_dm = ?10 where id = ?7",
+            "UPDATE users set github_name = ?1, slack_name = ?2, slack_id = ?3, email = ?4, mute_direct_messages = ?5, muted_repos = ?6, mute_team_dm = ?8, thread_dm = ?9, group_review_dm = ?10, muted_teams = ?11 where id = ?7",
             [
                 &user.github,
                 &user.slack_name,
@@ -108,6 +114,7 @@ impl UserConfig {
                 &db::to_tinyint(user.mute_team_direct_messages) as &dyn ToSql,
                 &user.thread_direct_messages.map(db::to_tinyint) as &dyn ToSql,
                 &user.group_review_direct_messages.map(db::to_tinyint) as &dyn ToSql,
+                &user.muted_teams.join(","),
             ],
         ).map_err(|e| anyhow!("Error updating user {}: {}", user.github, e))?;
 
@@ -126,17 +133,19 @@ impl UserConfig {
         self.lookup_info(github_name).map(|u| u.slack_name)
     }
 
+    /// `via_teams` is set when the user is only a participant through the named teams
+    /// ("org/team-slug"). They are muted if they mute team DMs or every one of those teams.
     pub fn slack_direct_message(
         &self,
         github_name: &str,
-        for_team_reference: bool,
+        via_teams: Option<&BTreeSet<String>>,
         repo_full_name: &String,
     ) -> Option<DirectMessage> {
         self.lookup_info(github_name).and_then(|u| {
-            if u.mute_direct_messages
-                || u.muted_repos.contains(repo_full_name)
-                || (for_team_reference && u.mute_team_direct_messages)
-            {
+            let muted_via_teams = via_teams.is_some_and(|teams| {
+                u.mute_team_direct_messages || teams.iter().all(|t| u.muted_teams.contains(t))
+            });
+            if u.mute_direct_messages || u.muted_repos.contains(repo_full_name) || muted_via_teams {
                 return None;
             }
 
@@ -160,7 +169,7 @@ impl UserConfig {
     pub fn get_all(&self) -> Result<Vec<UserInfo>> {
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id, slack_name, slack_id, email, github_name, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm FROM users ORDER BY github_name",
+            "SELECT id, slack_name, slack_id, email, github_name, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams FROM users ORDER BY github_name",
         )?;
         let found = stmt.query_map([], |row| {
             Ok(UserInfo {
@@ -171,12 +180,8 @@ impl UserConfig {
                 github: row.get(4)?,
                 mute_direct_messages: db::to_bool(row.get(5)?),
                 mute_team_direct_messages: db::to_bool(row.get(7)?),
-                muted_repos: row
-                    .get::<usize, String>(6)?
-                    .split(',')
-                    .map(|s| s.trim().to_owned())
-                    .filter(|s| !s.is_empty())
-                    .collect(),
+                muted_repos: split_list(row.get(6)?),
+                muted_teams: split_list(row.get(10)?),
                 thread_direct_messages: row.get::<usize, Option<i32>>(8)?.map(db::to_bool),
                 group_review_direct_messages: row.get::<usize, Option<i32>>(9)?.map(db::to_bool),
             })
@@ -204,7 +209,7 @@ impl UserConfig {
         let github_name = github_name.to_string();
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm FROM users where github_name = ?1",
+            "SELECT id, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams FROM users where github_name = ?1",
         )?;
         let found = stmt.query_map([&github_name], |row| {
             Ok(UserInfo {
@@ -215,12 +220,8 @@ impl UserConfig {
                 github: github_name.clone(),
                 mute_direct_messages: db::to_bool(row.get(4)?),
                 mute_team_direct_messages: db::to_bool(row.get(6)?),
-                muted_repos: row
-                    .get::<usize, String>(5)?
-                    .split(',')
-                    .map(|s| s.trim().to_owned())
-                    .filter(|s| !s.is_empty())
-                    .collect(),
+                muted_repos: split_list(row.get(5)?),
+                muted_teams: split_list(row.get(9)?),
                 thread_direct_messages: row.get::<usize, Option<i32>>(7)?.map(db::to_bool),
                 group_review_direct_messages: row.get::<usize, Option<i32>>(8)?.map(db::to_bool),
             })
@@ -229,6 +230,13 @@ impl UserConfig {
         let user = found.into_iter().flatten().next();
         Ok(user)
     }
+}
+
+fn split_list(list: String) -> Vec<String> {
+    list.split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 #[cfg(test)]
@@ -259,7 +267,7 @@ mod tests {
         assert_eq!(None, users.slack_user_name("joe"));
         assert_eq!(
             None,
-            users.slack_direct_message("joe", false, &"org/repo".into())
+            users.slack_direct_message("joe", None, &"org/repo".into())
         );
     }
 
@@ -278,12 +286,12 @@ mod tests {
                 SlackRecipient::new("@the-slacker", "the-slacker"),
                 false
             )),
-            users.slack_direct_message("some-git-user", false, &"org/repo".into())
+            users.slack_direct_message("some-git-user", None, &"org/repo".into())
         );
         assert_eq!(None, users.slack_user_name("some.other.user"));
         assert_eq!(
             None,
-            users.slack_direct_message("some.other.user", false, &"org/repo".into())
+            users.slack_direct_message("some.other.user", None, &"org/repo".into())
         );
     }
 
@@ -300,7 +308,7 @@ mod tests {
         );
         assert_eq!(
             Some(dm(SlackRecipient::new("1234", "the-slacker"), false)),
-            users.slack_direct_message("some-git-user", false, &"org/repo".into())
+            users.slack_direct_message("some-git-user", None, &"org/repo".into())
         );
     }
 
@@ -324,12 +332,38 @@ mod tests {
 
         assert_eq!(
             None,
-            users.slack_direct_message("some-git-user", false, &"org1/repo1".into())
+            users.slack_direct_message("some-git-user", None, &"org1/repo1".into())
         );
         assert_eq!(
             Some(dm(SlackRecipient::new("1234", "the-slacker"), false)),
-            users.slack_direct_message("some-git-user", false, &"org1/repo3".into())
+            users.slack_direct_message("some-git-user", None, &"org1/repo3".into())
         );
+    }
+
+    #[test]
+    fn test_muted_teams() {
+        let (mut users, _temp) = new_test();
+
+        let mut info = UserInfo::new("some-git-user", "the-slacker", "1234", "", vec![]);
+        info.muted_teams = vec!["  org/team1  ".into(), "org/team2".into()];
+        users.insert_info(&info).unwrap();
+
+        let looked_up = users.lookup_info("some-git-user").unwrap();
+        assert_eq!(vec!["org/team1", "org/team2"], looked_up.muted_teams);
+        assert_eq!(
+            looked_up.muted_teams,
+            users.get_all().unwrap()[0].muted_teams
+        );
+
+        let teams = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<BTreeSet<_>>();
+        let dm = |via: Option<&BTreeSet<String>>| {
+            users.slack_direct_message("some-git-user", via, &"org/repo".into())
+        };
+        assert!(dm(None).is_some());
+        assert!(dm(Some(&teams(&["org/team1"]))).is_none());
+        assert!(dm(Some(&teams(&["org/team1", "org/team2"]))).is_none());
+        assert!(dm(Some(&teams(&["org/team1", "org/team3"]))).is_some());
+        assert!(dm(Some(&teams(&["other-org/team1"]))).is_some());
     }
 
     #[test]
@@ -354,7 +388,7 @@ mod tests {
                 SlackRecipient::new("1234", "the-slacker"),
                 THREAD_DIRECT_MESSAGES_DEFAULT
             )),
-            users.slack_direct_message("some-git-user", false, &"org/repo".into())
+            users.slack_direct_message("some-git-user", None, &"org/repo".into())
         );
 
         let mut info = users.lookup_info("some-git-user").unwrap();
@@ -364,7 +398,7 @@ mod tests {
         assert_eq!(Some(true), thread_dm(&users));
         assert_eq!(
             Some(dm(SlackRecipient::new("1234", "the-slacker"), true)),
-            users.slack_direct_message("some-git-user", false, &"org/repo".into())
+            users.slack_direct_message("some-git-user", None, &"org/repo".into())
         );
 
         info.thread_direct_messages = Some(false);
@@ -390,7 +424,7 @@ mod tests {
         };
         let group_reviews = |users: &UserConfig| {
             users
-                .slack_direct_message("some-git-user", false, &"org/repo".into())
+                .slack_direct_message("some-git-user", None, &"org/repo".into())
                 .unwrap()
                 .group_reviews
         };
