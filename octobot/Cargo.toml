@@ -38,3 +38,4 @@ anyhow = { version = "1.0.72", features = ["backtrace"] }
 
 [dev-dependencies]
 tempfile = "3"
+tokio = { version = "1.43.1", features = ["test-util"] }

@@ -20,6 +20,7 @@ use octobot_ops::git_clone_manager::GitCloneManager;
 use octobot_ops::messenger::{self, Messenger, Participants};
 use octobot_ops::pr_merge::{self, PRMergeRequest};
 use octobot_ops::repo_version::{self, RepoVersionRequest};
+use octobot_ops::review_group::{ReviewGroups, ReviewItem};
 use octobot_ops::slack::{self, Slack, SlackAttachmentBuilder, SlackRequest};
 use octobot_ops::util;
 use octobot_ops::webhook_db::WebhookDatabase;
@@ -39,6 +40,7 @@ pub struct GithubHandlerState {
     repo_version_worker: Arc<dyn Worker<RepoVersionRequest>>,
     force_push_worker: Arc<dyn Worker<ForcePushRequest>>,
     slack_worker: Arc<dyn Worker<SlackRequest>>,
+    review_groups: Arc<ReviewGroups>,
     webhook_db: Arc<WebhookDatabase>,
     metrics: Arc<Metrics>,
     git_clone_manager: Arc<GitCloneManager>,
@@ -154,6 +156,12 @@ impl GithubHandlerState {
             ),
         );
 
+        let review_groups = ReviewGroups::new(
+            slack_worker.clone(),
+            Duration::from_secs(10),
+            Duration::from_secs(60),
+        );
+
         GithubHandlerState {
             config,
             github_app: github_app.clone(),
@@ -163,6 +171,7 @@ impl GithubHandlerState {
             repo_version_worker,
             force_push_worker,
             slack_worker,
+            review_groups,
             webhook_db,
             metrics,
             git_clone_manager,
@@ -387,7 +396,8 @@ impl Handler for GithubHandler {
             repository,
             action,
             config: config.clone(),
-            messenger: messenger::new(config.clone(), slack),
+            messenger: messenger::new(config.clone(), slack)
+                .with_review_groups(self.state.review_groups.clone()),
             github_session,
             jira_session,
             pr_merge,
@@ -752,8 +762,27 @@ impl GithubEventHandler {
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
 
-                    self.do_pull_request_comment(&pull_request, &comment, branch_name, &commits)
-                        .await;
+                    let review = comment.pull_request_review_id.map(|id| {
+                        let grouped = SlackAttachmentBuilder::new(comment.body().trim())
+                            .title(comment.path.clone().unwrap_or_default())
+                            .title_link(comment.html_url.as_str())
+                            .build();
+                        ReviewItem::comment(
+                            id,
+                            comment.id,
+                            &self.review_msg(pull_request, &comment.user),
+                            grouped,
+                        )
+                    });
+
+                    self.do_pull_request_comment(
+                        &pull_request,
+                        &comment,
+                        branch_name,
+                        &commits,
+                        review,
+                    )
+                    .await;
                 }
             }
         }
@@ -769,9 +798,17 @@ impl GithubEventHandler {
                     let commits = self.pull_request_commits(&pull_request).await;
 
                     // just a comment. should just be handled by regular comment handler.
+                    let review_msg = self.review_msg(pull_request, &review.user);
+
                     if review.state == "commented" {
-                        self.do_pull_request_comment(&pull_request, &review, branch_name, &commits)
-                            .await;
+                        self.do_pull_request_comment(
+                            &pull_request,
+                            &review,
+                            branch_name,
+                            &commits,
+                            Some(ReviewItem::commented(review.id, &review_msg)),
+                        )
+                        .await;
                         return (StatusCode::OK, "pr_review [comment]".into());
                     }
 
@@ -813,7 +850,8 @@ impl GithubEventHandler {
                         participants.add_user(github::User::new(username));
                     }
 
-                    self.messenger.send_to_all(
+                    self.messenger.send_review_to_all(
+                        Some(&ReviewItem::submitted(review.id, &review_msg)),
                         &msg,
                         &attachments,
                         &pull_request.user,
@@ -837,6 +875,7 @@ impl GithubEventHandler {
         comment: &dyn github::CommentLike,
         branch_name: &str,
         commits: &[github::Commit],
+        review: Option<ReviewItem>,
     ) {
         if comment.body().trim().is_empty() {
             return;
@@ -874,7 +913,8 @@ impl GithubEventHandler {
             participants.add_user(github::User::new(username));
         }
 
-        self.messenger.send_to_all(
+        self.messenger.send_review_to_all(
+            review.as_ref(),
             &msg,
             &attachments,
             pull_request.user(),
@@ -885,6 +925,14 @@ impl GithubEventHandler {
             commits,
             vec![self.build_thread(pull_request)],
         );
+    }
+
+    fn review_msg(&self, pull_request: &github::PullRequest, reviewer: &github::User) -> String {
+        format!(
+            "{} reviewed PR \"{}\"",
+            self.slack_user_name(reviewer),
+            util::make_link(pull_request.html_url.as_str(), pull_request.title.as_str())
+        )
     }
 
     async fn handle_commit_comment(&self) -> EventResponse {
@@ -964,14 +1012,14 @@ impl GithubEventHandler {
                     let branch_name = &pr.base.ref_name;
                     let commits = self.pull_request_commits(&pr).await;
 
-                    self.do_pull_request_comment(&pr, &comment, branch_name, &commits)
+                    self.do_pull_request_comment(&pr, &comment, branch_name, &commits, None)
                         .await;
                 } else if let Some(ref issue) = self.data.issue {
                     // issues do not have branches or commits -> main channel is fine.
                     let branch_name = "";
                     let commits = vec![];
 
-                    self.do_pull_request_comment(&issue, &comment, branch_name, &commits)
+                    self.do_pull_request_comment(&issue, &comment, branch_name, &commits, None)
                         .await;
                 }
             }
