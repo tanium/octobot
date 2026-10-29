@@ -540,7 +540,7 @@ impl GithubEventHandler {
         let teams = pull_request.teams();
 
         for t in teams {
-            let team = format!("{}/{}", repo.owner.login(), t.slug);
+            let team = format!("{}/{}", repo.owner.login(), t.slug).to_lowercase();
             let team_members = self.team_members_cache.get(repo, t.id);
             if let Some(team_members) = team_members {
                 participants.push((team, team_members));

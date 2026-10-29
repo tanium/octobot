@@ -78,6 +78,7 @@ impl UserConfig {
     }
 
     pub fn insert_info(&mut self, user: &UserInfo) -> Result<()> {
+        let muted_teams = normalize_teams(&user.muted_teams)?;
         let conn = self.db.connect()?;
         conn.execute(
             "INSERT INTO users (github_name, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -91,7 +92,7 @@ impl UserConfig {
                 &db::to_tinyint(user.mute_team_direct_messages) as &dyn ToSql,
                 &user.thread_direct_messages.map(db::to_tinyint) as &dyn ToSql,
                 &user.group_review_direct_messages.map(db::to_tinyint) as &dyn ToSql,
-                &user.muted_teams.join(","),
+                &muted_teams,
             ],
         )
         .map_err(|e| anyhow!("Error inserting user {}: {}", user.github, e))?;
@@ -100,6 +101,7 @@ impl UserConfig {
     }
 
     pub fn update(&mut self, user: &UserInfo) -> Result<()> {
+        let muted_teams = normalize_teams(&user.muted_teams)?;
         let conn = self.db.connect()?;
         conn.execute(
             "UPDATE users set github_name = ?1, slack_name = ?2, slack_id = ?3, email = ?4, mute_direct_messages = ?5, muted_repos = ?6, mute_team_dm = ?8, thread_dm = ?9, group_review_dm = ?10, muted_teams = ?11 where id = ?7",
@@ -114,7 +116,7 @@ impl UserConfig {
                 &db::to_tinyint(user.mute_team_direct_messages) as &dyn ToSql,
                 &user.thread_direct_messages.map(db::to_tinyint) as &dyn ToSql,
                 &user.group_review_direct_messages.map(db::to_tinyint) as &dyn ToSql,
-                &user.muted_teams.join(","),
+                &muted_teams,
             ],
         ).map_err(|e| anyhow!("Error updating user {}: {}", user.github, e))?;
 
@@ -232,6 +234,27 @@ impl UserConfig {
     }
 }
 
+fn normalize_teams(teams: &[String]) -> Result<String> {
+    let mut normalized = vec![];
+    for team in teams {
+        let team = team.trim().to_lowercase();
+        if team.is_empty() {
+            continue;
+        }
+        let valid = team
+            .split_once('/')
+            .is_some_and(|(org, slug)| !org.is_empty() && !slug.is_empty() && !slug.contains('/'));
+        if !valid {
+            return Err(anyhow!(
+                "Invalid muted team \"{}\": expected org/team-slug",
+                team
+            ));
+        }
+        normalized.push(team);
+    }
+    Ok(normalized.join(","))
+}
+
 fn split_list(list: String) -> Vec<String> {
     list.split(',')
         .map(|s| s.trim().to_owned())
@@ -345,7 +368,7 @@ mod tests {
         let (mut users, _temp) = new_test();
 
         let mut info = UserInfo::new("some-git-user", "the-slacker", "1234", "", vec![]);
-        info.muted_teams = vec!["  org/team1  ".into(), "org/team2".into()];
+        info.muted_teams = vec!["  org/team1  ".into(), "Org/Team2".into()];
         users.insert_info(&info).unwrap();
 
         let looked_up = users.lookup_info("some-git-user").unwrap();
@@ -364,6 +387,30 @@ mod tests {
         assert!(dm(Some(&teams(&["org/team1", "org/team2"]))).is_none());
         assert!(dm(Some(&teams(&["org/team1", "org/team3"]))).is_some());
         assert!(dm(Some(&teams(&["other-org/team1"]))).is_some());
+    }
+
+    #[test]
+    fn test_muted_teams_rejects_invalid() {
+        let (mut users, _temp) = new_test();
+
+        let mut info = UserInfo::new("some-git-user", "the-slacker", "1234", "", vec![]);
+        for bad in ["infra", "/infra", "org/", "org/team/extra"] {
+            info.muted_teams = vec![bad.into()];
+            assert!(users.insert_info(&info).is_err(), "{}", bad);
+        }
+
+        info.muted_teams = vec![];
+        users.insert_info(&info).unwrap();
+        let mut info = users.lookup_info("some-git-user").unwrap();
+        info.muted_teams = vec!["infra".into()];
+        assert!(users.update(&info).is_err());
+        assert!(
+            users
+                .lookup_info("some-git-user")
+                .unwrap()
+                .muted_teams
+                .is_empty()
+        );
     }
 
     #[test]
