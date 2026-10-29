@@ -506,8 +506,10 @@ impl GithubEventHandler {
         // add the author of the PR
         participants.add_user(pull_request.user().clone());
         // add team participants
-        for u in self.team_participants(pull_request).await {
-            participants.add_team_member(u);
+        for (team, members) in self.team_participants(pull_request).await {
+            for u in members {
+                participants.add_team_member(u, &team);
+            }
         }
 
         // look up commits and add the authors of those
@@ -523,7 +525,7 @@ impl GithubEventHandler {
     async fn team_participants(
         &self,
         pull_request: &dyn github::PullRequestLike,
-    ) -> Vec<github::User> {
+    ) -> Vec<(String, Vec<github::User>)> {
         let mut participants = vec![];
 
         // Issues do not have a repo and cannot have teams assigned
@@ -538,14 +540,15 @@ impl GithubEventHandler {
         let teams = pull_request.teams();
 
         for t in teams {
+            let team = format!("{}/{}", repo.owner.login(), t.slug).to_lowercase();
             let team_members = self.team_members_cache.get(repo, t.id);
             if let Some(team_members) = team_members {
-                participants.extend(team_members);
+                participants.push((team, team_members));
             } else {
                 let team_members = self.github_session.get_team_members(repo, t.id).await;
                 match team_members {
                     Ok(m) => {
-                        participants.extend(m.clone());
+                        participants.push((team, m.clone()));
                         self.team_members_cache.insert(repo, t.id, m);
                     }
                     Err(e) => {

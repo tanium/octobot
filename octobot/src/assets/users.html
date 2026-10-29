@@ -50,6 +50,10 @@
             <label>Muted repos (comma separated)</label>
             <input type="text" class="form-control" ng-model="theUser.muted_repos" ng-list placeholder="some-org/some-repo, some-org/other-repo">
           </div>
+          <div class="form-group">
+            <label>Muted requested teams (comma separated)</label>
+            <input type="text" class="form-control" ng-model="theUser.muted_teams" ng-list placeholder="some-org/some-team, some-org/other-team">
+          </div>
           <div class="checkbox">
             <label>
               <input type="checkbox" ng-model="theUser.thread_direct_messages"> Thread Direct Messages per Pull Request

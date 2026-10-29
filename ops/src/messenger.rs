@@ -1,5 +1,5 @@
 use log::info;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::review_group::{ReviewGroups, ReviewItem};
@@ -19,7 +19,7 @@ pub struct Messenger {
 #[derive(PartialEq, Clone, Debug)]
 pub enum ParticipantType {
     User,
-    TeamMember,
+    TeamMember(BTreeSet<String>),
 }
 
 #[derive(PartialEq, Clone)]
@@ -63,26 +63,24 @@ impl Participants {
         });
     }
 
-    pub fn add_team_member(&mut self, user: github::User) {
+    pub fn add_team_member(&mut self, user: github::User, team: &str) {
         self.add(Participant {
             user,
-            participant_type: ParticipantType::TeamMember,
+            participant_type: ParticipantType::TeamMember(BTreeSet::from([team.to_string()])),
         });
     }
 
     fn add(&mut self, p: Participant) {
-        let new_type = p.participant_type.clone();
+        let Some(entry) = self.users.get_mut(p.user.login()) else {
+            self.users.insert(p.user.login().to_string(), p);
+            return;
+        };
 
-        let entry = self.users.entry(p.user.login().to_string()).or_insert(p);
-
-        if entry.participant_type != new_type {
-            match new_type {
-                ParticipantType::User => {
-                    // override.
-                    entry.participant_type = new_type
-                }
-                ParticipantType::TeamMember => {
-                    // ignore. team members do not override
+        match p.participant_type {
+            ParticipantType::User => entry.participant_type = ParticipantType::User,
+            ParticipantType::TeamMember(teams) => {
+                if let ParticipantType::TeamMember(existing) = &mut entry.participant_type {
+                    existing.extend(teams);
                 }
             }
         }
@@ -284,16 +282,15 @@ impl Messenger {
         review: Option<&ReviewItem>,
     ) {
         for (_, user) in users.users.iter() {
-            let is_team_member = match user.participant_type {
-                ParticipantType::User => false,
-                ParticipantType::TeamMember => true,
+            let via_teams = match &user.participant_type {
+                ParticipantType::User => None,
+                ParticipantType::TeamMember(teams) => Some(teams),
             };
 
-            let user_dm = self.config.users().slack_direct_message(
-                user.login(),
-                is_team_member,
-                &repo.full_name,
-            );
+            let user_dm =
+                self.config
+                    .users()
+                    .slack_direct_message(user.login(), via_teams, &repo.full_name);
 
             if let Some(user_dm) = user_dm {
                 let threading = match &thread_guid {
@@ -324,7 +321,7 @@ mod tests {
         let mut p = Participants::new();
 
         p.add_user(github::User::new("a"));
-        p.add_team_member(github::User::new("a"));
+        p.add_team_member(github::User::new("a"), "org/team");
 
         let entry = p.users.get("a").unwrap();
         assert_eq!(entry.participant_type, ParticipantType::User);
@@ -334,10 +331,24 @@ mod tests {
     fn test_participation_type_priority2() {
         let mut p = Participants::new();
 
-        p.add_team_member(github::User::new("a"));
+        p.add_team_member(github::User::new("a"), "org/team");
         p.add_user(github::User::new("a"));
 
         let entry = p.users.get("a").unwrap();
         assert_eq!(entry.participant_type, ParticipantType::User);
+    }
+
+    #[test]
+    fn test_team_member_collects_teams() {
+        let mut p = Participants::new();
+
+        p.add_team_member(github::User::new("a"), "org/team1");
+        p.add_team_member(github::User::new("a"), "org/team2");
+
+        let entry = p.users.get("a").unwrap();
+        assert_eq!(
+            entry.participant_type,
+            ParticipantType::TeamMember(BTreeSet::from(["org/team1".into(), "org/team2".into()]))
+        );
     }
 }

@@ -1480,6 +1480,84 @@ async fn test_pull_request_review_requested() {
 }
 
 #[tokio::test]
+async fn test_pull_request_review_requested_muted_team() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "review_requested".into();
+    test.handler.data.pull_request = some_pr();
+    if let Some(ref mut pr) = test.handler.data.pull_request {
+        pr.requested_reviewers = Some(vec![User::new("joe-reviewer"), User::new("smith-reviewer")]);
+        pr.requested_teams = Some(vec![Team::new(100, "team-awesome")]);
+    }
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.mock_pull_request_commits();
+    test.mock_get_team_members(100);
+
+    let mut member = test.config.users().lookup_info("team-member1").unwrap();
+    member.muted_teams = vec!["some-user/team-awesome".into()];
+    test.config.users_write().update(&member).unwrap();
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    let msg = "Pull Request by the.pr.owner submitted for review to joe.reviewer, smith.reviewer, @team-awesome";
+
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Threading::ReplyOrStart(
+                "some-user/some-repo/32".to_string(),
+                thread_root(REPO_MSG, 32),
+            ),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("smith.reviewer"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("team.member2"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+}
+
+#[tokio::test]
 async fn test_pull_request_review_no_username() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
