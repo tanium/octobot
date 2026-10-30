@@ -179,10 +179,11 @@ impl Messenger {
         }
 
         // A commit can belong to several PRs; one DM thread is enough.
-        let dm_thread_guid = threads
-            .iter()
-            .find(|t| t.pull_request.is_some())
-            .map(|t| t.guid.clone());
+        let repo_link = util::make_link(&repo.html_url, &repo.full_name);
+        let dm_thread = threads.iter().find_map(|t| {
+            let pr = t.pull_request.as_ref()?;
+            Some((t.guid.clone(), pr_thread_root(&repo_link, pr)))
+        });
 
         self.send_to_channel(msg, attachments, repo, branch, commits, threads, false);
 
@@ -192,7 +193,7 @@ impl Messenger {
         participants.remove(sender.login());
         participants.remove("octobot");
 
-        self.send_to_slackbots(participants, repo, msg, attachments, dm_thread_guid, review);
+        self.send_to_slackbots(participants, repo, msg, attachments, dm_thread, review);
     }
 
     fn is_ignored_user(&self, user: &github::User) -> bool {
@@ -255,13 +256,7 @@ impl Messenger {
                 let guid = thread.guid.clone();
                 let threading = match &thread.pull_request {
                     _ if initial_thread => Threading::Root(guid),
-                    Some(pr) => Threading::ReplyOrStart(
-                        guid,
-                        ThreadRoot {
-                            msg: format!("New thread for Pull Request ({})", repo_link),
-                            attachments: vec![pr.clone()],
-                        },
-                    ),
+                    Some(pr) => Threading::ReplyOrStart(guid, pr_thread_root(&repo_link, pr)),
                     None => Threading::Reply(guid),
                 };
                 self.slack.send(slack::req(
@@ -280,7 +275,7 @@ impl Messenger {
         repo: &github::Repo,
         msg: &str,
         attachments: &[SlackAttachment],
-        thread_guid: Option<String>,
+        thread: Option<(String, ThreadRoot)>,
         review: Option<&ReviewItem>,
     ) {
         for (_, user) in users.users.iter() {
@@ -296,8 +291,10 @@ impl Messenger {
             );
 
             if let Some(user_dm) = user_dm {
-                let threading = match &thread_guid {
-                    Some(guid) if user_dm.use_threads => Threading::Root(guid.clone()),
+                let threading = match &thread {
+                    Some((guid, root)) if user_dm.use_threads => {
+                        Threading::ReplyOrStart(guid.clone(), root.clone())
+                    }
                     _ => Threading::Flat,
                 };
                 if user_dm.group_reviews
@@ -312,6 +309,13 @@ impl Messenger {
                     .send(slack::req(user_dm.recipient, msg, attachments, threading));
             }
         }
+    }
+}
+
+fn pr_thread_root(repo_link: &str, pr: &SlackAttachment) -> ThreadRoot {
+    ThreadRoot {
+        msg: format!("New thread for Pull Request ({})", repo_link),
+        attachments: vec![pr.clone()],
     }
 }
 

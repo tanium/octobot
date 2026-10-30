@@ -314,6 +314,16 @@ fn pr_thread(guid: &str) -> Thread {
     Thread::for_pull_request(guid, SlackAttachmentBuilder::new("").build())
 }
 
+fn dm_thread(guid: &str) -> Threading {
+    Threading::ReplyOrStart(
+        guid.into(),
+        ThreadRoot {
+            msg: "New thread for Pull Request (<|>)".into(),
+            attachments: vec![SlackAttachmentBuilder::new("").build()],
+        },
+    )
+}
+
 #[test]
 fn test_threads_direct_messages() {
     let (config, _temp) = new_test();
@@ -323,7 +333,7 @@ fn test_threads_direct_messages() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        Threading::Root("some-user/some-repo/1".to_string()),
+        dm_thread("some-user/some-repo/1"),
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
@@ -378,7 +388,7 @@ fn test_threads_direct_messages_per_user() {
             SlackRecipient::user_mention("assign1"),
             "hello there",
             &[],
-            Threading::Root("some-user/some-repo/1".to_string()),
+            dm_thread("some-user/some-repo/1"),
         ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),

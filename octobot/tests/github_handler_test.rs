@@ -809,7 +809,7 @@ async fn test_pull_request_review_grouped_with_verdict_in_thread() {
                     .title_link("http://comment/9")
                     .build(),
             ],
-            Threading::Root("some-user/some-repo/32".to_string()),
+            Threading::ReplyOrStart("some-user/some-repo/32".into(), thread_root(REPO_MSG, 32)),
         )],
         *grouped.reqs.lock().unwrap()
     );
