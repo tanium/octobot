@@ -943,6 +943,11 @@ impl GithubEventHandler {
         if let Some(ref comment) = self.data.comment {
             if self.action == "created" {
                 if let Some(ref commit_id) = comment.commit_id {
+                    let text = github_markdown::visible_text(comment.body());
+                    if text.is_empty() {
+                        return (StatusCode::OK, "commit_comment".into());
+                    }
+
                     let commit: &str = &commit_id[0..7];
                     let commit_url = format!("{}/commit/{}", self.repository.html_url, commit_id);
                     let commit_path = if let Some(ref path) = comment.path {
@@ -958,7 +963,7 @@ impl GithubEventHandler {
                     );
 
                     let attachments = vec![
-                        SlackAttachmentBuilder::new(&github_markdown::visible_text(comment.body()))
+                        SlackAttachmentBuilder::new(&text)
                             .title(format!("{} said:", self.slack_user_name(&comment.user)))
                             .title_link(comment.html_url.as_str())
                             .build(),

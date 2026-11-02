@@ -7,6 +7,8 @@ use regex::Regex;
 /// clicks: HTML comments are dropped and a collapsed `<details>` block is
 /// reduced to its summary.
 pub fn visible_text(body: &str) -> String {
+    let body = body.replace("\r\n", "\n");
+    let body = body.as_str();
     let mut out = String::new();
     let mut stack: Vec<Details> = Vec::new();
     let mut in_summary = false;
@@ -24,7 +26,11 @@ pub fn visible_text(body: &str) -> String {
                 open,
                 summarized: false,
             }),
-            Token::DetailsClose => close_details(&mut out, &mut stack),
+            Token::DetailsClose => {
+                // An unclosed summary ends with its block, as in browsers.
+                in_summary = false;
+                close_details(&mut out, &mut stack);
+            }
             Token::SummaryOpen => {
                 let outer_visible = is_visible(&stack[..stack.len().saturating_sub(1)], false);
                 // Only the first summary labels the block; later ones are content.
@@ -92,8 +98,11 @@ fn push_joined(out: &mut String, segment: &str) {
 // Tags count only where the markdown parser sees raw HTML, so code blocks and
 // code spans keep them as literal text.
 fn html_tokens(body: &str) -> Vec<(Range<usize>, Token)> {
-    let tag = Regex::new(r"(?is)<!--.*?-->|<(/?)(details|summary)\b([^>]*)>").unwrap();
-    let open_attr = Regex::new(r"(?i)\bopen\b").unwrap();
+    // An unterminated comment runs to the end of its HTML block, which
+    // CommonMark extends to the end of the body.
+    let tag = Regex::new(r"(?is)<!--.*?(?:-->|\z)|<(/?)(details|summary)\b([^>]*)>").unwrap();
+    let quoted = Regex::new(r#""[^"]*"|'[^']*'"#).unwrap();
+    let open_attr = Regex::new(r"(?i)(?:^|\s)open(?:\s|=|$)").unwrap();
 
     let html_ranges = Parser::new(body)
         .into_offset_iter()
@@ -110,7 +119,7 @@ fn html_tokens(body: &str) -> Vec<(Range<usize>, Token)> {
                 None => Token::Comment,
                 Some(name) if name == "details" && closing => Token::DetailsClose,
                 Some(name) if name == "details" => Token::DetailsOpen {
-                    open: open_attr.is_match(&caps[3]),
+                    open: open_attr.is_match(&quoted.replace_all(&caps[3], "")),
                 },
                 Some(_) if closing => Token::SummaryClose,
                 Some(_) => Token::SummaryOpen,
@@ -215,6 +224,43 @@ mod tests {
     fn test_details_in_code_span_kept() {
         let body = "Use `<details>` and `<!-- -->` here";
         assert_eq!(body, visible_text(body));
+    }
+
+    #[test]
+    fn test_open_in_attribute_value_stays_closed() {
+        let body = "<details title=\"click to open\" data-open=\"1\"><summary>Notes</summary>\n\nhidden\n\n</details>";
+        assert_eq!("▸ Notes", visible_text(body));
+    }
+
+    #[test]
+    fn test_open_attribute_forms() {
+        for tag in [
+            "<details open=\"\">",
+            "<details class='x' OPEN>",
+            "<details\nopen>",
+        ] {
+            let body = format!("{}<summary>Notes</summary>\n\nshown\n\n</details>", tag);
+            assert_eq!("Notes\n\nshown", visible_text(&body), "{}", tag);
+        }
+    }
+
+    #[test]
+    fn test_unterminated_comment_hides_rest() {
+        assert_eq!(
+            "Visible",
+            visible_text("Visible\n\n<!-- hidden\n\nmore hidden")
+        );
+    }
+
+    #[test]
+    fn test_crlf_seams_collapse() {
+        assert_eq!("A\n\nB", visible_text("A\r\n\r\n<!-- c -->\r\n\r\nB"));
+    }
+
+    #[test]
+    fn test_unclosed_summary_ends_with_details() {
+        let body = "<details><summary>A</details>\n\n<details>\n\nhidden\n\n</details>";
+        assert_eq!("▸ A\n\n▸ Details", visible_text(body));
     }
 
     #[test]

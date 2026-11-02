@@ -1191,6 +1191,28 @@ async fn test_commit_comment_hides_collapsed_details() {
 }
 
 #[tokio::test]
+async fn test_commit_comment_ignore_hidden_only_messages() {
+    let mut test = new_test();
+    test.handler.event = "commit_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: Some("abcdef00001111".into()),
+        path: None,
+        body: Some("<!-- marker -->".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+
+    test.slack.expect(vec![]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "commit_comment".into()), resp);
+}
+
+#[tokio::test]
 async fn test_pull_request_review_approved() {
     let mut test = new_test();
     test.handler.event = "pull_request_review".into();
