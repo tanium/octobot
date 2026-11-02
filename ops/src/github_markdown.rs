@@ -98,8 +98,7 @@ fn push_joined(out: &mut String, segment: &str) {
 // Tags count only where the markdown parser sees raw HTML, so code blocks and
 // code spans keep them as literal text.
 fn html_tokens(body: &str) -> Vec<(Range<usize>, Token)> {
-    // An unterminated comment runs to the end of its HTML block, which
-    // CommonMark extends to the end of the body.
+    // An unterminated comment hides the rest of its HTML block.
     let tag = Regex::new(r"(?is)<!--.*?(?:-->|\z)|<(/?)(details|summary)\b([^>]*)>").unwrap();
     let quoted = Regex::new(r#""[^"]*"|'[^']*'"#).unwrap();
     let open_attr = Regex::new(r"(?i)(?:^|\s)open(?:\s|=|$)").unwrap();
