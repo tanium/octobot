@@ -7,6 +7,7 @@ mod docker;
 pub mod force_push;
 pub mod git;
 pub mod git_clone_manager;
+pub mod github_markdown;
 pub mod messenger;
 pub mod migrate_slack;
 pub mod pr_merge;

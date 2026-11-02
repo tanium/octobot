@@ -962,6 +962,234 @@ async fn test_pull_request_comments_ignore_user() {
     assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
 }
 
+const COLLAPSED_BODY: &str =
+    "Looks right\n\n<details><summary>Notes</summary>\n\ncc @mentioned-participant\n\n</details>";
+const COLLAPSED_TEXT: &str = "Looks right\n\n▸ Notes";
+
+fn mentioned_reqs(msg: &str, attach: &[slack::SlackAttachment]) -> Vec<slack::SlackRequest> {
+    vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            attach,
+            Threading::ReplyOrStart(
+                "some-user/some-repo/32".to_string(),
+                thread_root(REPO_MSG, 32),
+            ),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("mentioned.participant"),
+            msg,
+            attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            attach,
+            Threading::Flat,
+        ),
+    ]
+}
+
+#[tokio::test]
+async fn test_pull_request_comment_hides_collapsed_details() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: Some("abcdef00001111".into()),
+        path: Some("src/main.rs".into()),
+        body: Some(COLLAPSED_BODY.into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.mock_pull_request_commits();
+
+    let attach = vec![
+        SlackAttachmentBuilder::new(COLLAPSED_TEXT)
+            .title("joe.reviewer said:")
+            .title_link("http://the-comment")
+            .build(),
+    ];
+    // Mentions inside collapsed blocks still notify, as on GitHub.
+    test.slack.expect(mentioned_reqs(
+        "Comment on \"<http://the-pr|The PR>\"",
+        &attach,
+    ));
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
+}
+
+#[tokio::test]
+async fn test_pull_request_comments_ignore_hidden_only_messages() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: Some("abcdef00001111".into()),
+        path: Some("src/main.rs".into()),
+        body: Some("<!-- marker -->".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.mock_pull_request_commits();
+
+    test.slack.expect(vec![]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_pull_request_review_comment_grouped_hides_collapsed_details() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: Some(77),
+        commit_id: Some("abcdef00001111".into()),
+        path: Some("src/main.rs".into()),
+        body: Some("Looks right\n\n<details><summary>Notes</summary>\n\nmore\n\n</details>".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.mock_pull_request_commits();
+
+    let mut assign1 = test.config.users().lookup_info("assign1").unwrap();
+    assign1.group_review_direct_messages = Some(true);
+    test.config.users_write().update(&assign1).unwrap();
+
+    let grouped = Arc::new(CaptureSlack::default());
+    test.handler.messenger = messenger::new(test.config.clone(), test.slack.new_sender())
+        .with_review_groups(ReviewGroups::new(
+            grouped.clone(),
+            Duration::from_millis(20),
+            Duration::from_secs(1),
+        ));
+
+    let attach = vec![
+        SlackAttachmentBuilder::new(COLLAPSED_TEXT)
+            .title("joe.reviewer said:")
+            .title_link("http://the-comment")
+            .build(),
+    ];
+    test.slack.expect(ungrouped_review_reqs(
+        "Comment on \"<http://the-pr|The PR>\"",
+        &attach,
+    ));
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        vec![slack::req(
+            SlackRecipient::user_mention("assign1"),
+            "joe.reviewer reviewed PR \"<http://the-pr|The PR>\"",
+            &[SlackAttachmentBuilder::new(COLLAPSED_TEXT)
+                .title("src/main.rs")
+                .title_link("http://the-comment")
+                .build(),],
+            Threading::Flat,
+        )],
+        *grouped.reqs.lock().unwrap()
+    );
+}
+
+#[tokio::test]
+async fn test_pull_request_review_approved_hides_collapsed_details() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review".into();
+    test.handler.action = "submitted".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.review = Some(Review {
+        id: 77,
+        state: "approved".into(),
+        body: Some(COLLAPSED_BODY.into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.mock_pull_request_commits();
+
+    let attach = vec![
+        SlackAttachmentBuilder::new(COLLAPSED_TEXT)
+            .title("Review: Approved")
+            .title_link("http://the-comment")
+            .color("good")
+            .build(),
+    ];
+    test.slack.expect(mentioned_reqs(
+        "joe.reviewer approved PR \"<http://the-pr|The PR>\"",
+        &attach,
+    ));
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review".into()), resp);
+}
+
+#[tokio::test]
+async fn test_commit_comment_hides_collapsed_details() {
+    let mut test = new_test();
+    test.handler.event = "commit_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: Some("abcdef00001111".into()),
+        path: None,
+        body: Some(COLLAPSED_BODY.into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+
+    test.github.mock_get_pull_requests_by_commit(
+        "some-user",
+        "some-repo",
+        "abcdef0",
+        None,
+        Ok(vec![]),
+    );
+    test.slack.expect(vec![slack::req(
+        SlackRecipient::by_name("the-reviews-channel"),
+        &format!("Comment on \"abcdef0\" (<http://the-github-host/some-user/some-repo/commit/abcdef00001111|abcdef0>) {}", REPO_MSG),
+        &[SlackAttachmentBuilder::new(COLLAPSED_TEXT)
+            .title("joe.reviewer said:")
+            .title_link("http://the-comment")
+            .build()],
+        Threading::Flat,
+    )]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "commit_comment".into()), resp);
+}
+
 #[tokio::test]
 async fn test_pull_request_review_approved() {
     let mut test = new_test();
