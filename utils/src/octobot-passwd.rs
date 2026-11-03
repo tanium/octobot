@@ -1,6 +1,3 @@
-use ring::rand::SecureRandom;
-use ring::rand::SystemRandom;
-
 use octobot_lib::config;
 use octobot_lib::passwd;
 
@@ -22,12 +19,7 @@ fn main() {
         std::process::exit(1);
     }
 
-    let mut salt_bytes: [u8; 32] = [0; 32];
-    SystemRandom::new()
-        .fill(&mut salt_bytes)
-        .expect("get random");
-    let salt: String = hex::encode(salt_bytes);
-
+    let salt = passwd::new_salt();
     let pass_hash = passwd::store_password(&pass1, &salt);
 
     if admin_name == "--metrics" {

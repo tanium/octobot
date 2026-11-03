@@ -41,10 +41,9 @@ pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> Result<bool> {
     // in the absence of `ldap_escape` from ldap3, just whitelist acceptable characters
     let re = Regex::new(r"([^A-Za-z0-9\.\-_@])").unwrap();
     if let Some(cap) = re.captures(user) {
-        info!(
-            "Invalid username character in username: '{}', '{}'",
-            &cap[1], user
-        );
+        // Not the username itself: a password typed into the username
+        // field lands here.
+        info!("Invalid username character: '{}'", &cap[1]);
         return Ok(false);
     }
 
@@ -68,11 +67,11 @@ pub fn auth(user: &str, pass: &str, config: &LdapConfig) -> Result<bool> {
     let results = search(config, Some(&user_filter), 1)?;
 
     if results.is_empty() {
-        debug!("No users found matching {}", user);
+        debug!("No users found matching username");
         return Ok(false);
     }
     if results.len() > 1 {
-        info!("Too many users found matching {}", user);
+        info!("Too many users found matching username");
         return Ok(false);
     }
 

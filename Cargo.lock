@@ -1351,10 +1351,8 @@ dependencies = [
 name = "octobot_utils"
 version = "0.1.0"
 dependencies = [
- "hex",
  "octobot_lib",
  "regex",
- "ring",
  "rpassword",
 ]
 
