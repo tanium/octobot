@@ -1,5 +1,10 @@
-use hyper::{self, Body, Response, StatusCode};
+use bytes::Bytes;
+use http_body_util::Full;
+use hyper::{self, Response, StatusCode};
 use std::env;
+
+// Every response octobot sends is fully buffered.
+pub type Body = Full<Bytes>;
 
 pub fn is_dev_mode() -> bool {
     env::var("DEVMODE").is_ok()
@@ -22,7 +27,7 @@ pub fn new_json_resp(json: String) -> Response<Body> {
 }
 
 pub fn new_empty_resp(status: StatusCode) -> Response<Body> {
-    let mut resp = Response::new(Body::empty());
+    let mut resp = Response::new(Body::default());
     *resp.status_mut() = status;
     resp
 }

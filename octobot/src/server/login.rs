@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hyper::{Body, Request, Response, StatusCode};
+use hyper::body::Incoming;
+use hyper::{Request, Response, StatusCode};
 use log::{error, info, warn};
 use serde_derive::Deserialize;
 use serde_json::json;
@@ -10,7 +11,7 @@ use octobot_lib::config::Config;
 use octobot_lib::errors::*;
 use octobot_lib::passwd;
 
-use crate::http_util;
+use crate::http_util::{self, Body};
 use crate::server::http::{Filter, FilterResult, Handler, parse_json};
 use crate::server::sessions::Sessions;
 
@@ -61,7 +62,7 @@ struct LoginRequest {
     password: String,
 }
 
-fn get_session(req: &Request<Body>) -> Option<String> {
+fn get_session(req: &Request<Incoming>) -> Option<String> {
     req.headers()
         .get("session")
         .map(|h| String::from_utf8_lossy(h.as_bytes()).into_owned())
@@ -69,7 +70,7 @@ fn get_session(req: &Request<Body>) -> Option<String> {
 
 #[async_trait]
 impl Handler for LoginHandler {
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let config = self.config.clone();
         let sessions = self.sessions.clone();
 
@@ -120,7 +121,7 @@ fn invalid_session() -> Response<Body> {
 
 #[async_trait]
 impl Handler for LogoutHandler {
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let sess: String = match get_session(&req) {
             Some(s) => s,
             None => return Ok(invalid_session()),
@@ -133,7 +134,7 @@ impl Handler for LogoutHandler {
 
 #[async_trait]
 impl Handler for SessionCheckHandler {
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let sess: String = match get_session(&req) {
             Some(s) => s,
             None => return Ok(invalid_session()),
@@ -148,7 +149,7 @@ impl Handler for SessionCheckHandler {
 }
 
 impl Filter for LoginSessionFilter {
-    fn filter(&self, req: Request<Body>) -> FilterResult {
+    fn filter(&self, req: Request<Incoming>) -> FilterResult {
         let sess: String = match get_session(&req) {
             Some(s) => s,
             None => return FilterResult::Halt(invalid_session()),

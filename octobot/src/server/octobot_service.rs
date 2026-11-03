@@ -1,4 +1,5 @@
-use hyper::{self, Body, Method, Request, Response};
+use hyper::body::Incoming;
+use hyper::{self, Method, Request, Response};
 use log::{debug, info};
 use maplit::hashmap;
 use std::sync::Arc;
@@ -9,6 +10,7 @@ use octobot_lib::jira::api::Session as JiraSession;
 use octobot_lib::metrics;
 use octobot_ops::util;
 
+use crate::http_util::Body;
 use crate::server::admin;
 use crate::server::admin::{Op, RepoAdmin, UserAdmin};
 use crate::server::github_handler::{GithubHandler, GithubHandlerState};
@@ -58,7 +60,7 @@ impl OctobotService {
 }
 
 impl OctobotService {
-    pub async fn call(self, req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    pub async fn call(self, req: Request<Incoming>) -> Result<Response<Body>, hyper::Error> {
         let start = std::time::Instant::now();
 
         let method = req.method().clone();
@@ -89,7 +91,7 @@ impl OctobotService {
         Ok(res)
     }
 
-    fn route(&self, req: &Request<Body>) -> Box<dyn Handler> {
+    fn route(&self, req: &Request<Incoming>) -> Box<dyn Handler> {
         // API routes
         if req.uri().path().starts_with("/api") {
             let filter = LoginSessionFilter::new(self.ui_sessions.clone());
