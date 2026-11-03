@@ -289,8 +289,52 @@ fn test_peace_and_quiet_teams() {
     let messenger = messenger::new(config, slack.new_sender());
 
     let mut p = Participants::new();
-    p.add_team_member(github::User::new("assign1"));
-    p.add_team_member(github::User::new("assign2"));
+    p.add_team_member(github::User::new("assign1"), "the-owner/team");
+    p.add_team_member(github::User::new("assign2"), "the-owner/team");
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
+        p,
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![Thread::new("some-user/some-repo/1")],
+    );
+}
+
+#[test]
+fn test_muted_teams() {
+    let (config, _temp) = new_test();
+
+    for name in ["only-muted", "also-other"] {
+        config.users_write().insert(name, name).unwrap();
+        let mut user = config.users().lookup_info(name).unwrap();
+        user.muted_teams = vec!["the-owner/muted".into()];
+        config.users_write().update(&user).unwrap();
+    }
+
+    let slack = MockSlack::new(vec![
+        slack::req(
+            SlackRecipient::user_mention("also-other"),
+            "hello there",
+            &[],
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.owner"),
+            "hello there",
+            &[],
+            Threading::Flat,
+        ),
+    ]);
+    let messenger = messenger::new(config, slack.new_sender());
+
+    let mut p = Participants::new();
+    p.add_team_member(github::User::new("only-muted"), "the-owner/muted");
+    p.add_team_member(github::User::new("also-other"), "the-owner/muted");
+    p.add_team_member(github::User::new("also-other"), "the-owner/other");
     messenger.send_to_all(
         "hello there",
         &[],
@@ -314,6 +358,16 @@ fn pr_thread(guid: &str) -> Thread {
     Thread::for_pull_request(guid, SlackAttachmentBuilder::new("").build())
 }
 
+fn dm_thread(guid: &str) -> Threading {
+    Threading::ReplyOrStart(
+        guid.into(),
+        ThreadRoot {
+            msg: "New thread for Pull Request (<|>)".into(),
+            attachments: vec![SlackAttachmentBuilder::new("").build()],
+        },
+    )
+}
+
 #[test]
 fn test_threads_direct_messages() {
     let (config, _temp) = new_test();
@@ -323,7 +377,7 @@ fn test_threads_direct_messages() {
         SlackRecipient::user_mention("the.owner"),
         "hello there",
         &[],
-        Threading::Root("some-user/some-repo/1".to_string()),
+        dm_thread("some-user/some-repo/1"),
     )]);
     let messenger = messenger::new(config, slack.new_sender());
     messenger.send_to_all(
@@ -378,7 +432,7 @@ fn test_threads_direct_messages_per_user() {
             SlackRecipient::user_mention("assign1"),
             "hello there",
             &[],
-            Threading::Root("some-user/some-repo/1".to_string()),
+            dm_thread("some-user/some-repo/1"),
         ),
         slack::req(
             SlackRecipient::user_mention("the.owner"),

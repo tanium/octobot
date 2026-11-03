@@ -1,5 +1,5 @@
 use log::info;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::review_group::{ReviewGroups, ReviewItem};
@@ -19,7 +19,7 @@ pub struct Messenger {
 #[derive(PartialEq, Clone, Debug)]
 pub enum ParticipantType {
     User,
-    TeamMember,
+    TeamMember(BTreeSet<String>),
 }
 
 #[derive(PartialEq, Clone)]
@@ -63,26 +63,24 @@ impl Participants {
         });
     }
 
-    pub fn add_team_member(&mut self, user: github::User) {
+    pub fn add_team_member(&mut self, user: github::User, team: &str) {
         self.add(Participant {
             user,
-            participant_type: ParticipantType::TeamMember,
+            participant_type: ParticipantType::TeamMember(BTreeSet::from([team.to_string()])),
         });
     }
 
     fn add(&mut self, p: Participant) {
-        let new_type = p.participant_type.clone();
+        let Some(entry) = self.users.get_mut(p.user.login()) else {
+            self.users.insert(p.user.login().to_string(), p);
+            return;
+        };
 
-        let entry = self.users.entry(p.user.login().to_string()).or_insert(p);
-
-        if entry.participant_type != new_type {
-            match new_type {
-                ParticipantType::User => {
-                    // override.
-                    entry.participant_type = new_type
-                }
-                ParticipantType::TeamMember => {
-                    // ignore. team members do not override
+        match p.participant_type {
+            ParticipantType::User => entry.participant_type = ParticipantType::User,
+            ParticipantType::TeamMember(teams) => {
+                if let ParticipantType::TeamMember(existing) = &mut entry.participant_type {
+                    existing.extend(teams);
                 }
             }
         }
@@ -179,10 +177,11 @@ impl Messenger {
         }
 
         // A commit can belong to several PRs; one DM thread is enough.
-        let dm_thread_guid = threads
-            .iter()
-            .find(|t| t.pull_request.is_some())
-            .map(|t| t.guid.clone());
+        let repo_link = util::make_link(&repo.html_url, &repo.full_name);
+        let dm_thread = threads.iter().find_map(|t| {
+            let pr = t.pull_request.as_ref()?;
+            Some((t.guid.clone(), pr_thread_root(&repo_link, pr)))
+        });
 
         self.send_to_channel(msg, attachments, repo, branch, commits, threads, false);
 
@@ -192,7 +191,7 @@ impl Messenger {
         participants.remove(sender.login());
         participants.remove("octobot");
 
-        self.send_to_slackbots(participants, repo, msg, attachments, dm_thread_guid, review);
+        self.send_to_slackbots(participants, repo, msg, attachments, dm_thread, review);
     }
 
     fn is_ignored_user(&self, user: &github::User) -> bool {
@@ -255,13 +254,7 @@ impl Messenger {
                 let guid = thread.guid.clone();
                 let threading = match &thread.pull_request {
                     _ if initial_thread => Threading::Root(guid),
-                    Some(pr) => Threading::ReplyOrStart(
-                        guid,
-                        ThreadRoot {
-                            msg: format!("New thread for Pull Request ({})", repo_link),
-                            attachments: vec![pr.clone()],
-                        },
-                    ),
+                    Some(pr) => Threading::ReplyOrStart(guid, pr_thread_root(&repo_link, pr)),
                     None => Threading::Reply(guid),
                 };
                 self.slack.send(slack::req(
@@ -280,24 +273,25 @@ impl Messenger {
         repo: &github::Repo,
         msg: &str,
         attachments: &[SlackAttachment],
-        thread_guid: Option<String>,
+        thread: Option<(String, ThreadRoot)>,
         review: Option<&ReviewItem>,
     ) {
         for (_, user) in users.users.iter() {
-            let is_team_member = match user.participant_type {
-                ParticipantType::User => false,
-                ParticipantType::TeamMember => true,
+            let via_teams = match &user.participant_type {
+                ParticipantType::User => None,
+                ParticipantType::TeamMember(teams) => Some(teams),
             };
 
-            let user_dm = self.config.users().slack_direct_message(
-                user.login(),
-                is_team_member,
-                &repo.full_name,
-            );
+            let user_dm =
+                self.config
+                    .users()
+                    .slack_direct_message(user.login(), via_teams, &repo.full_name);
 
             if let Some(user_dm) = user_dm {
-                let threading = match &thread_guid {
-                    Some(guid) if user_dm.use_threads => Threading::Root(guid.clone()),
+                let threading = match &thread {
+                    Some((guid, root)) if user_dm.use_threads => {
+                        Threading::ReplyOrStart(guid.clone(), root.clone())
+                    }
                     _ => Threading::Flat,
                 };
                 if user_dm.group_reviews
@@ -315,6 +309,13 @@ impl Messenger {
     }
 }
 
+fn pr_thread_root(repo_link: &str, pr: &SlackAttachment) -> ThreadRoot {
+    ThreadRoot {
+        msg: format!("New thread for Pull Request ({})", repo_link),
+        attachments: vec![pr.clone()],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -324,7 +325,7 @@ mod tests {
         let mut p = Participants::new();
 
         p.add_user(github::User::new("a"));
-        p.add_team_member(github::User::new("a"));
+        p.add_team_member(github::User::new("a"), "org/team");
 
         let entry = p.users.get("a").unwrap();
         assert_eq!(entry.participant_type, ParticipantType::User);
@@ -334,10 +335,24 @@ mod tests {
     fn test_participation_type_priority2() {
         let mut p = Participants::new();
 
-        p.add_team_member(github::User::new("a"));
+        p.add_team_member(github::User::new("a"), "org/team");
         p.add_user(github::User::new("a"));
 
         let entry = p.users.get("a").unwrap();
         assert_eq!(entry.participant_type, ParticipantType::User);
+    }
+
+    #[test]
+    fn test_team_member_collects_teams() {
+        let mut p = Participants::new();
+
+        p.add_team_member(github::User::new("a"), "org/team1");
+        p.add_team_member(github::User::new("a"), "org/team2");
+
+        let entry = p.users.get("a").unwrap();
+        assert_eq!(
+            entry.participant_type,
+            ParticipantType::TeamMember(BTreeSet::from(["org/team1".into(), "org/team2".into()]))
+        );
     }
 }
