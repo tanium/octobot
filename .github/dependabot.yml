@@ -4,3 +4,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    # One PR for compatible bumps; major bumps still get their own PRs.
+    groups:
+      cargo-minor:
+        update-types: [minor, patch]
