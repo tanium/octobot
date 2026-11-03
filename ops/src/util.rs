@@ -6,7 +6,7 @@ use anyhow::anyhow;
 
 use octobot_lib::errors::*;
 
-fn escape_for_slack(str: &str) -> String {
+pub fn escape_for_slack(str: &str) -> String {
     str.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

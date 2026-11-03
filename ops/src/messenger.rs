@@ -180,7 +180,7 @@ impl Messenger {
         let repo_link = util::make_link(&repo.html_url, &repo.full_name);
         let dm_thread = threads.iter().find_map(|t| {
             let pr = t.pull_request.as_ref()?;
-            Some((t.guid.clone(), pr_thread_root(&repo_link, pr)))
+            Some((t.guid.clone(), pr_dm_thread_root(&repo_link, pr)))
         });
 
         self.send_to_channel(msg, attachments, repo, branch, commits, threads, false);
@@ -289,9 +289,10 @@ impl Messenger {
 
             if let Some(user_dm) = user_dm {
                 let threading = match &thread {
-                    Some((guid, root)) if user_dm.use_threads => {
-                        Threading::ReplyOrStart(guid.clone(), root.clone())
-                    }
+                    Some((guid, root)) if user_dm.use_threads => Threading::ReplyOrStart(
+                        guid.clone(),
+                        dm_thread_root(root, &user_dm.recipient),
+                    ),
                     _ => Threading::Flat,
                 };
                 if user_dm.group_reviews
@@ -313,6 +314,29 @@ fn pr_thread_root(repo_link: &str, pr: &SlackAttachment) -> ThreadRoot {
     ThreadRoot {
         msg: format!("New thread for Pull Request ({})", repo_link),
         attachments: vec![pr.clone()],
+    }
+}
+
+// The title is repeated in the text because notification previews leave out attachments.
+fn pr_dm_thread_root(repo_link: &str, pr: &SlackAttachment) -> ThreadRoot {
+    let subject = pr
+        .title
+        .as_deref()
+        .map_or("Pull Request".into(), util::escape_for_slack);
+    ThreadRoot {
+        msg: format!("New thread for {} ({})", subject, repo_link),
+        attachments: vec![pr.clone()],
+    }
+}
+
+// Slack only notifies about replies in threads the user follows, and a mention makes them follow it.
+fn dm_thread_root(root: &ThreadRoot, recipient: &SlackRecipient) -> ThreadRoot {
+    if recipient.id.starts_with('@') {
+        return root.clone();
+    }
+    ThreadRoot {
+        msg: format!("{}\n<@{}>", root.msg, recipient.id),
+        attachments: root.attachments.clone(),
     }
 }
 
