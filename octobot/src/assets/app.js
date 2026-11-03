@@ -246,6 +246,7 @@ app.controller('UsersController', function($scope, sessionHttp, notificationServ
       thread_direct_messages: null,
       group_review_direct_messages: null,
       muted_repos: [],
+      muted_teams: [],
     };
     $('#add-user-modal').modal('show');
   }
