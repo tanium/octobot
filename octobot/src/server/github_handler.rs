@@ -3,7 +3,9 @@ use std::ops::{Add, Deref};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
-use hyper::{Body, Request, Response, StatusCode};
+use http_body_util::BodyExt;
+use hyper::body::Incoming;
+use hyper::{Request, Response, StatusCode};
 use log::{error, info, warn};
 use serde_json;
 use tokio;
@@ -26,7 +28,7 @@ use octobot_ops::util;
 use octobot_ops::webhook_db::WebhookDatabase;
 use octobot_ops::worker::{TokioWorker, Worker};
 
-use crate::http_util;
+use crate::http_util::{self, Body};
 use crate::runtime;
 use crate::server::github_verify::GithubWebhookVerifier;
 use crate::server::http::Handler;
@@ -211,11 +213,11 @@ impl GithubHandler {
 
 #[async_trait::async_trait]
 impl Handler for GithubHandler {
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         Ok(self.handle_ok(req).await)
     }
 
-    async fn handle_ok(&self, req: Request<Body>) -> Response<Body> {
+    async fn handle_ok(&self, req: Request<Incoming>) -> Response<Body> {
         let _scoped_count = metrics::scoped_inc(&self.state.metrics.current_webhook_count);
 
         let event_id;
@@ -273,8 +275,8 @@ impl Handler for GithubHandler {
         let force_push = self.state.force_push_worker.clone();
         let slack = self.state.slack_worker.clone();
 
-        let body = match hyper::body::to_bytes(req.into_body()).await {
-            Ok(b) => b,
+        let body = match req.into_body().collect().await {
+            Ok(b) => b.to_bytes(),
             Err(e) => {
                 error!("Error reading request body: {}", e);
                 return http_util::new_bad_req_resp(format!("Error reading request body: {}", e));

@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use hyper::StatusCode;
-use hyper::{Body, Request, Response};
+use hyper::body::Incoming;
+use hyper::{Request, Response};
 use log::error;
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
@@ -17,7 +18,7 @@ use octobot_lib::version;
 use octobot_ops::slack::Slack;
 use octobot_ops::util;
 
-use crate::http_util;
+use crate::http_util::{self, Body};
 use crate::server::http::{Handler, parse_json};
 
 pub enum Op {
@@ -53,7 +54,7 @@ impl RepoAdmin {
 
 #[async_trait::async_trait]
 impl Handler for UserAdmin {
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         match &self.op {
             Op::List => self.get_all(req).await,
             Op::Create => self.create(req).await,
@@ -65,7 +66,7 @@ impl Handler for UserAdmin {
 }
 
 impl UserAdmin {
-    async fn get_all(&self, _: Request<Body>) -> Result<Response<Body>> {
+    async fn get_all(&self, _: Request<Incoming>) -> Result<Response<Body>> {
         #[derive(Serialize)]
         struct UsersResp {
             users: Vec<UserInfo>,
@@ -79,7 +80,7 @@ impl UserAdmin {
         Ok(http_util::new_json_resp(users))
     }
 
-    async fn create(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn create(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let config = self.config.clone();
         let user: UserInfo = parse_json(req).await?;
         config.users_write().insert_info(&user)?;
@@ -87,7 +88,7 @@ impl UserAdmin {
         Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 
-    async fn update(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn update(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let config = self.config.clone();
 
         let user: UserInfo = parse_json(req).await?;
@@ -96,7 +97,7 @@ impl UserAdmin {
         Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 
-    async fn delete(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn delete(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let config = self.config.clone();
 
         let query = util::parse_query(req.uri().query());
@@ -115,7 +116,7 @@ impl UserAdmin {
         Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 
-    async fn verify(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn verify(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         #[derive(Serialize)]
         struct Resp {
             id: String,
@@ -155,7 +156,7 @@ impl UserAdmin {
 
 #[async_trait::async_trait]
 impl Handler for RepoAdmin {
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         match &self.op {
             Op::List => self.get_all(req).await,
             Op::Create => self.create(req).await,
@@ -167,7 +168,7 @@ impl Handler for RepoAdmin {
 }
 
 impl RepoAdmin {
-    async fn get_all(&self, _: Request<Body>) -> Result<Response<Body>> {
+    async fn get_all(&self, _: Request<Incoming>) -> Result<Response<Body>> {
         #[derive(Serialize)]
         struct ReposResp {
             repos: Vec<RepoInfo>,
@@ -192,7 +193,7 @@ impl RepoAdmin {
         Ok(http_util::new_json_resp(repos))
     }
 
-    async fn create(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn create(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let config = self.config.clone();
         let repo: RepoInfo = parse_json(req).await?;
         config.repos_write().insert_info(&repo)?;
@@ -200,7 +201,7 @@ impl RepoAdmin {
         Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 
-    async fn update(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn update(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let config = self.config.clone();
         let repo: RepoInfo = parse_json(req).await?;
         config.repos_write().update(&repo)?;
@@ -208,7 +209,7 @@ impl RepoAdmin {
         Ok(http_util::new_empty_resp(StatusCode::OK))
     }
 
-    async fn delete(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn delete(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let config = self.config.clone();
 
         let query = util::parse_query(req.uri().query());
@@ -288,7 +289,7 @@ impl MergeVersionsResp {
 
 #[async_trait::async_trait]
 impl Handler for MergeVersions {
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let merge_req: MergeVersionsReq = parse_json(req).await?;
 
         Ok(self.do_handle(merge_req).await)

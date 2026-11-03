@@ -1,10 +1,12 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use hyper::server::Server;
-use hyper::service::{make_service_fn, service_fn};
-use log::{error, info};
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper_util::rt::{TokioIo, TokioTimer};
+use log::{debug, error, info};
 use octobot_ops::webhook_db::WebhookDatabase;
+use tokio::net::TcpListener;
 
 use crate::runtime;
 use crate::server::github_handler::GithubHandlerState;
@@ -112,39 +114,21 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         metrics.clone(),
     );
 
-    let main_service;
-    {
+    let jobs = tokio::spawn({
         let octobot = octobot.clone();
-        main_service = make_service_fn(move |_| {
-            let metrics = metrics.clone();
-            let _scoped_count = metrics::scoped_inc(&metrics.current_connection_count);
-
-            let octobot = octobot.clone();
-
-            async move {
-                // move the scoped count inside the future
-                let _scoped_count = _scoped_count;
-
-                let octobot = octobot.clone();
-                Ok::<_, hyper::Error>(service_fn(move |req| {
-                    let octobot = octobot.clone();
-                    octobot.call(req)
-                }))
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
+            loop {
+                interval.tick().await;
+                octobot.clean();
             }
-        });
-    }
-
-    let jobs = tokio::spawn(async move {
-        let octobot = octobot.clone();
-
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
-        loop {
-            interval.tick().await;
-            octobot.clean();
         }
     });
 
-    let server = Server::bind(&http_addr).serve(main_service);
+    let listener = match TcpListener::bind(http_addr).await {
+        Ok(l) => l,
+        Err(e) => panic!("Error binding {}: {}", http_addr, e),
+    };
     info!("Listening (HTTP) on {}", http_addr);
 
     let webhook_redeliver = tokio::spawn(async move {
@@ -200,14 +184,41 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         }
     });
 
-    if let Err(e) = server.await {
-        error!("server error: {}", e);
-    }
+    serve(listener, octobot, metrics).await;
 
     let Err(e) = jobs.await;
     error!("jobs error: {}", e);
 
     if let Err(e) = webhook_redeliver.await {
         error!("webhook redeliver error: {}", e);
+    }
+}
+
+async fn serve(listener: TcpListener, octobot: OctobotService, metrics: Arc<metrics::Metrics>) {
+    loop {
+        let stream = match listener.accept().await {
+            Ok((stream, _)) => stream,
+            Err(e) => {
+                // Typically file descriptor exhaustion; back off instead of spinning.
+                error!("Error accepting connection: {}", e);
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                continue;
+            }
+        };
+
+        let scoped_count = metrics::scoped_inc(&metrics.current_connection_count);
+        let octobot = octobot.clone();
+        tokio::spawn(async move {
+            let _scoped_count = scoped_count;
+
+            let service = service_fn(move |req| octobot.clone().call(req));
+            if let Err(e) = http1::Builder::new()
+                .timer(TokioTimer::new())
+                .serve_connection(TokioIo::new(stream), service)
+                .await
+            {
+                debug!("Connection error: {}", e);
+            }
+        });
     }
 }

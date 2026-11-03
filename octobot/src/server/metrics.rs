@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use hyper::{Body, HeaderMap, Request, Response, StatusCode};
+use hyper::body::Incoming;
+use hyper::{HeaderMap, Request, Response, StatusCode};
 
 use octobot_lib::config::Config;
 use octobot_lib::errors::Result;
 use octobot_lib::metrics::Metrics;
 use octobot_lib::passwd;
 
-use crate::http_util;
+use crate::http_util::{self, Body};
 use crate::server::http::Handler;
 
 pub struct MetricsScrapeHandler {
@@ -62,7 +63,7 @@ impl MetricsScrapeHandler {
 
 #[async_trait::async_trait]
 impl Handler for MetricsScrapeHandler {
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         if let Some((err, msg)) = self.validate(req.headers()) {
             return Ok(http_util::new_msg_resp(err, msg));
         }

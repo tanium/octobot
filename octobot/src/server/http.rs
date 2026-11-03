@@ -1,15 +1,17 @@
 use async_trait::async_trait;
-use hyper::{self, Body, Request, Response, StatusCode};
+use http_body_util::BodyExt;
+use hyper::body::Incoming;
+use hyper::{Request, Response, StatusCode};
 use log::error;
 use serde::de::DeserializeOwned;
 use serde_json;
 
-use crate::http_util;
+use crate::http_util::{self, Body};
 use octobot_lib::errors::*;
 
 #[async_trait]
 pub trait Handler: Send + Sync {
-    async fn handle_ok(&self, req: Request<Body>) -> Response<Body> {
+    async fn handle_ok(&self, req: Request<Incoming>) -> Response<Body> {
         match self.handle(req).await {
             Ok(r) => r,
             Err(e) => {
@@ -19,7 +21,7 @@ pub trait Handler: Send + Sync {
         }
     }
 
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>>;
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>>;
 
     fn respond_with(&self, status: StatusCode, msg: &str) -> Response<Body> {
         http_util::new_msg_resp(status, msg.to_string())
@@ -32,12 +34,12 @@ pub trait Handler: Send + Sync {
 }
 
 pub trait Filter: Send + Sync {
-    fn filter(&self, req: Request<Body>) -> FilterResult;
+    fn filter(&self, req: Request<Incoming>) -> FilterResult;
 }
 
 pub enum FilterResult {
     Halt(Response<Body>),
-    Continue(Request<Body>),
+    Continue(Request<Incoming>),
 }
 
 pub struct FilteredHandler {
@@ -55,7 +57,7 @@ impl FilteredHandler {
 
 #[async_trait]
 impl Handler for FilteredHandler {
-    async fn handle(&self, req: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, req: Request<Incoming>) -> Result<Response<Body>> {
         let req = match self.filter.filter(req) {
             FilterResult::Halt(resp) => return Ok(resp),
             FilterResult::Continue(req) => req,
@@ -67,14 +69,14 @@ impl Handler for FilteredHandler {
 
 #[async_trait]
 impl Handler for NotFoundHandler {
-    async fn handle(&self, _: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, _: Request<Incoming>) -> Result<Response<Body>> {
         Ok(http_util::new_empty_resp(StatusCode::NOT_FOUND))
     }
 }
 
-pub async fn parse_json<T: DeserializeOwned>(req: Request<Body>) -> Result<T> {
-    let bytes = match hyper::body::to_bytes(req.into_body()).await {
-        Ok(b) => b,
+pub async fn parse_json<T: DeserializeOwned>(req: Request<Incoming>) -> Result<T> {
+    let bytes = match req.into_body().collect().await {
+        Ok(b) => b.to_bytes(),
         Err(e) => {
             return Err(anyhow::anyhow!("Failed to read request body: {}", e));
         }

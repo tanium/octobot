@@ -1,10 +1,11 @@
 use std::fs::File;
 use std::io::Read;
 
+use hyper::body::Incoming;
 use hyper::header::CONTENT_TYPE;
-use hyper::{Body, Request, Response};
+use hyper::{Request, Response};
 
-use crate::http_util;
+use crate::http_util::{self, Body};
 use crate::server::http::Handler;
 use octobot_lib::errors::Result;
 
@@ -41,7 +42,7 @@ impl HtmlHandler {
 
 #[async_trait::async_trait]
 impl Handler for HtmlHandler {
-    async fn handle(&self, _: Request<Body>) -> Result<Response<Body>> {
+    async fn handle(&self, _: Request<Incoming>) -> Result<Response<Body>> {
         let mut resp = Response::new(Body::from(self.contents()));
         resp.headers_mut()
             .insert(CONTENT_TYPE, "text/html".parse().unwrap());
