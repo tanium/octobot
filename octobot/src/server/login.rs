@@ -90,12 +90,13 @@ impl Handler for LoginHandler {
 
         if success.is_none() {
             if let Some(ref ldap) = config.ldap {
+                // Usernames stay out of the logs: a failed one may be a
+                // password typed in the wrong field.
                 match octobot_ldap::auth(&login_req.username, &login_req.password, ldap) {
                     Ok(true) => {
-                        info!("LDAP auth success for user: {}", login_req.username);
+                        info!("LDAP auth success");
                         success = Some(true)
                     }
-                    // No username: it may be a password typed in the wrong field.
                     Ok(false) => warn!("LDAP auth failure"),
                     Err(e) => error!("Error authenticating to LDAP: {}", e),
                 };
