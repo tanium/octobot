@@ -18,7 +18,7 @@ path = "src/lib.rs"
 octobot_lib = { "path" = "../lib" }
 octobot_ldap = { "path" = "../ldap" }
 octobot_ops = { "path" = "../ops" }
-env_logger = "0.10.0"
+env_logger = "0.11.11"
 http = "0.2.9"
 hyper = { version = "0.14.27", features = ["server"] }
 log = "0.4.19"
