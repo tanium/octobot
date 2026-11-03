@@ -100,7 +100,7 @@ fn push_joined(out: &mut String, segment: &str) {
 fn html_tokens(body: &str) -> Vec<(Range<usize>, Token)> {
     // An unterminated comment hides the rest of its HTML block.
     let tag = Regex::new(
-        r#"(?is)<!--.*?(?:-->|\z)|<(/?)(details|summary)\b((?:[^>"']|"[^"]*"|'[^']*')*)>"#,
+        r#"(?is)<!--.*?(?:-->|\z)|<(/?)(details|summary)((?:[\s/](?:[^>"']|"[^"]*"|'[^']*')*)?)>"#,
     )
     .unwrap();
     let quoted = Regex::new(r#""[^"]*"|'[^']*'"#).unwrap();
@@ -270,6 +270,12 @@ mod tests {
     fn test_unclosed_summary_ends_with_details() {
         let body = "<details><summary>A</details>\n\n<details>\n\nhidden\n\n</details>";
         assert_eq!("▸ A\n\n▸ Details", visible_text(body));
+    }
+
+    #[test]
+    fn test_custom_elements_not_details() {
+        let body = "<details-x><summary-x>A</summary-x>\n\nshown\n\n</details-x>";
+        assert_eq!(body, visible_text(body));
     }
 
     #[test]
