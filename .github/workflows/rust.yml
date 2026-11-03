@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
 
@@ -12,7 +15,7 @@ jobs:
 
     steps:
     - name: Checkout sources
-      uses: actions/checkout@v1
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Update apt
       run: sudo apt-get update
@@ -23,34 +26,21 @@ jobs:
     - name: Install test packages
       run: sudo apt-get install python3.6 firejail
 
-    - name: Install stable toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: 1.84.0
-        override: false
+    # Installs the toolchain pinned in rust-toolchain.toml.
+    - name: Install toolchain
+      run: rustup toolchain install
 
     - name: Build
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
+      run: cargo build
 
     - name: Test
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
+      run: cargo test
 
     - name: Format
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
+      run: cargo fmt --all -- --check
 
     - name: Lint
-      uses: actions-rs/cargo@v1
-      with:
-        command: clippy
-        args: --no-deps
+      run: cargo clippy --no-deps
 
   publish:
     needs: build
@@ -64,7 +54,7 @@ jobs:
 
     steps:
     - name: Checkout sources
-      uses: actions/checkout@v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Build image
       run: ./build.py
