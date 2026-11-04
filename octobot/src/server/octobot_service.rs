@@ -19,6 +19,7 @@ use crate::server::login::{LoginHandler, LoginSessionFilter, LogoutHandler, Sess
 use crate::server::metrics::MetricsScrapeHandler;
 use crate::server::sessions::Sessions;
 use crate::server::ui_handler::UiHandler;
+use crate::server::version_handler::VersionHandler;
 
 #[derive(Clone)]
 pub struct OctobotService {
@@ -127,6 +128,8 @@ impl OctobotService {
                     (&Method::POST, "/api/merge-versions") => {
                         admin::MergeVersions::new(self.config.clone(), self.jira_session.clone())
                     }
+
+                    (&Method::GET, "/api/version") => VersionHandler::new(),
 
                     _ => Box::new(NotFoundHandler),
                 },
