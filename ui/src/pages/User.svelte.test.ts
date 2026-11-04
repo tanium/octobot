@@ -196,22 +196,19 @@ describe('User', () => {
     expect(document.querySelector('form')).toBeNull();
   });
 
-  it('stays locked until the refresh after a save finishes', async () => {
+  it('comes back clean from a save without fetching again', async () => {
     api.updateUser.mockResolvedValue(undefined);
     await render('alice');
-    let finishRefresh!: () => void;
-    api.users.mockReturnValue(
-      new Promise((r) => (finishRefresh = () => r({ users: [user(1, 'alice'), user(2, 'bob')] }))),
-    );
+    type(input('octocat@example.com'), 'alice2@example.com');
+    expect(document.querySelector('.bar')).not.toBeNull();
 
     submit();
     await settle();
-    expect(api.updateUser).toHaveBeenCalledOnce();
-    expect(document.querySelector('fieldset')!.disabled).toBe(true);
 
-    finishRefresh();
-    await settle();
+    expect(api.updateUser).toHaveBeenCalledOnce();
+    expect(api.users).toHaveBeenCalledOnce();
     expect(document.querySelector('fieldset')!.disabled).toBe(false);
+    expect(document.querySelector('.bar')).toBeNull();
   });
 
   it('puts discarded mute chips back to the saved list', async () => {

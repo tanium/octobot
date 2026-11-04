@@ -82,6 +82,24 @@ describe('Repo', () => {
     expect(channel.value).toBe('edited');
   });
 
+  it('leaves the filter alone on Discard', async () => {
+    await render(['APP', 'WEB', 'API'], 'WEB');
+    const box = document.querySelector<HTMLInputElement>('[data-page-filter]')!;
+    box.value = '';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    const channel = document.querySelector<HTMLInputElement>('input[placeholder="the-reviews"]')!;
+    channel.value = 'edited';
+    channel.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+
+    [...document.querySelectorAll<HTMLButtonElement>('.bar button')].find((b) => b.textContent === 'Discard')!.click();
+    flushSync();
+
+    expect(box.value).toBe('');
+    expect(keyInputs()).toEqual([]);
+    expect(document.querySelector<HTMLInputElement>('input[placeholder="the-reviews"]')!.value).toBe('reviews');
+  });
+
   it('edits a fresh copy of the repo, not the cached one', async () => {
     store.repos = [repo(['STALE'])];
     await render(['FRESH'], 'FRESH');

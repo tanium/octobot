@@ -80,18 +80,12 @@
     }
     const user = draft.value!;
     draft.error = '';
-    // Stays set through the refresh: an edit made before markSaved would be
-    // marked saved without being sent.
     draft.saving = true;
-    let error: string | null;
-    try {
-      error = await submit(user);
-      if (error === null) {
-        await store.refreshUsers();
-      }
-    } finally {
-      draft.saving = false;
-    }
+    const error = await submit(user);
+    draft.saving = false;
+    // No refresh here: whatever shows the users next fetches them itself.
+    // That also keeps markSaved right after the save, with no gap for an
+    // unsent edit to be marked saved.
 
     if (!alive) {
       // Logged out means the session expired, which has its own toast.
@@ -145,7 +139,6 @@
       await api.deleteUser(user.id!);
       notifications.show('success', `Removed ${user.github}`);
       deleteOpen = false;
-      await store.refreshUsers();
       if (alive) {
         router.replace({ page: 'users' });
       }

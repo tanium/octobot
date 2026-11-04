@@ -65,6 +65,7 @@
     const found = store.repos!.find((r) => r.repo === name);
     if (found) {
       draft.start($state.snapshot(found));
+      openJira(jira);
     } else {
       missing = true;
     }
@@ -78,21 +79,24 @@
     load();
   }
 
-  // A link to one of this repo's Jira projects, on arrival or while the page
-  // is open, filters to that project and opens it.
-  $effect(() => {
-    const key = jira;
-    if (draft.value === null || key === null) {
+  // Filters to one of this repo's Jira projects and opens it, as a link asks.
+  function openJira(key: string | null) {
+    if (key === null || draft.value === null) {
       return;
     }
-    untrack(() => {
-      jiraFilter.text = key;
-      for (const c of draft.value!.jira_config) {
-        if (c.jira_project === key) {
-          expanded.add(c);
-        }
+    jiraFilter.text = key;
+    for (const c of draft.value.jira_config) {
+      if (c.jira_project === key) {
+        expanded.add(c);
       }
-    });
+    }
+  }
+
+  // A new link while the page is open. Tracks only `jira`, so replacing the
+  // draft, as Discard does, leaves the filter alone.
+  $effect(() => {
+    const key = jira;
+    untrack(() => openJira(key));
   });
 
   guardUnsaved(() => draft.dirty && !draft.saving);
@@ -178,18 +182,12 @@
     }
 
     draft.error = '';
-    // Stays set through the refresh: an edit made before markSaved would be
-    // marked saved without being sent.
     draft.saving = true;
-    let error: string | null;
-    try {
-      error = await submit(repo);
-      if (error === null) {
-        await store.refreshRepos();
-      }
-    } finally {
-      draft.saving = false;
-    }
+    const error = await submit(repo);
+    draft.saving = false;
+    // No refresh here: whatever shows the repos next fetches them itself.
+    // That also keeps markSaved right after the save, with no gap for an
+    // unsent edit to be marked saved.
 
     if (!alive) {
       // Logged out means the session expired, which has its own toast.
@@ -230,7 +228,6 @@
       await api.deleteRepo(repo.id!);
       notifications.show('success', `Removed ${repo.repo}`);
       deleteOpen = false;
-      await store.refreshRepos();
       if (alive) {
         router.replace({ page: 'repos' });
       }
