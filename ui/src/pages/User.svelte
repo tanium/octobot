@@ -83,9 +83,8 @@
     draft.saving = true;
     const error = await submit(user);
     draft.saving = false;
-    // No refresh here: whatever shows the users next fetches them itself.
-    // That also keeps markSaved right after the save, with no gap for an
-    // unsent edit to be marked saved.
+    // Nothing refetches here; every page that shows users fetches on opening.
+    // So markSaved follows the save directly, leaving no gap for an edit.
 
     if (!alive) {
       // Logged out means the session expired, which has its own toast.

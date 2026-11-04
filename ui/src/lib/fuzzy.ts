@@ -1,6 +1,6 @@
 // Subsequence fuzzy matching, in the spirit of fzf: every query character
 // must appear in order. Matches score higher when they are contiguous or
-// start words, so `octo` ranks `tanium/octobot` above `tanium/other-tool`.
+// start words, so `ob` ranks `org/octo-bot` above `org/jobs`.
 
 export interface Match {
   score: number;

@@ -88,7 +88,7 @@ export function section(route: Route): 'users' | 'repos' | 'versions' {
 class Router {
   route = $state<Route>(parse(location.hash));
 
-  // Set by a page with unsaved changes. Returns whether leaving is OK.
+  // Set by a record page. Returns whether leaving is OK.
   leaveGuard: (() => boolean) | null = null;
 
   #hash = location.hash;
@@ -110,8 +110,8 @@ class Router {
     location.hash = href(route);
   }
 
-  // Swaps the current entry, as after saving a new or renamed record. Skips
-  // the leave guard: the caller has just saved.
+  // Swaps the current entry, as after creating, renaming, or deleting a
+  // record. Skips the leave guard: the caller has just done that.
   replace(route: Route) {
     this.#hash = href(route);
     history.replaceState(null, '', this.#hash);

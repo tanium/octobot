@@ -9,7 +9,8 @@
 
   const filter = new ListFilter();
 
-  // Shown only when there is no earlier copy to fall back on.
+  // Whether the latest fetch failed. Without an earlier copy to show, the
+  // page offers a retry.
   let failed = $state(false);
   async function refresh() {
     failed = !(await store.refreshUsers());
