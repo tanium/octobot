@@ -140,6 +140,13 @@ describe('Repos filter', () => {
     expect(router.route).toEqual({ page: 'repo', name: 'acme/mono', jira: 'PAY' });
   });
 
+  it('lists a repo that names a Jira project twice', async () => {
+    api.repos.mockResolvedValue({ repos: [repo(1, 'acme/web', ['WEB', 'WEB'])] });
+    await show(Repos);
+
+    expect([...document.querySelectorAll('.chip')].map((c) => c.textContent)).toEqual(['WEB', 'WEB']);
+  });
+
   it('opens a repo plainly when its name matched', async () => {
     await show(Repos);
 

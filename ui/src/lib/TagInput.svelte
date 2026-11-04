@@ -60,7 +60,8 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="tags" onclick={() => input.focus()}>
-  {#each tags as tag, i (tag)}
+  <!-- Keyed by position: saved lists can hold duplicates. -->
+  {#each tags as tag, i (i)}
     <span class="tag">
       {tag}
       <button type="button" aria-label="Remove {tag}" onclick={() => remove(i)}><Icon name="x" size={12} /></button>

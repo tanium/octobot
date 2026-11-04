@@ -102,6 +102,17 @@ describe('TagInput', () => {
     expect(props.value).toEqual(['c/d']);
   });
 
+  it('shows saved duplicates as they are, and removes one at a time', () => {
+    const { props } = render(['a/b', 'a/b', 'c/d']);
+    expect(chips()).toEqual(['a/b', 'a/b', 'c/d']);
+
+    (document.querySelector('button[aria-label="Remove a/b"]') as HTMLElement).click();
+    flushSync();
+
+    expect(chips()).toEqual(['a/b', 'c/d']);
+    expect(props.value).toEqual(['a/b', 'c/d']);
+  });
+
   it('ignores duplicates', () => {
     const { props, input } = render(['a/b']);
 

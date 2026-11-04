@@ -109,7 +109,8 @@
         </span>
         <span class="cell muted">#<Highlight text={repo.channel} positions={at(1, r)} /></span>
         <span class="chips">
-          {#each cs.slice(0, maxChips) as c (c.key)}
+          <!-- Keyed by position: a repo can list a Jira key twice. -->
+          {#each cs.slice(0, maxChips) as c, i (i)}
             <span class="chip" class:hit={c.hit}>{c.key}</span>
           {:else}
             <span class="faint">None</span>
