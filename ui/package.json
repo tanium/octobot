@@ -8,10 +8,6 @@
     "check": "svelte-check --fail-on-warnings",
     "test": "vitest run"
   },
-  "dependencies": {
-    "bootstrap": "^5.3.8",
-    "bootstrap-icons": "^1.13.2"
-  },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tsconfig/svelte": "^5.0.8",

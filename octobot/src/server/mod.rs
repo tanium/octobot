@@ -8,3 +8,4 @@ pub mod metrics;
 mod octobot_service;
 mod sessions;
 mod ui_handler;
+mod version_handler;

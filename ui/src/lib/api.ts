@@ -7,6 +7,7 @@ import type { ReposResp } from '../bindings/ReposResp';
 import type { SlackUserResp } from '../bindings/SlackUserResp';
 import type { UserInfo } from '../bindings/UserInfo';
 import type { UsersResp } from '../bindings/UsersResp';
+import type { VersionResp } from '../bindings/VersionResp';
 import { HttpError, SessionExpiredError } from './errors';
 import { notifications } from './notifications.svelte';
 import { session } from './session.svelte';
@@ -55,4 +56,6 @@ export const api = {
 
   mergeVersions: (req: MergeVersionsReq) =>
     request<MergeVersionsResp>('POST', '/api/merge-versions', req),
+
+  version: () => request<VersionResp>('GET', '/api/version'),
 };

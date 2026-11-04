@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { MergeVersionsResp } from '../bindings/MergeVersionsResp';
   import { api } from '../lib/api';
+  import Icon from '../lib/Icon.svelte';
   import Modal from '../lib/Modal.svelte';
   import { notifications, reportError } from '../lib/notifications.svelte';
 
@@ -9,7 +10,11 @@
   // Kept as a string: braces in a Svelte attribute would start an expression.
   const versionPattern = String.raw`((\d+)\.){2,3}\d+`;
 
-  let project = $state('');
+  // A project to start with, as linked from a repo's Jira projects.
+  let { project: initialProject }: { project: string | null } = $props();
+
+  // svelte-ignore state_referenced_locally
+  let project = $state(initialProject ?? '');
   let version = $state('');
   let jiraBase = $state('');
 
@@ -19,7 +24,7 @@
   let processing = $state(false);
   let confirmOpen = $state(false);
 
-  let previewEmpty = $derived(preview !== null && Object.keys(preview).length === 0);
+  let previewCount = $derived(preview === null ? 0 : Object.keys(preview).length);
 
   function reset() {
     project = '';
@@ -57,7 +62,7 @@
     confirmOpen = false;
     try {
       const resp = await mergeVersions(false);
-      notifications.show('success', 'Created new version successfully.');
+      notifications.show('success', `Created version ${version}`);
       const result = { version, url: resp.version_url, versions: resp.versions };
       reset();
       merged = result;
@@ -68,93 +73,214 @@
 </script>
 
 {#snippet versionList(versions: Versions)}
-  {#each Object.entries(versions) as [key, list] (key)}
-    <h4><a href="{jiraBase}/browse/{key}" target="_blank" rel="noreferrer">{key}</a></h4>
-    <ul>
-      {#each list as v}
-        <li>{v}</li>
-      {/each}
-    </ul>
-  {/each}
+  <ul class="issues">
+    {#each Object.entries(versions) as [key, list] (key)}
+      <li>
+        <a class="mono" href="{jiraBase}/browse/{key}" target="_blank" rel="noreferrer">{key}<Icon name="external" size={12} /></a>
+        <span class="vers">
+          {#each list as v, i (i)}<span class="chip">{v}</span>{/each}
+        </span>
+      </li>
+    {/each}
+  </ul>
 {/snippet}
 
-<h2>Versions</h2>
+<div class="page-head">
+  <h1>Versions</h1>
+</div>
 
-<p class="lead">Merge pending versions into new JIRA version</p>
+<div class="stack">
+  <section class="card">
+    <div class="card-header">
+      <h2>Merge pending versions</h2>
+      <span class="sub">Rolls each issue's pending versions into one new Jira version.</span>
+    </div>
+    <form class="card-body" onsubmit={runPreview}>
+      <div class="grid-2">
+        <label class="field">
+          <span class="field-label">Jira project</span>
+          <input class="input mono" disabled={preview !== null} bind:value={project} placeholder="SERVER" required spellcheck="false" />
+        </label>
+        <label class="field">
+          <span class="field-label">New version</span>
+          <input
+            class="input mono"
+            disabled={preview !== null}
+            bind:value={version}
+            placeholder="2.1.0.1000"
+            pattern={versionPattern}
+            title="Three or four numbers separated by dots"
+            required
+          />
+        </label>
+      </div>
+      <div class="actions">
+        <span class="steps">
+          <span class="step" class:current={preview === null} class:done={preview !== null}><span class="n">1</span>Preview</span>
+          <span class="line"></span>
+          <span class="step" class:current={preview !== null}><span class="n">2</span>Merge</span>
+        </span>
+        <button type="button" disabled={processing} class="btn btn-sm btn-ghost" onclick={reset}>Reset</button>
+        {#if preview === null}
+          <button type="submit" disabled={processing} class="btn btn-sm btn-primary">
+            {#if processing}<Icon name="loader" spin size={14} />{/if}
+            Preview
+          </button>
+        {:else}
+          <button
+            type="button"
+            disabled={processing || previewCount === 0}
+            class="btn btn-sm btn-primary"
+            onclick={() => (confirmOpen = true)}
+          >
+            {#if processing}<Icon name="loader" spin size={14} />{/if}
+            Merge into {version}
+          </button>
+        {/if}
+      </div>
+    </form>
+  </section>
 
-{#if preview !== null && processing}
-  <div class="alert alert-warning text-center"><b>Processing.</b> Please do not leave this page...</div>
-{/if}
-
-<form onsubmit={runPreview}>
-  <div class="mb-3">
-    <input
-      type="text"
-      class="form-control"
-      disabled={preview !== null}
-      bind:value={project}
-      placeholder="JIRA project (e.g. SERVER)"
-      required
-    />
-  </div>
-  <div class="mb-3">
-    <input
-      type="text"
-      class="form-control"
-      disabled={preview !== null}
-      bind:value={version}
-      placeholder="New Version (e.g. 2.1.0.1000)"
-      pattern={versionPattern}
-      required
-    />
-  </div>
-  <div class="mb-3">
-    {#if preview === null}
-      <button type="submit" disabled={processing} class="btn btn-sm btn-primary">Preview</button>
-    {:else}
-      <button
-        type="button"
-        disabled={processing || previewEmpty}
-        class="btn btn-sm btn-primary"
-        onclick={() => (confirmOpen = true)}
-      >
-        Submit
-      </button>
-    {/if}
-    <button type="button" disabled={processing} class="btn btn-sm btn-secondary" onclick={reset}>Reset</button>
-  </div>
-</form>
-
-{#if preview !== null}
-  <h3>Preview</h3>
-  {#if previewEmpty}
-    <i>No versions found to merge</i>
-  {:else}
-    <p>The following JIRAs were found with pending versions to migrate:</p>
-    {@render versionList(preview)}
+  {#if preview !== null && processing}
+    <div class="alert alert-warning"><Icon name="alert" /><span><b>Merging.</b> Please stay on this page until it finishes.</span></div>
   {/if}
-{/if}
 
-{#if merged !== null}
-  <h3>Success!</h3>
+  {#if preview !== null}
+    <section class="card">
+      <div class="card-header">
+        <h2>Preview</h2>
+        <span class="sub">{previewCount} issue{previewCount === 1 ? '' : 's'} with pending versions</span>
+      </div>
+      {#if previewCount === 0}
+        <div class="list-empty">No pending versions to merge.</div>
+      {:else}
+        {@render versionList(preview)}
+      {/if}
+    </section>
+  {/if}
+
+  {#if merged !== null}
+    <section class="card">
+      <div class="card-header">
+        <span class="ok"><Icon name="check" /></span>
+        <h2>
+          Merged into
+          {#if merged.url}
+            <a href={merged.url} target="_blank" rel="noreferrer">{merged.version}</a>
+          {:else}
+            {merged.version}
+          {/if}
+        </h2>
+      </div>
+      {@render versionList(merged.versions)}
+    </section>
+  {/if}
+</div>
+
+<Modal bind:open={confirmOpen} title="Merge pending versions?" onsubmit={runMerge}>
   <p>
-    The following JIRAs were found with pending versions were migrated to
-    {#if merged.url}
-      <a href={merged.url} target="_blank" rel="noreferrer">{merged.version}</a>
-    {:else}
-      {merged.version}
-    {/if}
+    This creates <strong>{version}</strong> in <strong>{project}</strong> and moves {previewCount} issue{previewCount === 1 ? '' : 's'} onto it.
   </p>
-  {@render versionList(merged.versions)}
-{/if}
-
-<Modal bind:open={confirmOpen} title="Confirm Merge" onsubmit={runMerge}>
-  <p class="mb-0">
-    Are you sure you want to merge pending versions for <strong>{project}</strong> <strong>{version}</strong>?
-  </p>
-
   {#snippet footer()}
-    <button type="button" class="btn btn-secondary" onclick={() => (confirmOpen = false)}>No</button>
-    <button type="submit" class="btn btn-primary">Yes</button>
+    <button type="button" class="btn" onclick={() => (confirmOpen = false)}>Cancel</button>
+    <button type="submit" class="btn btn-primary">Merge</button>
   {/snippet}
 </Modal>
+
+<style>
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .steps {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-3);
+    font-size: 13px;
+  }
+
+  .step {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .n {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .current {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .current .n {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .done .n {
+    background: var(--success);
+    color: #fff;
+  }
+
+  .line {
+    width: 24px;
+    height: 1px;
+    background: var(--border-strong);
+  }
+
+  .issues {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .issues li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .issues li:last-child {
+    border-bottom: 0;
+  }
+
+  .issues a {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 110px;
+    font-weight: 600;
+  }
+
+  .vers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .ok {
+    display: inline-flex;
+    padding: 4px;
+    border-radius: 50%;
+    background: var(--success-soft);
+    color: var(--success);
+  }
+</style>

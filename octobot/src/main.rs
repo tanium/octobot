@@ -35,13 +35,8 @@ fn run() -> Result<()> {
 
     setup_logging();
 
-    if let Ok(mut path) = std::env::current_exe() {
-        path.pop();
-        path.push("version");
-
-        if let Ok(version) = std::fs::read_to_string(path) {
-            log::info!("Starting octobot version [{}]", version.trim());
-        }
+    if let Some(version) = &*octobot::version::VERSION {
+        log::info!("Starting octobot version [{}]", version);
     }
 
     let config_file = std::env::args().nth(1).unwrap();
