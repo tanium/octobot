@@ -23,6 +23,7 @@ async-trait = "0.1.72"
 serde_json = "1.0.104"
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 anyhow = { version = "1.0.72", features = ["backtrace"] }
+pulldown-cmark = { version = "0.13.0", default-features = false }
 
 [dev-dependencies]
 maplit = "1.0.2"

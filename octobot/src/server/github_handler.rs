@@ -19,6 +19,7 @@ use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
 use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::git_clone_manager::GitCloneManager;
+use octobot_ops::github_markdown;
 use octobot_ops::messenger::{self, Messenger, Participants};
 use octobot_ops::pr_merge::{self, PRMergeRequest};
 use octobot_ops::repo_version::{self, RepoVersionRequest};
@@ -768,10 +769,12 @@ impl GithubEventHandler {
                     let commits = self.pull_request_commits(&pull_request).await;
 
                     let review = comment.pull_request_review_id.map(|id| {
-                        let grouped = SlackAttachmentBuilder::new(comment.body().trim())
-                            .title(comment.path.clone().unwrap_or_default())
-                            .title_link(comment.html_url.as_str())
-                            .build();
+                        let grouped = SlackAttachmentBuilder::new(&github_markdown::visible_text(
+                            comment.body(),
+                        ))
+                        .title(comment.path.clone().unwrap_or_default())
+                        .title_link(comment.html_url.as_str())
+                        .build();
                         ReviewItem::comment(
                             id,
                             comment.id,
@@ -843,7 +846,7 @@ impl GithubEventHandler {
                     );
 
                     let attachments = vec![
-                        SlackAttachmentBuilder::new(review.body())
+                        SlackAttachmentBuilder::new(&github_markdown::visible_text(review.body()))
                             .title(format!("Review: {}", state_msg))
                             .title_link(review.html_url.as_str())
                             .color(color)
@@ -882,7 +885,8 @@ impl GithubEventHandler {
         commits: &[github::Commit],
         review: Option<ReviewItem>,
     ) {
-        if comment.body().trim().is_empty() {
+        let text = github_markdown::visible_text(comment.body());
+        if text.is_empty() {
             return;
         }
 
@@ -907,7 +911,7 @@ impl GithubEventHandler {
         );
 
         let attachments = vec![
-            SlackAttachmentBuilder::new(comment.body().trim())
+            SlackAttachmentBuilder::new(&text)
                 .title(format!("{} said:", self.slack_user_name(comment.user())))
                 .title_link(comment.html_url())
                 .build(),
@@ -944,6 +948,11 @@ impl GithubEventHandler {
         if let Some(ref comment) = self.data.comment {
             if self.action == "created" {
                 if let Some(ref commit_id) = comment.commit_id {
+                    let text = github_markdown::visible_text(comment.body());
+                    if text.is_empty() {
+                        return (StatusCode::OK, "commit_comment".into());
+                    }
+
                     let commit: &str = &commit_id[0..7];
                     let commit_url = format!("{}/commit/{}", self.repository.html_url, commit_id);
                     let commit_path = if let Some(ref path) = comment.path {
@@ -959,7 +968,7 @@ impl GithubEventHandler {
                     );
 
                     let attachments = vec![
-                        SlackAttachmentBuilder::new(comment.body())
+                        SlackAttachmentBuilder::new(&text)
                             .title(format!("{} said:", self.slack_user_name(&comment.user)))
                             .title_link(comment.html_url.as_str())
                             .build(),
