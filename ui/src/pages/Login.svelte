@@ -31,7 +31,6 @@
     <div class="head">
       {@render logo()}
       <h1>Sign in to Octobot</h1>
-      <p class="muted">GitHub to Slack, the way your team likes it.</p>
     </div>
     <fieldset disabled={busy}>
       <label class="field">
@@ -84,10 +83,6 @@
 
   h1 {
     font-size: 18px;
-  }
-
-  .head p {
-    font-size: 13px;
   }
 
   fieldset {
