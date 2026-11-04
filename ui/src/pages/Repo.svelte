@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
   import type { RepoInfo } from '../bindings/RepoInfo';
@@ -38,37 +38,61 @@
 
   const draft = new Draft<RepoInfo>();
   let missing = $state(false);
+  let loadFailed = $state(false);
   let deleteOpen = $state(false);
   let deleting = $state(false);
   let alive = true;
 
   // Keyed by the draft's own config objects, which stay put as rows move.
   const expanded = new SvelteSet<RepoJiraConfig>();
-  // svelte-ignore state_referenced_locally
-  const jiraFilter = new ListFilter(jira ?? '');
+  const jiraFilter = new ListFilter();
   let keyInputs = new Map<RepoJiraConfig, HTMLInputElement>();
 
   $effect(() => () => (alive = false));
 
-  $effect(() => {
-    if (draft.value !== null) {
+  // Seeds the draft from a fresh fetch: a save rewrites every Jira project,
+  // so a stale copy would undo other people's changes.
+  async function load() {
+    loadFailed = false;
+    const ok = await store.refreshRepos();
+    if (!alive) {
       return;
     }
-    if (name === null) {
-      draft.start(newRepo());
-    } else if (store.repos !== null) {
-      const found = store.repos.find((r) => r.repo === name);
-      if (!found) {
-        missing = true;
-        return;
-      }
+    if (!ok) {
+      loadFailed = true;
+      return;
+    }
+    const found = store.repos!.find((r) => r.repo === name);
+    if (found) {
       draft.start($state.snapshot(found));
+    } else {
+      missing = true;
+    }
+  }
+
+  // The page remounts for each repo, so name never changes under it.
+  // svelte-ignore state_referenced_locally
+  if (name === null) {
+    draft.start(newRepo());
+  } else {
+    load();
+  }
+
+  // A link to one of this repo's Jira projects, on arrival or while the page
+  // is open, filters to that project and opens it.
+  $effect(() => {
+    const key = jira;
+    if (draft.value === null || key === null) {
+      return;
+    }
+    untrack(() => {
+      jiraFilter.text = key;
       for (const c of draft.value!.jira_config) {
-        if (c.jira_project === jira) {
+        if (c.jira_project === key) {
           expanded.add(c);
         }
       }
-    }
+    });
   });
 
   guardUnsaved(() => draft.dirty && !draft.saving);
@@ -154,13 +178,19 @@
     }
 
     draft.error = '';
+    // Stays set through the refresh: an edit made before markSaved would be
+    // marked saved without being sent.
     draft.saving = true;
-    const error = await submit(repo);
-    draft.saving = false;
-
-    if (error === null) {
-      await store.refreshRepos();
+    let error: string | null;
+    try {
+      error = await submit(repo);
+      if (error === null) {
+        await store.refreshRepos();
+      }
+    } finally {
+      draft.saving = false;
     }
+
     if (!alive) {
       // Logged out means the session expired, which has its own toast.
       if (error !== null && session.loggedIn) {
@@ -201,7 +231,9 @@
       notifications.show('success', `Removed ${repo.repo}`);
       deleteOpen = false;
       await store.refreshRepos();
-      router.replace({ page: 'repos' });
+      if (alive) {
+        router.replace({ page: 'repos' });
+      }
     } catch (e) {
       reportError('Error removing repo', e);
     } finally {
@@ -218,7 +250,11 @@
 
 <a class="back" href={href({ page: 'repos' })}><Icon name="arrow-left" size={14} />Repos</a>
 
-{#if missing}
+{#if loadFailed}
+  <div class="card list-empty">
+    Could not load this repo. <button type="button" class="btn btn-sm" onclick={load}>Retry</button>
+  </div>
+{:else if missing}
   <div class="card list-empty">
     No repo named <code>{name}</code>. <a href={href({ page: 'repos' })}>Back to repos</a>
   </div>

@@ -5,6 +5,9 @@ export class Draft<T> {
   value = $state<T | null>(null);
   saving = $state(false);
   error = $state('');
+  // Bumped whenever value is replaced wholesale. Key form fields on it so
+  // inputs that keep their own state, like TagInput, start over.
+  generation = $state(0);
 
   #saved = $state('');
 
@@ -13,6 +16,7 @@ export class Draft<T> {
   start(v: T) {
     this.#saved = JSON.stringify(v);
     this.value = JSON.parse(this.#saved);
+    this.generation++;
   }
 
   markSaved() {
@@ -22,6 +26,7 @@ export class Draft<T> {
   discard() {
     this.value = JSON.parse(this.#saved);
     this.error = '';
+    this.generation++;
   }
 }
 

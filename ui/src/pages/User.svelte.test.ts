@@ -1,5 +1,5 @@
 import { flushSync, mount, unmount } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { UserInfo } from '../bindings/UserInfo';
 import { notifications } from '../lib/notifications.svelte';
@@ -35,6 +35,23 @@ function user(id: number, github: string): UserInfo {
 
 let component: ReturnType<typeof mount> | undefined;
 
+// jsdom has no dialog behavior; this is the part Modal relies on.
+beforeAll(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'open', {
+    configurable: true,
+    get(this: HTMLDialogElement) {
+      return this.hasAttribute('open');
+    },
+  });
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute('open');
+    this.dispatchEvent(new Event('close'));
+  };
+});
+
 beforeEach(() => {
   session.start('the-session');
   notifications.dismiss('error');
@@ -58,9 +75,10 @@ async function settle() {
   flushSync();
 }
 
-function render(name: string | null) {
+// Waits out the fresh fetch the page seeds its draft from.
+async function render(name: string | null) {
   component = mount(User, { target: document.body, props: { name } });
-  flushSync();
+  await settle();
 }
 
 function leave() {
@@ -87,7 +105,7 @@ describe('User', () => {
     let finishSave!: () => void;
     api.updateUser.mockReturnValue(new Promise<void>((r) => (finishSave = r)));
 
-    render('alice');
+    await render('alice');
     type(input('octocat'), 'alice2');
     submit();
     await settle();
@@ -106,7 +124,7 @@ describe('User', () => {
     let failSave!: (e: Error) => void;
     api.updateUser.mockReturnValue(new Promise<void>((_, reject) => (failSave = reject)));
 
-    render('alice');
+    await render('alice');
     submit();
     await settle();
     leave();
@@ -120,7 +138,7 @@ describe('User', () => {
   it('blocks edits and a second submit while saving', async () => {
     api.updateUser.mockReturnValue(new Promise<void>(() => {}));
 
-    render('alice');
+    await render('alice');
     submit();
     await settle();
 
@@ -135,7 +153,7 @@ describe('User', () => {
     api.verifyEmail.mockResolvedValue({ id: 'U9', name: 'carol' });
     router.replace({ page: 'user', name: null });
 
-    render(null);
+    await render(null);
     type(input('octocat'), 'carol');
     type(input('octocat@example.com'), 'carol@example.com');
     submit();
@@ -148,7 +166,7 @@ describe('User', () => {
   it('shows a failed Slack lookup on the page without saving', async () => {
     api.verifyEmail.mockResolvedValue({ id: '', name: '' });
 
-    render('alice');
+    await render('alice');
     submit();
     await settle();
 
@@ -156,8 +174,81 @@ describe('User', () => {
     expect(document.body.textContent).toContain('No Slack account has that email address');
   });
 
-  it('says so when the user does not exist', () => {
-    render('nobody');
+  it('says so when the user does not exist', async () => {
+    await render('nobody');
     expect(document.body.textContent).toContain('No user named nobody');
+  });
+
+  it('edits a fresh copy of the user, not the cached one', async () => {
+    store.users = [{ ...user(1, 'alice'), email: 'stale@example.com' }];
+
+    await render('alice');
+
+    expect(input('octocat@example.com').value).toBe('alice@example.com');
+  });
+
+  it('offers a retry instead of editing when the fetch fails', async () => {
+    api.users.mockRejectedValue(new Error('down'));
+
+    await render('alice');
+
+    expect(document.body.textContent).toContain('Could not load this user');
+    expect(document.querySelector('form')).toBeNull();
+  });
+
+  it('stays locked until the refresh after a save finishes', async () => {
+    api.updateUser.mockResolvedValue(undefined);
+    await render('alice');
+    let finishRefresh!: () => void;
+    api.users.mockReturnValue(
+      new Promise((r) => (finishRefresh = () => r({ users: [user(1, 'alice'), user(2, 'bob')] }))),
+    );
+
+    submit();
+    await settle();
+    expect(api.updateUser).toHaveBeenCalledOnce();
+    expect(document.querySelector('fieldset')!.disabled).toBe(true);
+
+    finishRefresh();
+    await settle();
+    expect(document.querySelector('fieldset')!.disabled).toBe(false);
+  });
+
+  it('puts discarded mute chips back to the saved list', async () => {
+    store.users = null;
+    api.users.mockResolvedValue({ users: [{ ...user(1, 'alice'), muted_repos: ['acme/saved'] }] });
+    await render('alice');
+    const tags = () => [...document.querySelectorAll('.tags .tag')].map((t) => t.textContent!.trim());
+    const muted = document.querySelector<HTMLInputElement>('#muted-repos')!;
+    type(muted, 'acme/extra,');
+    expect(tags()).toContain('acme/extra');
+
+    (document.querySelector('.bar button') as HTMLButtonElement).click();
+    flushSync();
+    // A blur used to write the stale chips back.
+    const fresh = document.querySelector<HTMLInputElement>('#muted-repos')!;
+    fresh.dispatchEvent(new FocusEvent('blur'));
+    flushSync();
+
+    expect(tags()).toEqual(['acme/saved']);
+    expect(document.querySelector('.bar')).toBeNull();
+  });
+
+  it('does not navigate after a delete finishes on a page already left', async () => {
+    let finishDelete!: () => void;
+    api.deleteUser.mockReturnValue(new Promise<void>((r) => (finishDelete = r)));
+    await render('alice');
+    (document.querySelector('.detail-head button') as HTMLButtonElement).click();
+    flushSync();
+    document.querySelectorAll('form')[1].requestSubmit();
+    await settle();
+    expect(api.deleteUser).toHaveBeenCalledOnce();
+
+    leave();
+    router.replace({ page: 'user', name: 'bob' });
+    finishDelete();
+    await settle();
+
+    expect(router.route).toEqual({ page: 'user', name: 'bob' });
   });
 });

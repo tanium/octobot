@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   import { rank } from './fuzzy';
   import Highlight from './Highlight.svelte';
@@ -80,6 +80,11 @@
       active = 0;
       dialog.showModal();
       input?.focus();
+      // Searches what is cached right away; fresh results replace it.
+      untrack(() => {
+        store.refreshUsers();
+        store.refreshRepos();
+      });
     } else if (!open && dialog.open) {
       dialog.close();
     }

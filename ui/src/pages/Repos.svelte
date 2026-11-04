@@ -10,6 +10,13 @@
   const maxChips = 5;
 
   const filter = new ListFilter();
+
+  // Shown only when there is no earlier copy to fall back on.
+  let failed = $state(false);
+  async function refresh() {
+    failed = !(await store.refreshRepos());
+  }
+  refresh();
   let needle = $derived(filter.text);
   // Fields: the repo, its channel, then each Jira project key.
   let visible = $derived(
@@ -69,7 +76,11 @@
     <span>Jira projects</span>
     <span></span>
   </div>
-  {#if store.repos === null}
+  {#if store.repos === null && failed}
+    <div class="list-empty">
+      Could not load repos. <button type="button" class="btn btn-sm" onclick={refresh}>Retry</button>
+    </div>
+  {:else if store.repos === null}
     {#each [1, 2, 3, 4] as i (i)}
       <div class="list-row cols skeleton"><span></span><span></span><span></span><span></span></div>
     {/each}

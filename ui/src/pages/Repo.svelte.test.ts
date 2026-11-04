@@ -30,7 +30,6 @@ let component: ReturnType<typeof mount> | undefined;
 
 beforeEach(() => {
   session.start('the-session');
-  api.repos.mockResolvedValue({ repos: store.repos });
   api.updateRepo.mockResolvedValue(undefined);
 });
 
@@ -48,10 +47,13 @@ async function settle() {
   flushSync();
 }
 
-function render(projects: string[], jira: string | null = null) {
-  store.repos = [repo(projects)];
-  component = mount(Repo, { target: document.body, props: { name: 'acme/mono', jira } });
-  flushSync();
+// Props stay reactive, so a test can follow a new Jira link on the open page.
+async function render(projects: string[], jira: string | null = null) {
+  api.repos.mockResolvedValue({ repos: [repo(projects)] });
+  const props = $state({ name: 'acme/mono', jira });
+  component = mount(Repo, { target: document.body, props });
+  await settle();
+  return props;
 }
 
 function keyInputs() {
@@ -59,14 +61,46 @@ function keyInputs() {
 }
 
 describe('Repo', () => {
-  it('opens on the project named in the link', () => {
-    render(['APP', 'WEB', 'API'], 'WEB');
+  it('opens on the project named in the link', async () => {
+    await render(['APP', 'WEB', 'API'], 'WEB');
 
     expect(keyInputs().map((i) => i.value)).toEqual(['WEB']);
   });
 
+  it('opens a project linked while the page is open, keeping edits', async () => {
+    const props = await render(['APP', 'WEB', 'API']);
+    const channel = document.querySelector<HTMLInputElement>('input[placeholder="the-reviews"]')!;
+    channel.value = 'edited';
+    channel.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+
+    props.jira = 'API';
+    flushSync();
+
+    expect(keyInputs().map((i) => i.value)).toEqual(['API']);
+    expect(channel.isConnected).toBe(true);
+    expect(channel.value).toBe('edited');
+  });
+
+  it('edits a fresh copy of the repo, not the cached one', async () => {
+    store.repos = [repo(['STALE'])];
+    await render(['FRESH'], 'FRESH');
+
+    expect(keyInputs().map((i) => i.value)).toEqual(['FRESH']);
+  });
+
+  it('offers a retry instead of editing when the fetch fails', async () => {
+    store.repos = [repo(['STALE'])];
+    api.repos.mockRejectedValue(new Error('down'));
+    component = mount(Repo, { target: document.body, props: { name: 'acme/mono', jira: null } });
+    await settle();
+
+    expect(document.body.textContent).toContain('Could not load this repo');
+    expect(document.querySelector('form')).toBeNull();
+  });
+
   it('refuses to save a project without a key, opening it', async () => {
-    render(['APP', '', 'API']);
+    await render(['APP', '', 'API']);
     expect(keyInputs()).toEqual([]);
 
     document.querySelector('form')!.requestSubmit();
@@ -78,8 +112,8 @@ describe('Repo', () => {
     expect(document.body.textContent).toContain('Every Jira project needs a key');
   });
 
-  it('keeps an open project visible while its key stops matching the filter', () => {
-    render(['APP', 'WEB'], 'APP');
+  it('keeps an open project visible while its key stops matching the filter', async () => {
+    await render(['APP', 'WEB'], 'APP');
     const [key] = keyInputs();
 
     key.value = 'ZZZ';
@@ -90,7 +124,7 @@ describe('Repo', () => {
   });
 
   it('opens and focuses the top project on Enter in the filter, without saving', async () => {
-    render(['APP', 'WEB', 'API']);
+    await render(['APP', 'WEB', 'API']);
     const box = document.querySelector<HTMLInputElement>('[data-page-filter]')!;
     box.focus();
     box.value = 'web';
@@ -106,7 +140,7 @@ describe('Repo', () => {
   });
 
   it('saves the edited projects in their order', async () => {
-    render(['APP', 'WEB'], 'WEB');
+    await render(['APP', 'WEB'], 'WEB');
     const [key] = keyInputs();
     key.value = 'WEB2';
     key.dispatchEvent(new Event('input', { bubbles: true }));

@@ -2,7 +2,7 @@
   import { api } from './lib/api';
   import Icon from './lib/Icon.svelte';
   import Palette from './lib/Palette.svelte';
-  import { href, router, section } from './lib/router.svelte';
+  import { pageKey, router, section } from './lib/router.svelte';
   import { session } from './lib/session.svelte';
   import { store } from './lib/store.svelte';
   import { theme } from './lib/theme.svelte';
@@ -35,7 +35,7 @@
 
   $effect(() => {
     if (session.loggedIn) {
-      store.load();
+      store.loadCommit();
     } else {
       store.clear();
       paletteOpen = false;
@@ -43,6 +43,10 @@
   });
 
   async function logout() {
+    // Logging out unmounts the page, so it asks like any other way out.
+    if (router.leaveGuard && !router.leaveGuard()) {
+      return;
+    }
     try {
       await api.logout();
     } catch {
@@ -138,7 +142,7 @@
   </header>
 
   <main class="inner">
-    {#key href(router.route)}
+    {#key pageKey(router.route)}
       {#if router.route.page === 'users'}
         <Users />
       {:else if router.route.page === 'user'}

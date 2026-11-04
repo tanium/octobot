@@ -8,6 +8,13 @@
   import { store } from '../lib/store.svelte';
 
   const filter = new ListFilter();
+
+  // Shown only when there is no earlier copy to fall back on.
+  let failed = $state(false);
+  async function refresh() {
+    failed = !(await store.refreshUsers());
+  }
+  refresh();
   let visible = $derived(rank(store.users ?? [], filter.text, (u) => [u.github, u.slack_name, u.email]));
 
   // Highlights go only on the field that matched.
@@ -41,7 +48,11 @@
     <span>Notifications</span>
     <span></span>
   </div>
-  {#if store.users === null}
+  {#if store.users === null && failed}
+    <div class="list-empty">
+      Could not load users. <button type="button" class="btn btn-sm" onclick={refresh}>Retry</button>
+    </div>
+  {:else if store.users === null}
     {#each [1, 2, 3, 4] as i (i)}
       <div class="list-row cols skeleton"><span></span><span></span><span></span><span></span></div>
     {/each}

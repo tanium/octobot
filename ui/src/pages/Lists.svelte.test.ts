@@ -1,5 +1,5 @@
 import { flushSync, mount, unmount } from 'svelte';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RepoInfo } from '../bindings/RepoInfo';
 import type { UserInfo } from '../bindings/UserInfo';
@@ -7,6 +7,9 @@ import { router } from '../lib/router.svelte';
 import { store } from '../lib/store.svelte';
 import Repos from './Repos.svelte';
 import Users from './Users.svelte';
+
+const api = vi.hoisted(() => ({ users: vi.fn(), repos: vi.fn() }));
+vi.mock('../lib/api', () => ({ api }));
 
 function user(id: number, github: string): UserInfo {
   return {
@@ -44,8 +47,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  store.users = [user(1, 'alice'), user(2, 'albert'), user(3, 'bob')];
-  store.repos = [repo(1, 'acme/web', ['WEB']), repo(2, 'acme/mono', ['APP', 'PAY'])];
+  api.users.mockResolvedValue({ users: [user(1, 'alice'), user(2, 'albert'), user(3, 'bob')] });
+  api.repos.mockResolvedValue({ repos: [repo(1, 'acme/web', ['WEB']), repo(2, 'acme/mono', ['APP', 'PAY'])] });
   router.replace({ page: 'users' });
 });
 
@@ -56,6 +59,13 @@ afterEach(() => {
   }
   document.body.innerHTML = '';
 });
+
+// Mounts a list page and waits out the fetch it makes on opening.
+async function show(page: typeof Users | typeof Repos) {
+  component = mount(page, { target: document.body });
+  await new Promise((r) => setTimeout(r, 0));
+  flushSync();
+}
 
 function filterBox() {
   return document.querySelector<HTMLInputElement>('[data-page-filter]')!;
@@ -75,10 +85,31 @@ async function press(key: string) {
   flushSync();
 }
 
+describe('Users loading', () => {
+  it('shows what it fetched on opening', async () => {
+    store.users = null;
+    await show(Users);
+    expect(document.querySelectorAll('a.list-row')).toHaveLength(3);
+  });
+
+  it('offers a retry only when there is nothing to show', async () => {
+    api.users.mockRejectedValue(new Error('down'));
+
+    store.users = null;
+    await show(Users);
+    expect(document.body.textContent).toContain('Could not load users');
+
+    unmount(component!);
+    store.users = [user(1, 'alice')];
+    await show(Users);
+    expect(document.body.textContent).not.toContain('Could not load users');
+    expect(document.querySelectorAll('a.list-row')).toHaveLength(1);
+  });
+});
+
 describe('Users filter', () => {
   it('opens the top match on Enter', async () => {
-    component = mount(Users, { target: document.body });
-    flushSync();
+    await show(Users);
 
     type('bob');
     await press('Enter');
@@ -87,8 +118,7 @@ describe('Users filter', () => {
   });
 
   it('opens the highlighted match after arrowing down', async () => {
-    component = mount(Users, { target: document.body });
-    flushSync();
+    await show(Users);
 
     type('al');
     await press('ArrowDown');
@@ -102,8 +132,7 @@ describe('Users filter', () => {
 
 describe('Repos filter', () => {
   it('opens a repo on the Jira project that matched', async () => {
-    component = mount(Repos, { target: document.body });
-    flushSync();
+    await show(Repos);
 
     type('PAY');
     await press('Enter');
@@ -112,8 +141,7 @@ describe('Repos filter', () => {
   });
 
   it('opens a repo plainly when its name matched', async () => {
-    component = mount(Repos, { target: document.body });
-    flushSync();
+    await show(Repos);
 
     type('acme/web');
     await press('Enter');

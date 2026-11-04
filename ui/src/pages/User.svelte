@@ -35,30 +35,41 @@
 
   const draft = new Draft<UserInfo>();
   let missing = $state(false);
+  let loadFailed = $state(false);
   let deleteOpen = $state(false);
   let deleting = $state(false);
-  // A save can finish after the page is gone; its result then goes to a toast.
+  // A request can finish after the page is gone; its result then goes to a
+  // toast, and it must not navigate.
   let alive = true;
 
   $effect(() => () => (alive = false));
 
-  // Seeds the draft once the user is known. Later store refreshes leave the
-  // draft alone.
-  $effect(() => {
-    if (draft.value !== null) {
+  // Seeds the draft from a fresh fetch, since a save sends the whole record.
+  async function load() {
+    loadFailed = false;
+    const ok = await store.refreshUsers();
+    if (!alive) {
       return;
     }
-    if (name === null) {
-      draft.start(newUser());
-    } else if (store.users !== null) {
-      const found = store.users.find((u) => u.github === name);
-      if (found) {
-        draft.start($state.snapshot(found));
-      } else {
-        missing = true;
-      }
+    if (!ok) {
+      loadFailed = true;
+      return;
     }
-  });
+    const found = store.users!.find((u) => u.github === name);
+    if (found) {
+      draft.start($state.snapshot(found));
+    } else {
+      missing = true;
+    }
+  }
+
+  // The page remounts for each user, so name never changes under it.
+  // svelte-ignore state_referenced_locally
+  if (name === null) {
+    draft.start(newUser());
+  } else {
+    load();
+  }
 
   guardUnsaved(() => draft.dirty && !draft.saving);
 
@@ -69,13 +80,19 @@
     }
     const user = draft.value!;
     draft.error = '';
+    // Stays set through the refresh: an edit made before markSaved would be
+    // marked saved without being sent.
     draft.saving = true;
-    const error = await submit(user);
-    draft.saving = false;
-
-    if (error === null) {
-      await store.refreshUsers();
+    let error: string | null;
+    try {
+      error = await submit(user);
+      if (error === null) {
+        await store.refreshUsers();
+      }
+    } finally {
+      draft.saving = false;
     }
+
     if (!alive) {
       // Logged out means the session expired, which has its own toast.
       if (error !== null && session.loggedIn) {
@@ -129,7 +146,9 @@
       notifications.show('success', `Removed ${user.github}`);
       deleteOpen = false;
       await store.refreshUsers();
-      router.replace({ page: 'users' });
+      if (alive) {
+        router.replace({ page: 'users' });
+      }
     } catch (e) {
       reportError('Error removing user', e);
     } finally {
@@ -140,7 +159,11 @@
 
 <a class="back" href={href({ page: 'users' })}><Icon name="arrow-left" size={14} />Users</a>
 
-{#if missing}
+{#if loadFailed}
+  <div class="card list-empty">
+    Could not load this user. <button type="button" class="btn btn-sm" onclick={load}>Retry</button>
+  </div>
+{:else if missing}
   <div class="card list-empty">
     No user named <code>{name}</code>. <a href={href({ page: 'users' })}>Back to users</a>
   </div>
@@ -165,6 +188,7 @@
   </div>
 
   <form onsubmit={save}>
+    {#key draft.generation}
     <fieldset class="stack" disabled={draft.saving}>
       <section class="card">
         <div class="card-header"><h2>Identity</h2></div>
@@ -237,6 +261,7 @@
         </div>
       </section>
     </fieldset>
+    {/key}
 
     <SaveBar
       show={draft.dirty || name === null}

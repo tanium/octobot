@@ -13,8 +13,14 @@ export function parse(hash: string): Route {
   const [path, query = ''] = hash.replace(/^#!?\/?/, '').split('?', 2);
   const params = new URLSearchParams(query);
   const [page, ...rest] = path.split('/').filter((s) => s !== '');
-  // Repo names keep their slash, as `#/repos/org/repo`.
-  const name = rest.length === 0 ? '' : rest.map(decodeURIComponent).join('/');
+  let name: string;
+  try {
+    // Repo names keep their slash, as `#/repos/org/repo`.
+    name = rest.map(decodeURIComponent).join('/');
+  } catch {
+    // A malformed escape, as in a hand-edited or truncated link.
+    return { page: 'users' };
+  }
 
   switch (page) {
     case 'users':
@@ -59,6 +65,12 @@ export function href(route: Route): string {
   }
 }
 
+// Which page a route shows. A repo's `jira` only points within its page, so
+// following one keeps the page and its unsaved edits.
+export function pageKey(route: Route): string {
+  return route.page === 'repo' ? href({ ...route, jira: null }) : href(route);
+}
+
 // The nav section a route belongs to.
 export function section(route: Route): 'users' | 'repos' | 'versions' {
   switch (route.page) {
@@ -83,7 +95,8 @@ class Router {
 
   constructor() {
     window.addEventListener('hashchange', () => {
-      if (this.leaveGuard && !this.leaveGuard()) {
+      const leaving = pageKey(parse(location.hash)) !== pageKey(this.route);
+      if (leaving && this.leaveGuard && !this.leaveGuard()) {
         // Put the address bar back without another hashchange.
         history.replaceState(null, '', this.#hash || '#/');
         return;
