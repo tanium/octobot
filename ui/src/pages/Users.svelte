@@ -150,13 +150,13 @@
       </label>
     </div>
     <div class="mb-3">
-      <label class="form-label">
+      <label class="form-label w-100">
         Muted repos (comma separated)
         <ListInput bind:value={editing.muted_repos} placeholder="some-org/some-repo, some-org/other-repo" />
       </label>
     </div>
     <div class="mb-3">
-      <label class="form-label">
+      <label class="form-label w-100">
         Muted requested teams (comma separated)
         <ListInput bind:value={editing.muted_teams} placeholder="some-org/some-team, some-org/other-team" />
       </label>

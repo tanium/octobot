@@ -24,38 +24,44 @@
   });
 </script>
 
-<!-- Escape and the close button both go through the dialog's close event. -->
-<dialog bind:this={dialog} class:large onclose={() => (open = false)}>
-  <form
-    class="modal-content"
-    onsubmit={(e) => {
-      e.preventDefault();
-      onsubmit();
-    }}
-  >
-    <div class="modal-header">
-      <h4 class="modal-title">{title}</h4>
-      <button type="button" class="btn-close" aria-label="Close" onclick={() => (open = false)}></button>
-    </div>
-    <div class="modal-body">
-      {@render children()}
-    </div>
-    <div class="modal-footer">
-      {@render footer()}
-    </div>
-  </form>
+<!-- The native dialog supplies focus trapping, Escape, and the backdrop;
+     Bootstrap's .modal classes supply the layout. Escape and the close
+     button both go through the dialog's close event. -->
+<dialog bind:this={dialog} class="modal" onclose={() => (open = false)}>
+  <div class="modal-dialog" class:modal-lg={large}>
+    <form
+      class="modal-content"
+      onsubmit={(e) => {
+        e.preventDefault();
+        onsubmit();
+      }}
+    >
+      <div class="modal-header">
+        <h4 class="modal-title">{title}</h4>
+        <button type="button" class="btn-close" aria-label="Close" onclick={() => (open = false)}></button>
+      </div>
+      <div class="modal-body">
+        {@render children()}
+      </div>
+      <div class="modal-footer">
+        {@render footer()}
+      </div>
+    </form>
+  </div>
 </dialog>
 
 <style>
+  /* Undo the user agent's dialog box so .modal can fill the viewport. */
   dialog {
-    width: min(500px, calc(100% - 2rem));
+    max-width: none;
+    max-height: none;
     padding: 0;
     border: 0;
-    border-radius: var(--bs-border-radius-lg);
+    background: transparent;
   }
 
-  dialog.large {
-    width: min(800px, calc(100% - 2rem));
+  dialog[open] {
+    display: block;
   }
 
   dialog::backdrop {

@@ -5,3 +5,9 @@ body {
 ::placeholder {
   font-size: 85%;
 }
+
+/* Link-styled buttons (logout, row actions) sit inline with text. */
+.btn-link {
+  font-size: inherit;
+  vertical-align: baseline;
+}
