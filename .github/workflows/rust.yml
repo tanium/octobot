@@ -33,8 +33,22 @@ jobs:
     - name: Build
       run: cargo build
 
+    # ts-rs never deletes bindings. Starting empty makes a removed or renamed
+    # type show up as a deleted file in the clean-tree check.
+    - name: Clear generated UI bindings
+      run: rm -rf ui/src/bindings
+
     - name: Test
       run: cargo test
+
+    # Build and test must not change tracked files or leave untracked ones.
+    - name: Check the tree is clean
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          git status --porcelain
+          echo "::error::Build or test changed the tree. If ui/src/bindings changed, commit it."
+          exit 1
+        fi
 
     - name: Format
       run: cargo fmt --all -- --check
@@ -42,8 +56,39 @@ jobs:
     - name: Lint
       run: cargo clippy --no-deps
 
+  ui:
+
+    runs-on: ubuntu-22.04
+
+    defaults:
+      run:
+        working-directory: ui
+
+    steps:
+    - name: Checkout sources
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Install node
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: ui/package-lock.json
+
+    - name: Install packages
+      run: npm ci
+
+    - name: Type check
+      run: npm run check
+
+    - name: Test
+      run: npm test
+
+    - name: Build
+      run: npm run build
+
   publish:
-    needs: build
+    needs: [build, ui]
     if: github.repository == 'tanium/octobot' && github.ref == 'refs/heads/main'
 
     runs-on: ubuntu-22.04

@@ -1,3 +1,5 @@
 target
 build.py
 config
+ui/node_modules
+ui/dist

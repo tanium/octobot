@@ -30,6 +30,7 @@ maplit = "1.0.2"
 hex = "0.4.3"
 time = "0.3.47"
 anyhow = { version = "1.0.72", features = ["backtrace"] }
+ts-rs = "12"
 
 [dev-dependencies]
 mockito = "1"

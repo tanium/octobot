@@ -14,11 +14,11 @@ use crate::http_util::Body;
 use crate::server::admin;
 use crate::server::admin::{Op, RepoAdmin, UserAdmin};
 use crate::server::github_handler::{GithubHandler, GithubHandlerState};
-use crate::server::html_handler::HtmlHandler;
 use crate::server::http::{FilteredHandler, Handler, NotFoundHandler};
 use crate::server::login::{LoginHandler, LoginSessionFilter, LogoutHandler, SessionCheckHandler};
 use crate::server::metrics::MetricsScrapeHandler;
 use crate::server::sessions::Sessions;
+use crate::server::ui_handler::UiHandler;
 
 #[derive(Clone)]
 pub struct OctobotService {
@@ -135,28 +135,6 @@ impl OctobotService {
 
         // static routes
         match (req.method(), req.uri().path()) {
-            // web ui resources. kinda a funny way of doing this maybe, but avoids worries about
-            // path traversal and location of a doc root on deployment, and our resource count is small.
-            (&Method::GET, "/") => {
-                HtmlHandler::new("index.html", include_str!("../../src/assets/index.html"))
-            }
-            (&Method::GET, "/login.html") => {
-                HtmlHandler::new("login.html", include_str!("../../src/assets/login.html"))
-            }
-            (&Method::GET, "/users.html") => {
-                HtmlHandler::new("users.html", include_str!("../../src/assets/users.html"))
-            }
-            (&Method::GET, "/repos.html") => {
-                HtmlHandler::new("repos.html", include_str!("../../src/assets/repos.html"))
-            }
-            (&Method::GET, "/versions.html") => HtmlHandler::new(
-                "versions.html",
-                include_str!("../../src/assets/versions.html"),
-            ),
-            (&Method::GET, "/app.js") => {
-                HtmlHandler::new("app.js", include_str!("../../src/assets/app.js"))
-            }
-
             // auth
             (&Method::POST, "/auth/login") => {
                 LoginHandler::new(self.ui_sessions.clone(), self.config.clone())
@@ -173,6 +151,9 @@ impl OctobotService {
             (&Method::GET, "/metrics") => {
                 MetricsScrapeHandler::new(self.config.clone(), self.metrics.clone())
             }
+
+            // web ui
+            (&Method::GET, _) => UiHandler::new(),
 
             _ => Box::new(NotFoundHandler),
         }

@@ -4,6 +4,7 @@ use anyhow::anyhow;
 use log::error;
 use rusqlite::types::ToSql;
 use serde_derive::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::config_db::ConfigDatabase;
 use crate::db;
@@ -14,7 +15,8 @@ use crate::slack::SlackRecipient;
 pub const THREAD_DIRECT_MESSAGES_DEFAULT: bool = false;
 pub const GROUP_REVIEW_DIRECT_MESSAGES_DEFAULT: bool = false;
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, TS)]
+#[ts(export)]
 pub struct UserInfo {
     pub id: Option<i32>,
     pub github: String,

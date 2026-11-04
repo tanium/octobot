@@ -7,6 +7,7 @@ use hyper::{Request, Response};
 use log::error;
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
+use ts_rs::TS;
 
 use octobot_lib::config::{Config, JiraConfig};
 use octobot_lib::errors::*;
@@ -40,6 +41,26 @@ pub struct RepoAdmin {
     op: Op,
 }
 
+#[derive(Serialize, TS)]
+#[ts(export)]
+struct UsersResp {
+    users: Vec<UserInfo>,
+}
+
+// Empty id and name when no slack user has the given email.
+#[derive(Serialize, TS)]
+#[ts(export)]
+struct SlackUserResp {
+    id: String,
+    name: String,
+}
+
+#[derive(Serialize, TS)]
+#[ts(export)]
+struct ReposResp {
+    repos: Vec<RepoInfo>,
+}
+
 impl UserAdmin {
     pub fn new(config: Arc<Config>, slack: Arc<Slack>, op: Op) -> Box<UserAdmin> {
         Box::new(UserAdmin { config, slack, op })
@@ -67,11 +88,6 @@ impl Handler for UserAdmin {
 
 impl UserAdmin {
     async fn get_all(&self, _: Request<Incoming>) -> Result<Response<Body>> {
-        #[derive(Serialize)]
-        struct UsersResp {
-            users: Vec<UserInfo>,
-        }
-
         let users = self.config.users().get_all()?;
         let resp = UsersResp { users };
 
@@ -117,12 +133,6 @@ impl UserAdmin {
     }
 
     async fn verify(&self, req: Request<Incoming>) -> Result<Response<Body>> {
-        #[derive(Serialize)]
-        struct Resp {
-            id: String,
-            name: String,
-        }
-
         let query = util::parse_query(req.uri().query());
 
         let email = match query.get("email") {
@@ -141,9 +151,9 @@ impl UserAdmin {
                     user.name
                 };
 
-                Resp { id: user.id, name }
+                SlackUserResp { id: user.id, name }
             }
-            None => Resp {
+            None => SlackUserResp {
                 id: String::new(),
                 name: String::new(),
             },
@@ -169,11 +179,6 @@ impl Handler for RepoAdmin {
 
 impl RepoAdmin {
     async fn get_all(&self, _: Request<Incoming>) -> Result<Response<Body>> {
-        #[derive(Serialize)]
-        struct ReposResp {
-            repos: Vec<RepoInfo>,
-        }
-
         let repos = match self.config.repos().get_all() {
             Ok(u) => u,
             Err(e) => {
@@ -246,16 +251,20 @@ impl MergeVersions {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, TS)]
+#[ts(export)]
 struct MergeVersionsReq {
     project: String,
     version: String,
     dry_run: bool,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, TS)]
+#[ts(export)]
 struct MergeVersionsResp {
     jira_base: String,
+    // Version serializes as its display string.
+    #[ts(type = "Record<string, Array<string>>")]
     versions: HashMap<String, Vec<version::Version>>,
     version_url: Option<String>,
     error: Option<String>,
