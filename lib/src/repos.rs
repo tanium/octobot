@@ -3,6 +3,7 @@ use log::error;
 use rusqlite::types::ToSql;
 use rusqlite::{Connection, Row, Transaction, named_params};
 use serde_derive::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::config_db::ConfigDatabase;
 use crate::db;
@@ -10,7 +11,8 @@ use crate::errors::*;
 use crate::github;
 use crate::jira;
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, TS)]
+#[ts(export)]
 pub struct RepoInfo {
     pub id: Option<i32>,
     // github org or full repo name. i.e. "some-org" or "some-org/octobot"
@@ -27,7 +29,8 @@ pub struct RepoInfo {
     pub release_branch_prefix: String,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, TS)]
+#[ts(export)]
 pub struct RepoJiraConfig {
     // The jira project key
     #[serde(default)]

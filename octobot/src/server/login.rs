@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use hyper::body::Incoming;
 use hyper::{Request, Response, StatusCode};
 use log::{error, info, warn};
-use serde_derive::Deserialize;
-use serde_json::json;
+use serde_derive::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use octobot_lib::config::Config;
 use octobot_lib::errors::*;
@@ -56,10 +56,17 @@ impl LoginSessionFilter {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, TS)]
+#[ts(export)]
 struct LoginRequest {
     username: String,
     password: String,
+}
+
+#[derive(Serialize, TS)]
+#[ts(export)]
+struct LoginResp {
+    session: String,
 }
 
 fn get_session(req: &Request<Incoming>) -> Option<String> {
@@ -105,12 +112,11 @@ impl Handler for LoginHandler {
         }
 
         if success == Some(true) {
-            let sess_id = sessions.new_session();
-            let json = json!({
-                "session": sess_id,
-            });
+            let resp = LoginResp {
+                session: sessions.new_session(),
+            };
 
-            Ok(http_util::new_json_resp(json.to_string()))
+            Ok(http_util::new_json_resp(serde_json::to_string(&resp)?))
         } else {
             Ok(http_util::new_empty_resp(StatusCode::UNAUTHORIZED))
         }
