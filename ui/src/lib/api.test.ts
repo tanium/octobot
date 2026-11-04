@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { HttpError, SessionExpiredError, api } from './api';
+import { api } from './api';
+import { HttpError, SessionExpiredError } from './errors';
+import { notifications } from './notifications.svelte';
 import { session } from './session.svelte';
 
 function stubFetch(status: number, body = '') {
@@ -40,6 +42,7 @@ describe('api', () => {
 
     await expect(api.users()).rejects.toBeInstanceOf(SessionExpiredError);
     expect(session.loggedIn).toBe(false);
+    expect(notifications.error).toBe('Session expired: Logged out');
   });
 
   it('reports the server message on other errors', async () => {

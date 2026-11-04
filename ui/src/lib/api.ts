@@ -7,24 +7,9 @@ import type { ReposResp } from '../bindings/ReposResp';
 import type { SlackUserResp } from '../bindings/SlackUserResp';
 import type { UserInfo } from '../bindings/UserInfo';
 import type { UsersResp } from '../bindings/UsersResp';
+import { HttpError, SessionExpiredError } from './errors';
+import { notifications } from './notifications.svelte';
 import { session } from './session.svelte';
-
-export class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-// The server rejected the session. The session is already cleared, which
-// sends the user back to the login page.
-export class SessionExpiredError extends HttpError {
-  constructor() {
-    super(403, 'Session expired');
-  }
-}
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -40,6 +25,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
   if (resp.status === 403) {
     session.clear();
+    notifications.show('error', 'Session expired: Logged out');
     throw new SessionExpiredError();
   }
 

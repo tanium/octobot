@@ -1,4 +1,4 @@
-import { HttpError, SessionExpiredError } from './api';
+import { SessionExpiredError } from './errors';
 
 type Kind = 'error' | 'success';
 
@@ -27,14 +27,12 @@ class Notifications {
 export const notifications = new Notifications();
 
 export function errorText(e: unknown): string {
-  return e instanceof HttpError || e instanceof Error ? e.message : String(e);
+  return e instanceof Error ? e.message : String(e);
 }
 
-// Session expiry gets its own banner, so callers need not report it again.
+// Session expiry already has its own banner.
 export function reportError(prefix: string, e: unknown) {
-  if (e instanceof SessionExpiredError) {
-    notifications.show('error', 'Session expired: Logged out');
-  } else {
+  if (!(e instanceof SessionExpiredError)) {
     notifications.show('error', `${prefix}: ${errorText(e)}`);
   }
 }

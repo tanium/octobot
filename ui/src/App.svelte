@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api } from './lib/api';
-  import { notifications, reportError } from './lib/notifications.svelte';
+  import { notifications } from './lib/notifications.svelte';
   import { router } from './lib/router.svelte';
   import { session } from './lib/session.svelte';
   import Login from './pages/Login.svelte';
@@ -10,14 +10,15 @@
 
   const sessionCheckMs = 30_000;
 
-  // Notices a server-side session expiry even when the user is idle. Other
-  // failures are transient, so the check just runs again next interval.
+  // Notices a server-side session expiry even when the user is idle; the API
+  // client handles the 403. Other failures are transient, so the check just
+  // runs again next interval.
   $effect(() => {
     if (!session.loggedIn) {
       return;
     }
     const timer = setInterval(() => {
-      api.checkSession().catch((e) => reportError('Error checking session', e));
+      api.checkSession().catch(() => {});
     }, sessionCheckMs);
     return () => clearInterval(timer);
   });
@@ -25,9 +26,10 @@
   async function logout() {
     try {
       await api.logout();
-    } finally {
-      session.clear();
+    } catch {
+      // The local session ends either way; the server's expires on its own.
     }
+    session.clear();
   }
 </script>
 
