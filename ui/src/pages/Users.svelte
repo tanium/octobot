@@ -3,11 +3,12 @@
   import { rank } from '../lib/fuzzy';
   import Highlight from '../lib/Highlight.svelte';
   import Icon from '../lib/Icon.svelte';
-  import { href } from '../lib/router.svelte';
+  import { ListFilter } from '../lib/listFilter.svelte';
+  import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
 
-  let needle = $state('');
-  let visible = $derived(rank(store.users ?? [], needle, (u) => [u.github, u.slack_name, u.email]));
+  const filter = new ListFilter();
+  let visible = $derived(rank(store.users ?? [], filter.text, (u) => [u.github, u.slack_name, u.email]));
 
   // Highlights go only on the field that matched.
   const at = (field: number, r: { field: number; positions: number[] }) => (r.field === field ? r.positions : []);
@@ -18,7 +19,16 @@
   <label class="filter">
     <Icon name="search" size={14} />
     <span class="sr-only">Filter users</span>
-    <input class="input input-sm" bind:value={needle} placeholder="Filter users" data-page-filter />
+    <input
+      class="input input-sm"
+      bind:value={filter.text}
+      placeholder="Filter users"
+      data-page-filter
+      onfocus={() => (filter.focused = true)}
+      onblur={() => (filter.focused = false)}
+      onkeydown={(e) =>
+        filter.keydown(e, visible.length, (i) => router.go({ page: 'user', name: visible[i].item.github }))}
+    />
     <kbd>/</kbd>
   </label>
   <a class="btn btn-primary btn-sm" href={href({ page: 'user', name: null })}><Icon name="plus" size={14} />Add user</a>
@@ -36,9 +46,14 @@
       <div class="list-row cols skeleton"><span></span><span></span><span></span><span></span></div>
     {/each}
   {:else}
-    {#each visible as r (r.item.id)}
+    {#each visible as r, i (r.item.id)}
       {@const u = r.item}
-      <a class="list-row cols" href={href({ page: 'user', name: u.github })}>
+      <a
+        class="list-row cols"
+        class:active={filter.isActive(i)}
+        data-filter-active={filter.isActive(i) || undefined}
+        href={href({ page: 'user', name: u.github })}
+      >
         <span class="who">
           <Avatar name={u.github} />
           <span class="cell">
@@ -61,8 +76,8 @@
       </a>
     {:else}
       <div class="list-empty">
-        {#if needle}
-          No users match “{needle}”.
+        {#if filter.text}
+          No users match “{filter.text}”.
         {:else}
           No users yet. <a href={href({ page: 'user', name: null })}>Add the first one</a>.
         {/if}

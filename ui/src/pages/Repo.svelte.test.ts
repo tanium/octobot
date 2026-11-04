@@ -89,6 +89,22 @@ describe('Repo', () => {
     expect(keyInputs().map((i) => i.value)).toEqual(['ZZZ']);
   });
 
+  it('opens and focuses the top project on Enter in the filter, without saving', async () => {
+    render(['APP', 'WEB', 'API']);
+    const box = document.querySelector<HTMLInputElement>('[data-page-filter]')!;
+    box.focus();
+    box.value = 'web';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await settle();
+
+    expect(keyInputs().map((i) => i.value)).toEqual(['WEB']);
+    expect(document.activeElement).toBe(keyInputs()[0]);
+    expect(api.updateRepo).not.toHaveBeenCalled();
+  });
+
   it('saves the edited projects in their order', async () => {
     render(['APP', 'WEB'], 'WEB');
     const [key] = keyInputs();

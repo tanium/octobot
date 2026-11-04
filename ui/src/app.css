@@ -461,6 +461,12 @@ a.list-row:hover {
   text-decoration: none;
 }
 
+/* The match Enter opens, while its filter box has focus. */
+.list-row.active {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .list-empty {
   padding: 48px 18px;
   text-align: center;

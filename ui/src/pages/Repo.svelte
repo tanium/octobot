@@ -8,6 +8,7 @@
   import { Draft, guardUnsaved } from '../lib/draft.svelte';
   import { fuzzy } from '../lib/fuzzy';
   import Icon from '../lib/Icon.svelte';
+  import { ListFilter } from '../lib/listFilter.svelte';
   import Modal from '../lib/Modal.svelte';
   import { errorText, notifications, reportError } from '../lib/notifications.svelte';
   import { href, router } from '../lib/router.svelte';
@@ -44,7 +45,7 @@
   // Keyed by the draft's own config objects, which stay put as rows move.
   const expanded = new SvelteSet<RepoJiraConfig>();
   // svelte-ignore state_referenced_locally
-  let jiraFilter = $state(jira ?? '');
+  const jiraFilter = new ListFilter(jira ?? '');
   let keyInputs = new Map<RepoJiraConfig, HTMLInputElement>();
 
   $effect(() => () => (alive = false));
@@ -78,7 +79,8 @@
   // does not vanish when its key stops matching.
   let shown = $derived(
     configs.filter(
-      (c) => expanded.has(c) || fuzzy(jiraFilter, c.jira_project) !== null || fuzzy(jiraFilter, c.channel) !== null,
+      (c) =>
+        expanded.has(c) || fuzzy(jiraFilter.text, c.jira_project) !== null || fuzzy(jiraFilter.text, c.channel) !== null,
     ),
   );
 
@@ -104,9 +106,17 @@
     // The proxied copy is what the list holds.
     const added = draft.value!.jira_config[0];
     expanded.add(added);
-    jiraFilter = '';
+    jiraFilter.text = '';
     await tick();
     keyInputs.get(added)?.focus();
+  }
+
+  // Enter in the filter: open the highlighted project and start editing it.
+  async function editProject(i: number) {
+    const c = shown[i];
+    expanded.add(c);
+    await tick();
+    keyInputs.get(c)?.focus();
   }
 
   function removeProject(c: RepoJiraConfig) {
@@ -135,7 +145,7 @@
     // Closed rows have no inputs, so native validation cannot see them.
     const blank = repo.jira_config.find((c) => c.jira_project.trim() === '');
     if (blank) {
-      jiraFilter = '';
+      jiraFilter.text = '';
       expanded.add(blank);
       draft.error = 'Every Jira project needs a key';
       await tick();
@@ -275,7 +285,15 @@
             <label class="filter">
               <Icon name="search" size={14} />
               <span class="sr-only">Filter Jira projects</span>
-              <input class="input input-sm" bind:value={jiraFilter} placeholder="Filter projects" data-page-filter />
+              <input
+                class="input input-sm"
+                bind:value={jiraFilter.text}
+                placeholder="Filter projects"
+                data-page-filter
+                onfocus={() => (jiraFilter.focused = true)}
+                onblur={() => (jiraFilter.focused = false)}
+                onkeydown={(e) => jiraFilter.keydown(e, shown.length, editProject)}
+              />
               <kbd>/</kbd>
             </label>
             <button type="button" class="btn btn-ghost btn-sm" onclick={() => setAll(expanded.size < shown.length)}>
@@ -289,9 +307,9 @@
           <div class="list-empty">No Jira projects. Add one to link this repo's pull requests to Jira.</div>
         {:else}
           <ul class="projects">
-            {#each shown as c (c)}
+            {#each shown as c, i (c)}
               {@const open = expanded.has(c)}
-              <li class:open>
+              <li class:open class:active={jiraFilter.isActive(i)} data-filter-active={jiraFilter.isActive(i) || undefined}>
                 <div class="row">
                   <button
                     type="button"
@@ -353,7 +371,7 @@
                 {/if}
               </li>
             {:else}
-              <li class="list-empty">No projects match “{jiraFilter}”.</li>
+              <li class="list-empty">No projects match “{jiraFilter.text}”.</li>
             {/each}
           </ul>
         {/if}
@@ -437,6 +455,12 @@
 
   .projects > li.open {
     background: var(--surface-2);
+  }
+
+  /* The project Enter opens, while the filter has focus. */
+  .projects > li.active {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
 
   .row {
