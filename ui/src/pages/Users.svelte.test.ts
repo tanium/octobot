@@ -2,6 +2,8 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { UserInfo } from '../bindings/UserInfo';
+import { notifications } from '../lib/notifications.svelte';
+import { session } from '../lib/session.svelte';
 import Users from './Users.svelte';
 
 const api = vi.hoisted(() => ({
@@ -49,6 +51,8 @@ function user(id: number, github: string): UserInfo {
 let component: ReturnType<typeof mount> | undefined;
 
 beforeEach(() => {
+  session.start('the-session');
+  notifications.dismiss('error');
   api.users.mockResolvedValue({ users: [user(1, 'alice'), user(2, 'bob')] });
   api.verifyEmail.mockResolvedValue({ id: 'U1', name: 'alice' });
 });
@@ -104,6 +108,25 @@ describe('Users', () => {
 
     expect(dialog().open).toBe(true);
     expect(dialog().querySelector<HTMLInputElement>('input[placeholder="GitHub username"]')!.value).toBe('bob');
+  });
+
+  it('reports a failed save on the page once its dialog has closed', async () => {
+    let failSave!: (e: Error) => void;
+    api.updateUser.mockReturnValue(new Promise<void>((_, reject) => (failSave = reject)));
+
+    component = mount(Users, { target: document.body });
+    await settle();
+
+    click(editButton(0));
+    dialog().querySelector('form')!.requestSubmit();
+    await settle();
+    dialog().close();
+    flushSync();
+
+    failSave(new Error('database is locked'));
+    await settle();
+
+    expect(notifications.error).toBe('Error saving user: database is locked');
   });
 
   it('blocks edits and a second submit while saving', async () => {

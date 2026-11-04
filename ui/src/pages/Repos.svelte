@@ -5,6 +5,7 @@
   import { matches } from '../lib/filter';
   import Modal from '../lib/Modal.svelte';
   import { errorText, notifications, reportError } from '../lib/notifications.svelte';
+  import { session } from '../lib/session.svelte';
 
   function newRepo(): RepoInfo {
     return {
@@ -57,17 +58,19 @@
     const error = await submit(repo);
     saving = false;
 
-    // Escape can close the dialog mid-save and another edit can open, so
-    // only the dialog that started this save takes its result.
-    if (editing === repo) {
-      if (error) {
-        formError = error;
-      } else {
+    // Escape can close the dialog mid-save and another edit can open, so the
+    // result goes to its own dialog only while that is still showing.
+    const ownDialog = modalOpen && editing === repo;
+    if (error === null) {
+      if (ownDialog) {
         modalOpen = false;
       }
-    }
-    if (!error) {
       await refresh();
+    } else if (ownDialog) {
+      formError = error;
+    } else if (session.loggedIn) {
+      // Logged out means the session expired, which has its own banner.
+      notifications.show('error', error);
     }
   }
 
