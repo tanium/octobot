@@ -275,7 +275,8 @@
             <label class="filter">
               <Icon name="search" size={14} />
               <span class="sr-only">Filter Jira projects</span>
-              <input class="input input-sm" bind:value={jiraFilter} placeholder="Filter projects" />
+              <input class="input input-sm" bind:value={jiraFilter} placeholder="Filter projects" data-page-filter />
+              <kbd>/</kbd>
             </label>
             <button type="button" class="btn btn-ghost btn-sm" onclick={() => setAll(expanded.size < shown.length)}>
               {expanded.size < shown.length ? 'Expand all' : 'Collapse all'}
@@ -417,10 +418,6 @@
 
   .jira-head .filter {
     width: 200px;
-  }
-
-  .jira-head .filter .input {
-    padding-right: 10px;
   }
 
   .projects {
