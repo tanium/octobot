@@ -7,6 +7,9 @@ const octobot = process.env.OCTOBOT_URL ?? 'http://localhost:3000';
 
 export default defineConfig({
   plugins: [svelte()],
+  // No index.html fallback for unknown paths. Like octobot, dev serves only
+  // real files, so pages are reached by hash (`#/users`).
+  appType: 'mpa',
   server: {
     proxy: {
       '/api': octobot,
