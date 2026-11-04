@@ -34,6 +34,7 @@
   let editing = $state<RepoInfo | null>(null);
   let modalOpen = $state(false);
   let formError = $state('');
+  let saving = $state(false);
 
   async function refresh() {
     try {
@@ -52,6 +53,26 @@
   async function save() {
     const repo = editing!;
     formError = '';
+    saving = true;
+    const error = await submit(repo);
+    saving = false;
+
+    // Escape can close the dialog mid-save and another edit can open, so
+    // only the dialog that started this save takes its result.
+    if (editing === repo) {
+      if (error) {
+        formError = error;
+      } else {
+        modalOpen = false;
+      }
+    }
+    if (!error) {
+      await refresh();
+    }
+  }
+
+  // Returns the error to show in the form, or null once saved.
+  async function submit(repo: RepoInfo): Promise<string | null> {
     try {
       if (repo.id === null) {
         await api.createRepo(repo);
@@ -60,12 +81,10 @@
         await api.updateRepo(repo);
         notifications.show('success', 'Edited repo successfully');
       }
-      modalOpen = false;
+      return null;
     } catch (e) {
-      formError = `Error saving repo: ${errorText(e)}`;
-      return;
+      return `Error saving repo: ${errorText(e)}`;
     }
-    await refresh();
   }
 
   async function remove(repo: RepoInfo) {
@@ -118,7 +137,7 @@
   </tbody>
 </table>
 
-<Modal bind:open={modalOpen} large title={editing?.id ? 'Edit repo' : 'Add repo'} onsubmit={save}>
+<Modal bind:open={modalOpen} large title={editing?.id ? 'Edit repo' : 'Add repo'} busy={saving} onsubmit={save}>
   {#if modalOpen && editing}
     <h4>Repo</h4>
     <div class="mb-3">

@@ -5,13 +5,15 @@
     open: boolean;
     title: string;
     large?: boolean;
+    // Disables the form, including submit, while a save is in flight.
+    busy?: boolean;
     // The footer's submit button triggers this, after native form validation.
     onsubmit: () => void;
     children: Snippet;
     footer: Snippet;
   }
 
-  let { open = $bindable(), title, large = false, onsubmit, children, footer }: Props = $props();
+  let { open = $bindable(), title, large = false, busy = false, onsubmit, children, footer }: Props = $props();
 
   let dialog: HTMLDialogElement;
 
@@ -33,19 +35,23 @@
       class="modal-content"
       onsubmit={(e) => {
         e.preventDefault();
-        onsubmit();
+        if (!busy) {
+          onsubmit();
+        }
       }}
     >
-      <div class="modal-header">
-        <h4 class="modal-title">{title}</h4>
-        <button type="button" class="btn-close" aria-label="Close" onclick={() => (open = false)}></button>
-      </div>
-      <div class="modal-body">
-        {@render children()}
-      </div>
-      <div class="modal-footer">
-        {@render footer()}
-      </div>
+      <fieldset disabled={busy}>
+        <div class="modal-header">
+          <h4 class="modal-title">{title}</h4>
+          <button type="button" class="btn-close" aria-label="Close" onclick={() => (open = false)}></button>
+        </div>
+        <div class="modal-body">
+          {@render children()}
+        </div>
+        <div class="modal-footer">
+          {@render footer()}
+        </div>
+      </fieldset>
     </form>
   </div>
 </dialog>

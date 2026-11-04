@@ -31,6 +31,7 @@
   let editing = $state<UserInfo | null>(null);
   let modalOpen = $state(false);
   let formError = $state('');
+  let saving = $state(false);
 
   async function refresh() {
     try {
@@ -49,18 +50,35 @@
   async function save() {
     const user = editing!;
     formError = '';
+    saving = true;
+    const error = await submit(user);
+    saving = false;
 
+    // Escape can close the dialog mid-save and another edit can open, so
+    // only the dialog that started this save takes its result.
+    if (editing === user) {
+      if (error) {
+        formError = error;
+      } else {
+        modalOpen = false;
+      }
+    }
+    if (!error) {
+      await refresh();
+    }
+  }
+
+  // Returns the error to show in the form, or null once saved.
+  async function submit(user: UserInfo): Promise<string | null> {
     try {
       const slack = await api.verifyEmail(user.email);
       if (!slack.id || !slack.name) {
-        formError = 'Failed to lookup slack username for given email address';
-        return;
+        return 'Failed to lookup slack username for given email address';
       }
       user.slack_id = slack.id;
       user.slack_name = slack.name;
     } catch (e) {
-      formError = `Error verifying email address: ${errorText(e)}`;
-      return;
+      return `Error verifying email address: ${errorText(e)}`;
     }
 
     try {
@@ -71,12 +89,10 @@
         await api.updateUser(user);
         notifications.show('success', 'Edited user successfully');
       }
-      modalOpen = false;
+      return null;
     } catch (e) {
-      formError = `Error saving user: ${errorText(e)}`;
-      return;
+      return `Error saving user: ${errorText(e)}`;
     }
-    await refresh();
   }
 
   async function remove(user: UserInfo) {
@@ -127,7 +143,7 @@
   </tbody>
 </table>
 
-<Modal bind:open={modalOpen} title={editing?.id ? 'Edit user' : 'Add user'} onsubmit={save}>
+<Modal bind:open={modalOpen} title={editing?.id ? 'Edit user' : 'Add user'} busy={saving} onsubmit={save}>
   <!-- Remounted per open, so ListInput reseeds from the new user. -->
   {#if modalOpen && editing}
     <div class="mb-3">
