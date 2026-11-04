@@ -38,6 +38,15 @@ describe('ListInput', () => {
     expect(props.value).toEqual(['org/repo']);
   });
 
+  it('keeps a trailing comma while typing', () => {
+    const { props, input } = render([]);
+
+    type(input, 'a/b,');
+
+    expect(input.value).toBe('a/b,');
+    expect(props.value).toEqual(['a/b']);
+  });
+
   it('clears the list when the text is cleared', () => {
     const { props, input } = render(['a/b']);
 
