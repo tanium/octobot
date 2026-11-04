@@ -36,12 +36,13 @@ jobs:
     - name: Test
       run: cargo test
 
-    # cargo test regenerates ui/src/bindings from the Rust API structs.
-    - name: Check UI bindings are current
+    # Build and test must not change tracked files or leave untracked ones.
+    # cargo test regenerates ui/src/bindings, so stale bindings fail here.
+    - name: Check the tree is clean
       run: |
-        if [ -n "$(git status --porcelain ui/src/bindings)" ]; then
-          git status --porcelain ui/src/bindings
-          echo "::error::Run cargo test and commit ui/src/bindings"
+        if [ -n "$(git status --porcelain)" ]; then
+          git status --porcelain
+          echo "::error::Build or test changed the tree. If ui/src/bindings changed, commit it."
           exit 1
         fi
 
