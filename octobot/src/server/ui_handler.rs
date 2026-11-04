@@ -46,7 +46,10 @@ impl Handler for UiHandler {
 
         let mut resp = Response::new(Body::from(file.data.into_owned()));
         let headers = resp.headers_mut();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_str(file.metadata.mimetype())?);
+        headers.insert(
+            CONTENT_TYPE,
+            HeaderValue::from_str(file.metadata.mimetype())?,
+        );
         headers.insert(CACHE_CONTROL, HeaderValue::from_static(cache));
         Ok(resp)
     }
