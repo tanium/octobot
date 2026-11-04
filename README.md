@@ -95,6 +95,25 @@ To configure repositories and users, you will need to login to octobot's web UI,
 
 This does not need to be run inside the docker container since it just modifies the configuration file.
 
+#### Developing the web UI
+
+The UI lives in `ui/`: Svelte and TypeScript, built by Vite. Run octobot on
+port 3000, then:
+
+    cd ui
+    npm install
+    npm run dev
+
+This serves the UI with hot reload and forwards `/api` and `/auth` to octobot.
+Set `OCTOBOT_URL` to use another address.
+
+The API types in `ui/src/bindings` are generated from the Rust structs by
+`cargo test`; commit them with the Rust change. `npm run check` type-checks the
+UI against them.
+
+Release builds embed `ui/dist`, so run `npm run build` before
+`cargo build --release`. `build.py` does this for you.
+
 ### SSL config
 
 It is highly recommended to enable SSL.

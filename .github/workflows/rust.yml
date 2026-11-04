@@ -36,14 +36,54 @@ jobs:
     - name: Test
       run: cargo test
 
+    # cargo test regenerates ui/src/bindings from the Rust API structs.
+    - name: Check UI bindings are current
+      run: |
+        if [ -n "$(git status --porcelain ui/src/bindings)" ]; then
+          git status --porcelain ui/src/bindings
+          echo "::error::Run cargo test and commit ui/src/bindings"
+          exit 1
+        fi
+
     - name: Format
       run: cargo fmt --all -- --check
 
     - name: Lint
       run: cargo clippy --no-deps
 
+  ui:
+
+    runs-on: ubuntu-22.04
+
+    defaults:
+      run:
+        working-directory: ui
+
+    steps:
+    - name: Checkout sources
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Install node
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: ui/package-lock.json
+
+    - name: Install packages
+      run: npm ci
+
+    - name: Type check
+      run: npm run check
+
+    - name: Test
+      run: npm test
+
+    - name: Build
+      run: npm run build
+
   publish:
-    needs: build
+    needs: [build, ui]
     if: github.repository == 'tanium/octobot' && github.ref == 'refs/heads/main'
 
     runs-on: ubuntu-22.04
