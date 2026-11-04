@@ -91,12 +91,16 @@
 {#snippet logo()}
   <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
     <rect width="24" height="24" rx="7" fill="var(--accent)" />
-    <g fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round">
-      <path d="M6.5 12.5a5.5 5.5 0 0 1 11 0" />
-      <path d="M6.5 12.5c0 2.5-1.5 3.5-1.5 5M10 12.5c0 2.5-.8 4 .2 6M14 12.5c0 2.5.8 4-.2 6M17.5 12.5c0 2.5 1.5 3.5 1.5 5" />
-    </g>
-    <circle cx="10" cy="10.5" r="1" fill="#fff" />
-    <circle cx="14" cy="10.5" r="1" fill="#fff" />
+    <path d="M6 12.2a6 6 0 0 1 12 0v1.6H6Z" fill="#fff" />
+    <rect x="7.4" y="9.2" width="9.2" height="3.1" rx="1.55" fill="#14141a" />
+    <path d="M9 10.75h6" stroke="#b9b9ff" stroke-width="1.1" stroke-linecap="round" />
+    <path
+      d="M7.6 13.8v2.3a1.6 1.6 0 0 1-1.6 1.6M10.5 13.8v4.2M13.5 13.8v4.2M16.4 13.8v2.3a1.6 1.6 0 0 0 1.6 1.6"
+      fill="none"
+      stroke="#fff"
+      stroke-width="1.7"
+      stroke-linecap="round"
+    />
   </svg>
 {/snippet}
 
