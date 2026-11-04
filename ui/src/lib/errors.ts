@@ -7,8 +7,8 @@ export class HttpError extends Error {
   }
 }
 
-// The server rejected the session. The API client has already cleared it,
-// which sends the user back to the login page, and said so in a banner.
+// The server rejected the session. The API client has already cleared it and
+// shown a banner, so the app is back on the login page.
 export class SessionExpiredError extends HttpError {
   constructor() {
     super(403, 'Session expired');

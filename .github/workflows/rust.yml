@@ -42,7 +42,6 @@ jobs:
       run: cargo test
 
     # Build and test must not change tracked files or leave untracked ones.
-    # cargo test regenerates ui/src/bindings, so stale bindings fail here.
     - name: Check the tree is clean
       run: |
         if [ -n "$(git status --porcelain)" ]; then

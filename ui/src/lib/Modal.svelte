@@ -25,8 +25,8 @@
 </script>
 
 <!-- The native dialog supplies focus trapping, Escape, and the backdrop;
-     Bootstrap's .modal classes supply the layout. Escape and the close
-     button both go through the dialog's close event. -->
+     Bootstrap's .modal classes supply the layout. Every close goes through
+     the dialog's close event. -->
 <dialog bind:this={dialog} class="modal" onclose={() => (open = false)}>
   <div class="modal-dialog" class:modal-lg={large}>
     <form
