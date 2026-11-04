@@ -12,12 +12,6 @@ function stubFetch(status: number, body = '') {
 }
 
 beforeEach(() => {
-  const store = new Map<string, string>();
-  vi.stubGlobal('sessionStorage', {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => store.set(k, v),
-    removeItem: (k: string) => store.delete(k),
-  });
   session.start('the-session');
 });
 
@@ -42,6 +36,7 @@ describe('api', () => {
 
     await expect(api.users()).rejects.toBeInstanceOf(SessionExpiredError);
     expect(session.loggedIn).toBe(false);
+    expect(sessionStorage.getItem('session')).toBeNull();
     expect(notifications.error).toBe('Session expired: Logged out');
   });
 

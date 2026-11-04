@@ -2,7 +2,7 @@ const KEY = 'session';
 
 // The server-issued session token, kept per browser tab.
 class Session {
-  token = $state<string | null>(globalThis.sessionStorage?.getItem(KEY) ?? null);
+  token = $state<string | null>(sessionStorage.getItem(KEY));
 
   get loggedIn(): boolean {
     return this.token !== null;

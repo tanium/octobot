@@ -13,4 +13,15 @@
   let text = $state(formatList(value));
 </script>
 
-<input type="text" class="form-control" {placeholder} bind:value={text} oninput={() => (value = parseList(text))} />
+<input
+  type="text"
+  class="form-control"
+  {placeholder}
+  bind:value={
+    () => text,
+    (v) => {
+      text = v;
+      value = parseList(v);
+    }
+  }
+/>

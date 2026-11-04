@@ -33,6 +33,11 @@ jobs:
     - name: Build
       run: cargo build
 
+    # ts-rs never deletes bindings. Starting empty makes a removed or renamed
+    # type show up as a deleted file in the clean-tree check.
+    - name: Clear generated UI bindings
+      run: rm -rf ui/src/bindings
+
     - name: Test
       run: cargo test
 

@@ -3,7 +3,7 @@ export type Page = (typeof pages)[number];
 
 // Hash routing keeps the server to serving one index page. Accepts the old
 // AngularJS `#!/users` form so existing bookmarks still land.
-function parse(hash: string): Page {
+export function parse(hash: string): Page {
   const name = hash.replace(/^#!?\/?/, '');
   return pages.find((p) => p === name) ?? 'users';
 }

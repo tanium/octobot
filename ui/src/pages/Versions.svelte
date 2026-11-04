@@ -25,6 +25,7 @@
     project = '';
     version = '';
     preview = null;
+    merged = null;
     processing = false;
   }
 
@@ -57,8 +58,9 @@
     try {
       const resp = await mergeVersions(false);
       notifications.show('success', 'Created new version successfully.');
-      merged = { version, url: resp.version_url, versions: resp.versions };
+      const result = { version, url: resp.version_url, versions: resp.versions };
       reset();
+      merged = result;
     } catch (e) {
       reportError('Error creating new version', e);
     }
