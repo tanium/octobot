@@ -355,7 +355,11 @@ fn thread_direct_messages(config: &Config, github_name: &str) {
 }
 
 fn pr_thread(guid: &str) -> Thread {
-    Thread::for_pull_request(guid, SlackAttachmentBuilder::new("").build())
+    Thread::for_pull_request(
+        guid,
+        "Pull Request",
+        SlackAttachmentBuilder::new("").build(),
+    )
 }
 
 fn dm_thread(guid: &str) -> Threading {
@@ -488,9 +492,8 @@ fn test_threads_direct_messages_mention_slack_id() {
     user.thread_direct_messages = Some(true);
     config.users_write().update(&user).unwrap();
 
-    let pr = SlackAttachmentBuilder::new("")
-        .title("Pull Request #1: \"<The> PR\"")
-        .build();
+    let subject = "Pull Request #1: \"<The> PR\"";
+    let pr = SlackAttachmentBuilder::new("").title(subject).build();
     let slack = MockSlack::new(vec![slack::req(
         SlackRecipient::new("U123", "the.owner"),
         "hello there",
@@ -513,7 +516,11 @@ fn test_threads_direct_messages_mention_slack_id() {
         Participants::new(),
         "",
         &Vec::<github::Commit>::new(),
-        vec![Thread::for_pull_request("some-user/some-repo/1", pr)],
+        vec![Thread::for_pull_request(
+            "some-user/some-repo/1",
+            subject,
+            pr,
+        )],
     );
 }
 
@@ -540,7 +547,7 @@ fn threaded_channel_test() -> (Arc<Config>, TempDir, github::Repo, Thread, Threa
         config,
         temp,
         repo,
-        Thread::for_pull_request("the-owner/the-repo/1", pr),
+        Thread::for_pull_request("the-owner/the-repo/1", "Pull Request #1: \"The PR\"", pr),
         root,
     )
 }

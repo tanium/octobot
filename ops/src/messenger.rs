@@ -92,7 +92,13 @@ impl Participants {
 #[derive(Clone)]
 pub struct Thread {
     guid: String,
-    pull_request: Option<SlackAttachment>,
+    pull_request: Option<PullRequestRoot>,
+}
+
+#[derive(Clone)]
+struct PullRequestRoot {
+    subject: String,
+    attachment: SlackAttachment,
 }
 
 impl Thread {
@@ -103,10 +109,14 @@ impl Thread {
         }
     }
 
-    pub fn for_pull_request(guid: &str, pull_request: SlackAttachment) -> Thread {
+    /// `subject` names the PR in DM thread roots, e.g. `Pull Request #1: "Title"`.
+    pub fn for_pull_request(guid: &str, subject: &str, attachment: SlackAttachment) -> Thread {
         Thread {
             guid: guid.to_string(),
-            pull_request: Some(pull_request),
+            pull_request: Some(PullRequestRoot {
+                subject: subject.to_string(),
+                attachment,
+            }),
         }
     }
 }
@@ -254,7 +264,9 @@ impl Messenger {
                 let guid = thread.guid.clone();
                 let threading = match &thread.pull_request {
                     _ if initial_thread => Threading::Root(guid),
-                    Some(pr) => Threading::ReplyOrStart(guid, pr_thread_root(&repo_link, pr)),
+                    Some(pr) => {
+                        Threading::ReplyOrStart(guid, pr_thread_root(&repo_link, &pr.attachment))
+                    }
                     None => Threading::Reply(guid),
                 };
                 self.slack.send(slack::req(
@@ -291,7 +303,7 @@ impl Messenger {
                 let threading = match &thread {
                     Some((guid, root)) if user_dm.use_threads => Threading::ReplyOrStart(
                         guid.clone(),
-                        dm_thread_root(root, &user_dm.recipient),
+                        dm_thread_root(root, user_dm.slack_id.as_deref()),
                     ),
                     _ => Threading::Flat,
                 };
@@ -318,24 +330,24 @@ fn pr_thread_root(repo_link: &str, pr: &SlackAttachment) -> ThreadRoot {
 }
 
 // The title is repeated in the text because notification previews leave out attachments.
-fn pr_dm_thread_root(repo_link: &str, pr: &SlackAttachment) -> ThreadRoot {
-    let subject = pr
-        .title
-        .as_deref()
-        .map_or("Pull Request".into(), util::escape_for_slack);
+fn pr_dm_thread_root(repo_link: &str, pr: &PullRequestRoot) -> ThreadRoot {
     ThreadRoot {
-        msg: format!("New thread for {} ({})", subject, repo_link),
-        attachments: vec![pr.clone()],
+        msg: format!(
+            "New thread for {} ({})",
+            util::escape_for_slack(&pr.subject),
+            repo_link
+        ),
+        attachments: vec![pr.attachment.clone()],
     }
 }
 
 // Slack only notifies about replies in threads the user follows, and a mention makes them follow it.
-fn dm_thread_root(root: &ThreadRoot, recipient: &SlackRecipient) -> ThreadRoot {
-    if recipient.id.starts_with('@') {
+fn dm_thread_root(root: &ThreadRoot, slack_id: Option<&str>) -> ThreadRoot {
+    let Some(slack_id) = slack_id else {
         return root.clone();
-    }
+    };
     ThreadRoot {
-        msg: format!("{}\n<@{}>", root.msg, recipient.id),
+        msg: format!("{}\n<@{}>", root.msg, slack_id),
         attachments: root.attachments.clone(),
     }
 }
