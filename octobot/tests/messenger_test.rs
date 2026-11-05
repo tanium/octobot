@@ -355,7 +355,11 @@ fn thread_direct_messages(config: &Config, github_name: &str) {
 }
 
 fn pr_thread(guid: &str) -> Thread {
-    Thread::for_pull_request(guid, SlackAttachmentBuilder::new("").build())
+    Thread::for_pull_request(
+        guid,
+        "Pull Request",
+        SlackAttachmentBuilder::new("").build(),
+    )
 }
 
 fn dm_thread(guid: &str) -> Threading {
@@ -480,6 +484,46 @@ fn test_send_to_owner_not_threaded() {
     );
 }
 
+#[test]
+fn test_threads_direct_messages_mention_slack_id() {
+    let (config, _temp) = new_test();
+    let mut user = config.users().lookup_info("the-owner").unwrap();
+    user.slack_id = "U123".into();
+    user.thread_direct_messages = Some(true);
+    config.users_write().update(&user).unwrap();
+
+    let subject = "Pull Request #1: \"<The> PR\"";
+    let pr = SlackAttachmentBuilder::new("").title(subject).build();
+    let slack = MockSlack::new(vec![slack::req(
+        SlackRecipient::new("U123", "the.owner"),
+        "hello there",
+        &[],
+        Threading::ReplyOrStart(
+            "some-user/some-repo/1".into(),
+            ThreadRoot {
+                msg: "New thread for Pull Request #1: \"&lt;The&gt; PR\" (<|>)\n<@U123>".into(),
+                attachments: vec![pr.clone()],
+            },
+        ),
+    )]);
+    let messenger = messenger::new(config, slack.new_sender());
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &github::Repo::new(),
+        Participants::new(),
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![Thread::for_pull_request(
+            "some-user/some-repo/1",
+            subject,
+            pr,
+        )],
+    );
+}
+
 fn threaded_channel_test() -> (Arc<Config>, TempDir, github::Repo, Thread, ThreadRoot) {
     let (config, temp) = new_test();
     config
@@ -503,7 +547,7 @@ fn threaded_channel_test() -> (Arc<Config>, TempDir, github::Repo, Thread, Threa
         config,
         temp,
         repo,
-        Thread::for_pull_request("the-owner/the-repo/1", pr),
+        Thread::for_pull_request("the-owner/the-repo/1", "Pull Request #1: \"The PR\"", pr),
         root,
     )
 }

@@ -37,6 +37,7 @@ pub struct UserInfo {
 #[derive(Debug, PartialEq, Clone)]
 pub struct DirectMessage {
     pub recipient: SlackRecipient,
+    pub slack_id: Option<String>,
     pub use_threads: bool,
     pub group_reviews: bool,
 }
@@ -153,13 +154,14 @@ impl UserConfig {
                 return None;
             }
 
-            let recipient = if !u.slack_id.is_empty() {
-                SlackRecipient::new(&u.slack_id, &u.slack_name)
-            } else {
-                SlackRecipient::user_mention(&u.slack_name)
+            let slack_id = (!u.slack_id.is_empty()).then(|| u.slack_id.clone());
+            let recipient = match &slack_id {
+                Some(id) => SlackRecipient::new(id, &u.slack_name),
+                None => SlackRecipient::user_mention(&u.slack_name),
             };
             Some(DirectMessage {
                 recipient,
+                slack_id,
                 use_threads: u
                     .thread_direct_messages
                     .unwrap_or(THREAD_DIRECT_MESSAGES_DEFAULT),
@@ -277,9 +279,14 @@ mod tests {
         (UserConfig::new(db), temp_dir)
     }
 
-    fn dm(recipient: SlackRecipient, use_threads: bool) -> DirectMessage {
+    fn dm(slack_id: Option<&str>, use_threads: bool) -> DirectMessage {
+        let recipient = match slack_id {
+            Some(id) => SlackRecipient::new(id, "the-slacker"),
+            None => SlackRecipient::user_mention("the-slacker"),
+        };
         DirectMessage {
             recipient,
+            slack_id: slack_id.map(str::to_string),
             use_threads,
             group_reviews: false,
         }
@@ -307,10 +314,7 @@ mod tests {
             users.slack_user_name("some-git-user")
         );
         assert_eq!(
-            Some(dm(
-                SlackRecipient::new("@the-slacker", "the-slacker"),
-                false
-            )),
+            Some(dm(None, false)),
             users.slack_direct_message("some-git-user", None, &"org/repo".into())
         );
         assert_eq!(None, users.slack_user_name("some.other.user"));
@@ -332,7 +336,7 @@ mod tests {
             users.slack_user_name("some-git-user")
         );
         assert_eq!(
-            Some(dm(SlackRecipient::new("1234", "the-slacker"), false)),
+            Some(dm(Some("1234"), false)),
             users.slack_direct_message("some-git-user", None, &"org/repo".into())
         );
     }
@@ -360,7 +364,7 @@ mod tests {
             users.slack_direct_message("some-git-user", None, &"org1/repo1".into())
         );
         assert_eq!(
-            Some(dm(SlackRecipient::new("1234", "the-slacker"), false)),
+            Some(dm(Some("1234"), false)),
             users.slack_direct_message("some-git-user", None, &"org1/repo3".into())
         );
     }
@@ -433,10 +437,7 @@ mod tests {
 
         assert_eq!(None, thread_dm(&users));
         assert_eq!(
-            Some(dm(
-                SlackRecipient::new("1234", "the-slacker"),
-                THREAD_DIRECT_MESSAGES_DEFAULT
-            )),
+            Some(dm(Some("1234"), THREAD_DIRECT_MESSAGES_DEFAULT)),
             users.slack_direct_message("some-git-user", None, &"org/repo".into())
         );
 
@@ -446,7 +447,7 @@ mod tests {
 
         assert_eq!(Some(true), thread_dm(&users));
         assert_eq!(
-            Some(dm(SlackRecipient::new("1234", "the-slacker"), true)),
+            Some(dm(Some("1234"), true)),
             users.slack_direct_message("some-git-user", None, &"org/repo".into())
         );
 

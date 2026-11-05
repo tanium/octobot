@@ -41,6 +41,17 @@ fn thread_root(repo_msg: &str, number: u32) -> ThreadRoot {
     }
 }
 
+fn dm_thread_root(number: u32) -> ThreadRoot {
+    let root = thread_root(REPO_MSG, number);
+    ThreadRoot {
+        msg: format!(
+            "New thread for Pull Request #{}: \"The PR\" {}",
+            number, REPO_MSG
+        ),
+        ..root
+    }
+}
+
 fn the_repo() -> Repo {
     Repo::parse("http://the-github-host/some-user/some-repo").unwrap()
 }
@@ -809,7 +820,7 @@ async fn test_pull_request_review_grouped_with_verdict_in_thread() {
                     .title_link("http://comment/9")
                     .build(),
             ],
-            Threading::ReplyOrStart("some-user/some-repo/32".into(), thread_root(REPO_MSG, 32)),
+            Threading::ReplyOrStart("some-user/some-repo/32".into(), dm_thread_root(32)),
         )],
         *grouped.reqs.lock().unwrap()
     );

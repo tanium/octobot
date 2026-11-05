@@ -1287,15 +1287,16 @@ impl GithubEventHandler {
             return messenger::Thread::new(&guid);
         }
 
+        let subject = format!(
+            "Pull Request #{}: \"{}\"",
+            pull_request.number(),
+            pull_request.title()
+        );
         let attachment = SlackAttachmentBuilder::new("")
-            .title(format!(
-                "Pull Request #{}: \"{}\"",
-                pull_request.number(),
-                pull_request.title()
-            ))
+            .title(subject.clone())
             .title_link(pull_request.html_url())
             .build();
 
-        messenger::Thread::for_pull_request(&guid, attachment)
+        messenger::Thread::for_pull_request(&guid, &subject, attachment)
     }
 }
