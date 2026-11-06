@@ -228,14 +228,14 @@
             description="Keep each pull request's DMs together in one Slack thread."
           />
           <Switch
-            bind:checked={() => u.group_review_direct_messages ?? false, (v) => (u.group_review_direct_messages = v)}
-            label="Group review comments"
-            description="Send all comments from one review as a single DM."
-          />
-          <Switch
             bind:checked={() => u.reply_notifications ?? false, (v) => (u.reply_notifications = v)}
             label="Reply notifications"
             description="Mention this person in new DM threads, so Slack notifies them about every reply."
+          />
+          <Switch
+            bind:checked={() => u.group_review_direct_messages ?? false, (v) => (u.group_review_direct_messages = v)}
+            label="Group review comments"
+            description="Send all comments from one review as a single DM."
           />
         </div>
       </section>
