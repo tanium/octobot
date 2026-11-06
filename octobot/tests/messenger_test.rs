@@ -484,12 +484,12 @@ fn test_send_to_owner_not_threaded() {
     );
 }
 
-fn threaded_dm_with_slack_id(reply_notifications: Option<bool>, root_msg: &str) {
+fn threaded_dm_with_slack_id(thread_reply_notifications: Option<bool>, root_msg: &str) {
     let (config, _temp) = new_test();
     let mut user = config.users().lookup_info("the-owner").unwrap();
     user.slack_id = "U123".into();
     user.thread_direct_messages = Some(true);
-    user.reply_notifications = reply_notifications;
+    user.thread_reply_notifications = thread_reply_notifications;
     config.users_write().update(&user).unwrap();
 
     let subject = "Pull Request #1: \"<The> PR\"";

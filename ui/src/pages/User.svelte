@@ -30,7 +30,7 @@
       // null applies the server default until the user picks a value.
       thread_direct_messages: null,
       group_review_direct_messages: null,
-      reply_notifications: null,
+      thread_reply_notifications: null,
     };
   }
 
@@ -228,9 +228,9 @@
             description="Keep each pull request's DMs together in one Slack thread."
           />
           <Switch
-            bind:checked={() => u.reply_notifications ?? false, (v) => (u.reply_notifications = v)}
-            label="Reply notifications"
-            description="Mention this person in new DM threads, so Slack notifies them about every reply."
+            bind:checked={() => u.thread_reply_notifications ?? false, (v) => (u.thread_reply_notifications = v)}
+            label="Thread reply notifications"
+            description="Mention this person in each new DM thread, so Slack notifies them about every reply. Only applies when DMs are threaded per pull request."
           />
           <Switch
             bind:checked={() => u.group_review_direct_messages ?? false, (v) => (u.group_review_direct_messages = v)}

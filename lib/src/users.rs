@@ -14,7 +14,7 @@ use crate::slack::SlackRecipient;
 // Apply to users who have never set the matching option.
 pub const THREAD_DIRECT_MESSAGES_DEFAULT: bool = false;
 pub const GROUP_REVIEW_DIRECT_MESSAGES_DEFAULT: bool = false;
-pub const REPLY_NOTIFICATIONS_DEFAULT: bool = false;
+pub const THREAD_REPLY_NOTIFICATIONS_DEFAULT: bool = false;
 
 #[derive(Deserialize, Serialize, Clone, TS)]
 #[ts(export)]
@@ -34,7 +34,7 @@ pub struct UserInfo {
     #[serde(default)]
     pub group_review_direct_messages: Option<bool>,
     #[serde(default)]
-    pub reply_notifications: Option<bool>,
+    pub thread_reply_notifications: Option<bool>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -43,7 +43,7 @@ pub struct DirectMessage {
     pub slack_id: Option<String>,
     pub use_threads: bool,
     pub group_reviews: bool,
-    pub reply_notifications: bool,
+    pub thread_reply_notifications: bool,
 }
 
 #[derive(Clone)]
@@ -71,7 +71,7 @@ impl UserInfo {
             muted_teams: vec![],
             thread_direct_messages: None,
             group_review_direct_messages: None,
-            reply_notifications: None,
+            thread_reply_notifications: None,
         }
     }
 }
@@ -89,7 +89,7 @@ impl UserConfig {
         let muted_teams = normalize_teams(&user.muted_teams)?;
         let conn = self.db.connect()?;
         conn.execute(
-            "INSERT INTO users (github_name, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams, reply_notify_dm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO users (github_name, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams, thread_reply_dm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             [
                 &user.github,
                 &user.slack_name,
@@ -101,7 +101,7 @@ impl UserConfig {
                 &user.thread_direct_messages.map(db::to_tinyint) as &dyn ToSql,
                 &user.group_review_direct_messages.map(db::to_tinyint) as &dyn ToSql,
                 &muted_teams,
-                &user.reply_notifications.map(db::to_tinyint) as &dyn ToSql,
+                &user.thread_reply_notifications.map(db::to_tinyint) as &dyn ToSql,
             ],
         )
         .map_err(|e| anyhow!("Error inserting user {}: {}", user.github, e))?;
@@ -113,7 +113,7 @@ impl UserConfig {
         let muted_teams = normalize_teams(&user.muted_teams)?;
         let conn = self.db.connect()?;
         conn.execute(
-            "UPDATE users set github_name = ?1, slack_name = ?2, slack_id = ?3, email = ?4, mute_direct_messages = ?5, muted_repos = ?6, mute_team_dm = ?8, thread_dm = ?9, group_review_dm = ?10, muted_teams = ?11, reply_notify_dm = ?12 where id = ?7",
+            "UPDATE users set github_name = ?1, slack_name = ?2, slack_id = ?3, email = ?4, mute_direct_messages = ?5, muted_repos = ?6, mute_team_dm = ?8, thread_dm = ?9, group_review_dm = ?10, muted_teams = ?11, thread_reply_dm = ?12 where id = ?7",
             [
                 &user.github,
                 &user.slack_name,
@@ -126,7 +126,7 @@ impl UserConfig {
                 &user.thread_direct_messages.map(db::to_tinyint) as &dyn ToSql,
                 &user.group_review_direct_messages.map(db::to_tinyint) as &dyn ToSql,
                 &muted_teams,
-                &user.reply_notifications.map(db::to_tinyint) as &dyn ToSql,
+                &user.thread_reply_notifications.map(db::to_tinyint) as &dyn ToSql,
             ],
         ).map_err(|e| anyhow!("Error updating user {}: {}", user.github, e))?;
 
@@ -175,7 +175,9 @@ impl UserConfig {
                 group_reviews: u
                     .group_review_direct_messages
                     .unwrap_or(GROUP_REVIEW_DIRECT_MESSAGES_DEFAULT),
-                reply_notifications: u.reply_notifications.unwrap_or(REPLY_NOTIFICATIONS_DEFAULT),
+                thread_reply_notifications: u
+                    .thread_reply_notifications
+                    .unwrap_or(THREAD_REPLY_NOTIFICATIONS_DEFAULT),
             })
         })
     }
@@ -183,7 +185,7 @@ impl UserConfig {
     pub fn get_all(&self) -> Result<Vec<UserInfo>> {
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id, slack_name, slack_id, email, github_name, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams, reply_notify_dm FROM users ORDER BY github_name",
+            "SELECT id, slack_name, slack_id, email, github_name, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams, thread_reply_dm FROM users ORDER BY github_name",
         )?;
         let found = stmt.query_map([], |row| {
             Ok(UserInfo {
@@ -198,7 +200,7 @@ impl UserConfig {
                 muted_teams: split_list(row.get(10)?),
                 thread_direct_messages: row.get::<usize, Option<i32>>(8)?.map(db::to_bool),
                 group_review_direct_messages: row.get::<usize, Option<i32>>(9)?.map(db::to_bool),
-                reply_notifications: row.get::<usize, Option<i32>>(11)?.map(db::to_bool),
+                thread_reply_notifications: row.get::<usize, Option<i32>>(11)?.map(db::to_bool),
             })
         })?;
 
@@ -224,7 +226,7 @@ impl UserConfig {
         let github_name = github_name.to_string();
         let conn = self.db.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams, reply_notify_dm FROM users where github_name = ?1",
+            "SELECT id, slack_name, slack_id, email, mute_direct_messages, muted_repos, mute_team_dm, thread_dm, group_review_dm, muted_teams, thread_reply_dm FROM users where github_name = ?1",
         )?;
         let found = stmt.query_map([&github_name], |row| {
             Ok(UserInfo {
@@ -239,7 +241,7 @@ impl UserConfig {
                 muted_teams: split_list(row.get(9)?),
                 thread_direct_messages: row.get::<usize, Option<i32>>(7)?.map(db::to_bool),
                 group_review_direct_messages: row.get::<usize, Option<i32>>(8)?.map(db::to_bool),
-                reply_notifications: row.get::<usize, Option<i32>>(10)?.map(db::to_bool),
+                thread_reply_notifications: row.get::<usize, Option<i32>>(10)?.map(db::to_bool),
             })
         })?;
 
@@ -299,7 +301,7 @@ mod tests {
             slack_id: slack_id.map(str::to_string),
             use_threads,
             group_reviews: false,
-            reply_notifications: false,
+            thread_reply_notifications: false,
         }
     }
 
@@ -507,38 +509,41 @@ mod tests {
     }
 
     #[test]
-    fn test_reply_notifications() {
+    fn test_thread_reply_notifications() {
         let (mut users, _temp) = new_test();
 
         let info = UserInfo::new("some-git-user", "the-slacker", "1234", "", Vec::new());
         users.insert_info(&info).unwrap();
 
-        let reply_notifications = |users: &UserConfig| {
+        let thread_reply_notifications = |users: &UserConfig| {
             let looked_up = users.lookup_info("some-git-user").unwrap();
             assert_eq!(
-                looked_up.reply_notifications,
-                users.get_all().unwrap()[0].reply_notifications
+                looked_up.thread_reply_notifications,
+                users.get_all().unwrap()[0].thread_reply_notifications
             );
             let dm = users
                 .slack_direct_message("some-git-user", None, &"org/repo".into())
                 .unwrap();
-            (looked_up.reply_notifications, dm.reply_notifications)
+            (
+                looked_up.thread_reply_notifications,
+                dm.thread_reply_notifications,
+            )
         };
 
         assert_eq!(
-            (None, REPLY_NOTIFICATIONS_DEFAULT),
-            reply_notifications(&users)
+            (None, THREAD_REPLY_NOTIFICATIONS_DEFAULT),
+            thread_reply_notifications(&users)
         );
 
         let mut info = users.lookup_info("some-git-user").unwrap();
-        info.reply_notifications = Some(true);
+        info.thread_reply_notifications = Some(true);
         users.update(&info).unwrap();
 
-        assert_eq!((Some(true), true), reply_notifications(&users));
+        assert_eq!((Some(true), true), thread_reply_notifications(&users));
 
-        info.reply_notifications = Some(false);
+        info.thread_reply_notifications = Some(false);
         users.update(&info).unwrap();
 
-        assert_eq!((Some(false), false), reply_notifications(&users));
+        assert_eq!((Some(false), false), thread_reply_notifications(&users));
     }
 }

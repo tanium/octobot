@@ -308,7 +308,7 @@ impl Messenger {
                             user_dm
                                 .slack_id
                                 .as_deref()
-                                .filter(|_| user_dm.reply_notifications),
+                                .filter(|_| user_dm.thread_reply_notifications),
                         ),
                     ),
                     _ => Threading::Flat,
