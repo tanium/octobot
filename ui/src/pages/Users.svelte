@@ -82,6 +82,7 @@
           {#if u.muted_repos.length > 0}<span class="badge">{u.muted_repos.length} repo{u.muted_repos.length === 1 ? '' : 's'} muted</span>{/if}
           {#if u.muted_teams.length > 0}<span class="badge">{u.muted_teams.length} team{u.muted_teams.length === 1 ? '' : 's'} muted</span>{/if}
           {#if u.thread_direct_messages}<span class="badge badge-accent">Threaded</span>{/if}
+          {#if u.thread_reply_notifications}<span class="badge badge-accent">Thread reply notifications</span>{/if}
           {#if u.group_review_direct_messages}<span class="badge badge-accent">Grouped reviews</span>{/if}
         </span>
         <span class="chev faint"><Icon name="chevron-right" /></span>

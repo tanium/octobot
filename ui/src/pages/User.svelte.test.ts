@@ -30,6 +30,7 @@ function user(id: number, github: string): UserInfo {
     muted_teams: [],
     thread_direct_messages: null,
     group_review_direct_messages: null,
+    thread_reply_notifications: null,
   };
 }
 

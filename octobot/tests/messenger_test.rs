@@ -484,12 +484,12 @@ fn test_send_to_owner_not_threaded() {
     );
 }
 
-#[test]
-fn test_threads_direct_messages_mention_slack_id() {
+fn threaded_dm_with_slack_id(thread_reply_notifications: Option<bool>, root_msg: &str) {
     let (config, _temp) = new_test();
     let mut user = config.users().lookup_info("the-owner").unwrap();
     user.slack_id = "U123".into();
     user.thread_direct_messages = Some(true);
+    user.thread_reply_notifications = thread_reply_notifications;
     config.users_write().update(&user).unwrap();
 
     let subject = "Pull Request #1: \"<The> PR\"";
@@ -501,7 +501,7 @@ fn test_threads_direct_messages_mention_slack_id() {
         Threading::ReplyOrStart(
             "some-user/some-repo/1".into(),
             ThreadRoot {
-                msg: "New thread for Pull Request #1: \"&lt;The&gt; PR\" (<|>)\n<@U123>".into(),
+                msg: root_msg.into(),
                 attachments: vec![pr.clone()],
             },
         ),
@@ -521,6 +521,22 @@ fn test_threads_direct_messages_mention_slack_id() {
             subject,
             pr,
         )],
+    );
+}
+
+#[test]
+fn test_threads_direct_messages_mention_slack_id() {
+    threaded_dm_with_slack_id(
+        Some(true),
+        "New thread for Pull Request #1: \"&lt;The&gt; PR\" (<|>)\n<@U123>",
+    );
+}
+
+#[test]
+fn test_threads_direct_messages_no_mention_by_default() {
+    threaded_dm_with_slack_id(
+        None,
+        "New thread for Pull Request #1: \"&lt;The&gt; PR\" (<|>)",
     );
 }
 

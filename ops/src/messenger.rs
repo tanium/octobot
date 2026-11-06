@@ -303,7 +303,13 @@ impl Messenger {
                 let threading = match &thread {
                     Some((guid, root)) if user_dm.use_threads => Threading::ReplyOrStart(
                         guid.clone(),
-                        dm_thread_root(root, user_dm.slack_id.as_deref()),
+                        dm_thread_root(
+                            root,
+                            user_dm
+                                .slack_id
+                                .as_deref()
+                                .filter(|_| user_dm.thread_reply_notifications),
+                        ),
                     ),
                     _ => Threading::Flat,
                 };
