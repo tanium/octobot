@@ -102,8 +102,9 @@ to each GitHub user octobot notifies about a change, so local tools can refetch
 from GitHub without polling. It sends a hint to everyone involved, including
 the sender, whatever their Slack settings. Only octobot users can subscribe.
 They authenticate by signing a challenge with an SSH key registered to their
-GitHub account, and an open stream closes within 5 minutes of that key or user
-being removed. The
+GitHub account. An open stream closes within 5 minutes of the user being
+removed from octobot, and within about 10 minutes of the key being removed
+from GitHub. The
 `octobot_events` crate has the protocol and a client.
 
 ### Web UI
