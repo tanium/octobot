@@ -17,6 +17,7 @@ use octobot_lib::github::CommentLike;
 use octobot_lib::github::api::Session;
 use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
+use octobot_ops::event_bus::EventBus;
 use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::git_clone_manager::GitCloneManager;
 use octobot_ops::github_markdown;
@@ -45,6 +46,7 @@ pub struct GithubHandlerState {
     slack_worker: Arc<dyn Worker<SlackRequest>>,
     review_groups: Arc<ReviewGroups>,
     webhook_db: Arc<WebhookDatabase>,
+    event_bus: Arc<EventBus>,
     metrics: Arc<Metrics>,
     git_clone_manager: Arc<GitCloneManager>,
 }
@@ -117,6 +119,7 @@ impl GithubHandlerState {
         jira_session: Option<Arc<dyn jira::api::Session>>,
         slack: Arc<Slack>,
         webhook_db: Arc<WebhookDatabase>,
+        event_bus: Arc<EventBus>,
         metrics: Arc<Metrics>,
     ) -> GithubHandlerState {
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
@@ -176,6 +179,7 @@ impl GithubHandlerState {
             slack_worker,
             review_groups,
             webhook_db,
+            event_bus,
             metrics,
             git_clone_manager,
         }
@@ -200,10 +204,18 @@ impl GithubHandler {
         jira_session: Option<Arc<dyn jira::api::Session>>,
         slack: Arc<Slack>,
         webhook_db: Arc<WebhookDatabase>,
+        event_bus: Arc<EventBus>,
         metrics: Arc<Metrics>,
     ) -> Box<GithubHandler> {
-        let state =
-            GithubHandlerState::new(config, github_app, jira_session, slack, webhook_db, metrics);
+        let state = GithubHandlerState::new(
+            config,
+            github_app,
+            jira_session,
+            slack,
+            webhook_db,
+            event_bus,
+            metrics,
+        );
         GithubHandler::from_state(Arc::new(state))
     }
 
@@ -394,13 +406,14 @@ impl Handler for GithubHandler {
         }
 
         let handler = GithubEventHandler {
+            messenger: messenger::new(config.clone(), slack)
+                .with_review_groups(self.state.review_groups.clone())
+                .with_events(self.state.event_bus.clone(), &event, &action),
             event: event.clone(),
             data,
             repository,
             action,
             config: config.clone(),
-            messenger: messenger::new(config.clone(), slack)
-                .with_review_groups(self.state.review_groups.clone()),
             github_session,
             jira_session,
             pr_merge,
@@ -1283,8 +1296,9 @@ impl GithubEventHandler {
             pull_request.number()
         );
         // Issues share the comment path; only real pull requests get a root message.
+        let number = pull_request.number() as u64;
         if !pull_request.has_commits() {
-            return messenger::Thread::new(&guid);
+            return messenger::Thread::for_issue(&guid, number);
         }
 
         let subject = format!(
@@ -1297,6 +1311,6 @@ impl GithubEventHandler {
             .title_link(pull_request.html_url())
             .build();
 
-        messenger::Thread::for_pull_request(&guid, &subject, attachment)
+        messenger::Thread::for_pull_request(&guid, number, &subject, attachment)
     }
 }

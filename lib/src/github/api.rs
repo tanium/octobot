@@ -156,6 +156,8 @@ pub trait GithubSessionFactory: Send + Sync {
     async fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession>;
     async fn get_token_org(&self, org: &str) -> Result<String>;
     async fn get_token_repo(&self, owner: &str, repo: &str) -> Result<String>;
+    /// The user's public SSH keys, one OpenSSH-format key per entry.
+    async fn get_user_keys(&self, login: &str) -> Result<Vec<String>>;
     fn bot_name(&self) -> String;
 }
 
@@ -386,6 +388,35 @@ impl GithubSessionFactory for GithubApp {
             .await
     }
 
+    // The app's JWT only reaches /app endpoints, but any installation's token can read a
+    // user's public keys.
+    async fn get_user_keys(&self, login: &str) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Installation {
+            id: u32,
+        }
+
+        let installations: Vec<Installation> = self
+            .new_client()?
+            .get("/app/installations?per_page=1")
+            .await?;
+        let installation = installations
+            .first()
+            .ok_or_else(|| anyhow!("GitHub app has no installations"))?;
+        let token = self
+            .new_token(&format!("/app/installations/{}", installation.id))
+            .await?;
+        GithubSession::new(
+            &self.host,
+            &self.bot_name(),
+            &token,
+            Some(self.app_id),
+            self.metrics.clone(),
+        )?
+        .get_user_keys(login)
+        .await
+    }
+
     async fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession> {
         GithubSession::new(
             &self.host,
@@ -467,6 +498,10 @@ impl GithubSessionFactory for GithubOauthApp {
     async fn new_service_session(&self) -> Result<GithubSession> {
         return self.new_session("", "").await;
     }
+
+    async fn get_user_keys(&self, login: &str) -> Result<Vec<String>> {
+        self.new_service_session().await?.get_user_keys(login).await
+    }
 }
 
 pub struct GithubSession {
@@ -524,6 +559,20 @@ impl GithubSession {
             token: token.to_string(),
             app_id,
         })
+    }
+
+    async fn get_user_keys(&self, login: &str) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Key {
+            key: String,
+        }
+
+        let keys: Vec<Key> = self
+            .client
+            .get(&format!("/users/{}/keys", login))
+            .await
+            .map_err(|e| anyhow!("Error getting keys for user {}: {}", login, e))?;
+        Ok(keys.into_iter().map(|k| k.key).collect())
     }
 
     async fn do_get_pull_requests(

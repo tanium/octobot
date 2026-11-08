@@ -1,4 +1,5 @@
 mod admin;
+pub mod events;
 pub mod github_handler;
 mod github_verify;
 mod http;

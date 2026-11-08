@@ -2,6 +2,7 @@ use log::info;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use crate::event_bus::{Change, EventBus};
 use crate::review_group::{ReviewGroups, ReviewItem};
 use crate::slack::{self, SlackAttachment, SlackRequest, ThreadRoot, Threading};
 use crate::util;
@@ -14,6 +15,14 @@ pub struct Messenger {
     config: Arc<Config>,
     slack: Arc<dyn Worker<SlackRequest>>,
     review_groups: Option<Arc<ReviewGroups>>,
+    events: Option<EventSource>,
+}
+
+/// The GitHub event being handled, for publishing hints about it.
+struct EventSource {
+    bus: Arc<EventBus>,
+    kind: String,
+    action: String,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -92,6 +101,8 @@ impl Participants {
 #[derive(Clone)]
 pub struct Thread {
     guid: String,
+    /// Pull request or issue number; 0 if none.
+    number: u64,
     pull_request: Option<PullRequestRoot>,
 }
 
@@ -103,16 +114,27 @@ struct PullRequestRoot {
 
 impl Thread {
     pub fn new(guid: &str) -> Thread {
+        Thread::for_issue(guid, 0)
+    }
+
+    pub fn for_issue(guid: &str, number: u64) -> Thread {
         Thread {
             guid: guid.to_string(),
+            number,
             pull_request: None,
         }
     }
 
     /// `subject` names the PR in DM thread roots, e.g. `Pull Request #1: "Title"`.
-    pub fn for_pull_request(guid: &str, subject: &str, attachment: SlackAttachment) -> Thread {
+    pub fn for_pull_request(
+        guid: &str,
+        number: u64,
+        subject: &str,
+        attachment: SlackAttachment,
+    ) -> Thread {
         Thread {
             guid: guid.to_string(),
+            number,
             pull_request: Some(PullRequestRoot {
                 subject: subject.to_string(),
                 attachment,
@@ -126,6 +148,7 @@ pub fn new(config: Arc<Config>, slack: Arc<dyn Worker<SlackRequest>>) -> Messeng
         slack: slack.clone(),
         config,
         review_groups: None,
+        events: None,
     }
 }
 
@@ -133,6 +156,19 @@ impl Messenger {
     pub fn with_review_groups(self, review_groups: Arc<ReviewGroups>) -> Messenger {
         Messenger {
             review_groups: Some(review_groups),
+            ..self
+        }
+    }
+
+    /// Publishes a hint to `bus` for each message sent to participants. `kind` and `action`
+    /// name the GitHub event being handled.
+    pub fn with_events(self, bus: Arc<EventBus>, kind: &str, action: &str) -> Messenger {
+        Messenger {
+            events: Some(EventSource {
+                bus,
+                kind: kind.to_string(),
+                action: action.to_string(),
+            }),
             ..self
         }
     }
@@ -181,6 +217,9 @@ impl Messenger {
         commits: &[T],
         threads: Vec<Thread>,
     ) {
+        participants.add_user(item_owner.clone());
+        self.publish(repo, &participants, sender, &threads);
+
         if self.is_ignored_user(sender) {
             info!("Ignoring message from ignored user: {}", sender.login(),);
             return;
@@ -195,13 +234,44 @@ impl Messenger {
 
         self.send_to_channel(msg, attachments, repo, branch, commits, threads, false);
 
-        participants.add_user(item_owner.clone());
-
         // make sure we do not send private message to author of that message
         participants.remove(sender.login());
         participants.remove("octobot");
 
         self.send_to_slackbots(participants, repo, msg, attachments, dm_thread, review);
+    }
+
+    // Every participant gets the hint, including the sender. The Slack filters (ignored users,
+    // mutes, DM settings) are about noise for people; hints feed tools that refetch and decide.
+    fn publish(
+        &self,
+        repo: &github::Repo,
+        participants: &Participants,
+        sender: &github::User,
+        threads: &[Thread],
+    ) {
+        let Some(events) = &self.events else {
+            return;
+        };
+
+        let mut recipients: BTreeSet<String> = participants.users.keys().cloned().collect();
+        recipients.insert(sender.login().to_string());
+
+        let mut numbers: BTreeSet<u64> = threads.iter().map(|t| t.number).collect();
+        if numbers.is_empty() {
+            numbers.insert(0);
+        }
+        for number in numbers {
+            events.bus.publish(
+                recipients.iter().cloned(),
+                Change {
+                    repo: repo.full_name.clone(),
+                    kind: events.kind.clone(),
+                    action: events.action.clone(),
+                    number,
+                },
+            );
+        }
     }
 
     fn is_ignored_user(&self, user: &github::User) -> bool {

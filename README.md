@@ -71,6 +71,13 @@ config.toml
     fixed_resolutions = [ "Fixed", "Done" ]
     fix_version_field = "fixVersions"
 
+    [events]
+    # optional: enables the gRPC event stream. Plaintext HTTP/2, meant to sit
+    # behind a TLS-terminating proxy (nginx: `grpc_pass grpc://127.0.0.1:3002;`).
+    listen_addr = "127.0.0.1:3002"
+    # host[:port] clients dial; they sign it to subscribe.
+    authority = "octobot.company.com"
+
 
 For the octobot github user token, you will need to:
 
@@ -86,6 +93,15 @@ For the octobot github user token, you will need to:
   :rotating_light: **Warning** :rotating_light:
 
   This token has read/write access to your code. Guard it carefully and make sure config.toml is only readable by root.
+
+### Event stream
+
+The event stream pushes a thin hint (repo, event, action, PR or issue number)
+to each GitHub user octobot notifies about a change, so local tools can refetch
+from GitHub without polling. It sends a hint to everyone involved, including
+the sender, whatever their Slack settings. Clients authenticate by signing a
+challenge with an SSH key registered to their GitHub account. The
+`octobot_events` crate has the protocol and a client.
 
 ### Web UI
 

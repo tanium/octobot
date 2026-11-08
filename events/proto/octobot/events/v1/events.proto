@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package octobot.events.v1;
+
+// Pushes thin change hints to the GitHub users octobot notifies about them.
+// Clients refetch the real data from GitHub with their own credentials.
+service Events {
+  rpc Challenge(ChallengeRequest) returns (ChallengeResponse);
+
+  // Authenticated by metadata from a Challenge:
+  //   x-octobot-user:    GitHub login
+  //   x-octobot-nonce-bin: the challenge nonce
+  //   x-octobot-sig-bin:   armored SSH signature (namespace "octobot-events")
+  //                        over `octobot-events-v1|<authority>|<nonce>`
+  rpc Subscribe(SubscribeRequest) returns (stream Event);
+}
+
+message ChallengeRequest {
+  string username = 1;
+}
+
+message ChallengeResponse {
+  bytes nonce = 1;
+  int64 expires_unix = 2;
+}
+
+// Streams are live only: changes from before a (re)connect are not sent, so
+// load state from GitHub after each one.
+message SubscribeRequest {
+  // GitHub event names (X-GitHub-Event) to receive; empty means all.
+  repeated string kinds = 1;
+}
+
+message Event {
+  oneof body {
+    Change change = 1;
+    // Sent every 30s; a silent stream is dead.
+    Heartbeat heartbeat = 2;
+    // The stream fell behind and changes were dropped; load state from GitHub.
+    Reset reset = 3;
+  }
+}
+
+message Change {
+  // "org/repo"
+  string repo = 1;
+  // X-GitHub-Event value
+  string kind = 2;
+  string action = 3;
+  // Pull request or issue number; 0 if none.
+  uint64 number = 4;
+}
+
+message Heartbeat {}
+
+message Reset {}

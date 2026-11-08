@@ -15,6 +15,7 @@ name = "octobot"
 path = "src/lib.rs"
 
 [dependencies]
+octobot_events = { "path" = "../events" }
 octobot_lib = { "path" = "../lib" }
 octobot_ldap = { "path" = "../ldap" }
 octobot_ops = { "path" = "../ops" }
@@ -39,7 +40,11 @@ hex = "0.4.3"
 anyhow = { version = "1.0.72", features = ["backtrace"] }
 ts-rs = "12"
 rust-embed = { version = "8", features = ["mime-guess"] }
+ssh-key = "0.6.7"
+tokio-stream = { version = "0.1.17", features = ["net"] }
+tonic = "0.14"
 
 [dev-dependencies]
+ssh-key = { version = "0.6.7", features = ["ed25519", "getrandom"] }
 tempfile = "3"
-tokio = { version = "1.43.1", features = ["test-util"] }
+tokio ={ version = "1.43.1", features = ["test-util"] }
