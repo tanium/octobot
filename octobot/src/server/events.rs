@@ -297,7 +297,9 @@ struct KeyCache {
     directory: Arc<dyn Directory>,
     entries: Mutex<HashMap<String, CachedKeys>>,
     // Last lookup per login, failed or not
-    attempts: Mutex<HashMap<String, Instant>>,
+    attempts: Mutex<HashMap<String, Attempt>>,
+    // One lookup per login at a time; callers that arrive mid-lookup share its result.
+    in_flight: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 #[derive(Clone)]
@@ -306,12 +308,20 @@ struct CachedKeys {
     keys: Arc<Vec<PublicKey>>,
 }
 
+#[derive(Clone)]
+struct Attempt {
+    at: Instant,
+    /// None if the lookup failed
+    keys: Option<Arc<Vec<PublicKey>>>,
+}
+
 impl KeyCache {
     fn new(directory: Arc<dyn Directory>) -> KeyCache {
         KeyCache {
             directory,
             entries: Mutex::new(HashMap::new()),
             attempts: Mutex::new(HashMap::new()),
+            in_flight: Mutex::new(HashMap::new()),
         }
     }
 
@@ -359,20 +369,53 @@ impl KeyCache {
             .cloned()
     }
 
-    /// Looks up the user's keys on GitHub, or None if they were looked up within
-    /// `KEYS_REFETCH_FLOOR`, so neither bad signatures nor GitHub errors cause a lookup each time.
+    /// Looks up the user's keys on GitHub. Within `KEYS_REFETCH_FLOOR` of the last lookup, returns
+    /// its keys instead, or None if it failed, so neither bad signatures nor GitHub errors cause
+    /// a lookup each time.
     async fn fetch(&self, login: &str) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
-        {
-            let mut attempts = self.attempts.lock().unwrap();
-            if attempts
-                .get(login)
-                .is_some_and(|at| at.elapsed() < KEYS_REFETCH_FLOOR)
-            {
-                return Ok(None);
-            }
-            attempts.insert(login.to_string(), Instant::now());
+        let in_flight = self
+            .in_flight
+            .lock()
+            .unwrap()
+            .entry(login.to_string())
+            .or_default()
+            .clone();
+        let _one_at_a_time = in_flight.lock().await;
+
+        let recent = self
+            .attempts
+            .lock()
+            .unwrap()
+            .get(login)
+            .filter(|attempt| attempt.at.elapsed() < KEYS_REFETCH_FLOOR)
+            .cloned();
+        if let Some(attempt) = recent {
+            return Ok(attempt.keys);
         }
 
+        // Recorded once GitHub answers, so a cancelled lookup leaves nothing behind.
+        let result = self.lookup(login).await;
+        let keys = result.as_ref().ok().cloned();
+        self.attempts.lock().unwrap().insert(
+            login.to_string(),
+            Attempt {
+                at: Instant::now(),
+                keys: keys.clone(),
+            },
+        );
+        if let Some(keys) = keys {
+            self.entries.lock().unwrap().insert(
+                login.to_string(),
+                CachedKeys {
+                    fetched: Instant::now(),
+                    keys,
+                },
+            );
+        }
+        result.map(Some)
+    }
+
+    async fn lookup(&self, login: &str) -> anyhow::Result<Arc<Vec<PublicKey>>> {
         let keys: Vec<PublicKey> = self
             .directory
             .keys(login)
@@ -386,15 +429,7 @@ impl KeyCache {
                 }
             })
             .collect();
-        let keys = Arc::new(keys);
-        self.entries.lock().unwrap().insert(
-            login.to_string(),
-            CachedKeys {
-                fetched: Instant::now(),
-                keys: keys.clone(),
-            },
-        );
-        Ok(Some(keys))
+        Ok(Arc::new(keys))
     }
 }
 
@@ -553,6 +588,7 @@ mod tests {
         removed_users: Mutex<HashSet<String>>,
         lookups: AtomicUsize,
         failing: AtomicBool,
+        delay: Mutex<Duration>,
     }
 
     impl FakeDirectory {
@@ -579,6 +615,8 @@ mod tests {
 
         async fn keys(&self, login: &str) -> anyhow::Result<Vec<String>> {
             self.lookups.fetch_add(1, Ordering::SeqCst);
+            let delay = *self.delay.lock().unwrap();
+            tokio::time::sleep(delay).await;
             if self.failing.load(Ordering::SeqCst) {
                 anyhow::bail!("GitHub is down");
             }
@@ -647,6 +685,41 @@ mod tests {
         directory.failing.store(false, Ordering::SeqCst);
         tokio::time::advance(KEYS_REFETCH_FLOOR).await;
         assert!(cache.verify("joe", b"msg", &sign(&key)).await.is_ok());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_concurrent_verifies_share_one_lookup() {
+        let directory = Arc::new(FakeDirectory::default());
+        let key = new_key();
+        directory.set("joe", &[&key]);
+        *directory.delay.lock().unwrap() = Duration::from_secs(1);
+        let cache = KeyCache::new(directory.clone());
+
+        let sig = sign(&key);
+        let (first, second) = tokio::join!(
+            cache.verify("joe", b"msg", &sig),
+            cache.verify("joe", b"msg", &sig)
+        );
+        assert!(first.is_ok());
+        assert!(second.is_ok());
+        assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_cancelled_lookup_does_not_block_the_next() {
+        let directory = Arc::new(FakeDirectory::default());
+        let key = new_key();
+        directory.set("joe", &[&key]);
+        *directory.delay.lock().unwrap() = Duration::from_secs(10);
+        let cache = KeyCache::new(directory.clone());
+
+        let sig = sign(&key);
+        let cancelled =
+            tokio::time::timeout(Duration::from_secs(1), cache.verify("joe", b"msg", &sig)).await;
+        assert!(cancelled.is_err());
+
+        *directory.delay.lock().unwrap() = Duration::ZERO;
+        assert!(cache.verify("joe", b"msg", &sig).await.is_ok());
     }
 
     /// Starts a stream for joe, authenticated by `key`. It ends if the bus is dropped.
