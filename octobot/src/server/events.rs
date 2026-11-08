@@ -327,7 +327,7 @@ impl KeyCache {
 
     /// The user's key that made `sig`.
     async fn verify(
-        &self,
+        self: &Arc<Self>,
         login: &str,
         msg: &[u8],
         sig: &SshSig,
@@ -352,7 +352,7 @@ impl KeyCache {
     }
 
     /// Whether `key` is still one of the user's keys on GitHub.
-    async fn has(&self, login: &str, key: &PublicKey) -> anyhow::Result<bool> {
+    async fn has(self: &Arc<Self>, login: &str, key: &PublicKey) -> anyhow::Result<bool> {
         let keys = match self.cached(login) {
             Some(cached) => cached.keys,
             None => self.fetch(login).await?.ok_or_else(|| too_soon(login))?,
@@ -372,7 +372,14 @@ impl KeyCache {
     /// Looks up the user's keys on GitHub. Within `KEYS_REFETCH_FLOOR` of the last lookup, returns
     /// its keys instead, or None if it failed, so neither bad signatures nor GitHub errors cause
     /// a lookup each time.
-    async fn fetch(&self, login: &str) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
+    async fn fetch(self: &Arc<Self>, login: &str) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
+        // In its own task, so a caller hanging up mid-lookup cannot keep it from being recorded.
+        let cache = self.clone();
+        let login = login.to_string();
+        tokio::spawn(async move { cache.fetch_recorded(&login).await }).await?
+    }
+
+    async fn fetch_recorded(&self, login: &str) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
         let in_flight = self
             .in_flight
             .lock()
@@ -393,7 +400,6 @@ impl KeyCache {
             return Ok(attempt.keys);
         }
 
-        // Recorded once GitHub answers, so a cancelled lookup leaves nothing behind.
         let result = self.lookup(login).await;
         let keys = result.as_ref().ok().cloned();
         self.attempts.lock().unwrap().insert(
@@ -643,7 +649,7 @@ mod tests {
         let directory = Arc::new(FakeDirectory::default());
         let old = new_key();
         directory.set("joe", &[&old]);
-        let cache = KeyCache::new(directory.clone());
+        let cache = Arc::new(KeyCache::new(directory.clone()));
         assert!(cache.verify("joe", b"msg", &sign(&old)).await.is_ok());
 
         let new = new_key();
@@ -674,7 +680,7 @@ mod tests {
         let key = new_key();
         directory.set("joe", &[&key]);
         directory.failing.store(true, Ordering::SeqCst);
-        let cache = KeyCache::new(directory.clone());
+        let cache = Arc::new(KeyCache::new(directory.clone()));
 
         for _ in 0..3 {
             let result = cache.verify("joe", b"msg", &sign(&key)).await;
@@ -693,7 +699,7 @@ mod tests {
         let key = new_key();
         directory.set("joe", &[&key]);
         *directory.delay.lock().unwrap() = Duration::from_secs(1);
-        let cache = KeyCache::new(directory.clone());
+        let cache = Arc::new(KeyCache::new(directory.clone()));
 
         let sig = sign(&key);
         let (first, second) = tokio::join!(
@@ -705,21 +711,22 @@ mod tests {
         assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
     }
 
+    // A caller hanging up mid-lookup must neither skip the refetch floor nor block the next caller.
     #[tokio::test(start_paused = true)]
-    async fn test_cancelled_lookup_does_not_block_the_next() {
+    async fn test_cancelled_verify_still_records_its_lookup() {
         let directory = Arc::new(FakeDirectory::default());
         let key = new_key();
         directory.set("joe", &[&key]);
         *directory.delay.lock().unwrap() = Duration::from_secs(10);
-        let cache = KeyCache::new(directory.clone());
+        let cache = Arc::new(KeyCache::new(directory.clone()));
 
         let sig = sign(&key);
         let cancelled =
             tokio::time::timeout(Duration::from_secs(1), cache.verify("joe", b"msg", &sig)).await;
         assert!(cancelled.is_err());
 
-        *directory.delay.lock().unwrap() = Duration::ZERO;
         assert!(cache.verify("joe", b"msg", &sig).await.is_ok());
+        assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
     }
 
     /// Starts a stream for joe, authenticated by `key`. It ends if the bus is dropped.
