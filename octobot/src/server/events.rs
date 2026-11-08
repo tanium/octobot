@@ -24,7 +24,7 @@ use octobot_ops::event_bus::{Event, EventBus};
 const CHALLENGE_TTL: Duration = Duration::from_secs(60);
 // Also how often an open stream rechecks that its user and key still exist.
 const KEYS_TTL: Duration = Duration::from_secs(5 * 60);
-// Bounds the GitHub lookups a bad signature can cause.
+// Minimum time between GitHub key lookups for one login.
 const KEYS_REFETCH_FLOOR: Duration = Duration::from_secs(30);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_STREAMS_PER_USER: usize = 10;

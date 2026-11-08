@@ -5,6 +5,7 @@ package octobot.events.v1;
 // Pushes thin change hints to the GitHub users octobot notifies about them.
 // Clients refetch the real data from GitHub with their own credentials.
 service Events {
+  // PERMISSION_DENIED for logins that are not octobot users.
   rpc Challenge(ChallengeRequest) returns (ChallengeResponse);
 
   // Authenticated by metadata from a Challenge:

@@ -100,8 +100,10 @@ For the octobot github user token, you will need to:
 The event stream pushes a thin hint (repo, event, action, PR or issue number)
 to each GitHub user octobot notifies about a change, so local tools can refetch
 from GitHub without polling. It sends a hint to everyone involved, including
-the sender, whatever their Slack settings. Clients authenticate by signing a
-challenge with an SSH key registered to their GitHub account. The
+the sender, whatever their Slack settings. Only octobot users can subscribe.
+They authenticate by signing a challenge with an SSH key registered to their
+GitHub account, and an open stream closes within 5 minutes of that key or user
+being removed. The
 `octobot_events` crate has the protocol and a client.
 
 ### Web UI
