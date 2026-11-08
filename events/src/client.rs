@@ -19,6 +19,7 @@ const MIN_BACKOFF: Duration = Duration::from_secs(1);
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
 // Three missed heartbeats.
 const SILENCE_TIMEOUT: Duration = Duration::from_secs(90);
+const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct Config {
     /// e.g. `https://octobot.example.com`
@@ -82,15 +83,13 @@ async fn run(
     if uri.scheme_str() == Some("https") {
         endpoint = endpoint.tls_config(ClientTlsConfig::new().with_native_roots())?;
     }
-    let mut client = EventsClient::new(endpoint.connect().await?);
+    let channel = deadline("connecting", endpoint.connect()).await??;
+    let mut client = EventsClient::new(channel);
 
-    let nonce = client
-        .challenge(ChallengeRequest {
-            username: config.username.clone(),
-        })
-        .await?
-        .into_inner()
-        .nonce;
+    let challenge = client.challenge(ChallengeRequest {
+        username: config.username.clone(),
+    });
+    let nonce = deadline("challenge", challenge).await??.into_inner().nonce;
     // ssh-agent I/O blocks, and a hardware key waits for a touch.
     let msg = crate::signed_message(&authority, &nonce);
     let signer = signer.clone();
@@ -106,7 +105,9 @@ async fn run(
     metadata.insert(crate::USER_HEADER, config.username.parse()?);
     metadata.insert_bin(crate::NONCE_HEADER, bin(&nonce));
     metadata.insert_bin(crate::SIG_HEADER, bin(sig.as_bytes()));
-    let mut stream = client.subscribe(req).await?.into_inner();
+    let mut stream = deadline("subscribe", client.subscribe(req))
+        .await??
+        .into_inner();
     *connected = true;
 
     // The stream is live only, so anything before this point may have been missed. The server
@@ -133,6 +134,14 @@ async fn run(
             return Ok(());
         }
     }
+}
+
+/// Bounds a step before the stream starts, where the silence timeout does not yet apply, so a
+/// server that never answers sends the client back around the retry loop.
+async fn deadline<F: Future>(step: &str, fut: F) -> Result<F::Output> {
+    tokio::time::timeout(RPC_TIMEOUT, fut)
+        .await
+        .map_err(|_| anyhow!("{} timed out after {:?}", step, RPC_TIMEOUT))
 }
 
 fn bin(bytes: &[u8]) -> BinaryMetadataValue {

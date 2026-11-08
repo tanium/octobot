@@ -377,3 +377,25 @@ async fn test_rejects_invalid_username() {
         .unwrap_err();
     assert_eq!(Code::InvalidArgument, err.code());
 }
+
+// Paused time skips ahead to the client's timeouts while the server sits silent.
+#[tokio::test(start_paused = true)]
+async fn test_client_retries_a_server_that_never_answers() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let _updates = client::subscribe(
+        client::Config {
+            endpoint: format!("http://{}", listener.local_addr().unwrap()),
+            username: "joe".into(),
+            kinds: vec![],
+        },
+        Arc::new(new_key()),
+    );
+
+    let mut silent = vec![];
+    for _ in 0..2 {
+        let accepted = tokio::time::timeout(Duration::from_secs(3600), listener.accept())
+            .await
+            .expect("client did not retry");
+        silent.push(accepted.unwrap());
+    }
+}

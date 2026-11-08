@@ -26,6 +26,8 @@ const CHALLENGE_TTL: Duration = Duration::from_secs(60);
 const KEYS_TTL: Duration = Duration::from_secs(5 * 60);
 // Minimum time between GitHub key lookups for one login.
 const KEYS_REFETCH_FLOOR: Duration = Duration::from_secs(30);
+// Short of the heartbeat interval, since a stream's recheck waits on it.
+const KEYS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_STREAMS_PER_USER: usize = 10;
 const MAX_STREAMS: usize = 1_000;
@@ -400,7 +402,10 @@ impl KeyCache {
             return Ok(attempt.keys);
         }
 
-        let result = self.lookup(login).await;
+        // octobot's GitHub client sets no timeout, and a stalled lookup would hold the lock.
+        let result = tokio::time::timeout(KEYS_LOOKUP_TIMEOUT, self.lookup(login))
+            .await
+            .unwrap_or_else(|_| Err(anyhow::anyhow!("key lookup for {} timed out", login)));
         let keys = result.as_ref().ok().cloned();
         self.attempts.lock().unwrap().insert(
             login.to_string(),
@@ -726,6 +731,22 @@ mod tests {
         assert!(cancelled.is_err());
 
         assert!(cache.verify("joe", b"msg", &sig).await.is_ok());
+        assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_stalled_lookup_times_out_and_counts() {
+        let directory = Arc::new(FakeDirectory::default());
+        let key = new_key();
+        directory.set("joe", &[&key]);
+        *directory.delay.lock().unwrap() = Duration::from_secs(3600);
+        let cache = Arc::new(KeyCache::new(directory.clone()));
+
+        let sig = sign(&key);
+        for _ in 0..2 {
+            let result = cache.verify("joe", b"msg", &sig).await;
+            assert!(matches!(result, Err(AuthFailure::KeyLookup(_))));
+        }
         assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
     }
 
