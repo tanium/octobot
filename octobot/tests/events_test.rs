@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -12,7 +13,7 @@ use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::metadata::MetadataValue;
 use tonic::{Code, Status, Streaming};
 
-use octobot::server::events::{EventsService, KeySource};
+use octobot::server::events::{Directory, EventsService};
 use octobot_events::client::{self, Update};
 use octobot_events::pb::events_client::EventsClient;
 use octobot_events::pb::events_server::EventsServer;
@@ -21,12 +22,14 @@ use octobot_events::sign::Signer;
 use octobot_lib::metrics::Metrics;
 use octobot_ops::event_bus::{Change, EventBus};
 
+/// Octobot users and their GitHub keys. A user is anyone given a key.
 #[derive(Default)]
-struct FakeKeys {
+struct FakeDirectory {
     keys: Mutex<HashMap<String, Vec<String>>>,
+    lookups: AtomicUsize,
 }
 
-impl FakeKeys {
+impl FakeDirectory {
     fn add(&self, login: &str, key: &PrivateKey) {
         self.keys
             .lock()
@@ -35,11 +38,20 @@ impl FakeKeys {
             .or_default()
             .push(key.public_key().to_openssh().unwrap());
     }
+
+    fn lookups(&self) -> usize {
+        self.lookups.load(Ordering::SeqCst)
+    }
 }
 
 #[async_trait]
-impl KeySource for FakeKeys {
+impl Directory for FakeDirectory {
+    fn is_user(&self, login: &str) -> anyhow::Result<bool> {
+        Ok(self.keys.lock().unwrap().contains_key(login))
+    }
+
     async fn keys(&self, login: &str) -> anyhow::Result<Vec<String>> {
+        self.lookups.fetch_add(1, Ordering::SeqCst);
         Ok(self
             .keys
             .lock()
@@ -53,7 +65,7 @@ impl KeySource for FakeKeys {
 struct TestServer {
     addr: SocketAddr,
     bus: Arc<EventBus>,
-    keys: Arc<FakeKeys>,
+    directory: Arc<FakeDirectory>,
 }
 
 impl TestServer {
@@ -61,15 +73,23 @@ impl TestServer {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let bus = Arc::new(EventBus::new(lag_capacity));
-        let keys = Arc::new(FakeKeys::default());
-        let service =
-            EventsService::new(bus.clone(), &addr.to_string(), keys.clone(), Metrics::new());
+        let directory = Arc::new(FakeDirectory::default());
+        let service = EventsService::new(
+            bus.clone(),
+            &addr.to_string(),
+            directory.clone(),
+            Metrics::new(),
+        );
         tokio::spawn(
             tonic::transport::Server::builder()
                 .add_service(EventsServer::new(service))
                 .serve_with_incoming(TcpListenerStream::new(listener)),
         );
-        TestServer { addr, bus, keys }
+        TestServer {
+            addr,
+            bus,
+            directory,
+        }
     }
 
     fn endpoint(&self) -> String {
@@ -175,7 +195,7 @@ async fn next<S: tokio_stream::Stream + Unpin>(stream: &mut S) -> S::Item {
 async fn test_streams_changes_for_the_user() {
     let server = TestServer::start(10).await;
     let key = new_key();
-    server.keys.add("joe", &key);
+    server.directory.add("joe", &key);
 
     let mut updates = server.subscribe("Joe", &[], key);
     assert_eq!(Update::Reset, next(&mut updates).await);
@@ -192,7 +212,7 @@ async fn test_streams_changes_for_the_user() {
 async fn test_filters_kinds() {
     let server = TestServer::start(10).await;
     let key = new_key();
-    server.keys.add("joe", &key);
+    server.directory.add("joe", &key);
 
     let mut updates = server.subscribe("joe", &["push"], key);
     assert_eq!(Update::Reset, next(&mut updates).await);
@@ -211,7 +231,7 @@ async fn test_filters_kinds() {
 async fn test_lagging_stream_resets() {
     let server = TestServer::start(1).await;
     let key = new_key();
-    server.keys.add("joe", &key);
+    server.directory.add("joe", &key);
 
     let nonce = server.challenge("joe").await;
     let mut stream = server
@@ -238,7 +258,7 @@ async fn test_lagging_stream_resets() {
 async fn test_accepts_signature_from_registered_key() {
     let server = TestServer::start(10).await;
     let key = new_key();
-    server.keys.add("joe", &key);
+    server.directory.add("joe", &key);
 
     let nonce = server.challenge("joe").await;
     let authority = server.addr.to_string();
@@ -253,7 +273,7 @@ async fn test_accepts_signature_from_registered_key() {
 #[tokio::test]
 async fn test_rejects_unregistered_key() {
     let server = TestServer::start(10).await;
-    server.keys.add("joe", &new_key());
+    server.directory.add("joe", &new_key());
 
     let nonce = server.challenge("joe").await;
     let authority = server.addr.to_string();
@@ -268,7 +288,7 @@ async fn test_rejects_unregistered_key() {
 async fn test_rejects_reused_nonce() {
     let server = TestServer::start(10).await;
     let key = new_key();
-    server.keys.add("joe", &key);
+    server.directory.add("joe", &key);
 
     let nonce = server.challenge("joe").await;
     let authority = server.addr.to_string();
@@ -289,7 +309,8 @@ async fn test_rejects_reused_nonce() {
 async fn test_rejects_nonce_issued_to_another_user() {
     let server = TestServer::start(10).await;
     let key = new_key();
-    server.keys.add("joe", &key);
+    server.directory.add("joe", &key);
+    server.directory.add("bob", &new_key());
 
     let nonce = server.challenge("bob").await;
     let authority = server.addr.to_string();
@@ -304,7 +325,7 @@ async fn test_rejects_nonce_issued_to_another_user() {
 async fn test_rejects_signature_for_another_server() {
     let server = TestServer::start(10).await;
     let key = new_key();
-    server.keys.add("joe", &key);
+    server.directory.add("joe", &key);
 
     let nonce = server.challenge("joe").await;
     let err = server
@@ -315,29 +336,31 @@ async fn test_rejects_signature_for_another_server() {
 }
 
 #[tokio::test]
-async fn test_accepts_key_added_after_keys_were_cached() {
+async fn test_refuses_challenge_for_non_user() {
     let server = TestServer::start(10).await;
-    let old_key = new_key();
-    server.keys.add("joe", &old_key);
-    let authority = server.addr.to_string();
+    let err = server
+        .raw_client()
+        .await
+        .challenge(ChallengeRequest {
+            username: "stranger".into(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(Code::PermissionDenied, err.code());
+    assert_eq!(0, server.directory.lookups());
+}
 
-    let nonce = server.challenge("joe").await;
-    assert!(
-        server
-            .raw_subscribe("joe", &nonce, &old_key, &authority)
-            .await
-            .is_ok()
-    );
+#[tokio::test]
+async fn test_dropped_subscriptions_release_their_streams() {
+    let server = TestServer::start(10).await;
+    let key = new_key();
+    server.directory.add("joe", &key);
 
-    let new_key = new_key();
-    server.keys.add("joe", &new_key);
-    let nonce = server.challenge("joe").await;
-    assert!(
-        server
-            .raw_subscribe("joe", &nonce, &new_key, &authority)
-            .await
-            .is_ok()
-    );
+    // More than the per-user stream limit, one after another.
+    for _ in 0..12 {
+        let mut updates = server.subscribe("joe", &[], key.clone());
+        assert_eq!(Update::Reset, next(&mut updates).await);
+    }
 }
 
 #[tokio::test]

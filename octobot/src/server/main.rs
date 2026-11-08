@@ -12,7 +12,7 @@ use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 
 use crate::runtime;
-use crate::server::events::{EventsService, GithubKeys};
+use crate::server::events::{EventsService, GithubDirectory};
 use crate::server::github_handler::GithubHandlerState;
 use crate::server::octobot_service::OctobotService;
 use crate::server::sessions::Sessions;
@@ -108,7 +108,10 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         let service = EventsService::new(
             event_bus.clone(),
             &events_config.authority,
-            Arc::new(GithubKeys(github_api.clone())),
+            Arc::new(GithubDirectory {
+                config: config.clone(),
+                github: github_api.clone(),
+            }),
             metrics.clone(),
         );
         let addr = &events_config.listen_addr;

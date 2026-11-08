@@ -45,17 +45,24 @@ pub fn subscribe(config: Config, signer: Arc<dyn Signer>) -> ReceiverStream<Upda
     tokio::spawn(async move {
         let mut backoff = MIN_BACKOFF;
         loop {
+            // Heartbeats are not passed on, so a quiet stream would never notice that the
+            // consumer is gone and would hold its server slot forever.
             let mut connected = false;
-            if let Err(e) = run(&config, signer.as_ref(), &tx, &mut connected).await {
-                warn!("octobot event stream: {:#}", e);
-            }
-            if tx.is_closed() {
-                return;
+            tokio::select! {
+                _ = tx.closed() => return,
+                result = run(&config, &signer, &tx, &mut connected) => {
+                    if let Err(e) = result {
+                        warn!("octobot event stream: {:#}", e);
+                    }
+                }
             }
             if connected {
                 backoff = MIN_BACKOFF;
             }
-            tokio::time::sleep(jitter(backoff)).await;
+            tokio::select! {
+                _ = tx.closed() => return,
+                _ = tokio::time::sleep(jitter(backoff)) => {}
+            }
             backoff = (backoff * 2).min(MAX_BACKOFF);
         }
     });
@@ -64,15 +71,12 @@ pub fn subscribe(config: Config, signer: Arc<dyn Signer>) -> ReceiverStream<Upda
 
 async fn run(
     config: &Config,
-    signer: &dyn Signer,
+    signer: &Arc<dyn Signer>,
     tx: &mpsc::Sender<Update>,
     connected: &mut bool,
 ) -> Result<()> {
     let uri: Uri = config.endpoint.parse().context("parsing endpoint")?;
-    let authority = uri
-        .authority()
-        .ok_or_else(|| anyhow!("endpoint has no host: {}", config.endpoint))?
-        .to_string();
+    let authority = signed_authority(&uri)?;
 
     let mut endpoint = Endpoint::from(uri.clone());
     if uri.scheme_str() == Some("https") {
@@ -87,8 +91,11 @@ async fn run(
         .await?
         .into_inner()
         .nonce;
-    let sig = signer
-        .sign(&crate::signed_message(&authority, &nonce))
+    // ssh-agent I/O blocks, and a hardware key waits for a touch.
+    let msg = crate::signed_message(&authority, &nonce);
+    let signer = signer.clone();
+    let sig = tokio::task::spawn_blocking(move || signer.sign(&msg))
+        .await?
         .context("signing challenge")?
         .to_pem(LineEnding::LF)?;
 
@@ -128,10 +135,73 @@ async fn run(
     }
 }
 
+/// The endpoint's host, lowercased, with its port only when it is not the scheme's default.
+/// The server compares it to its configured authority as a string.
+fn signed_authority(uri: &Uri) -> Result<String> {
+    let host = uri
+        .host()
+        .ok_or_else(|| anyhow!("endpoint has no host: {}", uri))?
+        .to_lowercase();
+    let default_port = match uri.scheme_str() {
+        Some("https") => Some(443),
+        Some("http") => Some(80),
+        _ => None,
+    };
+    Ok(match uri.port_u16() {
+        Some(port) if Some(port) != default_port => format!("{}:{}", host, port),
+        _ => host,
+    })
+}
+
 fn bin(bytes: &[u8]) -> BinaryMetadataValue {
     MetadataValue::from_bytes(bytes)
 }
 
 fn jitter(backoff: Duration) -> Duration {
     backoff.mul_f64(rand::rng().random_range(0.5..1.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn authority(endpoint: &str) -> String {
+        signed_authority(&endpoint.parse().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn test_signed_authority_drops_default_port() {
+        assert_eq!(
+            "octobot.example.com",
+            authority("https://octobot.example.com")
+        );
+        assert_eq!(
+            "octobot.example.com",
+            authority("https://octobot.example.com:443")
+        );
+        assert_eq!(
+            "octobot.example.com",
+            authority("http://octobot.example.com:80")
+        );
+    }
+
+    #[test]
+    fn test_signed_authority_keeps_other_ports() {
+        assert_eq!(
+            "octobot.example.com:3001",
+            authority("https://octobot.example.com:3001")
+        );
+        assert_eq!(
+            "octobot.example.com:443",
+            authority("http://octobot.example.com:443")
+        );
+    }
+
+    #[test]
+    fn test_signed_authority_lowercases_host() {
+        assert_eq!(
+            "octobot.example.com",
+            authority("https://Octobot.Example.com")
+        );
+    }
 }

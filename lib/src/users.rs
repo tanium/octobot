@@ -222,6 +222,13 @@ impl UserConfig {
         }
     }
 
+    /// GitHub logins are case-insensitive.
+    pub fn is_github_user(&self, github_name: &str) -> Result<bool> {
+        let conn = self.db.connect()?;
+        let mut stmt = conn.prepare("SELECT 1 FROM users WHERE github_name = ?1 COLLATE NOCASE")?;
+        Ok(stmt.exists([github_name])?)
+    }
+
     fn do_lookup_info(&self, github_name: &str) -> Result<Option<UserInfo>> {
         let github_name = github_name.to_string();
         let conn = self.db.connect()?;
