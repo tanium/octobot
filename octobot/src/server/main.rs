@@ -113,7 +113,8 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
                 github: github_api.clone(),
             }),
             metrics.clone(),
-        );
+        )
+        .expect("events authority");
         let addr = &events_config.listen_addr;
         let listener = match TcpListener::bind(addr).await {
             Ok(l) => l,

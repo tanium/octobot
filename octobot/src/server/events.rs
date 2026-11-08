@@ -50,17 +50,18 @@ impl EventsService {
         authority: &str,
         directory: Arc<dyn Directory>,
         metrics: Arc<Metrics>,
-    ) -> EventsService {
-        EventsService {
+    ) -> anyhow::Result<EventsService> {
+        // Clients connect through the TLS proxy, so they dial https.
+        let uri = format!("https://{}", authority).parse()?;
+        Ok(EventsService {
             bus,
-            // Clients sign the host lowercased.
-            authority: authority.to_lowercase(),
+            authority: octobot_events::signed_authority(&uri)?,
             directory: directory.clone(),
             challenges: Challenges::new(),
             keys: Arc::new(KeyCache::new(directory)),
             streams: Arc::new(StreamCounts::new()),
             metrics,
-        }
+        })
     }
 
     async fn authenticate(&self, metadata: &MetadataMap) -> Result<(String, PublicKey), Status> {
@@ -295,6 +296,8 @@ impl Directory for GithubDirectory {
 struct KeyCache {
     directory: Arc<dyn Directory>,
     entries: Mutex<HashMap<String, CachedKeys>>,
+    // Last lookup per login, failed or not
+    attempts: Mutex<HashMap<String, Instant>>,
 }
 
 #[derive(Clone)]
@@ -308,6 +311,7 @@ impl KeyCache {
         KeyCache {
             directory,
             entries: Mutex::new(HashMap::new()),
+            attempts: Mutex::new(HashMap::new()),
         }
     }
 
@@ -325,26 +329,23 @@ impl KeyCache {
         };
 
         let cached = self.cached(login);
-        if let Some(cached) = &cached {
-            if let Some(key) = signer(&cached.keys) {
-                return Ok(key);
-            }
-            // The key may have been added on GitHub since the fetch, but a bad signature must
-            // not trigger a lookup every time.
-            if cached.fetched.elapsed() < KEYS_REFETCH_FLOOR {
-                return Err(AuthFailure::Signature);
-            }
+        if let Some(key) = cached.as_ref().and_then(|cached| signer(&cached.keys)) {
+            return Ok(key);
         }
 
-        let keys = self.fetch(login).await.map_err(AuthFailure::KeyLookup)?;
-        signer(&keys).ok_or(AuthFailure::Signature)
+        // The key may have been added on GitHub since the cached lookup.
+        match self.fetch(login).await.map_err(AuthFailure::KeyLookup)? {
+            Some(keys) => signer(&keys).ok_or(AuthFailure::Signature),
+            None if cached.is_some() => Err(AuthFailure::Signature),
+            None => Err(AuthFailure::KeyLookup(too_soon(login))),
+        }
     }
 
     /// Whether `key` is still one of the user's keys on GitHub.
     async fn has(&self, login: &str, key: &PublicKey) -> anyhow::Result<bool> {
         let keys = match self.cached(login) {
             Some(cached) => cached.keys,
-            None => self.fetch(login).await?,
+            None => self.fetch(login).await?.ok_or_else(|| too_soon(login))?,
         };
         Ok(keys.iter().any(|k| k.key_data() == key.key_data()))
     }
@@ -358,7 +359,20 @@ impl KeyCache {
             .cloned()
     }
 
-    async fn fetch(&self, login: &str) -> anyhow::Result<Arc<Vec<PublicKey>>> {
+    /// Looks up the user's keys on GitHub, or None if they were looked up within
+    /// `KEYS_REFETCH_FLOOR`, so neither bad signatures nor GitHub errors cause a lookup each time.
+    async fn fetch(&self, login: &str) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
+        {
+            let mut attempts = self.attempts.lock().unwrap();
+            if attempts
+                .get(login)
+                .is_some_and(|at| at.elapsed() < KEYS_REFETCH_FLOOR)
+            {
+                return Ok(None);
+            }
+            attempts.insert(login.to_string(), Instant::now());
+        }
+
         let keys: Vec<PublicKey> = self
             .directory
             .keys(login)
@@ -380,8 +394,12 @@ impl KeyCache {
                 keys: keys.clone(),
             },
         );
-        Ok(keys)
+        Ok(Some(keys))
     }
+}
+
+fn too_soon(login: &str) -> anyhow::Error {
+    anyhow::anyhow!("keys for {} were looked up too recently", login)
 }
 
 struct StreamCounts {
@@ -522,7 +540,7 @@ impl Drop for Stream {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use ssh_key::rand_core::OsRng;
     use ssh_key::{Algorithm, HashAlg, PrivateKey};
@@ -534,6 +552,7 @@ mod tests {
         keys: Mutex<HashMap<String, Vec<String>>>,
         removed_users: Mutex<HashSet<String>>,
         lookups: AtomicUsize,
+        failing: AtomicBool,
     }
 
     impl FakeDirectory {
@@ -560,6 +579,9 @@ mod tests {
 
         async fn keys(&self, login: &str) -> anyhow::Result<Vec<String>> {
             self.lookups.fetch_add(1, Ordering::SeqCst);
+            if self.failing.load(Ordering::SeqCst) {
+                anyhow::bail!("GitHub is down");
+            }
             Ok(self
                 .keys
                 .lock()
@@ -594,6 +616,37 @@ mod tests {
 
         tokio::time::advance(KEYS_REFETCH_FLOOR).await;
         assert!(cache.verify("joe", b"msg", &sign(&new)).await.is_ok());
+    }
+
+    #[test]
+    fn test_configured_authority_is_signed_form() {
+        let service = EventsService::new(
+            Arc::new(EventBus::new(10)),
+            "Octobot.Example.com:443",
+            Arc::new(FakeDirectory::default()),
+            Metrics::new(),
+        )
+        .unwrap();
+        assert_eq!("octobot.example.com", service.authority);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_failed_lookups_are_not_retried_within_refetch_floor() {
+        let directory = Arc::new(FakeDirectory::default());
+        let key = new_key();
+        directory.set("joe", &[&key]);
+        directory.failing.store(true, Ordering::SeqCst);
+        let cache = KeyCache::new(directory.clone());
+
+        for _ in 0..3 {
+            let result = cache.verify("joe", b"msg", &sign(&key)).await;
+            assert!(matches!(result, Err(AuthFailure::KeyLookup(_))));
+        }
+        assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
+
+        directory.failing.store(false, Ordering::SeqCst);
+        tokio::time::advance(KEYS_REFETCH_FLOOR).await;
+        assert!(cache.verify("joe", b"msg", &sign(&key)).await.is_ok());
     }
 
     /// Starts a stream for joe, authenticated by `key`. It ends if the bus is dropped.

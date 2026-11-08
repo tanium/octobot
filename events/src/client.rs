@@ -76,7 +76,7 @@ async fn run(
     connected: &mut bool,
 ) -> Result<()> {
     let uri: Uri = config.endpoint.parse().context("parsing endpoint")?;
-    let authority = signed_authority(&uri)?;
+    let authority = crate::signed_authority(&uri)?;
 
     let mut endpoint = Endpoint::from(uri.clone());
     if uri.scheme_str() == Some("https") {
@@ -135,73 +135,10 @@ async fn run(
     }
 }
 
-/// The endpoint's host, lowercased, with its port only when it is not the scheme's default.
-/// The server compares it to its configured authority as a string.
-fn signed_authority(uri: &Uri) -> Result<String> {
-    let host = uri
-        .host()
-        .ok_or_else(|| anyhow!("endpoint has no host: {}", uri))?
-        .to_lowercase();
-    let default_port = match uri.scheme_str() {
-        Some("https") => Some(443),
-        Some("http") => Some(80),
-        _ => None,
-    };
-    Ok(match uri.port_u16() {
-        Some(port) if Some(port) != default_port => format!("{}:{}", host, port),
-        _ => host,
-    })
-}
-
 fn bin(bytes: &[u8]) -> BinaryMetadataValue {
     MetadataValue::from_bytes(bytes)
 }
 
 fn jitter(backoff: Duration) -> Duration {
     backoff.mul_f64(rand::rng().random_range(0.5..1.0))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn authority(endpoint: &str) -> String {
-        signed_authority(&endpoint.parse().unwrap()).unwrap()
-    }
-
-    #[test]
-    fn test_signed_authority_drops_default_port() {
-        assert_eq!(
-            "octobot.example.com",
-            authority("https://octobot.example.com")
-        );
-        assert_eq!(
-            "octobot.example.com",
-            authority("https://octobot.example.com:443")
-        );
-        assert_eq!(
-            "octobot.example.com",
-            authority("http://octobot.example.com:80")
-        );
-    }
-
-    #[test]
-    fn test_signed_authority_keeps_other_ports() {
-        assert_eq!(
-            "octobot.example.com:3001",
-            authority("https://octobot.example.com:3001")
-        );
-        assert_eq!(
-            "octobot.example.com:443",
-            authority("http://octobot.example.com:443")
-        );
-    }
-
-    #[test]
-    fn test_signed_authority_lowercases_host() {
-        assert_eq!(
-            "octobot.example.com",
-            authority("https://Octobot.Example.com")
-        );
-    }
 }

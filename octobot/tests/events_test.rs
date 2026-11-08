@@ -79,7 +79,8 @@ impl TestServer {
             &addr.to_string(),
             directory.clone(),
             Metrics::new(),
-        );
+        )
+        .unwrap();
         tokio::spawn(
             tonic::transport::Server::builder()
                 .add_service(EventsServer::new(service))
