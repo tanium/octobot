@@ -74,6 +74,7 @@ config.toml
     [events]
     # optional: enables the gRPC event stream. Plaintext HTTP/2, meant to sit
     # behind a TLS-terminating proxy (nginx: `grpc_pass grpc://127.0.0.1:3002;`).
+    # In docker, listen on 0.0.0.0:3002 and publish it to the proxy only.
     listen_addr = "127.0.0.1:3002"
     # host[:port] clients dial; they sign it to subscribe.
     authority = "octobot.company.com"
