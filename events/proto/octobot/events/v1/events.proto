@@ -5,10 +5,14 @@ package octobot.events.v1;
 // Pushes thin change hints to the GitHub users octobot notifies about them.
 // Clients refetch the real data from GitHub with their own credentials.
 service Events {
-  // PERMISSION_DENIED for logins that are not octobot users.
+  // Answers any well-formed username alike, so it reveals nothing about who
+  // is an octobot user. INVALID_ARGUMENT for a malformed one.
   rpc Challenge(ChallengeRequest) returns (ChallengeResponse);
 
-  // UNAUTHENTICATED unless `auth` is signed over a challenge for its username.
+  // UNAUTHENTICATED, whatever the reason, unless `auth` names an octobot user
+  // and is signed with one of their GitHub keys over a challenge for them.
+  // A client holding several keys tries each; the challenge stays valid
+  // until a subscribe succeeds with it.
   rpc Subscribe(SubscribeRequest) returns (stream Event);
 }
 
@@ -19,9 +23,6 @@ message ChallengeRequest {
 message ChallengeResponse {
   bytes nonce = 1;
   int64 expires_unix = 2;
-  // SHA-256 fingerprints ("SHA256:...") of the user's SSH keys on GitHub,
-  // so the client can sign with one of them
-  repeated string key_fingerprints = 3;
 }
 
 // Streams are live only: changes from before a (re)connect are not sent, so

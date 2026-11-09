@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use log::{info, warn};
 use ring::hmac;
 use ring::rand::{SecureRandom, SystemRandom};
-use ssh_key::{HashAlg, PublicKey, SshSig};
+use ssh_key::{PublicKey, SshSig};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
@@ -79,6 +79,17 @@ impl EventsService {
     async fn authenticate(&self, auth: Option<&pb::Auth>) -> Result<(Login, PublicKey), Status> {
         let result = self.verify(auth).await;
         if let Err(failure) = &result {
+            let username = auth.map_or("", |auth| auth.username.as_str());
+            match failure {
+                AuthFailure::Malformed(detail) => {
+                    info!("Refused event stream for {:?}: {}", username, detail)
+                }
+                _ => info!(
+                    "Refused event stream for {:?}: {}",
+                    username,
+                    failure.reason()
+                ),
+            }
             self.metrics
                 .event_stream_auth_failures
                 .with_label_values(&[failure.reason()])
@@ -89,14 +100,16 @@ impl EventsService {
 
     async fn verify(&self, auth: Option<&pb::Auth>) -> Result<(Login, PublicKey), AuthFailure> {
         let auth = auth.ok_or(AuthFailure::Malformed("missing auth"))?;
-        let login = self.octobot_user(&auth.username)?;
+        let username =
+            Login::parse(&auth.username).map_err(|_| AuthFailure::Malformed("bad username"))?;
+        let expiry = self
+            .challenges
+            .check(&auth.nonce, username.as_str())
+            .ok_or(AuthFailure::Nonce)?;
+        let login = self.octobot_user(username.as_str())?;
         let sig = SshSig::from_pem(&auth.signature)
             .map_err(|_| AuthFailure::Malformed("bad signature"))?;
 
-        let expiry = self
-            .challenges
-            .check(&auth.nonce, login.as_str())
-            .ok_or(AuthFailure::Nonce)?;
         let msg = octobot_events::signed_message(&self.authority, &auth.nonce);
         let key = self.keys.verify(&login, &msg, &sig).await?;
         if !self.challenges.consume(&auth.nonce, expiry) {
@@ -112,24 +125,14 @@ impl Events for EventsService {
         &self,
         req: Request<ChallengeRequest>,
     ) -> Result<Response<ChallengeResponse>, Status> {
-        let login = self
-            .octobot_user(&req.into_inner().username)
-            .map_err(AuthFailure::status)?;
-        // Public on GitHub anyway; telling the client lets it sign with the right agent key.
-        // Subscribe then usually finds them cached.
-        let keys = self
-            .keys
-            .current(&login)
-            .await
-            .map_err(|e| AuthFailure::KeyLookup(e).status())?;
-        let (nonce, expires) = self.challenges.issue(login.as_str())?;
+        // Issued without looking the user up, so the answer is the same for anyone and reveals
+        // nothing about who is an octobot user. Subscribe checks.
+        let username = Login::parse(&req.into_inner().username)
+            .map_err(|_| Status::invalid_argument("invalid username"))?;
+        let (nonce, expires) = self.challenges.issue(username.as_str())?;
         Ok(Response::new(ChallengeResponse {
             nonce,
             expires_unix: expires.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
-            key_fingerprints: keys
-                .iter()
-                .map(|key| key.fingerprint(HashAlg::Sha256).to_string())
-                .collect(),
         }))
     }
 
@@ -184,17 +187,17 @@ impl AuthFailure {
         }
     }
 
+    // Refusals all read the same, so a caller cannot tell a non-user from a wrong key. The
+    // reason is in the metrics.
     fn status(self) -> Status {
         match self {
-            AuthFailure::Malformed(msg) => Status::unauthenticated(msg),
-            AuthFailure::NotUser => Status::permission_denied("not an octobot user"),
+            AuthFailure::Malformed(_)
+            | AuthFailure::NotUser
+            | AuthFailure::Nonce
+            | AuthFailure::Signature => Status::unauthenticated("authentication failed"),
             AuthFailure::UserLookup(e) => {
                 warn!("Error looking up octobot user: {:#}", e);
                 Status::unavailable("could not look up octobot users")
-            }
-            AuthFailure::Nonce => Status::unauthenticated("unknown or expired challenge"),
-            AuthFailure::Signature => {
-                Status::unauthenticated("signature does not match the user's GitHub keys")
             }
             AuthFailure::KeyLookup(e) => {
                 warn!("Error looking up SSH keys: {:#}", e);
@@ -359,16 +362,11 @@ impl KeyCache {
 
     /// Whether `key` is still one of the user's keys on GitHub.
     async fn has(self: &Arc<Self>, login: &Login, key: &PublicKey) -> anyhow::Result<bool> {
-        let keys = self.current(login).await?;
+        let keys = match self.cached(login) {
+            Some(cached) => cached.keys,
+            None => self.fetch(login).await?.ok_or_else(|| too_soon(login))?,
+        };
         Ok(keys.iter().any(|k| k.key_data() == key.key_data()))
-    }
-
-    /// The user's keys, from the cache if it is fresh.
-    async fn current(self: &Arc<Self>, login: &Login) -> anyhow::Result<Arc<Vec<PublicKey>>> {
-        match self.cached(login) {
-            Some(cached) => Ok(cached.keys),
-            None => self.fetch(login).await?.ok_or_else(|| too_soon(login)),
-        }
     }
 
     fn cached(&self, login: &Login) -> Option<CachedKeys> {

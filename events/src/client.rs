@@ -4,9 +4,10 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use log::warn;
 use rand::Rng;
-use ssh_key::{Fingerprint, LineEnding};
+use ssh_key::{LineEnding, PublicKey};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tonic::Code;
 use tonic::codegen::http::Uri;
 use tonic::transport::{ClientTlsConfig, Endpoint};
 
@@ -49,13 +50,16 @@ pub fn subscribe(config: Config, signer: Arc<dyn Signer>) -> ReceiverStream<Upda
     let (tx, rx) = mpsc::channel(256);
     tokio::spawn(async move {
         let mut backoff = MIN_BACKOFF;
+        // Tried first on reconnect, so a hardware key with a touch prompt is usually the only
+        // one asked.
+        let mut accepted = None;
         loop {
             // Heartbeats are not passed on, so a quiet stream would never notice that the
             // consumer is gone and would hold its server slot forever.
             let mut connected = false;
             tokio::select! {
                 _ = tx.closed() => return,
-                result = run(&config, &signer, &tx, &mut connected) => {
+                result = run(&config, &signer, &tx, &mut accepted, &mut connected) => {
                     if let Err(e) = result {
                         warn!("octobot event stream: {:#}", e);
                     }
@@ -78,6 +82,7 @@ async fn run(
     config: &Config,
     signer: &Arc<dyn Signer>,
     tx: &mpsc::Sender<Update>,
+    accepted: &mut Option<PublicKey>,
     connected: &mut bool,
 ) -> Result<()> {
     let uri: Uri = config.endpoint.parse().context("parsing endpoint")?;
@@ -93,33 +98,54 @@ async fn run(
     let challenge = client.challenge(ChallengeRequest {
         username: config.username.clone(),
     });
-    let challenge = deadline("challenge", challenge).await??.into_inner();
-    let nonce = challenge.nonce;
-    let registered = challenge
-        .key_fingerprints
-        .iter()
-        .map(|fingerprint| fingerprint.parse())
-        .collect::<Result<Vec<Fingerprint>, _>>()
-        .context("parsing key fingerprints")?;
-    // ssh-agent I/O blocks, and a hardware key waits for a touch.
-    let msg = crate::signed_message(&authority, &nonce);
-    let signer = signer.clone();
-    let sig = tokio::task::spawn_blocking(move || signer.sign(&msg, &registered))
+    let nonce = deadline("challenge", challenge).await??.into_inner().nonce;
+    let msg = Arc::new(crate::signed_message(&authority, &nonce));
+
+    let mut keys = blocking({
+        let signer = signer.clone();
+        move || signer.keys()
+    })
+    .await?;
+    if let Some(i) = keys.iter().position(|key| Some(key) == accepted.as_ref()) {
+        keys.swap(0, i);
+    }
+
+    // The server refuses a wrong key the same way it refuses everything else, and the nonce
+    // stays valid until a subscribe succeeds, so each key gets a turn with it.
+    let mut stream = None;
+    for key in keys {
+        let sig = blocking({
+            let (signer, key, msg) = (signer.clone(), key.clone(), msg.clone());
+            move || signer.sign(&key, &msg)
+        })
         .await?
-        .with_context(|| format!("signing challenge as {}", config.username))?
         .to_pem(LineEnding::LF)?;
 
-    let req = SubscribeRequest {
-        auth: Some(pb::Auth {
-            username: config.username.clone(),
-            nonce,
-            signature: sig,
-        }),
-        kinds: config.kinds.iter().map(|&kind| kind as i32).collect(),
-    };
-    let mut stream = deadline("subscribe", client.subscribe(req))
-        .await??
-        .into_inner();
+        let req = SubscribeRequest {
+            auth: Some(pb::Auth {
+                username: config.username.clone(),
+                nonce: nonce.clone(),
+                signature: sig,
+            }),
+            kinds: config.kinds.iter().map(|&kind| kind as i32).collect(),
+        };
+        match deadline("subscribe", client.subscribe(req)).await? {
+            Ok(response) => {
+                *accepted = Some(key);
+                stream = Some(response.into_inner());
+                break;
+            }
+            Err(status) if status.code() == Code::Unauthenticated => continue,
+            Err(status) => return Err(status.into()),
+        }
+    }
+    let mut stream = stream.ok_or_else(|| {
+        anyhow!(
+            "no key was accepted for {}: is it an octobot user, with a key from the signer \
+             registered on GitHub?",
+            config.username
+        )
+    })?;
     *connected = true;
 
     // The stream is live only, so anything before this point may have been missed. The server
@@ -147,6 +173,11 @@ async fn run(
     }
 }
 
+// ssh-agent I/O blocks, and a hardware key waits for a touch.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
+    tokio::task::spawn_blocking(f).await?
+}
+
 /// Bounds a step before the stream starts, where the silence timeout does not yet apply, so a
 /// server that never answers sends the client back around the retry loop.
 async fn deadline<F: Future>(step: &str, fut: F) -> Result<F::Output> {
@@ -168,7 +199,11 @@ mod tests {
     struct NeverSigns;
 
     impl Signer for NeverSigns {
-        fn sign(&self, _msg: &[u8], _registered: &[Fingerprint]) -> Result<ssh_key::SshSig> {
+        fn keys(&self) -> Result<Vec<PublicKey>> {
+            panic!("a silent server never gets as far as a challenge")
+        }
+
+        fn sign(&self, _key: &PublicKey, _msg: &[u8]) -> Result<ssh_key::SshSig> {
             panic!("a silent server never gets as far as a challenge")
         }
     }
