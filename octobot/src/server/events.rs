@@ -31,8 +31,9 @@ const KEYS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_STREAMS_PER_USER: usize = 10;
 const MAX_STREAMS: usize = 1_000;
-// Small, so a stuck client lags on the bus and is aborted instead of buffering here.
-const STREAM_BUFFER: usize = 64;
+// Events are tens of bytes, so this is cheap headroom for bursts. Bounded, so a stuck client
+// still lags on the bus and is aborted instead of buffering here without limit.
+const STREAM_BUFFER: usize = 256;
 
 /// Serves the event bus to octobot users who prove they hold an SSH key registered to their
 /// GitHub login. Each stream carries only the changes octobot notified that login about.
