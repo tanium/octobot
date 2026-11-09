@@ -79,16 +79,11 @@ impl EventsService {
     async fn authenticate(&self, auth: Option<&pb::Auth>) -> Result<(Login, PublicKey), Status> {
         let result = self.verify(auth).await;
         if let Err(failure) = &result {
-            let username = auth.map_or("", |auth| auth.username.as_str());
+            // Not the username: it is the caller's unverified claim, and the client's own error
+            // names it.
             match failure {
-                AuthFailure::Malformed(detail) => {
-                    info!("Refused event stream for {:?}: {}", username, detail)
-                }
-                _ => info!(
-                    "Refused event stream for {:?}: {}",
-                    username,
-                    failure.reason()
-                ),
+                AuthFailure::Malformed(detail) => info!("Refused event stream: {}", detail),
+                _ => info!("Refused event stream: {}", failure.reason()),
             }
             self.metrics
                 .event_stream_auth_failures
