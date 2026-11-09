@@ -21,6 +21,9 @@ tokio-stream = "0.1.17"
 tonic = { version = "0.14", features = ["tls-ring", "tls-native-roots"] }
 tonic-prost = "0.14"
 
+[dev-dependencies]
+tokio = { version = "1.43.1", features = ["net"] }
+
 [build-dependencies]
 protox = "0.9"
 tonic-prost-build = "0.14"

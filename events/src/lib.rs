@@ -13,10 +13,6 @@ pub mod pb {
 /// SSH signature namespace, so a signature made here is useless to other SSH signature consumers.
 pub const NAMESPACE: &str = "octobot-events";
 
-pub const USER_HEADER: &str = "x-octobot-user";
-pub const NONCE_HEADER: &str = "x-octobot-nonce-bin";
-pub const SIG_HEADER: &str = "x-octobot-sig-bin";
-
 /// What a client signs to subscribe. The authority stops a signature made for one server from
 /// being relayed to another.
 pub fn signed_message(authority: &str, nonce: &[u8]) -> Vec<u8> {

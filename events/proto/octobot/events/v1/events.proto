@@ -8,11 +8,7 @@ service Events {
   // PERMISSION_DENIED for logins that are not octobot users.
   rpc Challenge(ChallengeRequest) returns (ChallengeResponse);
 
-  // Authenticated by metadata from a Challenge:
-  //   x-octobot-user:    GitHub login
-  //   x-octobot-nonce-bin: the challenge nonce
-  //   x-octobot-sig-bin:   armored SSH signature (namespace "octobot-events")
-  //                        over `octobot-events-v1|<authority>|<nonce>`
+  // UNAUTHENTICATED unless `auth` is signed over a challenge for its username.
   rpc Subscribe(SubscribeRequest) returns (stream Event);
 }
 
@@ -28,8 +24,20 @@ message ChallengeResponse {
 // Streams are live only: changes from before a (re)connect are not sent, so
 // load state from GitHub after each one.
 message SubscribeRequest {
+  Auth auth = 1;
   // Kinds to receive; empty means all.
-  repeated Kind kinds = 1;
+  repeated Kind kinds = 2;
+}
+
+// Proof that the caller holds an SSH key registered to `username` on GitHub
+message Auth {
+  // GitHub login
+  string username = 1;
+  // From the username's Challenge
+  bytes nonce = 2;
+  // Armored SSH signature (namespace "octobot-events") over
+  // `octobot-events-v1|<authority>|<nonce>`
+  string signature = 3;
 }
 
 // A stream that falls behind ends with ABORTED, since changes were dropped.

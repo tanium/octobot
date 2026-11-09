@@ -10,12 +10,11 @@ use ssh_key::{PublicKey, SshSig};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::metadata::MetadataMap;
 use tonic::{Request, Response, Status};
 
+use octobot_events::NAMESPACE;
 use octobot_events::pb::events_server::Events;
 use octobot_events::pb::{self, ChallengeRequest, ChallengeResponse, SubscribeRequest, event};
-use octobot_events::{NAMESPACE, NONCE_HEADER, SIG_HEADER, USER_HEADER};
 use octobot_lib::config::Config;
 use octobot_lib::github::api::GithubSessionFactory;
 use octobot_lib::metrics::{self, Metrics, ScopedGaugeCounter};
@@ -66,8 +65,8 @@ impl EventsService {
         })
     }
 
-    async fn authenticate(&self, metadata: &MetadataMap) -> Result<(String, PublicKey), Status> {
-        let result = self.verify(metadata).await;
+    async fn authenticate(&self, auth: Option<&pb::Auth>) -> Result<(String, PublicKey), Status> {
+        let result = self.verify(auth).await;
         if let Err(failure) = &result {
             self.metrics
                 .event_stream_auth_failures
@@ -77,29 +76,19 @@ impl EventsService {
         result.map_err(AuthFailure::status)
     }
 
-    async fn verify(&self, metadata: &MetadataMap) -> Result<(String, PublicKey), AuthFailure> {
-        let login = metadata
-            .get(USER_HEADER)
-            .and_then(|v| v.to_str().ok())
-            .ok_or(AuthFailure::Malformed("missing user"))?
-            .to_lowercase();
-        let nonce = metadata
-            .get_bin(NONCE_HEADER)
-            .and_then(|v| v.to_bytes().ok())
-            .ok_or(AuthFailure::Malformed("missing nonce"))?;
-        let sig = metadata
-            .get_bin(SIG_HEADER)
-            .and_then(|v| v.to_bytes().ok())
-            .ok_or(AuthFailure::Malformed("missing signature"))?;
-        let sig = SshSig::from_pem(&sig).map_err(|_| AuthFailure::Malformed("bad signature"))?;
+    async fn verify(&self, auth: Option<&pb::Auth>) -> Result<(String, PublicKey), AuthFailure> {
+        let auth = auth.ok_or(AuthFailure::Malformed("missing auth"))?;
+        let login = auth.username.to_lowercase();
+        let sig = SshSig::from_pem(&auth.signature)
+            .map_err(|_| AuthFailure::Malformed("bad signature"))?;
 
         let expiry = self
             .challenges
-            .check(&nonce, &login)
+            .check(&auth.nonce, &login)
             .ok_or(AuthFailure::Nonce)?;
-        let msg = octobot_events::signed_message(&self.authority, &nonce);
+        let msg = octobot_events::signed_message(&self.authority, &auth.nonce);
         let key = self.keys.verify(&login, &msg, &sig).await?;
-        if !self.challenges.consume(&nonce, expiry) {
+        if !self.challenges.consume(&auth.nonce, expiry) {
             return Err(AuthFailure::Nonce);
         }
         Ok((login, key))
@@ -144,9 +133,9 @@ impl Events for EventsService {
         &self,
         req: Request<SubscribeRequest>,
     ) -> Result<Response<Self::SubscribeStream>, Status> {
-        let (login, key) = self.authenticate(req.metadata()).await?;
-        let slot = StreamCounts::open(&self.streams, &login)?;
         let req = req.into_inner();
+        let (login, key) = self.authenticate(req.auth.as_ref()).await?;
+        let slot = StreamCounts::open(&self.streams, &login)?;
         info!("Opening event stream for {}", login);
 
         let stream = Stream {

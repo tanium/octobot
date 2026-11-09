@@ -8,7 +8,6 @@ use ssh_key::LineEnding;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::codegen::http::Uri;
-use tonic::metadata::{BinaryMetadataValue, MetadataValue};
 use tonic::transport::{ClientTlsConfig, Endpoint};
 
 use crate::pb::events_client::EventsClient;
@@ -19,7 +18,12 @@ const MIN_BACKOFF: Duration = Duration::from_secs(1);
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
 // Three missed heartbeats.
 const SILENCE_TIMEOUT: Duration = Duration::from_secs(90);
-const RPC_TIMEOUT: Duration = Duration::from_secs(30);
+// Short in tests, which drive it in real time against a socket.
+const RPC_TIMEOUT: Duration = if cfg!(test) {
+    Duration::from_millis(200)
+} else {
+    Duration::from_secs(30)
+};
 
 pub struct Config {
     /// e.g. `https://octobot.example.com`
@@ -98,13 +102,14 @@ async fn run(
         .context("signing challenge")?
         .to_pem(LineEnding::LF)?;
 
-    let mut req = tonic::Request::new(SubscribeRequest {
+    let req = SubscribeRequest {
+        auth: Some(pb::Auth {
+            username: config.username.clone(),
+            nonce,
+            signature: sig,
+        }),
         kinds: config.kinds.iter().map(|&kind| kind as i32).collect(),
-    });
-    let metadata = req.metadata_mut();
-    metadata.insert(crate::USER_HEADER, config.username.parse()?);
-    metadata.insert_bin(crate::NONCE_HEADER, bin(&nonce));
-    metadata.insert_bin(crate::SIG_HEADER, bin(sig.as_bytes()));
+    };
     let mut stream = deadline("subscribe", client.subscribe(req))
         .await??
         .into_inner();
@@ -143,10 +148,43 @@ async fn deadline<F: Future>(step: &str, fut: F) -> Result<F::Output> {
         .map_err(|_| anyhow!("{} timed out after {:?}", step, RPC_TIMEOUT))
 }
 
-fn bin(bytes: &[u8]) -> BinaryMetadataValue {
-    MetadataValue::from_bytes(bytes)
-}
-
 fn jitter(backoff: Duration) -> Duration {
     backoff.mul_f64(rand::rng().random_range(0.5..1.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::net::TcpListener;
+
+    use super::*;
+
+    struct NeverSigns;
+
+    impl Signer for NeverSigns {
+        fn sign(&self, _msg: &[u8]) -> Result<ssh_key::SshSig> {
+            panic!("a silent server never gets as far as a challenge")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_retries_a_server_that_never_answers() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let _updates = subscribe(
+            Config {
+                endpoint: format!("http://{}", listener.local_addr().unwrap()),
+                username: "joe".into(),
+                kinds: vec![],
+            },
+            Arc::new(NeverSigns),
+        );
+
+        // Held open and never answered. A second connect means the first timed out.
+        let mut silent = vec![];
+        for _ in 0..2 {
+            let accepted = tokio::time::timeout(Duration::from_secs(10), listener.accept())
+                .await
+                .expect("client did not retry");
+            silent.push(accepted.unwrap());
+        }
+    }
 }

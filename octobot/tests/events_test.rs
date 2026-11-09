@@ -10,7 +10,6 @@ use ssh_key::{Algorithm, LineEnding, PrivateKey};
 use tokio::net::TcpListener;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
-use tonic::metadata::MetadataValue;
 use tonic::{Code, Status, Streaming};
 
 use octobot::server::events::{Directory, EventsService};
@@ -141,17 +140,14 @@ impl TestServer {
             .unwrap()
             .to_pem(LineEnding::LF)
             .unwrap();
-        let mut req = tonic::Request::new(SubscribeRequest { kinds: vec![] });
-        let metadata = req.metadata_mut();
-        metadata.insert(octobot_events::USER_HEADER, login.parse().unwrap());
-        metadata.insert_bin(
-            octobot_events::NONCE_HEADER,
-            MetadataValue::from_bytes(nonce),
-        );
-        metadata.insert_bin(
-            octobot_events::SIG_HEADER,
-            MetadataValue::from_bytes(sig.as_bytes()),
-        );
+        let req = SubscribeRequest {
+            auth: Some(pb::Auth {
+                username: login.to_string(),
+                nonce: nonce.to_vec(),
+                signature: sig,
+            }),
+            kinds: vec![],
+        };
         self.raw_client()
             .await
             .subscribe(req)
@@ -379,6 +375,21 @@ async fn test_dropped_subscriptions_release_their_streams() {
 }
 
 #[tokio::test]
+async fn test_rejects_subscribe_without_auth() {
+    let server = TestServer::start(10).await;
+    let err = server
+        .raw_client()
+        .await
+        .subscribe(SubscribeRequest {
+            auth: None,
+            kinds: vec![],
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(Code::Unauthenticated, err.code());
+}
+
+#[tokio::test]
 async fn test_rejects_invalid_username() {
     let server = TestServer::start(10).await;
     let err = server
@@ -390,26 +401,4 @@ async fn test_rejects_invalid_username() {
         .await
         .unwrap_err();
     assert_eq!(Code::InvalidArgument, err.code());
-}
-
-// Paused time skips ahead to the client's timeouts while the server sits silent.
-#[tokio::test(start_paused = true)]
-async fn test_client_retries_a_server_that_never_answers() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let _updates = client::subscribe(
-        client::Config {
-            endpoint: format!("http://{}", listener.local_addr().unwrap()),
-            username: "joe".into(),
-            kinds: vec![],
-        },
-        Arc::new(new_key()),
-    );
-
-    let mut silent = vec![];
-    for _ in 0..2 {
-        let accepted = tokio::time::timeout(Duration::from_secs(3600), listener.accept())
-            .await
-            .expect("client did not retry");
-        silent.push(accepted.unwrap());
-    }
 }
