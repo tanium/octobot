@@ -47,4 +47,4 @@ tonic = "0.14"
 [dev-dependencies]
 ssh-key = { version = "0.6.7", features = ["ed25519", "getrandom"] }
 tempfile = "3"
-tokio ={ version = "1.43.1", features = ["test-util"] }
+tokio = { version = "1.43.1", features = ["test-util"] }
