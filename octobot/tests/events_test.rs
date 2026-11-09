@@ -18,6 +18,7 @@ use octobot_events::pb::events_client::EventsClient;
 use octobot_events::pb::events_server::EventsServer;
 use octobot_events::pb::{self, ChallengeRequest, SubscribeRequest};
 use octobot_events::sign::Signer;
+use octobot_lib::github::Login;
 use octobot_lib::metrics::Metrics;
 use octobot_ops::event_bus::{Change, EventBus, Kind};
 
@@ -38,6 +39,10 @@ impl FakeDirectory {
             .push(key.public_key().to_openssh().unwrap());
     }
 
+    fn remove(&self, login: &str) {
+        self.keys.lock().unwrap().remove(login);
+    }
+
     fn lookups(&self) -> usize {
         self.lookups.load(Ordering::SeqCst)
     }
@@ -45,17 +50,20 @@ impl FakeDirectory {
 
 #[async_trait]
 impl Directory for FakeDirectory {
-    fn is_user(&self, login: &str) -> anyhow::Result<bool> {
-        Ok(self.keys.lock().unwrap().contains_key(login))
+    fn user(&self, username: &str) -> anyhow::Result<Option<Login>> {
+        // Like the users table, matches case-insensitively before parsing what it stores.
+        let name = username.to_lowercase();
+        let is_user = self.keys.lock().unwrap().contains_key(&name);
+        is_user.then(|| Login::parse(&name)).transpose()
     }
 
-    async fn keys(&self, login: &str) -> anyhow::Result<Vec<String>> {
+    async fn keys(&self, login: &Login) -> anyhow::Result<Vec<String>> {
         self.lookups.fetch_add(1, Ordering::SeqCst);
         Ok(self
             .keys
             .lock()
             .unwrap()
-            .get(login)
+            .get(login.as_str())
             .cloned()
             .unwrap_or_default())
     }
@@ -347,6 +355,21 @@ async fn test_rejects_signature_for_another_server() {
 }
 
 #[tokio::test]
+async fn test_refuses_subscribe_for_user_removed_after_challenge() {
+    let server = TestServer::start(10).await;
+    let key = new_key();
+    server.directory.add("joe", &key);
+
+    let nonce = server.challenge("joe").await;
+    server.directory.remove("joe");
+    let err = server
+        .raw_subscribe("joe", &nonce, &key, &server.addr.to_string())
+        .await
+        .unwrap_err();
+    assert_eq!(Code::PermissionDenied, err.code());
+}
+
+#[tokio::test]
 async fn test_refuses_challenge_for_non_user() {
     let server = TestServer::start(10).await;
     let err = server
@@ -387,18 +410,4 @@ async fn test_rejects_subscribe_without_auth() {
         .await
         .unwrap_err();
     assert_eq!(Code::Unauthenticated, err.code());
-}
-
-#[tokio::test]
-async fn test_rejects_invalid_username() {
-    let server = TestServer::start(10).await;
-    let err = server
-        .raw_client()
-        .await
-        .challenge(ChallengeRequest {
-            username: "../orgs/x".into(),
-        })
-        .await
-        .unwrap_err();
-    assert_eq!(Code::InvalidArgument, err.code());
 }

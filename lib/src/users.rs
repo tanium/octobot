@@ -9,6 +9,7 @@ use ts_rs::TS;
 use crate::config_db::ConfigDatabase;
 use crate::db;
 use crate::errors::*;
+use crate::github::Login;
 use crate::slack::SlackRecipient;
 
 // Apply to users who have never set the matching option.
@@ -222,11 +223,17 @@ impl UserConfig {
         }
     }
 
-    /// GitHub logins are case-insensitive.
-    pub fn is_github_user(&self, github_name: &str) -> Result<bool> {
+    /// The user's GitHub login, if `github_name` names one (GitHub logins are case-insensitive).
+    /// Fails if the stored login is not a valid GitHub login.
+    pub fn github_login(&self, github_name: &str) -> Result<Option<Login>> {
         let conn = self.db.connect()?;
-        let mut stmt = conn.prepare("SELECT 1 FROM users WHERE github_name = ?1 COLLATE NOCASE")?;
-        Ok(stmt.exists([github_name])?)
+        let mut stmt =
+            conn.prepare("SELECT github_name FROM users WHERE github_name = ?1 COLLATE NOCASE")?;
+        let mut names = stmt.query_map([github_name], |row| row.get::<usize, String>(0))?;
+        match names.next() {
+            Some(name) => Ok(Some(Login::parse(&name?)?)),
+            None => Ok(None),
+        }
     }
 
     fn do_lookup_info(&self, github_name: &str) -> Result<Option<UserInfo>> {
@@ -310,6 +317,24 @@ mod tests {
             group_reviews: false,
             thread_reply_notifications: false,
         }
+    }
+
+    #[test]
+    fn test_github_login_matches_case_insensitively() {
+        let (mut users, _temp) = new_test();
+        users.insert("Some-User", "the-slacker").unwrap();
+
+        let login = users.github_login("some-USER").unwrap();
+        assert_eq!(Some("some-user"), login.as_ref().map(Login::as_str));
+        assert_eq!(None, users.github_login("other-user").unwrap());
+    }
+
+    #[test]
+    fn test_github_login_refuses_invalid_stored_login() {
+        let (mut users, _temp) = new_test();
+        users.insert("some user", "the-slacker").unwrap();
+
+        assert!(users.github_login("some user").is_err());
     }
 
     #[test]

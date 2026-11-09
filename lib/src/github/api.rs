@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use time::format_description::well_known::Rfc3339;
 
 use crate::errors::*;
+use crate::github::Login;
 use crate::github::models::*;
 use crate::github::models_checks::*;
 use crate::http_client::{HTTPClient, HttpError};
@@ -157,7 +158,7 @@ pub trait GithubSessionFactory: Send + Sync {
     async fn get_token_org(&self, org: &str) -> Result<String>;
     async fn get_token_repo(&self, owner: &str, repo: &str) -> Result<String>;
     /// The user's public SSH keys, one OpenSSH-format key per entry.
-    async fn get_user_keys(&self, login: &str) -> Result<Vec<String>>;
+    async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>>;
     fn bot_name(&self) -> String;
 }
 
@@ -390,7 +391,7 @@ impl GithubSessionFactory for GithubApp {
 
     // The app's JWT only reaches /app endpoints, but any installation's token can read a
     // user's public keys.
-    async fn get_user_keys(&self, login: &str) -> Result<Vec<String>> {
+    async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>> {
         #[derive(Deserialize)]
         struct Installation {
             id: u32,
@@ -499,7 +500,7 @@ impl GithubSessionFactory for GithubOauthApp {
         return self.new_session("", "").await;
     }
 
-    async fn get_user_keys(&self, login: &str) -> Result<Vec<String>> {
+    async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>> {
         self.new_service_session().await?.get_user_keys(login).await
     }
 }
@@ -573,7 +574,7 @@ impl GithubSession {
         })
     }
 
-    async fn get_user_keys(&self, login: &str) -> Result<Vec<String>> {
+    async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>> {
         #[derive(Deserialize)]
         struct Key {
             key: String,
@@ -1350,7 +1351,7 @@ mod tests {
             .await;
 
         let keys = session_for_test(&server.url())
-            .get_user_keys("joe")
+            .get_user_keys(&Login::parse("joe").unwrap())
             .await
             .unwrap();
         assert_eq!(vec!["ssh-ed25519 AAAA".to_string()], keys);
@@ -1366,7 +1367,7 @@ mod tests {
             .await;
 
         let keys = session_for_test(&server.url())
-            .get_user_keys("joe")
+            .get_user_keys(&Login::parse("joe").unwrap())
             .await
             .unwrap();
         assert!(keys.is_empty());
@@ -1381,7 +1382,9 @@ mod tests {
             .create_async()
             .await;
 
-        let result = session_for_test(&server.url()).get_user_keys("joe").await;
+        let result = session_for_test(&server.url())
+            .get_user_keys(&Login::parse("joe").unwrap())
+            .await;
         assert!(result.is_err());
     }
 

@@ -16,6 +16,7 @@ use octobot_events::NAMESPACE;
 use octobot_events::pb::events_server::Events;
 use octobot_events::pb::{self, ChallengeRequest, ChallengeResponse, SubscribeRequest, event};
 use octobot_lib::config::Config;
+use octobot_lib::github::Login;
 use octobot_lib::github::api::GithubSessionFactory;
 use octobot_lib::metrics::{self, Metrics, ScopedGaugeCounter};
 use octobot_ops::event_bus::{Event, EventBus, Kind};
@@ -65,7 +66,16 @@ impl EventsService {
         })
     }
 
-    async fn authenticate(&self, auth: Option<&pb::Auth>) -> Result<(String, PublicKey), Status> {
+    /// Only octobot users get hints. The lookup also yields a login safe to put in a GitHub API
+    /// path, and refusing others keeps strangers from making octobot look up arbitrary logins.
+    fn octobot_user(&self, username: &str) -> Result<Login, AuthFailure> {
+        self.directory
+            .user(username)
+            .map_err(AuthFailure::UserLookup)?
+            .ok_or(AuthFailure::NotUser)
+    }
+
+    async fn authenticate(&self, auth: Option<&pb::Auth>) -> Result<(Login, PublicKey), Status> {
         let result = self.verify(auth).await;
         if let Err(failure) = &result {
             self.metrics
@@ -76,15 +86,15 @@ impl EventsService {
         result.map_err(AuthFailure::status)
     }
 
-    async fn verify(&self, auth: Option<&pb::Auth>) -> Result<(String, PublicKey), AuthFailure> {
+    async fn verify(&self, auth: Option<&pb::Auth>) -> Result<(Login, PublicKey), AuthFailure> {
         let auth = auth.ok_or(AuthFailure::Malformed("missing auth"))?;
-        let login = auth.username.to_lowercase();
+        let login = self.octobot_user(&auth.username)?;
         let sig = SshSig::from_pem(&auth.signature)
             .map_err(|_| AuthFailure::Malformed("bad signature"))?;
 
         let expiry = self
             .challenges
-            .check(&auth.nonce, &login)
+            .check(&auth.nonce, login.as_str())
             .ok_or(AuthFailure::Nonce)?;
         let msg = octobot_events::signed_message(&self.authority, &auth.nonce);
         let key = self.keys.verify(&login, &msg, &sig).await?;
@@ -101,26 +111,10 @@ impl Events for EventsService {
         &self,
         req: Request<ChallengeRequest>,
     ) -> Result<Response<ChallengeResponse>, Status> {
-        let login = req.into_inner().username.to_lowercase();
-        // The login goes into a GitHub API path.
-        if login.is_empty()
-            || !login
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(Status::invalid_argument("invalid username"));
-        }
-        // Only octobot users get hints. Refusing others here also keeps strangers from making
-        // octobot look up arbitrary logins on GitHub.
-        let is_user = self.directory.is_user(&login).map_err(|e| {
-            warn!("Error looking up octobot user {}: {:#}", login, e);
-            Status::unavailable("could not look up octobot users")
-        })?;
-        if !is_user {
-            return Err(Status::permission_denied("not an octobot user"));
-        }
-
-        let (nonce, expires) = self.challenges.issue(&login)?;
+        let login = self
+            .octobot_user(&req.into_inner().username)
+            .map_err(AuthFailure::status)?;
+        let (nonce, expires) = self.challenges.issue(login.as_str())?;
         Ok(Response::new(ChallengeResponse {
             nonce,
             expires_unix: expires.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
@@ -135,7 +129,7 @@ impl Events for EventsService {
     ) -> Result<Response<Self::SubscribeStream>, Status> {
         let req = req.into_inner();
         let (login, key) = self.authenticate(req.auth.as_ref()).await?;
-        let slot = StreamCounts::open(&self.streams, &login)?;
+        let slot = StreamCounts::open(&self.streams, login.as_str())?;
         info!("Opening event stream for {}", login);
 
         let stream = Stream {
@@ -159,6 +153,8 @@ impl Events for EventsService {
 
 enum AuthFailure {
     Malformed(&'static str),
+    NotUser,
+    UserLookup(anyhow::Error),
     Nonce,
     Signature,
     KeyLookup(anyhow::Error),
@@ -168,6 +164,8 @@ impl AuthFailure {
     fn reason(&self) -> &'static str {
         match self {
             AuthFailure::Malformed(_) => "malformed",
+            AuthFailure::NotUser => "not_user",
+            AuthFailure::UserLookup(_) => "user_lookup",
             AuthFailure::Nonce => "nonce",
             AuthFailure::Signature => "signature",
             AuthFailure::KeyLookup(_) => "key_lookup",
@@ -177,6 +175,11 @@ impl AuthFailure {
     fn status(self) -> Status {
         match self {
             AuthFailure::Malformed(msg) => Status::unauthenticated(msg),
+            AuthFailure::NotUser => Status::permission_denied("not an octobot user"),
+            AuthFailure::UserLookup(e) => {
+                warn!("Error looking up octobot user: {:#}", e);
+                Status::unavailable("could not look up octobot users")
+            }
             AuthFailure::Nonce => Status::unauthenticated("unknown or expired challenge"),
             AuthFailure::Signature => {
                 Status::unauthenticated("signature does not match the user's GitHub keys")
@@ -261,10 +264,10 @@ fn tagged(login: &str, body: &[u8]) -> Vec<u8> {
 /// Who may subscribe, and with which keys.
 #[async_trait]
 pub trait Directory: Send + Sync {
-    /// Whether `login` is in octobot's users table.
-    fn is_user(&self, login: &str) -> anyhow::Result<bool>;
+    /// The login of the octobot user named `username`, if there is one.
+    fn user(&self, username: &str) -> anyhow::Result<Option<Login>>;
     /// The user's public SSH keys on GitHub, in OpenSSH format.
-    async fn keys(&self, login: &str) -> anyhow::Result<Vec<String>>;
+    async fn keys(&self, login: &Login) -> anyhow::Result<Vec<String>>;
 }
 
 pub struct GithubDirectory {
@@ -274,11 +277,11 @@ pub struct GithubDirectory {
 
 #[async_trait]
 impl Directory for GithubDirectory {
-    fn is_user(&self, login: &str) -> anyhow::Result<bool> {
-        self.config.users().is_github_user(login)
+    fn user(&self, username: &str) -> anyhow::Result<Option<Login>> {
+        self.config.users().github_login(username)
     }
 
-    async fn keys(&self, login: &str) -> anyhow::Result<Vec<String>> {
+    async fn keys(&self, login: &Login) -> anyhow::Result<Vec<String>> {
         self.github.get_user_keys(login).await
     }
 }
@@ -286,11 +289,11 @@ impl Directory for GithubDirectory {
 /// Removing a key on GitHub revokes it here within `KEYS_TTL`.
 struct KeyCache {
     directory: Arc<dyn Directory>,
-    entries: Mutex<HashMap<String, CachedKeys>>,
+    entries: Mutex<HashMap<Login, CachedKeys>>,
     // Last lookup per login, failed or not
-    attempts: Mutex<HashMap<String, Attempt>>,
+    attempts: Mutex<HashMap<Login, Attempt>>,
     // One lookup per login at a time; callers that arrive mid-lookup share its result.
-    in_flight: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    in_flight: Mutex<HashMap<Login, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 #[derive(Clone)]
@@ -319,7 +322,7 @@ impl KeyCache {
     /// The user's key that made `sig`.
     async fn verify(
         self: &Arc<Self>,
-        login: &str,
+        login: &Login,
         msg: &[u8],
         sig: &SshSig,
     ) -> Result<PublicKey, AuthFailure> {
@@ -343,7 +346,7 @@ impl KeyCache {
     }
 
     /// Whether `key` is still one of the user's keys on GitHub.
-    async fn has(self: &Arc<Self>, login: &str, key: &PublicKey) -> anyhow::Result<bool> {
+    async fn has(self: &Arc<Self>, login: &Login, key: &PublicKey) -> anyhow::Result<bool> {
         let keys = match self.cached(login) {
             Some(cached) => cached.keys,
             None => self.fetch(login).await?.ok_or_else(|| too_soon(login))?,
@@ -351,7 +354,7 @@ impl KeyCache {
         Ok(keys.iter().any(|k| k.key_data() == key.key_data()))
     }
 
-    fn cached(&self, login: &str) -> Option<CachedKeys> {
+    fn cached(&self, login: &Login) -> Option<CachedKeys> {
         self.entries
             .lock()
             .unwrap()
@@ -363,19 +366,19 @@ impl KeyCache {
     /// Looks up the user's keys on GitHub. Within `KEYS_REFETCH_FLOOR` of the last lookup, returns
     /// its keys instead, or None if it failed, so neither bad signatures nor GitHub errors cause
     /// a lookup each time.
-    async fn fetch(self: &Arc<Self>, login: &str) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
+    async fn fetch(self: &Arc<Self>, login: &Login) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
         // In its own task, so a caller hanging up mid-lookup cannot keep it from being recorded.
         let cache = self.clone();
-        let login = login.to_string();
+        let login = login.clone();
         tokio::spawn(async move { cache.fetch_recorded(&login).await }).await?
     }
 
-    async fn fetch_recorded(&self, login: &str) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
+    async fn fetch_recorded(&self, login: &Login) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
         let in_flight = self
             .in_flight
             .lock()
             .unwrap()
-            .entry(login.to_string())
+            .entry(login.clone())
             .or_default()
             .clone();
         let _one_at_a_time = in_flight.lock().await;
@@ -397,7 +400,7 @@ impl KeyCache {
             .unwrap_or_else(|_| Err(anyhow::anyhow!("key lookup for {} timed out", login)));
         let keys = result.as_ref().ok().cloned();
         self.attempts.lock().unwrap().insert(
-            login.to_string(),
+            login.clone(),
             Attempt {
                 at: Instant::now(),
                 keys: keys.clone(),
@@ -405,7 +408,7 @@ impl KeyCache {
         );
         if let Some(keys) = keys {
             self.entries.lock().unwrap().insert(
-                login.to_string(),
+                login.clone(),
                 CachedKeys {
                     fetched: Instant::now(),
                     keys,
@@ -415,7 +418,7 @@ impl KeyCache {
         result.map(Some)
     }
 
-    async fn lookup(&self, login: &str) -> anyhow::Result<Arc<Vec<PublicKey>>> {
+    async fn lookup(&self, login: &Login) -> anyhow::Result<Arc<Vec<PublicKey>>> {
         let keys: Vec<PublicKey> = self
             .directory
             .keys(login)
@@ -433,7 +436,7 @@ impl KeyCache {
     }
 }
 
-fn too_soon(login: &str) -> anyhow::Error {
+fn too_soon(login: &Login) -> anyhow::Error {
     anyhow::anyhow!("keys for {} were looked up too recently", login)
 }
 
@@ -486,7 +489,7 @@ impl Drop for StreamSlot {
 }
 
 struct Stream {
-    login: String,
+    login: Login,
     /// The key that authenticated the stream
     key: PublicKey,
     directory: Arc<dyn Directory>,
@@ -564,11 +567,12 @@ impl Stream {
     }
 
     async fn still_allowed(&self) -> anyhow::Result<bool> {
-        Ok(self.directory.is_user(&self.login)? && self.keys.has(&self.login, &self.key).await?)
+        let user = self.directory.user(self.login.as_str())?;
+        Ok(user.is_some() && self.keys.has(&self.login, &self.key).await?)
     }
 
     fn wants(&self, event: &Event) -> bool {
-        event.is_for(&self.login)
+        event.is_for(self.login.as_str())
             && (self.kinds.is_empty() || self.kinds.contains(&pb_kind(event.change.kind)))
     }
 }
@@ -625,12 +629,15 @@ mod tests {
 
     #[async_trait]
     impl Directory for FakeDirectory {
-        fn is_user(&self, login: &str) -> anyhow::Result<bool> {
-            Ok(self.keys.lock().unwrap().contains_key(login)
-                && !self.removed_users.lock().unwrap().contains(login))
+        fn user(&self, username: &str) -> anyhow::Result<Option<Login>> {
+            // Like the users table, matches case-insensitively before parsing what it stores.
+            let name = username.to_lowercase();
+            let is_user = self.keys.lock().unwrap().contains_key(&name)
+                && !self.removed_users.lock().unwrap().contains(&name);
+            is_user.then(|| Login::parse(&name)).transpose()
         }
 
-        async fn keys(&self, login: &str) -> anyhow::Result<Vec<String>> {
+        async fn keys(&self, login: &Login) -> anyhow::Result<Vec<String>> {
             self.lookups.fetch_add(1, Ordering::SeqCst);
             let delay = *self.delay.lock().unwrap();
             tokio::time::sleep(delay).await;
@@ -641,10 +648,14 @@ mod tests {
                 .keys
                 .lock()
                 .unwrap()
-                .get(login)
+                .get(login.as_str())
                 .cloned()
                 .unwrap_or_default())
         }
+    }
+
+    fn joe() -> Login {
+        Login::parse("joe").unwrap()
     }
 
     fn new_key() -> PrivateKey {
@@ -661,16 +672,16 @@ mod tests {
         let old = new_key();
         directory.set("joe", &[&old]);
         let cache = Arc::new(KeyCache::new(directory.clone()));
-        assert!(cache.verify("joe", b"msg", &sign(&old)).await.is_ok());
+        assert!(cache.verify(&joe(), b"msg", &sign(&old)).await.is_ok());
 
         let new = new_key();
         directory.set("joe", &[&old, &new]);
-        let result = cache.verify("joe", b"msg", &sign(&new)).await;
+        let result = cache.verify(&joe(), b"msg", &sign(&new)).await;
         assert!(matches!(result, Err(AuthFailure::Signature)));
         assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
 
         tokio::time::advance(KEYS_REFETCH_FLOOR).await;
-        assert!(cache.verify("joe", b"msg", &sign(&new)).await.is_ok());
+        assert!(cache.verify(&joe(), b"msg", &sign(&new)).await.is_ok());
     }
 
     #[test]
@@ -694,14 +705,14 @@ mod tests {
         let cache = Arc::new(KeyCache::new(directory.clone()));
 
         for _ in 0..3 {
-            let result = cache.verify("joe", b"msg", &sign(&key)).await;
+            let result = cache.verify(&joe(), b"msg", &sign(&key)).await;
             assert!(matches!(result, Err(AuthFailure::KeyLookup(_))));
         }
         assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
 
         directory.failing.store(false, Ordering::SeqCst);
         tokio::time::advance(KEYS_REFETCH_FLOOR).await;
-        assert!(cache.verify("joe", b"msg", &sign(&key)).await.is_ok());
+        assert!(cache.verify(&joe(), b"msg", &sign(&key)).await.is_ok());
     }
 
     #[tokio::test(start_paused = true)]
@@ -713,9 +724,10 @@ mod tests {
         let cache = Arc::new(KeyCache::new(directory.clone()));
 
         let sig = sign(&key);
+        let login = joe();
         let (first, second) = tokio::join!(
-            cache.verify("joe", b"msg", &sig),
-            cache.verify("joe", b"msg", &sig)
+            cache.verify(&login, b"msg", &sig),
+            cache.verify(&login, b"msg", &sig)
         );
         assert!(first.is_ok());
         assert!(second.is_ok());
@@ -733,10 +745,10 @@ mod tests {
 
         let sig = sign(&key);
         let cancelled =
-            tokio::time::timeout(Duration::from_secs(1), cache.verify("joe", b"msg", &sig)).await;
+            tokio::time::timeout(Duration::from_secs(1), cache.verify(&joe(), b"msg", &sig)).await;
         assert!(cancelled.is_err());
 
-        assert!(cache.verify("joe", b"msg", &sig).await.is_ok());
+        assert!(cache.verify(&joe(), b"msg", &sig).await.is_ok());
         assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
     }
 
@@ -750,7 +762,7 @@ mod tests {
 
         let sig = sign(&key);
         for _ in 0..2 {
-            let result = cache.verify("joe", b"msg", &sig).await;
+            let result = cache.verify(&joe(), b"msg", &sig).await;
             assert!(matches!(result, Err(AuthFailure::KeyLookup(_))));
         }
         assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
@@ -764,7 +776,7 @@ mod tests {
         let metrics = Metrics::new();
         let counts = Arc::new(StreamCounts::new());
         let stream = Stream {
-            login: "joe".into(),
+            login: joe(),
             key: key.public_key().clone(),
             directory: directory.clone(),
             // Empty, so the first recheck asks the directory.
