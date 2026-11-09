@@ -28,8 +28,8 @@ message ChallengeResponse {
 // Streams are live only: changes from before a (re)connect are not sent, so
 // load state from GitHub after each one.
 message SubscribeRequest {
-  // GitHub event names (X-GitHub-Event) to receive; empty means all.
-  repeated string kinds = 1;
+  // Kinds to receive; empty means all.
+  repeated Kind kinds = 1;
 }
 
 message Event {
@@ -45,11 +45,22 @@ message Event {
 message Change {
   // "org/repo"
   string repo = 1;
-  // X-GitHub-Event value
-  string kind = 2;
+  Kind kind = 2;
+  // GitHub's webhook action (opened, submitted, ...); empty for push.
   string action = 3;
   // Pull request or issue number; 0 if none.
   uint64 number = 4;
+}
+
+// The GitHub webhook events (X-GitHub-Event) octobot notifies people about
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  KIND_PULL_REQUEST = 1;
+  KIND_PULL_REQUEST_REVIEW = 2;
+  KIND_PULL_REQUEST_REVIEW_COMMENT = 3;
+  KIND_COMMIT_COMMENT = 4;
+  KIND_ISSUE_COMMENT = 5;
+  KIND_PUSH = 6;
 }
 
 message Heartbeat {}

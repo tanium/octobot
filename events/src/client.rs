@@ -26,8 +26,8 @@ pub struct Config {
     pub endpoint: String,
     /// GitHub login
     pub username: String,
-    /// GitHub event names to receive; empty means all.
-    pub kinds: Vec<String>,
+    /// Kinds to receive; empty means all.
+    pub kinds: Vec<pb::Kind>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -99,7 +99,7 @@ async fn run(
         .to_pem(LineEnding::LF)?;
 
     let mut req = tonic::Request::new(SubscribeRequest {
-        kinds: config.kinds.clone(),
+        kinds: config.kinds.iter().map(|&kind| kind as i32).collect(),
     });
     let metadata = req.metadata_mut();
     metadata.insert(crate::USER_HEADER, config.username.parse()?);

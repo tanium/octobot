@@ -17,7 +17,7 @@ use octobot_lib::github::CommentLike;
 use octobot_lib::github::api::Session;
 use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
-use octobot_ops::event_bus::EventBus;
+use octobot_ops::event_bus::{EventBus, Kind};
 use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::git_clone_manager::GitCloneManager;
 use octobot_ops::github_markdown;
@@ -405,10 +405,15 @@ impl Handler for GithubHandler {
             data.pull_request = Some(changed_pr);
         }
 
+        let mut messenger = messenger::new(config.clone(), slack)
+            .with_review_groups(self.state.review_groups.clone());
+        // Other events never message people.
+        if let Some(kind) = Kind::from_event(&event) {
+            messenger = messenger.with_events(self.state.event_bus.clone(), kind, &action);
+        }
+
         let handler = GithubEventHandler {
-            messenger: messenger::new(config.clone(), slack)
-                .with_review_groups(self.state.review_groups.clone())
-                .with_events(self.state.event_bus.clone(), &event, &action),
+            messenger,
             event: event.clone(),
             data,
             repository,

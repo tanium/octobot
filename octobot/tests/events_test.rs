@@ -20,7 +20,7 @@ use octobot_events::pb::events_server::EventsServer;
 use octobot_events::pb::{self, ChallengeRequest, SubscribeRequest, event};
 use octobot_events::sign::Signer;
 use octobot_lib::metrics::Metrics;
-use octobot_ops::event_bus::{Change, EventBus};
+use octobot_ops::event_bus::{Change, EventBus, Kind};
 
 /// Octobot users and their GitHub keys. A user is anyone given a key.
 #[derive(Default)]
@@ -97,12 +97,17 @@ impl TestServer {
         format!("http://{}", self.addr)
     }
 
-    fn subscribe(&self, login: &str, kinds: &[&str], key: PrivateKey) -> ReceiverStream<Update> {
+    fn subscribe(
+        &self,
+        login: &str,
+        kinds: &[pb::Kind],
+        key: PrivateKey,
+    ) -> ReceiverStream<Update> {
         client::subscribe(
             client::Config {
                 endpoint: self.endpoint(),
                 username: login.to_string(),
-                kinds: kinds.iter().map(|k| k.to_string()).collect(),
+                kinds: kinds.to_vec(),
             },
             Arc::new(key),
         )
@@ -154,7 +159,7 @@ impl TestServer {
             .map(|r| r.into_inner())
     }
 
-    fn publish(&self, recipients: &[&str], kind: &str, number: u64) {
+    fn publish(&self, recipients: &[&str], kind: Kind, number: u64) {
         self.bus.publish(
             recipients.iter().map(|r| r.to_string()),
             change(kind, number),
@@ -166,19 +171,19 @@ fn new_key() -> PrivateKey {
     PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap()
 }
 
-fn change(kind: &str, number: u64) -> Change {
+fn change(kind: Kind, number: u64) -> Change {
     Change {
         repo: "some-org/some-repo".into(),
-        kind: kind.into(),
+        kind,
         action: "opened".into(),
         number,
     }
 }
 
-fn pb_change(kind: &str, number: u64) -> pb::Change {
+fn pb_change(kind: pb::Kind, number: u64) -> pb::Change {
     pb::Change {
         repo: "some-org/some-repo".into(),
-        kind: kind.into(),
+        kind: kind as i32,
         action: "opened".into(),
         number,
     }
@@ -201,10 +206,10 @@ async fn test_streams_changes_for_the_user() {
     let mut updates = server.subscribe("Joe", &[], key);
     assert_eq!(Update::Reset, next(&mut updates).await);
 
-    server.publish(&["bob"], "pull_request", 1);
-    server.publish(&["bob", "joe"], "pull_request", 2);
+    server.publish(&["bob"], Kind::PullRequest, 1);
+    server.publish(&["bob", "joe"], Kind::PullRequest, 2);
     assert_eq!(
-        Update::Change(pb_change("pull_request", 2)),
+        Update::Change(pb_change(pb::Kind::PullRequest, 2)),
         next(&mut updates).await
     );
 }
@@ -215,13 +220,13 @@ async fn test_filters_kinds() {
     let key = new_key();
     server.directory.add("joe", &key);
 
-    let mut updates = server.subscribe("joe", &["push"], key);
+    let mut updates = server.subscribe("joe", &[pb::Kind::Push], key);
     assert_eq!(Update::Reset, next(&mut updates).await);
 
-    server.publish(&["joe"], "pull_request", 1);
-    server.publish(&["joe"], "push", 2);
+    server.publish(&["joe"], Kind::PullRequest, 1);
+    server.publish(&["joe"], Kind::Push, 2);
     assert_eq!(
-        Update::Change(pb_change("push", 2)),
+        Update::Change(pb_change(pb::Kind::Push, 2)),
         next(&mut updates).await
     );
 }
@@ -240,9 +245,9 @@ async fn test_lagging_stream_resets() {
         .await
         .unwrap();
 
-    server.publish(&["joe"], "push", 1);
-    server.publish(&["joe"], "push", 2);
-    server.publish(&["joe"], "push", 3);
+    server.publish(&["joe"], Kind::Push, 1);
+    server.publish(&["joe"], Kind::Push, 2);
+    server.publish(&["joe"], Kind::Push, 3);
 
     let body = |e: Result<pb::Event, Status>| e.unwrap().body.unwrap();
     assert_eq!(
@@ -250,7 +255,7 @@ async fn test_lagging_stream_resets() {
         body(next(&mut stream).await)
     );
     assert_eq!(
-        event::Body::Change(pb_change("push", 3)),
+        event::Body::Change(pb_change(pb::Kind::Push, 3)),
         body(next(&mut stream).await)
     );
 }

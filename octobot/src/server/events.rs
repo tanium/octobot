@@ -19,7 +19,7 @@ use octobot_events::{NAMESPACE, NONCE_HEADER, SIG_HEADER, USER_HEADER};
 use octobot_lib::config::Config;
 use octobot_lib::github::api::GithubSessionFactory;
 use octobot_lib::metrics::{self, Metrics, ScopedGaugeCounter};
-use octobot_ops::event_bus::{Event, EventBus};
+use octobot_ops::event_bus::{Event, EventBus, Kind};
 
 const CHALLENGE_TTL: Duration = Duration::from_secs(60);
 // Also how often an open stream rechecks that its user and key still exist.
@@ -154,7 +154,7 @@ impl Events for EventsService {
             key,
             directory: self.directory.clone(),
             keys: self.keys.clone(),
-            kinds: req.kinds.into_iter().collect(),
+            kinds: req.kinds().collect(),
             metrics: self.metrics.clone(),
             _slot: slot,
             _count: metrics::scoped_inc(&self.metrics.current_event_stream_count),
@@ -503,7 +503,7 @@ struct Stream {
     directory: Arc<dyn Directory>,
     keys: Arc<KeyCache>,
     /// Empty means all.
-    kinds: HashSet<String>,
+    kinds: HashSet<pb::Kind>,
     metrics: Arc<Metrics>,
     _slot: StreamSlot,
     _count: ScopedGaugeCounter,
@@ -544,7 +544,7 @@ impl Stream {
                         }
                         event::Body::Change(pb::Change {
                             repo: event.change.repo.clone(),
-                            kind: event.change.kind.clone(),
+                            kind: pb_kind(event.change.kind) as i32,
                             action: event.change.action.clone(),
                             number: event.change.number,
                         })
@@ -574,13 +574,24 @@ impl Stream {
 
     fn wants(&self, event: &Event) -> bool {
         event.is_for(&self.login)
-            && (self.kinds.is_empty() || self.kinds.contains(&event.change.kind))
+            && (self.kinds.is_empty() || self.kinds.contains(&pb_kind(event.change.kind)))
     }
 }
 
 impl Drop for Stream {
     fn drop(&mut self) {
         info!("Closed event stream for {}", self.login);
+    }
+}
+
+fn pb_kind(kind: Kind) -> pb::Kind {
+    match kind {
+        Kind::PullRequest => pb::Kind::PullRequest,
+        Kind::PullRequestReview => pb::Kind::PullRequestReview,
+        Kind::PullRequestReviewComment => pb::Kind::PullRequestReviewComment,
+        Kind::CommitComment => pb::Kind::CommitComment,
+        Kind::IssueComment => pb::Kind::IssueComment,
+        Kind::Push => pb::Kind::Push,
     }
 }
 

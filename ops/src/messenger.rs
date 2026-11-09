@@ -2,7 +2,7 @@ use log::info;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::event_bus::{Change, EventBus};
+use crate::event_bus::{Change, EventBus, Kind};
 use crate::review_group::{ReviewGroups, ReviewItem};
 use crate::slack::{self, SlackAttachment, SlackRequest, ThreadRoot, Threading};
 use crate::util;
@@ -21,7 +21,7 @@ pub struct Messenger {
 /// The GitHub event being handled, for publishing hints about it.
 struct EventSource {
     bus: Arc<EventBus>,
-    kind: String,
+    kind: Kind,
     action: String,
 }
 
@@ -162,11 +162,11 @@ impl Messenger {
 
     /// Publishes a hint to `bus` for each message sent to participants. `kind` and `action`
     /// name the GitHub event being handled.
-    pub fn with_events(self, bus: Arc<EventBus>, kind: &str, action: &str) -> Messenger {
+    pub fn with_events(self, bus: Arc<EventBus>, kind: Kind, action: &str) -> Messenger {
         Messenger {
             events: Some(EventSource {
                 bus,
-                kind: kind.to_string(),
+                kind,
                 action: action.to_string(),
             }),
             ..self
@@ -266,7 +266,7 @@ impl Messenger {
                 recipients.iter().cloned(),
                 Change {
                     repo: repo.full_name.clone(),
-                    kind: events.kind.clone(),
+                    kind: events.kind,
                     action: events.action.clone(),
                     number,
                 },

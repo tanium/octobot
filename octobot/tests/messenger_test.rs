@@ -2,7 +2,7 @@ mod mocks;
 
 use std::sync::Arc;
 
-use octobot_ops::event_bus::{Change, Event, EventBus};
+use octobot_ops::event_bus::{Change, Event, EventBus, Kind};
 use octobot_ops::messenger::{Participants, Thread};
 use tempfile::{TempDir, tempdir};
 use tokio::sync::broadcast;
@@ -662,7 +662,7 @@ fn published(receiver: &mut broadcast::Receiver<Arc<Event>>) -> Vec<(Vec<String>
 fn review_change(number: u64) -> Change {
     Change {
         repo: "the-owner/the-repo".into(),
-        kind: "pull_request_review".into(),
+        kind: Kind::PullRequestReview,
         action: "submitted".into(),
         number,
     }
@@ -685,7 +685,7 @@ fn test_publishes_to_participants_slack_ignores() {
     let slack = MockSlack::new(vec![]);
     let messenger = messenger::new(Arc::new(config), slack.new_sender()).with_events(
         bus.clone(),
-        "pull_request_review",
+        Kind::PullRequestReview,
         "submitted",
     );
     messenger.send_to_all(
@@ -727,7 +727,7 @@ fn test_publishes_once_per_thread_number() {
     )]);
     let messenger = messenger::new(config, slack.new_sender()).with_events(
         bus.clone(),
-        "pull_request_review",
+        Kind::PullRequestReview,
         "submitted",
     );
     messenger.send_to_all(
@@ -766,7 +766,7 @@ fn test_publishes_without_thread_as_number_zero() {
     )]);
     let messenger = messenger::new(config, slack.new_sender()).with_events(
         bus.clone(),
-        "pull_request_review",
+        Kind::PullRequestReview,
         "submitted",
     );
     messenger.send_to_all(
