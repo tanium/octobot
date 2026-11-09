@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use log::{info, warn};
 use ring::hmac;
 use ring::rand::{SecureRandom, SystemRandom};
-use ssh_key::{PublicKey, SshSig};
+use ssh_key::{HashAlg, PublicKey, SshSig};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
@@ -114,10 +114,21 @@ impl Events for EventsService {
         let login = self
             .octobot_user(&req.into_inner().username)
             .map_err(AuthFailure::status)?;
+        // Public on GitHub anyway; telling the client lets it sign with the right agent key.
+        // Subscribe then usually finds them cached.
+        let keys = self
+            .keys
+            .current(&login)
+            .await
+            .map_err(|e| AuthFailure::KeyLookup(e).status())?;
         let (nonce, expires) = self.challenges.issue(login.as_str())?;
         Ok(Response::new(ChallengeResponse {
             nonce,
             expires_unix: expires.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+            key_fingerprints: keys
+                .iter()
+                .map(|key| key.fingerprint(HashAlg::Sha256).to_string())
+                .collect(),
         }))
     }
 
@@ -347,11 +358,16 @@ impl KeyCache {
 
     /// Whether `key` is still one of the user's keys on GitHub.
     async fn has(self: &Arc<Self>, login: &Login, key: &PublicKey) -> anyhow::Result<bool> {
-        let keys = match self.cached(login) {
-            Some(cached) => cached.keys,
-            None => self.fetch(login).await?.ok_or_else(|| too_soon(login))?,
-        };
+        let keys = self.current(login).await?;
         Ok(keys.iter().any(|k| k.key_data() == key.key_data()))
+    }
+
+    /// The user's keys, from the cache if it is fresh.
+    async fn current(self: &Arc<Self>, login: &Login) -> anyhow::Result<Arc<Vec<PublicKey>>> {
+        match self.cached(login) {
+            Some(cached) => Ok(cached.keys),
+            None => self.fetch(login).await?.ok_or_else(|| too_soon(login)),
+        }
     }
 
     fn cached(&self, login: &Login) -> Option<CachedKeys> {

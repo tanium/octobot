@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use ssh_key::rand_core::OsRng;
-use ssh_key::{Algorithm, LineEnding, PrivateKey};
+use ssh_key::{Algorithm, HashAlg, LineEnding, PrivateKey};
 use tokio::net::TcpListener;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
@@ -17,7 +17,6 @@ use octobot_events::client::{self, Update};
 use octobot_events::pb::events_client::EventsClient;
 use octobot_events::pb::events_server::EventsServer;
 use octobot_events::pb::{self, ChallengeRequest, SubscribeRequest};
-use octobot_events::sign::Signer;
 use octobot_lib::github::Login;
 use octobot_lib::metrics::Metrics;
 use octobot_ops::event_bus::{Change, EventBus, Kind};
@@ -144,7 +143,10 @@ impl TestServer {
         key: &PrivateKey,
         authority: &str,
     ) -> Result<Streaming<pb::Event>, Status> {
-        let sig = Signer::sign(key, &octobot_events::signed_message(authority, nonce))
+        // Signs directly, since some tests sign with keys GitHub does not have.
+        let msg = octobot_events::signed_message(authority, nonce);
+        let sig = key
+            .sign(octobot_events::NAMESPACE, HashAlg::Sha512, &msg)
             .unwrap()
             .to_pem(LineEnding::LF)
             .unwrap();
@@ -367,6 +369,29 @@ async fn test_refuses_subscribe_for_user_removed_after_challenge() {
         .await
         .unwrap_err();
     assert_eq!(Code::PermissionDenied, err.code());
+}
+
+#[tokio::test]
+async fn test_challenge_lists_the_users_key_fingerprints() {
+    let server = TestServer::start(10).await;
+    let (first, second) = (new_key(), new_key());
+    server.directory.add("joe", &first);
+    server.directory.add("joe", &second);
+
+    let response = server
+        .raw_client()
+        .await
+        .challenge(ChallengeRequest {
+            username: "joe".into(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let fingerprint = |key: &PrivateKey| key.public_key().fingerprint(HashAlg::Sha256).to_string();
+    assert_eq!(
+        vec![fingerprint(&first), fingerprint(&second)],
+        response.key_fingerprints
+    );
 }
 
 #[tokio::test]

@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use log::warn;
 use rand::Rng;
-use ssh_key::LineEnding;
+use ssh_key::{Fingerprint, LineEnding};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::codegen::http::Uri;
@@ -93,13 +93,20 @@ async fn run(
     let challenge = client.challenge(ChallengeRequest {
         username: config.username.clone(),
     });
-    let nonce = deadline("challenge", challenge).await??.into_inner().nonce;
+    let challenge = deadline("challenge", challenge).await??.into_inner();
+    let nonce = challenge.nonce;
+    let registered = challenge
+        .key_fingerprints
+        .iter()
+        .map(|fingerprint| fingerprint.parse())
+        .collect::<Result<Vec<Fingerprint>, _>>()
+        .context("parsing key fingerprints")?;
     // ssh-agent I/O blocks, and a hardware key waits for a touch.
     let msg = crate::signed_message(&authority, &nonce);
     let signer = signer.clone();
-    let sig = tokio::task::spawn_blocking(move || signer.sign(&msg))
+    let sig = tokio::task::spawn_blocking(move || signer.sign(&msg, &registered))
         .await?
-        .context("signing challenge")?
+        .with_context(|| format!("signing challenge as {}", config.username))?
         .to_pem(LineEnding::LF)?;
 
     let req = SubscribeRequest {
@@ -161,7 +168,7 @@ mod tests {
     struct NeverSigns;
 
     impl Signer for NeverSigns {
-        fn sign(&self, _msg: &[u8]) -> Result<ssh_key::SshSig> {
+        fn sign(&self, _msg: &[u8], _registered: &[Fingerprint]) -> Result<ssh_key::SshSig> {
             panic!("a silent server never gets as far as a challenge")
         }
     }

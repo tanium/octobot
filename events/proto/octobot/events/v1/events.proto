@@ -19,6 +19,9 @@ message ChallengeRequest {
 message ChallengeResponse {
   bytes nonce = 1;
   int64 expires_unix = 2;
+  // SHA-256 fingerprints ("SHA256:...") of the user's SSH keys on GitHub,
+  // so the client can sign with one of them
+  repeated string key_fingerprints = 3;
 }
 
 // Streams are live only: changes from before a (re)connect are not sent, so
