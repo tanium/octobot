@@ -24,7 +24,7 @@ use octobot_lib::metrics;
 
 use octobot_lib::github::api::Session;
 
-// How far a stream can fall behind before it gets a Reset.
+// How far a stream can fall behind before it is aborted.
 const EVENT_LAG_CAPACITY: usize = 1_000;
 
 pub fn start(config: Config) {

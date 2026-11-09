@@ -127,7 +127,6 @@ async fn run(
 
         let update = match event.body {
             Some(event::Body::Change(change)) => Update::Change(change),
-            Some(event::Body::Reset(_)) => Update::Reset,
             Some(event::Body::Heartbeat(_)) | None => continue,
         };
         if tx.send(update).await.is_err() {

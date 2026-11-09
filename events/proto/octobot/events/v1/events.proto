@@ -32,13 +32,12 @@ message SubscribeRequest {
   repeated Kind kinds = 1;
 }
 
+// A stream that falls behind ends with ABORTED, since changes were dropped.
 message Event {
   oneof body {
     Change change = 1;
     // Sent every 30s; a silent stream is dead.
     Heartbeat heartbeat = 2;
-    // The stream fell behind and changes were dropped; load state from GitHub.
-    Reset reset = 3;
   }
 }
 
@@ -64,5 +63,3 @@ enum Kind {
 }
 
 message Heartbeat {}
-
-message Reset {}

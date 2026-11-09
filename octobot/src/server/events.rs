@@ -31,7 +31,7 @@ const KEYS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_STREAMS_PER_USER: usize = 10;
 const MAX_STREAMS: usize = 1_000;
-// Small, so a stuck client lags on the bus and gets a Reset instead of buffering here.
+// Small, so a stuck client lags on the bus and is aborted instead of buffering here.
 const STREAM_BUFFER: usize = 64;
 
 /// Serves the event bus to octobot users who prove they hold an SSH key registered to their
@@ -549,14 +549,20 @@ impl Stream {
                             number: event.change.number,
                         })
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => event::Body::Reset(pb::Reset {}),
+                    // Changes were dropped. Ending the stream makes the client reconnect and
+                    // reload, the same as after any other disconnect.
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        info!("Aborting lagging event stream for {}", self.login);
+                        self.metrics.event_stream_messages.with_label_values(&["aborted"]).inc();
+                        let _ = tx.send(Err(Status::aborted("stream fell behind"))).await;
+                        return;
+                    }
                     Err(broadcast::error::RecvError::Closed) => return,
                 },
             };
             let kind = match body {
                 event::Body::Change(_) => "change",
                 event::Body::Heartbeat(_) => "heartbeat",
-                event::Body::Reset(_) => "reset",
             };
             if tx.send(Ok(pb::Event { body: Some(body) })).await.is_err() {
                 return;

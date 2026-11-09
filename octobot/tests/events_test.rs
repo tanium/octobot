@@ -17,7 +17,7 @@ use octobot::server::events::{Directory, EventsService};
 use octobot_events::client::{self, Update};
 use octobot_events::pb::events_client::EventsClient;
 use octobot_events::pb::events_server::EventsServer;
-use octobot_events::pb::{self, ChallengeRequest, SubscribeRequest, event};
+use octobot_events::pb::{self, ChallengeRequest, SubscribeRequest};
 use octobot_events::sign::Signer;
 use octobot_lib::metrics::Metrics;
 use octobot_ops::event_bus::{Change, EventBus, Kind};
@@ -234,7 +234,7 @@ async fn test_filters_kinds() {
 // The test runtime is single threaded, so the stream task cannot drain the bus between
 // publishes.
 #[tokio::test]
-async fn test_lagging_stream_resets() {
+async fn test_lagging_stream_is_aborted() {
     let server = TestServer::start(1).await;
     let key = new_key();
     server.directory.add("joe", &key);
@@ -249,15 +249,24 @@ async fn test_lagging_stream_resets() {
     server.publish(&["joe"], Kind::Push, 2);
     server.publish(&["joe"], Kind::Push, 3);
 
-    let body = |e: Result<pb::Event, Status>| e.unwrap().body.unwrap();
-    assert_eq!(
-        event::Body::Reset(pb::Reset {}),
-        body(next(&mut stream).await)
-    );
-    assert_eq!(
-        event::Body::Change(pb_change(pb::Kind::Push, 3)),
-        body(next(&mut stream).await)
-    );
+    let status = next(&mut stream).await.unwrap_err();
+    assert_eq!(Code::Aborted, status.code());
+    assert!(stream.next().await.is_none());
+}
+
+#[tokio::test]
+async fn test_client_reconnects_and_resets_after_abort() {
+    let server = TestServer::start(1).await;
+    let key = new_key();
+    server.directory.add("joe", &key);
+
+    let mut updates = server.subscribe("joe", &[], key);
+    assert_eq!(Update::Reset, next(&mut updates).await);
+
+    server.publish(&["joe"], Kind::Push, 1);
+    server.publish(&["joe"], Kind::Push, 2);
+    server.publish(&["joe"], Kind::Push, 3);
+    assert_eq!(Update::Reset, next(&mut updates).await);
 }
 
 #[tokio::test]
