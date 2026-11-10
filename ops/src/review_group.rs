@@ -136,24 +136,21 @@ impl ReviewGroups {
 
     /// Sends every held review now, for shutdown.
     pub fn flush_all(&self) {
-        let entries: Vec<Pending> = {
-            let mut pending = self.pending.lock().unwrap();
-            pending.drain().map(|(_, entry)| entry).collect()
-        };
-        for entry in entries {
+        let mut pending = self.pending.lock().unwrap();
+        for (_, entry) in pending.drain() {
             self.send(entry);
         }
     }
 
     fn flush(&self, key: &(u64, String), generation: u64) {
-        let entry = {
-            let mut pending = self.pending.lock().unwrap();
-            match pending.get(key) {
-                Some(p) if p.generation == generation => pending.remove(key).unwrap(),
-                _ => return,
-            }
-        };
-        self.send(entry);
+        let mut pending = self.pending.lock().unwrap();
+        match pending.get(key) {
+            Some(p) if p.generation == generation => {}
+            _ => return,
+        }
+        // Sent under the lock so that flush_all, once it has the lock, knows every review taken
+        // here is already a tracked job.
+        self.send(pending.remove(key).unwrap());
     }
 
     fn send(&self, entry: Pending) {
@@ -195,6 +192,8 @@ impl ReviewGroups {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{OnceLock, Weak};
+
     use crate::slack::SlackAttachmentBuilder;
 
     struct Capture {
@@ -419,5 +418,40 @@ mod tests {
 
         wait_ms(100).await;
         assert_eq!(2, capture.reqs.lock().unwrap().len());
+    }
+
+    // Records whether a send happens while the held reviews are locked.
+    struct LockProbe {
+        groups: OnceLock<Weak<ReviewGroups>>,
+        locked: Mutex<Vec<bool>>,
+    }
+
+    impl Worker<SlackRequest> for LockProbe {
+        fn send(&self, _req: SlackRequest) {
+            let groups = self.groups.get().unwrap().upgrade().unwrap();
+            let locked = groups.pending.try_lock().is_err();
+            self.locked.lock().unwrap().push(locked);
+        }
+    }
+
+    // Otherwise a shutdown between a timer taking a review and sending it finds neither a held
+    // review nor a running job, and exits without the DM.
+    #[tokio::test(start_paused = true)]
+    async fn test_timer_sends_review_before_releasing_it() {
+        let probe = Arc::new(LockProbe {
+            groups: OnceLock::new(),
+            locked: Mutex::new(vec![]),
+        });
+        let groups = ReviewGroups::new(
+            probe.clone(),
+            Duration::from_millis(50),
+            Duration::from_millis(1000),
+        );
+        probe.groups.set(Arc::downgrade(&groups)).unwrap();
+
+        groups.add(&comment("one"), user(), Threading::Flat, "", &[]);
+        wait_ms(100).await;
+
+        assert_eq!(vec![true], *probe.locked.lock().unwrap());
     }
 }

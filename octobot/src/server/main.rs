@@ -259,7 +259,8 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     info!("Shutting down: finishing open requests and background jobs");
     let deadline = Instant::now() + SHUTDOWN_DEADLINE;
     cleanup.abort();
-    // Redelivery picks up where it left off on the next start.
+    // Deliveries not yet redelivered are skipped: the next start searches only from the newest
+    // webhook recorded.
     webhook_redeliver.abort();
 
     if tokio::time::timeout_at(deadline, connections.shutdown())
