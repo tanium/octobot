@@ -11,6 +11,7 @@ use tonic::Code;
 use tonic::codegen::http::Uri;
 use tonic::transport::{ClientTlsConfig, Endpoint};
 
+use crate::Kind;
 use crate::pb::events_client::EventsClient;
 use crate::pb::{self, ChallengeRequest, SubscribeRequest, event};
 use crate::sign::Signer;
@@ -32,7 +33,7 @@ pub struct Config {
     /// GitHub login
     pub username: String,
     /// Kinds to receive; empty means all.
-    pub kinds: Vec<pb::Kind>,
+    pub kinds: Vec<Kind>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -41,7 +42,7 @@ pub enum Update {
     /// Changes that arrive during the load are buffered.
     Reset,
     /// Refetch this entity from GitHub.
-    Change(pb::Change),
+    Change(Change),
     /// Not connected: an attempt failed or a live stream ended. The client tries again after
     /// `retry_in` on its own; nothing arrives until the next `Reset`.
     Disconnected {
@@ -50,6 +51,18 @@ pub enum Update {
         error: String,
         retry_in: Duration,
     },
+}
+
+/// Something on GitHub changed.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Change {
+    /// "org/repo"
+    pub repo: String,
+    pub kind: Kind,
+    /// GitHub's webhook action (opened, submitted, ...); empty for push.
+    pub action: String,
+    /// The pull request or issue, if there is one
+    pub number: Option<u64>,
 }
 
 /// Why the client is disconnected, by what the consumer can do about it
@@ -214,7 +227,11 @@ async fn run(
                 nonce: nonce.clone(),
                 signature: sig,
             }),
-            kinds: config.kinds.iter().map(|&kind| kind as i32).collect(),
+            kinds: config
+                .kinds
+                .iter()
+                .map(|&kind| pb::Kind::from(kind) as i32)
+                .collect(),
         };
         match deadline("subscribe", client.subscribe(req))
             .await
@@ -253,10 +270,20 @@ async fn run(
             },
         };
 
-        let update = match event.body {
-            Some(event::Body::Change(change)) => Update::Change(change),
+        let change = match event.body {
+            Some(event::Body::Change(change)) => change,
             Some(event::Body::Heartbeat(_)) | None => continue,
         };
+        // A newer server may send kinds this client does not know.
+        let Some(kind) = Kind::from_pb(change.kind) else {
+            continue;
+        };
+        let update = Update::Change(Change {
+            repo: change.repo,
+            kind,
+            action: change.action,
+            number: change.number,
+        });
         if tx.send(update).await.is_err() {
             return Ok(());
         }

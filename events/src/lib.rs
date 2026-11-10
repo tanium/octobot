@@ -10,6 +10,58 @@ pub mod pb {
     tonic::include_proto!("octobot.events.v1");
 }
 
+/// The GitHub webhook events octobot notifies people about
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Kind {
+    PullRequest,
+    PullRequestReview,
+    PullRequestReviewComment,
+    CommitComment,
+    IssueComment,
+    Push,
+}
+
+impl Kind {
+    /// From an X-GitHub-Event value; None for events octobot does not notify about.
+    pub fn from_event(event: &str) -> Option<Kind> {
+        Some(match event {
+            "pull_request" => Kind::PullRequest,
+            "pull_request_review" => Kind::PullRequestReview,
+            "pull_request_review_comment" => Kind::PullRequestReviewComment,
+            "commit_comment" => Kind::CommitComment,
+            "issue_comment" => Kind::IssueComment,
+            "push" => Kind::Push,
+            _ => return None,
+        })
+    }
+
+    /// None for `KIND_UNSPECIFIED`, or a kind from a newer server.
+    pub fn from_pb(kind: i32) -> Option<Kind> {
+        Some(match pb::Kind::try_from(kind).ok()? {
+            pb::Kind::Unspecified => return None,
+            pb::Kind::PullRequest => Kind::PullRequest,
+            pb::Kind::PullRequestReview => Kind::PullRequestReview,
+            pb::Kind::PullRequestReviewComment => Kind::PullRequestReviewComment,
+            pb::Kind::CommitComment => Kind::CommitComment,
+            pb::Kind::IssueComment => Kind::IssueComment,
+            pb::Kind::Push => Kind::Push,
+        })
+    }
+}
+
+impl From<Kind> for pb::Kind {
+    fn from(kind: Kind) -> pb::Kind {
+        match kind {
+            Kind::PullRequest => pb::Kind::PullRequest,
+            Kind::PullRequestReview => pb::Kind::PullRequestReview,
+            Kind::PullRequestReviewComment => pb::Kind::PullRequestReviewComment,
+            Kind::CommitComment => pb::Kind::CommitComment,
+            Kind::IssueComment => pb::Kind::IssueComment,
+            Kind::Push => pb::Kind::Push,
+        }
+    }
+}
+
 /// SSH signature namespace, so a signature made here is useless to other SSH signature consumers.
 pub const NAMESPACE: &str = "octobot-events";
 
@@ -43,6 +95,29 @@ pub fn signed_authority(uri: &Uri) -> anyhow::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_kind_from_event() {
+        assert_eq!(Some(Kind::PullRequest), Kind::from_event("pull_request"));
+        assert_eq!(Some(Kind::Push), Kind::from_event("push"));
+        assert_eq!(None, Kind::from_event("ping"));
+    }
+
+    #[test]
+    fn test_kind_round_trips_through_the_proto() {
+        for kind in [
+            Kind::PullRequest,
+            Kind::PullRequestReview,
+            Kind::PullRequestReviewComment,
+            Kind::CommitComment,
+            Kind::IssueComment,
+            Kind::Push,
+        ] {
+            assert_eq!(Some(kind), Kind::from_pb(pb::Kind::from(kind) as i32));
+        }
+        assert_eq!(None, Kind::from_pb(pb::Kind::Unspecified as i32));
+        assert_eq!(None, Kind::from_pb(99));
+    }
 
     fn authority(endpoint: &str) -> String {
         signed_authority(&endpoint.parse().unwrap()).unwrap()

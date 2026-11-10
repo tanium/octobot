@@ -2,11 +2,12 @@ use log::info;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::event_bus::{Change, EventBus, Kind};
+use crate::event_bus::{Change, EventBus};
 use crate::review_group::{ReviewGroups, ReviewItem};
 use crate::slack::{self, SlackAttachment, SlackRequest, ThreadRoot, Threading};
 use crate::util;
 use crate::worker::Worker;
+use octobot_events::Kind;
 use octobot_lib::config::Config;
 use octobot_lib::github;
 use octobot_lib::slack::SlackRecipient;
@@ -101,8 +102,8 @@ impl Participants {
 #[derive(Clone)]
 pub struct Thread {
     guid: String,
-    /// Pull request or issue number; 0 if none.
-    number: u64,
+    /// The pull request or issue, if there is one
+    number: Option<u64>,
     pull_request: Option<PullRequestRoot>,
 }
 
@@ -114,13 +115,17 @@ struct PullRequestRoot {
 
 impl Thread {
     pub fn new(guid: &str) -> Thread {
-        Thread::for_issue(guid, 0)
+        Thread {
+            guid: guid.to_string(),
+            number: None,
+            pull_request: None,
+        }
     }
 
     pub fn for_issue(guid: &str, number: u64) -> Thread {
         Thread {
             guid: guid.to_string(),
-            number,
+            number: Some(number),
             pull_request: None,
         }
     }
@@ -134,7 +139,7 @@ impl Thread {
     ) -> Thread {
         Thread {
             guid: guid.to_string(),
-            number,
+            number: Some(number),
             pull_request: Some(PullRequestRoot {
                 subject: subject.to_string(),
                 attachment,
@@ -257,9 +262,9 @@ impl Messenger {
         let mut recipients: BTreeSet<String> = participants.users.keys().cloned().collect();
         recipients.insert(sender.login().to_string());
 
-        let mut numbers: BTreeSet<u64> = threads.iter().map(|t| t.number).collect();
+        let mut numbers: BTreeSet<Option<u64>> = threads.iter().map(|t| t.number).collect();
         if numbers.is_empty() {
-            numbers.insert(0);
+            numbers.insert(None);
         }
         for number in numbers {
             events.bus.publish(

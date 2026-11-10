@@ -59,8 +59,8 @@ message Change {
   Kind kind = 2;
   // GitHub's webhook action (opened, submitted, ...); empty for push.
   string action = 3;
-  // Pull request or issue number; 0 if none.
-  uint64 number = 4;
+  // The pull request or issue, if there is one
+  optional uint64 number = 4;
 }
 
 // The GitHub webhook events (X-GitHub-Event) octobot notifies people about

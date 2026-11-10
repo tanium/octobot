@@ -16,7 +16,7 @@ use octobot_lib::config::Config;
 use octobot_lib::github::Login;
 use octobot_lib::github::api::GithubSessionFactory;
 use octobot_lib::metrics::{self, Metrics, ScopedGaugeCounter};
-use octobot_ops::event_bus::{Event, EventBus, Kind};
+use octobot_ops::event_bus::{Event, EventBus};
 
 mod challenges;
 mod keys;
@@ -319,7 +319,7 @@ impl Stream {
                         }
                         event::Body::Change(pb::Change {
                             repo: event.change.repo.clone(),
-                            kind: pb_kind(event.change.kind) as i32,
+                            kind: pb::Kind::from(event.change.kind) as i32,
                             action: event.change.action.clone(),
                             number: event.change.number,
                         })
@@ -371,24 +371,13 @@ impl Stream {
 
     fn wants(&self, event: &Event) -> bool {
         event.is_for(self.login.as_str())
-            && (self.kinds.is_empty() || self.kinds.contains(&pb_kind(event.change.kind)))
+            && (self.kinds.is_empty() || self.kinds.contains(&pb::Kind::from(event.change.kind)))
     }
 }
 
 impl Drop for Stream {
     fn drop(&mut self) {
         info!("Closed event stream for {}", self.login);
-    }
-}
-
-fn pb_kind(kind: Kind) -> pb::Kind {
-    match kind {
-        Kind::PullRequest => pb::Kind::PullRequest,
-        Kind::PullRequestReview => pb::Kind::PullRequestReview,
-        Kind::PullRequestReviewComment => pb::Kind::PullRequestReviewComment,
-        Kind::CommitComment => pb::Kind::CommitComment,
-        Kind::IssueComment => pb::Kind::IssueComment,
-        Kind::Push => pb::Kind::Push,
     }
 }
 
@@ -574,9 +563,9 @@ mod tests {
                 vec!["joe".to_string()],
                 octobot_ops::event_bus::Change {
                     repo: "some-org/some-repo".into(),
-                    kind: Kind::Push,
+                    kind: octobot_events::Kind::Push,
                     action: String::new(),
-                    number,
+                    number: Some(number),
                 },
             );
             tokio::task::yield_now().await;

@@ -10,6 +10,7 @@ use log::{error, info, warn};
 use serde_json;
 use tokio;
 
+use octobot_events::Kind;
 use octobot_lib::config::Config;
 use octobot_lib::errors::Result;
 use octobot_lib::github;
@@ -17,7 +18,7 @@ use octobot_lib::github::CommentLike;
 use octobot_lib::github::api::Session;
 use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
-use octobot_ops::event_bus::{EventBus, Kind};
+use octobot_ops::event_bus::EventBus;
 use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::git_clone_manager::GitCloneManager;
 use octobot_ops::github_markdown;

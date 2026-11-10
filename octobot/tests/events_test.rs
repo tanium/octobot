@@ -13,6 +13,7 @@ use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::{Code, Status, Streaming};
 
 use octobot::server::events::{Directory, EventsService};
+use octobot_events::Kind;
 use octobot_events::client::{self, Cause, Update};
 use octobot_events::pb::events_client::EventsClient;
 use octobot_events::pb::events_server::EventsServer;
@@ -20,7 +21,7 @@ use octobot_events::pb::{self, ChallengeRequest, SubscribeRequest};
 use octobot_events::sign::Signer;
 use octobot_lib::github::Login;
 use octobot_lib::metrics::Metrics;
-use octobot_ops::event_bus::{Change, EventBus, Kind};
+use octobot_ops::event_bus::{Change, EventBus};
 
 /// Octobot users and their GitHub keys. A user is anyone given a key.
 #[derive(Default)]
@@ -104,12 +105,7 @@ impl TestServer {
         format!("http://{}", self.addr)
     }
 
-    fn subscribe(
-        &self,
-        login: &str,
-        kinds: &[pb::Kind],
-        key: PrivateKey,
-    ) -> ReceiverStream<Update> {
+    fn subscribe(&self, login: &str, kinds: &[Kind], key: PrivateKey) -> ReceiverStream<Update> {
         client::subscribe(
             client::Config {
                 endpoint: self.endpoint(),
@@ -183,16 +179,17 @@ fn change(kind: Kind, number: u64) -> Change {
         repo: "some-org/some-repo".into(),
         kind,
         action: "opened".into(),
-        number,
+        number: Some(number),
     }
 }
 
-fn pb_change(kind: pb::Kind, number: u64) -> pb::Change {
-    pb::Change {
+/// `change` as the client delivers it
+fn client_change(kind: Kind, number: u64) -> client::Change {
+    client::Change {
         repo: "some-org/some-repo".into(),
-        kind: kind as i32,
+        kind,
         action: "opened".into(),
-        number,
+        number: Some(number),
     }
 }
 
@@ -216,7 +213,7 @@ async fn test_streams_changes_for_the_user() {
     server.publish(&["bob"], Kind::PullRequest, 1);
     server.publish(&["bob", "joe"], Kind::PullRequest, 2);
     assert_eq!(
-        Update::Change(pb_change(pb::Kind::PullRequest, 2)),
+        Update::Change(client_change(Kind::PullRequest, 2)),
         next(&mut updates).await
     );
 }
@@ -227,13 +224,13 @@ async fn test_filters_kinds() {
     let key = new_key();
     server.directory.add("joe", &key);
 
-    let mut updates = server.subscribe("joe", &[pb::Kind::Push], key);
+    let mut updates = server.subscribe("joe", &[Kind::Push], key);
     assert_eq!(Update::Reset, next(&mut updates).await);
 
     server.publish(&["joe"], Kind::PullRequest, 1);
     server.publish(&["joe"], Kind::Push, 2);
     assert_eq!(
-        Update::Change(pb_change(pb::Kind::Push, 2)),
+        Update::Change(client_change(Kind::Push, 2)),
         next(&mut updates).await
     );
 }

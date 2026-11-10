@@ -2,7 +2,8 @@ mod mocks;
 
 use std::sync::Arc;
 
-use octobot_ops::event_bus::{Change, Event, EventBus, Kind};
+use octobot_events::Kind;
+use octobot_ops::event_bus::{Change, Event, EventBus};
 use octobot_ops::messenger::{Participants, Thread};
 use tempfile::{TempDir, tempdir};
 use tokio::sync::broadcast;
@@ -659,7 +660,7 @@ fn published(receiver: &mut broadcast::Receiver<Arc<Event>>) -> Vec<(Vec<String>
     events
 }
 
-fn review_change(number: u64) -> Change {
+fn review_change(number: Option<u64>) -> Change {
     Change {
         repo: "the-owner/the-repo".into(),
         kind: Kind::PullRequestReview,
@@ -707,7 +708,7 @@ fn test_publishes_to_participants_slack_ignores() {
                 "the-owner".to_string(),
                 "the-sender".to_string()
             ],
-            review_change(5)
+            review_change(Some(5))
         )],
         published(&mut receiver)
     );
@@ -749,11 +750,14 @@ fn test_publishes_once_per_thread_number() {
         .into_iter()
         .map(|(_, change)| change)
         .collect();
-    assert_eq!(vec![review_change(1), review_change(2)], changes);
+    assert_eq!(
+        vec![review_change(Some(1)), review_change(Some(2))],
+        changes
+    );
 }
 
 #[test]
-fn test_publishes_without_thread_as_number_zero() {
+fn test_publishes_without_thread_with_no_number() {
     let (config, _temp) = new_test();
     let bus = Arc::new(EventBus::new(10));
     let mut receiver = bus.subscribe();
@@ -785,5 +789,5 @@ fn test_publishes_without_thread_as_number_zero() {
         .into_iter()
         .map(|(_, change)| change)
         .collect();
-    assert_eq!(vec![review_change(0)], changes);
+    assert_eq!(vec![review_change(None)], changes);
 }

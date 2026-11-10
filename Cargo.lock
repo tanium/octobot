@@ -1749,6 +1749,7 @@ dependencies = [
  "log",
  "maplit",
  "mockito",
+ "octobot_events",
  "octobot_lib",
  "pulldown-cmark",
  "regex",

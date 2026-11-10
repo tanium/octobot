@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use octobot_events::Kind;
 use tokio::sync::broadcast;
 
 /// A hint that something on GitHub changed. Subscribers refetch it themselves.
@@ -9,33 +10,8 @@ pub struct Change {
     pub repo: String,
     pub kind: Kind,
     pub action: String,
-    pub number: u64,
-}
-
-/// The GitHub webhook events octobot notifies people about
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Kind {
-    PullRequest,
-    PullRequestReview,
-    PullRequestReviewComment,
-    CommitComment,
-    IssueComment,
-    Push,
-}
-
-impl Kind {
-    /// From an X-GitHub-Event value; None for events octobot does not notify about.
-    pub fn from_event(event: &str) -> Option<Kind> {
-        Some(match event {
-            "pull_request" => Kind::PullRequest,
-            "pull_request_review" => Kind::PullRequestReview,
-            "pull_request_review_comment" => Kind::PullRequestReviewComment,
-            "commit_comment" => Kind::CommitComment,
-            "issue_comment" => Kind::IssueComment,
-            "push" => Kind::Push,
-            _ => return None,
-        })
-    }
+    /// The pull request or issue, if there is one
+    pub number: Option<u64>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -89,15 +65,8 @@ mod tests {
             repo: "some-org/some-repo".into(),
             kind: Kind::PullRequest,
             action: "closed".into(),
-            number,
+            number: Some(number),
         }
-    }
-
-    #[test]
-    fn test_kind_from_event() {
-        assert_eq!(Some(Kind::PullRequest), Kind::from_event("pull_request"));
-        assert_eq!(Some(Kind::Push), Kind::from_event("push"));
-        assert_eq!(None, Kind::from_event("ping"));
     }
 
     #[test]
