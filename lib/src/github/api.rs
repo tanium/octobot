@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, bail};
 use async_trait::async_trait;
+use jsonwebtoken::EncodingKey;
 use log::{error, info};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
@@ -187,8 +188,7 @@ pub struct GithubApp {
     // Derived from `host` except in tests, which point it at a local mock server.
     api_base: String,
     app_id: u32,
-    // DER formatted API private key
-    app_key: Vec<u8>,
+    app_key: EncodingKey,
     app: Option<App>,
     metrics: Option<Arc<Metrics>>,
     tokens: Mutex<HashMap<String, CachedToken>>,
@@ -214,7 +214,7 @@ impl GithubApp {
             host: host.into(),
             api_base: api_base(host),
             app_id,
-            app_key: app_key.into(),
+            app_key: jwt::encoding_key(app_key),
             app: None,
             metrics,
             tokens: Mutex::new(HashMap::new()),
@@ -240,7 +240,7 @@ impl GithubApp {
             host: "github.test".into(),
             api_base: api_base.into(),
             app_id: 1,
-            app_key: app_key.into(),
+            app_key: jwt::encoding_key(app_key),
             app: None,
             metrics: None,
             tokens: Mutex::new(HashMap::new()),

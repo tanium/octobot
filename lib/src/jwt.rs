@@ -21,21 +21,23 @@ pub fn unix_now() -> u64 {
         .as_secs()
 }
 
-pub fn new_token(app_id: u32, app_key_bytes: &[u8], now: u64) -> Result<String> {
+pub fn encoding_key(app_key_bytes: &[u8]) -> EncodingKey {
+    match EncodingKey::from_rsa_pem(app_key_bytes) {
+        Ok(k) => k,
+        Err(e) => {
+            log::info!("Expected RSA keyin PEM format: {}. Falling back to DER.", e);
+            EncodingKey::from_rsa_der(app_key_bytes)
+        }
+    }
+}
+
+pub fn new_token(app_id: u32, key: &EncodingKey, now: u64) -> Result<String> {
     let claims = Claims {
         iat: now,
         exp: now + (9 * 60),
         iss: app_id.to_string(),
     };
 
-    let key = match EncodingKey::from_rsa_pem(app_key_bytes) {
-        Ok(k) => k,
-        Err(e) => {
-            log::info!("Expected RSA keyin PEM format: {}. Falling back to DER.", e);
-            EncodingKey::from_rsa_der(app_key_bytes)
-        }
-    };
-
-    jsonwebtoken::encode(&Header::new(Algorithm::RS256), &claims, &key)
+    jsonwebtoken::encode(&Header::new(Algorithm::RS256), &claims, key)
         .map_err(|e| anyhow!("Failed to create JWT: {}", e))
 }
