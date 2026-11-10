@@ -10,17 +10,16 @@ use hyper::{Request, Response};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::server::graceful::GracefulShutdown;
 use log::{debug, error, info, warn};
-use octobot_events::pb::events_server::EventsServer;
 use octobot_ops::event_bus::EventBus;
 use octobot_ops::webhook_db::WebhookDatabase;
 use tokio::net::TcpListener;
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::time::Instant;
-use tokio_stream::wrappers::TcpListenerStream;
+use tokio_util::sync::CancellationToken;
 
 use crate::http_util::Body;
 use crate::runtime;
-use crate::server::events::{EventsService, GithubDirectory};
+use crate::server::events::{self, EventsService, GithubDirectory};
 use crate::server::github_handler::GithubHandlerState;
 use crate::server::octobot_service::OctobotService;
 use crate::server::sessions::Sessions;
@@ -53,6 +52,17 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     // than fatal. Registering before startup means a stop is never ignored, only deferred.
     let mut sigterm = signal(SignalKind::terminate()).expect("SIGTERM handler");
     let mut sigint = signal(SignalKind::interrupt()).expect("SIGINT handler");
+    let stopping = CancellationToken::new();
+    tokio::spawn({
+        let stopping = stopping.clone();
+        async move {
+            tokio::select! {
+                _ = sigterm.recv() => info!("Received SIGTERM"),
+                _ = sigint.recv() => info!("Received SIGINT"),
+            }
+            stopping.cancel();
+        }
+    });
 
     let config = Arc::new(config);
 
@@ -121,7 +131,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     };
 
     let event_bus = Arc::new(EventBus::new(EVENT_LAG_CAPACITY));
-    if let Some(ref events_config) = config.events {
+    let events_served = if let Some(ref events_config) = config.events {
         let service = EventsService::new(
             event_bus.clone(),
             &events_config.authority,
@@ -129,6 +139,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
                 config: config.clone(),
                 github: github_api.clone(),
             }),
+            stopping.clone(),
             metrics.clone(),
         )
         .expect("events authority");
@@ -138,17 +149,15 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
             Err(e) => panic!("Error binding {}: {}", addr, e),
         };
         info!("Listening (events gRPC) on {}", addr);
-        tokio::spawn(async move {
-            let result = tonic::transport::Server::builder()
-                .http2_keepalive_interval(Some(std::time::Duration::from_secs(30)))
-                .add_service(EventsServer::new(service))
-                .serve_with_incoming(TcpListenerStream::new(listener))
-                .await;
-            if let Err(e) = result {
+        let stopping = stopping.clone();
+        Some(tokio::spawn(async move {
+            if let Err(e) = events::serve(listener, service, stopping).await {
                 error!("Events server error: {}", e);
             }
-        });
-    }
+        }))
+    } else {
+        None
+    };
 
     let ui_sessions = Arc::new(Sessions::new());
     let github_handler_state = Arc::new(GithubHandlerState::new(
@@ -239,17 +248,11 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         }
     });
 
-    let stop = async move {
-        tokio::select! {
-            _ = sigterm.recv() => info!("Received SIGTERM"),
-            _ = sigint.recv() => info!("Received SIGINT"),
-        }
-    };
     let connections = serve(
         listener,
         move |req| octobot.clone().call(req),
         metrics,
-        stop,
+        stopping.cancelled_owned(),
     )
     .await;
 
@@ -264,6 +267,11 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         .is_err()
     {
         warn!("Requests still open at the shutdown deadline");
+    }
+    if let Some(served) = events_served
+        && tokio::time::timeout_at(deadline, served).await.is_err()
+    {
+        warn!("Event streams still open at the shutdown deadline");
     }
     let abandoned = github_handler_state
         .shutdown(deadline.saturating_duration_since(Instant::now()))
