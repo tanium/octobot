@@ -434,8 +434,6 @@ mod tests {
         }
     }
 
-    // Otherwise a shutdown between a timer taking a review and sending it finds neither a held
-    // review nor a running job, and exits without the DM.
     #[tokio::test(start_paused = true)]
     async fn test_timer_sends_review_before_releasing_it() {
         let probe = Arc::new(LockProbe {
