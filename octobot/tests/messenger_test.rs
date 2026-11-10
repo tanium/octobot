@@ -2,8 +2,11 @@ mod mocks;
 
 use std::sync::Arc;
 
+use octobot_events::Kind;
+use octobot_ops::event_bus::{Change, Event, EventBus};
 use octobot_ops::messenger::{Participants, Thread};
 use tempfile::{TempDir, tempdir};
+use tokio::sync::broadcast;
 
 use mocks::mock_slack::MockSlack;
 use octobot_lib::config::Config;
@@ -357,6 +360,7 @@ fn thread_direct_messages(config: &Config, github_name: &str) {
 fn pr_thread(guid: &str) -> Thread {
     Thread::for_pull_request(
         guid,
+        1,
         "Pull Request",
         SlackAttachmentBuilder::new("").build(),
     )
@@ -518,6 +522,7 @@ fn threaded_dm_with_slack_id(thread_reply_notifications: Option<bool>, root_msg:
         &Vec::<github::Commit>::new(),
         vec![Thread::for_pull_request(
             "some-user/some-repo/1",
+            1,
             subject,
             pr,
         )],
@@ -563,7 +568,7 @@ fn threaded_channel_test() -> (Arc<Config>, TempDir, github::Repo, Thread, Threa
         config,
         temp,
         repo,
-        Thread::for_pull_request("the-owner/the-repo/1", "Pull Request #1: \"The PR\"", pr),
+        Thread::for_pull_request("the-owner/the-repo/1", 1, "Pull Request #1: \"The PR\"", pr),
         root,
     )
 }
@@ -642,4 +647,147 @@ fn test_thread_without_pull_request_has_no_root() {
         vec![Thread::new("the-owner/the-repo/1")],
         false,
     );
+}
+
+fn published(receiver: &mut broadcast::Receiver<Arc<Event>>) -> Vec<(Vec<String>, Change)> {
+    let mut events = vec![];
+    while let Ok(event) = receiver.try_recv() {
+        events.push((
+            event.recipients.iter().cloned().collect(),
+            event.change.clone(),
+        ));
+    }
+    events
+}
+
+fn review_change(number: Option<u64>) -> Change {
+    Change {
+        repo: "the-owner/the-repo".into(),
+        kind: Kind::PullRequestReview,
+        action: "submitted".into(),
+        number,
+    }
+}
+
+#[test]
+fn test_publishes_to_participants_slack_ignores() {
+    let temp_dir = tempdir().unwrap();
+    let db = ConfigDatabase::new(&temp_dir.path().join("db.sqlite3").to_string_lossy()).unwrap();
+    let mut config = Config::new(db);
+    config.slack.ignored_users = vec!["the-sender".into()];
+
+    let bus = Arc::new(EventBus::new(10));
+    let mut receiver = bus.subscribe();
+
+    let mut participants = Participants::new();
+    participants.add_team_member(github::User::new("Team-Member"), "the-org/the-team");
+
+    // The sender is ignored, so nothing goes to slack.
+    let slack = MockSlack::new(vec![]);
+    let messenger = messenger::new(Arc::new(config), slack.new_sender()).with_events(
+        bus.clone(),
+        Kind::PullRequestReview,
+        "submitted",
+    );
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
+        participants,
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![Thread::for_issue("the-owner/the-repo/5", 5)],
+    );
+
+    assert_eq!(
+        vec![(
+            vec![
+                "team-member".to_string(),
+                "the-owner".to_string(),
+                "the-sender".to_string()
+            ],
+            review_change(Some(5))
+        )],
+        published(&mut receiver)
+    );
+}
+
+#[test]
+fn test_publishes_once_per_thread_number() {
+    let (config, _temp) = new_test();
+    let bus = Arc::new(EventBus::new(10));
+    let mut receiver = bus.subscribe();
+
+    let slack = MockSlack::new(vec![slack::req(
+        SlackRecipient::user_mention("the.owner"),
+        "hello there",
+        &[],
+        Threading::Flat,
+    )]);
+    let messenger = messenger::new(config, slack.new_sender()).with_events(
+        bus.clone(),
+        Kind::PullRequestReview,
+        "submitted",
+    );
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
+        Participants::new(),
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![
+            Thread::for_issue("the-owner/the-repo/2", 2),
+            Thread::for_issue("the-owner/the-repo/1", 1),
+        ],
+    );
+
+    let changes: Vec<Change> = published(&mut receiver)
+        .into_iter()
+        .map(|(_, change)| change)
+        .collect();
+    assert_eq!(
+        vec![review_change(Some(1)), review_change(Some(2))],
+        changes
+    );
+}
+
+#[test]
+fn test_publishes_without_thread_with_no_number() {
+    let (config, _temp) = new_test();
+    let bus = Arc::new(EventBus::new(10));
+    let mut receiver = bus.subscribe();
+
+    let slack = MockSlack::new(vec![slack::req(
+        SlackRecipient::user_mention("the.owner"),
+        "hello there",
+        &[],
+        Threading::Flat,
+    )]);
+    let messenger = messenger::new(config, slack.new_sender()).with_events(
+        bus.clone(),
+        Kind::PullRequestReview,
+        "submitted",
+    );
+    messenger.send_to_all(
+        "hello there",
+        &[],
+        &github::User::new("the-owner"),
+        &github::User::new("the-sender"),
+        &github::Repo::parse("http://git.foo.com/the-owner/the-repo").unwrap(),
+        Participants::new(),
+        "",
+        &Vec::<github::Commit>::new(),
+        vec![],
+    );
+
+    let changes: Vec<Change> = published(&mut receiver)
+        .into_iter()
+        .map(|(_, change)| change)
+        .collect();
+    assert_eq!(vec![review_change(None)], changes);
 }

@@ -30,6 +30,10 @@ pub struct Metrics {
     pub current_force_push_count: Gauge,
     pub current_repo_version_count: Gauge,
 
+    pub current_event_stream_count: Gauge,
+    pub event_stream_messages: IntCounterVec,
+    pub event_stream_auth_failures: IntCounterVec,
+
     pub backport_duration: Histogram,
     pub force_push_duration: Histogram,
     pub repo_version_duration: Histogram,
@@ -156,6 +160,29 @@ impl Metrics {
                 "current_repo_version_count",
                 "The number of current repo version jobs being run",
                 registry.as_ref(),
+            )
+            .unwrap(),
+
+            current_event_stream_count: register_gauge_with_registry!(
+                "current_event_stream_count",
+                "The number of open event streams",
+                registry.as_ref(),
+            )
+            .unwrap(),
+
+            event_stream_messages: register_int_counter_vec_with_registry!(
+                "event_stream_messages",
+                "Messages sent on event streams",
+                &["type"],
+                registry.as_ref()
+            )
+            .unwrap(),
+
+            event_stream_auth_failures: register_int_counter_vec_with_registry!(
+                "event_stream_auth_failures",
+                "Refused event stream challenges and subscriptions",
+                &["stage", "reason"],
+                registry.as_ref()
             )
             .unwrap(),
 
