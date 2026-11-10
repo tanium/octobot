@@ -20,6 +20,7 @@ pub struct Config {
     pub slack: SlackConfig,
     pub jira: Option<JiraConfig>,
     pub ldap: Option<LdapConfig>,
+    pub events: Option<EventsConfig>,
 
     pub users: RwLock<users::UserConfig>,
     pub repos: RwLock<repos::RepoConfig>,
@@ -36,6 +37,7 @@ pub struct ConfigModel {
     pub slack: SlackConfig,
     pub jira: Option<JiraConfig>,
     pub ldap: Option<LdapConfig>,
+    pub events: Option<EventsConfig>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -179,6 +181,15 @@ pub struct LdapConfig {
     pub search_filter: Option<String>,
 }
 
+// The gRPC event stream. Serves plaintext HTTP/2 for a TLS-terminating proxy (e.g. nginx `grpc_pass`).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EventsConfig {
+    pub listen_addr: String,
+    // host[:port] clients dial, e.g. "octobot.company.com". Clients sign it, so a signature
+    // made for another server is refused here.
+    pub authority: String,
+}
+
 impl Config {
     // TODO: weird that `new` is used only by tests and the actual `new` is below...
     pub fn new(db: ConfigDatabase) -> Config {
@@ -194,6 +205,7 @@ impl Config {
             slack: config.slack,
             jira: config.jira,
             ldap: config.ldap,
+            events: config.events,
             users: RwLock::new(users::UserConfig::new(db.clone())),
             repos: RwLock::new(repos::RepoConfig::new(db)),
             config_dir: dir.to_path_buf(),
@@ -209,6 +221,7 @@ impl Config {
             slack: self.slack.clone(),
             jira: self.jira.clone(),
             ldap: self.ldap.clone(),
+            events: self.events.clone(),
         };
 
         let serialized =
@@ -281,6 +294,7 @@ impl ConfigModel {
             },
             jira: None,
             ldap: None,
+            events: None,
         }
     }
 }

@@ -10,6 +10,7 @@ name = "octobot_ops"
 path = "src/lib.rs"
 
 [dependencies]
+octobot_events = { "path" = "../events" }
 octobot_lib = { "path" = "../lib" }
 conventional = "0.5.0"
 log = "0.4.19"

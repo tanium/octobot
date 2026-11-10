@@ -10,13 +10,17 @@ use hyper::{Request, Response};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::server::graceful::GracefulShutdown;
 use log::{debug, error, info, warn};
+use octobot_events::pb::events_server::EventsServer;
+use octobot_ops::event_bus::EventBus;
 use octobot_ops::webhook_db::WebhookDatabase;
 use tokio::net::TcpListener;
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::time::Instant;
+use tokio_stream::wrappers::TcpListenerStream;
 
 use crate::http_util::Body;
 use crate::runtime;
+use crate::server::events::{EventsService, GithubDirectory};
 use crate::server::github_handler::GithubHandlerState;
 use crate::server::octobot_service::OctobotService;
 use crate::server::sessions::Sessions;
@@ -31,6 +35,9 @@ use octobot_lib::github::api::Session;
 // Kept under the container's stop timeout so octobot can log what it
 // abandoned before podman kills it.
 const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(25);
+
+// How far a stream can fall behind before it is aborted.
+const EVENT_LAG_CAPACITY: usize = 1_000;
 
 pub fn start(config: Config) {
     let num_http_threads = config.main.num_http_threads.unwrap_or(20);
@@ -113,6 +120,36 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         None => "0.0.0.0:3000".parse().unwrap(),
     };
 
+    let event_bus = Arc::new(EventBus::new(EVENT_LAG_CAPACITY));
+    if let Some(ref events_config) = config.events {
+        let service = EventsService::new(
+            event_bus.clone(),
+            &events_config.authority,
+            Arc::new(GithubDirectory {
+                config: config.clone(),
+                github: github_api.clone(),
+            }),
+            metrics.clone(),
+        )
+        .expect("events authority");
+        let addr = &events_config.listen_addr;
+        let listener = match TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => panic!("Error binding {}: {}", addr, e),
+        };
+        info!("Listening (events gRPC) on {}", addr);
+        tokio::spawn(async move {
+            let result = tonic::transport::Server::builder()
+                .http2_keepalive_interval(Some(std::time::Duration::from_secs(30)))
+                .add_service(EventsServer::new(service))
+                .serve_with_incoming(TcpListenerStream::new(listener))
+                .await;
+            if let Err(e) = result {
+                error!("Events server error: {}", e);
+            }
+        });
+    }
+
     let ui_sessions = Arc::new(Sessions::new());
     let github_handler_state = Arc::new(GithubHandlerState::new(
         config.clone(),
@@ -120,6 +157,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         jira_api.clone(),
         slack_api.clone(),
         webhook_db.clone(),
+        event_bus,
         metrics.clone(),
     ));
     let octobot = OctobotService::new(
