@@ -28,7 +28,7 @@ use octobot_lib::metrics;
 
 use octobot_lib::github::api::Session;
 
-// Kept under the container's stop timeout (podman's StopTimeout) so octobot can log what it
+// Kept under the container's stop timeout so octobot can log what it
 // abandoned before podman kills it.
 const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(25);
 
