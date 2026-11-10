@@ -13,7 +13,7 @@ use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::{Code, Status, Streaming};
 
 use octobot::server::events::{Directory, EventsService};
-use octobot_events::client::{self, Update};
+use octobot_events::client::{self, Cause, Update};
 use octobot_events::pb::events_client::EventsClient;
 use octobot_events::pb::events_server::EventsServer;
 use octobot_events::pb::{self, ChallengeRequest, SubscribeRequest};
@@ -273,7 +273,31 @@ async fn test_client_reconnects_and_resets_after_abort() {
     server.publish(&["joe"], Kind::Push, 1);
     server.publish(&["joe"], Kind::Push, 2);
     server.publish(&["joe"], Kind::Push, 3);
+    let disconnected = next(&mut updates).await;
+    assert!(
+        matches!(&disconnected, Update::Disconnected { cause: Cause::Ended, error, .. }
+            if error.contains("fell behind")),
+        "{:?}",
+        disconnected
+    );
     assert_eq!(Update::Reset, next(&mut updates).await);
+}
+
+#[tokio::test]
+async fn test_client_reports_a_key_the_server_refuses() {
+    let server = TestServer::start(10).await;
+    server.directory.add("joe", &new_key());
+
+    let mut updates = server.subscribe("joe", &[], new_key());
+    for _ in 0..2 {
+        let disconnected = next(&mut updates).await;
+        assert!(
+            matches!(&disconnected, Update::Disconnected { cause: Cause::Config, error, .. }
+                if error.contains("no key was accepted")),
+            "{:?}",
+            disconnected
+        );
+    }
 }
 
 /// Several keys, like an ssh-agent, recording which signed.
@@ -323,6 +347,10 @@ async fn test_client_finds_the_registered_key_and_tries_it_first_after() {
     server.publish(&["joe"], Kind::Push, 1);
     server.publish(&["joe"], Kind::Push, 2);
     server.publish(&["joe"], Kind::Push, 3);
+    assert!(matches!(
+        next(&mut updates).await,
+        Update::Disconnected { .. }
+    ));
     assert_eq!(Update::Reset, next(&mut updates).await);
     assert_eq!(vec![0, 1, 1], *signer.signed.lock().unwrap());
 }

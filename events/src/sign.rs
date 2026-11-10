@@ -21,13 +21,19 @@ pub struct AgentSigner {
 }
 
 impl AgentSigner {
+    /// Uses the ssh-agent listening on `socket`: OpenSSH's, gpg-agent's, 1Password's,
+    /// Secretive's, or any other.
+    pub fn new(socket: impl Into<PathBuf>) -> AgentSigner {
+        AgentSigner {
+            socket: socket.into(),
+            key: None,
+        }
+    }
+
     /// Uses the agent at `SSH_AUTH_SOCK`.
     pub fn from_env() -> Result<AgentSigner> {
         let socket = std::env::var_os("SSH_AUTH_SOCK").context("SSH_AUTH_SOCK is not set")?;
-        Ok(AgentSigner {
-            socket: socket.into(),
-            key: None,
-        })
+        Ok(AgentSigner::new(socket))
     }
 
     /// Signs only with `key`, rather than trying each of the agent's keys.
@@ -91,6 +97,14 @@ mod tests {
     use ssh_key::rand_core::OsRng;
 
     use super::*;
+
+    #[test]
+    fn test_agent_signer_uses_the_given_socket() {
+        let error = AgentSigner::new("/nonexistent/agent.sock")
+            .keys()
+            .unwrap_err();
+        assert!(format!("{:#}", error).contains("/nonexistent/agent.sock"));
+    }
 
     #[test]
     fn test_private_key_signs_only_with_itself() {

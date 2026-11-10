@@ -24,6 +24,7 @@ tonic-prost = "0.14"
 [dev-dependencies]
 ssh-key = { version = "0.6.7", features = ["getrandom"] }
 tokio = { version = "1.43.1", features = ["net"] }
+tokio-stream = { version = "0.1.17", features = ["net"] }
 
 [build-dependencies]
 protox = "0.9"

@@ -104,8 +104,13 @@ the sender, whatever their Slack settings. Only octobot users can subscribe.
 They authenticate by signing a challenge with an SSH key registered to their
 GitHub account. An open stream closes within 5 minutes of the user being
 removed from octobot, and within about 10 minutes of the key being removed
-from GitHub. The
-`octobot_events` crate has the protocol and a client.
+from GitHub. The `octobot_events` crate has the protocol and a client.
+
+The client's `subscribe` reconnects on its own and yields `Reset` on every
+connect, `Change` for each hint, and `Disconnected` (with a cause, the error and
+when it retries) whenever it is not connected. Resync from GitHub on `Reset`. It
+signs with an ssh-agent, found through `SSH_AUTH_SOCK` or a given socket path
+(`AgentSigner`), or with an unencrypted key file (`ssh_key::PrivateKey`).
 
 ### Web UI
 
