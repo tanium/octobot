@@ -1,18 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use log::{info, warn};
-use ring::hmac;
-use ring::rand::{SecureRandom, SystemRandom};
 use ssh_key::{PublicKey, SshSig};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
-use octobot_events::NAMESPACE;
 use octobot_events::pb::events_server::Events;
 use octobot_events::pb::{self, ChallengeRequest, ChallengeResponse, SubscribeRequest, event};
 use octobot_lib::config::Config;
@@ -21,13 +18,12 @@ use octobot_lib::github::api::GithubSessionFactory;
 use octobot_lib::metrics::{self, Metrics, ScopedGaugeCounter};
 use octobot_ops::event_bus::{Event, EventBus, Kind};
 
-const CHALLENGE_TTL: Duration = Duration::from_secs(60);
-// Also how often an open stream rechecks that its user and key still exist.
-const KEYS_TTL: Duration = Duration::from_secs(5 * 60);
-// Minimum time between GitHub key lookups for one login.
-const KEYS_REFETCH_FLOOR: Duration = Duration::from_secs(30);
-// Short of the heartbeat interval, since a stream's recheck waits on it.
-const KEYS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
+mod challenges;
+mod keys;
+
+use challenges::Challenges;
+use keys::{KEYS_TTL, KeyCache};
+
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_STREAMS_PER_USER: usize = 10;
 const MAX_STREAMS: usize = 1_000;
@@ -202,75 +198,6 @@ impl AuthFailure {
     }
 }
 
-/// Single-use nonces, each bound to the login it was issued for. A nonce carries its own expiry
-/// and an HMAC over it and the login, so issuing one stores nothing. Only nonces that
-/// authenticated a stream are remembered, until they expire, to refuse replays.
-struct Challenges {
-    random: SystemRandom,
-    key: hmac::Key,
-    // Expiries are encoded relative to this.
-    epoch: Instant,
-    used: Mutex<HashMap<Vec<u8>, Instant>>,
-}
-
-// expiry millis (8) | random (16) | HMAC-SHA256 tag (32)
-const NONCE_BODY_LEN: usize = 8 + 16;
-const NONCE_LEN: usize = NONCE_BODY_LEN + 32;
-
-impl Challenges {
-    fn new() -> Challenges {
-        let random = SystemRandom::new();
-        let key = hmac::Key::generate(hmac::HMAC_SHA256, &random).expect("generate nonce key");
-        Challenges {
-            random,
-            key,
-            epoch: Instant::now(),
-            used: Mutex::new(HashMap::new()),
-        }
-    }
-
-    fn issue(&self, login: &str) -> Result<(Vec<u8>, SystemTime), Status> {
-        let expiry = Instant::now() + CHALLENGE_TTL - self.epoch;
-        let mut nonce = (expiry.as_millis() as u64).to_be_bytes().to_vec();
-        let mut random = [0; 16];
-        self.random
-            .fill(&mut random)
-            .map_err(|_| Status::internal("could not generate nonce"))?;
-        nonce.extend_from_slice(&random);
-        let tag = hmac::sign(&self.key, &tagged(login, &nonce));
-        nonce.extend_from_slice(tag.as_ref());
-        Ok((nonce, SystemTime::now() + CHALLENGE_TTL))
-    }
-
-    /// The nonce's expiry, if it was issued here to `login` and has not expired.
-    fn check(&self, nonce: &[u8], login: &str) -> Option<Instant> {
-        if nonce.len() != NONCE_LEN {
-            return None;
-        }
-        let (body, tag) = nonce.split_at(NONCE_BODY_LEN);
-        hmac::verify(&self.key, &tagged(login, body), tag).ok()?;
-        let millis = u64::from_be_bytes(body[..8].try_into().unwrap());
-        let expiry = self.epoch + Duration::from_millis(millis);
-        (expiry > Instant::now()).then_some(expiry)
-    }
-
-    /// Marks a checked nonce used; false if it already was.
-    fn consume(&self, nonce: &[u8], expiry: Instant) -> bool {
-        let now = Instant::now();
-        let mut used = self.used.lock().unwrap();
-        used.retain(|_, expiry| *expiry > now);
-        used.insert(nonce.to_vec(), expiry).is_none()
-    }
-}
-
-// Logins never contain a NUL, so the login and body cannot run together ambiguously.
-fn tagged(login: &str, body: &[u8]) -> Vec<u8> {
-    let mut msg = login.as_bytes().to_vec();
-    msg.push(0);
-    msg.extend_from_slice(body);
-    msg
-}
-
 /// Who may subscribe, and with which keys.
 #[async_trait]
 pub trait Directory: Send + Sync {
@@ -294,160 +221,6 @@ impl Directory for GithubDirectory {
     async fn keys(&self, login: &Login) -> anyhow::Result<Vec<String>> {
         self.github.get_user_keys(login).await
     }
-}
-
-/// Removing a key on GitHub revokes it here within `KEYS_TTL`.
-struct KeyCache {
-    directory: Arc<dyn Directory>,
-    entries: Mutex<HashMap<Login, CachedKeys>>,
-    // Last lookup per login, failed or not
-    attempts: Mutex<HashMap<Login, Attempt>>,
-    // One lookup per login at a time; callers that arrive mid-lookup share its result.
-    in_flight: Mutex<HashMap<Login, Arc<tokio::sync::Mutex<()>>>>,
-}
-
-#[derive(Clone)]
-struct CachedKeys {
-    fetched: Instant,
-    keys: Arc<Vec<PublicKey>>,
-}
-
-#[derive(Clone)]
-struct Attempt {
-    at: Instant,
-    /// None if the lookup failed
-    keys: Option<Arc<Vec<PublicKey>>>,
-}
-
-impl KeyCache {
-    fn new(directory: Arc<dyn Directory>) -> KeyCache {
-        KeyCache {
-            directory,
-            entries: Mutex::new(HashMap::new()),
-            attempts: Mutex::new(HashMap::new()),
-            in_flight: Mutex::new(HashMap::new()),
-        }
-    }
-
-    /// The user's key that made `sig`.
-    async fn verify(
-        self: &Arc<Self>,
-        login: &Login,
-        msg: &[u8],
-        sig: &SshSig,
-    ) -> Result<PublicKey, AuthFailure> {
-        let signer = |keys: &[PublicKey]| {
-            keys.iter()
-                .find(|k| k.verify(NAMESPACE, msg, sig).is_ok())
-                .cloned()
-        };
-
-        let cached = self.cached(login);
-        if let Some(key) = cached.as_ref().and_then(|cached| signer(&cached.keys)) {
-            return Ok(key);
-        }
-
-        // The key may have been added on GitHub since the cached lookup.
-        match self.fetch(login).await.map_err(AuthFailure::KeyLookup)? {
-            Some(keys) => signer(&keys).ok_or(AuthFailure::Signature),
-            None if cached.is_some() => Err(AuthFailure::Signature),
-            None => Err(AuthFailure::KeyLookup(too_soon(login))),
-        }
-    }
-
-    /// Whether `key` is still one of the user's keys on GitHub.
-    async fn has(self: &Arc<Self>, login: &Login, key: &PublicKey) -> anyhow::Result<bool> {
-        let keys = match self.cached(login) {
-            Some(cached) => cached.keys,
-            None => self.fetch(login).await?.ok_or_else(|| too_soon(login))?,
-        };
-        Ok(keys.iter().any(|k| k.key_data() == key.key_data()))
-    }
-
-    fn cached(&self, login: &Login) -> Option<CachedKeys> {
-        self.entries
-            .lock()
-            .unwrap()
-            .get(login)
-            .filter(|cached| cached.fetched.elapsed() < KEYS_TTL)
-            .cloned()
-    }
-
-    /// Looks up the user's keys on GitHub. Within `KEYS_REFETCH_FLOOR` of the last lookup, returns
-    /// its keys instead, or None if it failed, so neither bad signatures nor GitHub errors cause
-    /// a lookup each time.
-    async fn fetch(self: &Arc<Self>, login: &Login) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
-        // In its own task, so a caller hanging up mid-lookup cannot keep it from being recorded.
-        let cache = self.clone();
-        let login = login.clone();
-        tokio::spawn(async move { cache.fetch_recorded(&login).await }).await?
-    }
-
-    async fn fetch_recorded(&self, login: &Login) -> anyhow::Result<Option<Arc<Vec<PublicKey>>>> {
-        let in_flight = self
-            .in_flight
-            .lock()
-            .unwrap()
-            .entry(login.clone())
-            .or_default()
-            .clone();
-        let _one_at_a_time = in_flight.lock().await;
-
-        let recent = self
-            .attempts
-            .lock()
-            .unwrap()
-            .get(login)
-            .filter(|attempt| attempt.at.elapsed() < KEYS_REFETCH_FLOOR)
-            .cloned();
-        if let Some(attempt) = recent {
-            return Ok(attempt.keys);
-        }
-
-        // octobot's GitHub client sets no timeout, and a stalled lookup would hold the lock.
-        let result = tokio::time::timeout(KEYS_LOOKUP_TIMEOUT, self.lookup(login))
-            .await
-            .unwrap_or_else(|_| Err(anyhow::anyhow!("key lookup for {} timed out", login)));
-        let keys = result.as_ref().ok().cloned();
-        self.attempts.lock().unwrap().insert(
-            login.clone(),
-            Attempt {
-                at: Instant::now(),
-                keys: keys.clone(),
-            },
-        );
-        if let Some(keys) = keys {
-            self.entries.lock().unwrap().insert(
-                login.clone(),
-                CachedKeys {
-                    fetched: Instant::now(),
-                    keys,
-                },
-            );
-        }
-        result.map(Some)
-    }
-
-    async fn lookup(&self, login: &Login) -> anyhow::Result<Arc<Vec<PublicKey>>> {
-        let keys: Vec<PublicKey> = self
-            .directory
-            .keys(login)
-            .await?
-            .iter()
-            .filter_map(|key| match PublicKey::from_openssh(key) {
-                Ok(key) => Some(key),
-                Err(e) => {
-                    warn!("Skipping unparseable SSH key for {}: {}", login, e);
-                    None
-                }
-            })
-            .collect();
-        Ok(Arc::new(keys))
-    }
-}
-
-fn too_soon(login: &Login) -> anyhow::Error {
-    anyhow::anyhow!("keys for {} were looked up too recently", login)
 }
 
 struct StreamCounts {
@@ -623,22 +396,22 @@ fn pb_kind(kind: Kind) -> pb::Kind {
 mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+    use ssh_key::PrivateKey;
     use ssh_key::rand_core::OsRng;
-    use ssh_key::{Algorithm, HashAlg, PrivateKey};
 
     use super::*;
 
     #[derive(Default)]
-    struct FakeDirectory {
+    pub(super) struct FakeDirectory {
         keys: Mutex<HashMap<String, Vec<String>>>,
         removed_users: Mutex<HashSet<String>>,
-        lookups: AtomicUsize,
-        failing: AtomicBool,
-        delay: Mutex<Duration>,
+        pub(super) lookups: AtomicUsize,
+        pub(super) failing: AtomicBool,
+        pub(super) delay: Mutex<Duration>,
     }
 
     impl FakeDirectory {
-        fn set(&self, login: &str, keys: &[&PrivateKey]) {
+        pub(super) fn set(&self, login: &str, keys: &[&PrivateKey]) {
             let keys = keys
                 .iter()
                 .map(|k| k.public_key().to_openssh().unwrap())
@@ -679,34 +452,12 @@ mod tests {
         }
     }
 
-    fn joe() -> Login {
+    pub(super) fn joe() -> Login {
         Login::parse("joe").unwrap()
     }
 
-    fn new_key() -> PrivateKey {
-        PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap()
-    }
-
-    fn sign(key: &PrivateKey) -> SshSig {
-        key.sign(NAMESPACE, HashAlg::Sha512, b"msg").unwrap()
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn test_key_added_on_github_is_found_after_refetch_floor() {
-        let directory = Arc::new(FakeDirectory::default());
-        let old = new_key();
-        directory.set("joe", &[&old]);
-        let cache = Arc::new(KeyCache::new(directory.clone()));
-        assert!(cache.verify(&joe(), b"msg", &sign(&old)).await.is_ok());
-
-        let new = new_key();
-        directory.set("joe", &[&old, &new]);
-        let result = cache.verify(&joe(), b"msg", &sign(&new)).await;
-        assert!(matches!(result, Err(AuthFailure::Signature)));
-        assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
-
-        tokio::time::advance(KEYS_REFETCH_FLOOR).await;
-        assert!(cache.verify(&joe(), b"msg", &sign(&new)).await.is_ok());
+    pub(super) fn new_key() -> PrivateKey {
+        PrivateKey::random(&mut OsRng, ssh_key::Algorithm::Ed25519).unwrap()
     }
 
     #[test]
@@ -721,78 +472,7 @@ mod tests {
         assert_eq!("octobot.example.com", service.authority);
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn test_failed_lookups_are_not_retried_within_refetch_floor() {
-        let directory = Arc::new(FakeDirectory::default());
-        let key = new_key();
-        directory.set("joe", &[&key]);
-        directory.failing.store(true, Ordering::SeqCst);
-        let cache = Arc::new(KeyCache::new(directory.clone()));
-
-        for _ in 0..3 {
-            let result = cache.verify(&joe(), b"msg", &sign(&key)).await;
-            assert!(matches!(result, Err(AuthFailure::KeyLookup(_))));
-        }
-        assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
-
-        directory.failing.store(false, Ordering::SeqCst);
-        tokio::time::advance(KEYS_REFETCH_FLOOR).await;
-        assert!(cache.verify(&joe(), b"msg", &sign(&key)).await.is_ok());
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn test_concurrent_verifies_share_one_lookup() {
-        let directory = Arc::new(FakeDirectory::default());
-        let key = new_key();
-        directory.set("joe", &[&key]);
-        *directory.delay.lock().unwrap() = Duration::from_secs(1);
-        let cache = Arc::new(KeyCache::new(directory.clone()));
-
-        let sig = sign(&key);
-        let login = joe();
-        let (first, second) = tokio::join!(
-            cache.verify(&login, b"msg", &sig),
-            cache.verify(&login, b"msg", &sig)
-        );
-        assert!(first.is_ok());
-        assert!(second.is_ok());
-        assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
-    }
-
     // A caller hanging up mid-lookup must neither skip the refetch floor nor block the next caller.
-    #[tokio::test(start_paused = true)]
-    async fn test_cancelled_verify_still_records_its_lookup() {
-        let directory = Arc::new(FakeDirectory::default());
-        let key = new_key();
-        directory.set("joe", &[&key]);
-        *directory.delay.lock().unwrap() = Duration::from_secs(10);
-        let cache = Arc::new(KeyCache::new(directory.clone()));
-
-        let sig = sign(&key);
-        let cancelled =
-            tokio::time::timeout(Duration::from_secs(1), cache.verify(&joe(), b"msg", &sig)).await;
-        assert!(cancelled.is_err());
-
-        assert!(cache.verify(&joe(), b"msg", &sig).await.is_ok());
-        assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn test_stalled_lookup_times_out_and_counts() {
-        let directory = Arc::new(FakeDirectory::default());
-        let key = new_key();
-        directory.set("joe", &[&key]);
-        *directory.delay.lock().unwrap() = Duration::from_secs(3600);
-        let cache = Arc::new(KeyCache::new(directory.clone()));
-
-        let sig = sign(&key);
-        for _ in 0..2 {
-            let result = cache.verify(&joe(), b"msg", &sig).await;
-            assert!(matches!(result, Err(AuthFailure::KeyLookup(_))));
-        }
-        assert_eq!(1, directory.lookups.load(Ordering::SeqCst));
-    }
-
     /// Starts a stream for joe, authenticated by `key`. It ends if the bus is dropped.
     fn start_stream(
         directory: Arc<FakeDirectory>,
@@ -904,47 +584,6 @@ mod tests {
 
         // Ended without anyone reading, which frees its slot.
         assert!(rx.is_closed(), "stream still open");
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn test_challenge_expires() {
-        let challenges = Challenges::new();
-        let (nonce, _) = challenges.issue("joe").unwrap();
-
-        tokio::time::advance(CHALLENGE_TTL - Duration::from_secs(1)).await;
-        assert!(challenges.check(&nonce, "joe").is_some());
-
-        tokio::time::advance(Duration::from_secs(1)).await;
-        assert!(challenges.check(&nonce, "joe").is_none());
-    }
-
-    #[tokio::test]
-    async fn test_challenge_is_bound_to_login() {
-        let challenges = Challenges::new();
-        let (nonce, _) = challenges.issue("joe").unwrap();
-
-        assert!(challenges.check(&nonce, "bob").is_none());
-    }
-
-    #[tokio::test]
-    async fn test_challenge_rejects_tampering() {
-        let challenges = Challenges::new();
-        let (nonce, _) = challenges.issue("joe").unwrap();
-        let mut later = nonce.clone();
-        later[0] ^= 1;
-
-        assert!(challenges.check(&later, "joe").is_none());
-        assert!(Challenges::new().check(&nonce, "joe").is_none());
-    }
-
-    #[tokio::test]
-    async fn test_challenge_is_single_use() {
-        let challenges = Challenges::new();
-        let (nonce, _) = challenges.issue("joe").unwrap();
-        let expiry = challenges.check(&nonce, "joe").unwrap();
-
-        assert!(challenges.consume(&nonce, expiry));
-        assert!(!challenges.consume(&nonce, expiry));
     }
 
     #[test]
