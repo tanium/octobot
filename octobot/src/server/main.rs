@@ -33,7 +33,7 @@ use octobot_lib::metrics;
 use octobot_lib::github::api::Session;
 
 // Kept under the container's stop timeout so octobot can log what it
-// abandoned before podman kills it.
+// abandoned before it is killed.
 const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(25);
 
 // How far a stream can fall behind before it is aborted.
