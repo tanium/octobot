@@ -1490,6 +1490,25 @@ async fn test_pull_request_closed_draft_publishes() {
 }
 
 #[tokio::test]
+async fn test_pull_request_opened_draft() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "opened".into();
+    let mut pr = some_pr().unwrap();
+    pr.draft = Some(true);
+    test.handler.data.pull_request = Some(pr);
+    test.mock_pull_request_commits();
+    expect_jira_ref_fail(&test.github);
+    let mut receiver = test.subscribe_events(Kind::PullRequest);
+
+    // no slack mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn test_pull_request_converted_to_draft_publishes() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
