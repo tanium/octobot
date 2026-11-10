@@ -82,12 +82,14 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         });
     }
 
-    // Nothing is open yet, so a stop here returns at once instead of waiting on GitHub or Jira.
+    // No request or job has started yet, so a stop here exits at once instead of waiting on
+    // GitHub or Jira. Exit rather than return: dropping the runtime would wait out a stalled DNS
+    // lookup.
     let (github_api, jira_api) = tokio::select! {
         apis = connect(&config, &metrics) => apis,
         () = stopping.cancelled() => {
             info!("Stopped during startup");
-            return;
+            std::process::exit(0);
         }
     };
 
