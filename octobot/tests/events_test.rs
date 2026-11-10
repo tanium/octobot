@@ -525,5 +525,5 @@ async fn test_rejects_subscribe_without_auth() {
         })
         .await
         .unwrap_err();
-    assert_eq!(Code::Unauthenticated, err.code());
+    assert_eq!(Code::InvalidArgument, err.code());
 }

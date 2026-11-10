@@ -76,19 +76,22 @@ impl EventsService {
 
     async fn authenticate(&self, auth: Option<&pb::Auth>) -> Result<(Login, PublicKey), Status> {
         let result = self.verify(auth).await;
-        if let Err(failure) = &result {
-            // Not the username: it is the caller's unverified claim, and the client's own error
-            // names it.
-            match failure {
-                AuthFailure::Malformed(detail) => info!("Refused event stream: {}", detail),
-                _ => info!("Refused event stream: {}", failure.reason()),
-            }
-            self.metrics
-                .event_stream_auth_failures
-                .with_label_values(&[failure.reason()])
-                .inc();
+        result.map_err(|failure| self.refuse("subscribe", failure))
+    }
+
+    /// Logs and counts a failed `stage`, Challenge or Subscribe.
+    fn refuse(&self, stage: &str, failure: AuthFailure) -> Status {
+        // Not the username: it is the caller's unverified claim, and the client's own error
+        // names it.
+        match &failure {
+            AuthFailure::Malformed(detail) => info!("Refused event stream {}: {}", stage, detail),
+            _ => info!("Refused event stream {}: {}", stage, failure.reason()),
         }
-        result.map_err(AuthFailure::status)
+        self.metrics
+            .event_stream_auth_failures
+            .with_label_values(&[stage, failure.reason()])
+            .inc();
+        failure.status()
     }
 
     async fn verify(&self, auth: Option<&pb::Auth>) -> Result<(Login, PublicKey), AuthFailure> {
@@ -119,15 +122,18 @@ impl Events for EventsService {
         req: Request<ChallengeRequest>,
     ) -> Result<Response<ChallengeResponse>, Status> {
         let username = req.into_inner().username;
-        Login::parse(&username).map_err(|_| Status::invalid_argument("invalid username"))?;
-        let login = self.octobot_user(&username).map_err(AuthFailure::status)?;
+        Login::parse(&username)
+            .map_err(|_| self.refuse("challenge", AuthFailure::Malformed("invalid username")))?;
+        let login = self
+            .octobot_user(&username)
+            .map_err(|failure| self.refuse("challenge", failure))?;
         // Public on GitHub anyway; listing them lets the client sign with one GitHub knows.
         // Subscribe then usually finds them cached.
         let keys = self
             .keys
             .recent(&login)
             .await
-            .map_err(|e| AuthFailure::KeyLookup(e).status())?;
+            .map_err(|e| self.refuse("challenge", AuthFailure::KeyLookup(e)))?;
         let (nonce, expires) = self.challenges.issue(login.as_str())?;
         Ok(Response::new(ChallengeResponse {
             nonce,
@@ -192,7 +198,7 @@ impl AuthFailure {
 
     fn status(self) -> Status {
         match self {
-            AuthFailure::Malformed(msg) => Status::unauthenticated(msg),
+            AuthFailure::Malformed(msg) => Status::invalid_argument(msg),
             AuthFailure::NotUser => Status::permission_denied("not an octobot user"),
             // Not a refusal: the challenge expired or outlived a restart, and a new one works.
             AuthFailure::Nonce => Status::failed_precondition("unknown or expired challenge"),
@@ -472,6 +478,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!("octobot.example.com", service.authority);
+    }
+
+    #[tokio::test]
+    async fn test_challenge_refusals_are_counted() {
+        let metrics = Metrics::new();
+        let service = EventsService::new(
+            Arc::new(EventBus::new(10)),
+            "octobot.example.com",
+            Arc::new(FakeDirectory::default()),
+            metrics.clone(),
+        )
+        .unwrap();
+        let req = Request::new(ChallengeRequest {
+            username: "stranger".into(),
+        });
+        assert!(service.challenge(req).await.is_err());
+
+        let refused = metrics
+            .event_stream_auth_failures
+            .with_label_values(&["challenge", "not_user"]);
+        assert_eq!(1, refused.get());
     }
 
     #[tokio::test(start_paused = true)]

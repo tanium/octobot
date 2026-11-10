@@ -180,8 +180,8 @@ impl Metrics {
 
             event_stream_auth_failures: register_int_counter_vec_with_registry!(
                 "event_stream_auth_failures",
-                "Refused event stream subscriptions",
-                &["reason"],
+                "Refused event stream challenges and subscriptions",
+                &["stage", "reason"],
                 registry.as_ref()
             )
             .unwrap(),
