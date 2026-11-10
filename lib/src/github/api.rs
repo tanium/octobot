@@ -9,9 +9,10 @@ use std::collections::HashMap;
 use time::format_description::well_known::Rfc3339;
 
 use crate::errors::*;
+use crate::github::Login;
 use crate::github::models::*;
 use crate::github::models_checks::*;
-use crate::http_client::HTTPClient;
+use crate::http_client::{HTTPClient, HttpError};
 use crate::jwt;
 use crate::metrics::Metrics;
 
@@ -156,6 +157,8 @@ pub trait GithubSessionFactory: Send + Sync {
     async fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession>;
     async fn get_token_org(&self, org: &str) -> Result<String>;
     async fn get_token_repo(&self, owner: &str, repo: &str) -> Result<String>;
+    /// The user's public SSH keys, one OpenSSH-format key per entry.
+    async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>>;
     fn bot_name(&self) -> String;
 }
 
@@ -386,6 +389,35 @@ impl GithubSessionFactory for GithubApp {
             .await
     }
 
+    // The app's JWT only reaches /app endpoints, but any installation's token can read a
+    // user's public keys.
+    async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Installation {
+            id: u32,
+        }
+
+        let installations: Vec<Installation> = self
+            .new_client()?
+            .get("/app/installations?per_page=1")
+            .await?;
+        let installation = installations
+            .first()
+            .ok_or_else(|| anyhow!("GitHub app has no installations"))?;
+        let token = self
+            .new_token(&format!("/app/installations/{}", installation.id))
+            .await?;
+        GithubSession::new(
+            &self.host,
+            &self.bot_name(),
+            &token,
+            Some(self.app_id),
+            self.metrics.clone(),
+        )?
+        .get_user_keys(login)
+        .await
+    }
+
     async fn new_session(&self, owner: &str, repo: &str) -> Result<GithubSession> {
         GithubSession::new(
             &self.host,
@@ -467,6 +499,10 @@ impl GithubSessionFactory for GithubOauthApp {
     async fn new_service_session(&self) -> Result<GithubSession> {
         return self.new_session("", "").await;
     }
+
+    async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>> {
+        self.new_service_session().await?.get_user_keys(login).await
+    }
 }
 
 pub struct GithubSession {
@@ -480,6 +516,18 @@ pub struct GithubSession {
 impl GithubSession {
     pub fn new(
         host: &str,
+        bot_name: &str,
+        token: &str,
+        app_id: Option<u32>,
+        metrics: Option<Arc<Metrics>>,
+    ) -> Result<GithubSession> {
+        GithubSession::with_api_base(host, &api_base(host), bot_name, token, app_id, metrics)
+    }
+
+    // `api_base` differs from the host's only in tests, which point it at a local mock server.
+    fn with_api_base(
+        host: &str,
+        api_base: &str,
         bot_name: &str,
         token: &str,
         app_id: Option<u32>,
@@ -508,7 +556,7 @@ impl GithubSession {
             format!("Bearer {}", token).parse().unwrap(),
         );
 
-        let client = HTTPClient::new_with_headers(&api_base(host), headers)?;
+        let client = HTTPClient::new_with_headers(api_base, headers)?;
         let client = match metrics {
             None => client,
             Some(ref m) => client.with_metrics(
@@ -524,6 +572,26 @@ impl GithubSession {
             token: token.to_string(),
             app_id,
         })
+    }
+
+    async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Key {
+            key: String,
+        }
+
+        let keys: Vec<Key> = match self.client.get(&format!("/users/{}/keys", login)).await {
+            Ok(keys) => keys,
+            // A deleted or renamed login has no keys.
+            Err(e)
+                if e.downcast_ref::<HttpError>()
+                    .is_some_and(|e| e.status == reqwest::StatusCode::NOT_FOUND) =>
+            {
+                vec![]
+            }
+            Err(e) => bail!("Error getting keys for user {}: {}", login, e),
+        };
+        Ok(keys.into_iter().map(|k| k.key).collect())
     }
 
     async fn do_get_pull_requests(
@@ -1267,6 +1335,57 @@ mod tests {
             r#"{{"token": "{}", "expires_at": "{}"}}"#,
             token, expires_at
         )
+    }
+
+    fn session_for_test(api_base: &str) -> GithubSession {
+        GithubSession::with_api_base("github.test", api_base, "bot", "token", None, None).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_get_user_keys() {
+        let mut server = mockito::Server::new_async().await;
+        server
+            .mock("GET", "/users/joe/keys")
+            .with_body(r#"[{"id": 1, "key": "ssh-ed25519 AAAA"}]"#)
+            .create_async()
+            .await;
+
+        let keys = session_for_test(&server.url())
+            .get_user_keys(&Login::parse("joe").unwrap())
+            .await
+            .unwrap();
+        assert_eq!(vec!["ssh-ed25519 AAAA".to_string()], keys);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_keys_for_missing_user_is_empty() {
+        let mut server = mockito::Server::new_async().await;
+        server
+            .mock("GET", "/users/joe/keys")
+            .with_status(404)
+            .create_async()
+            .await;
+
+        let keys = session_for_test(&server.url())
+            .get_user_keys(&Login::parse("joe").unwrap())
+            .await
+            .unwrap();
+        assert!(keys.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_user_keys_fails_on_server_error() {
+        let mut server = mockito::Server::new_async().await;
+        server
+            .mock("GET", "/users/joe/keys")
+            .with_status(500)
+            .create_async()
+            .await;
+
+        let result = session_for_test(&server.url())
+            .get_user_keys(&Login::parse("joe").unwrap())
+            .await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

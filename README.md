@@ -71,6 +71,14 @@ config.toml
     fixed_resolutions = [ "Fixed", "Done" ]
     fix_version_field = "fixVersions"
 
+    [events]
+    # optional: enables the gRPC event stream. Plaintext HTTP/2, meant to sit
+    # behind a TLS-terminating proxy (nginx: `grpc_pass grpc://127.0.0.1:3002;`).
+    # In docker, listen on 0.0.0.0:3002 and publish it to the proxy only.
+    listen_addr = "127.0.0.1:3002"
+    # host[:port] clients dial; they sign it to subscribe.
+    authority = "octobot.company.com"
+
 
 For the octobot github user token, you will need to:
 
@@ -86,6 +94,30 @@ For the octobot github user token, you will need to:
   :rotating_light: **Warning** :rotating_light:
 
   This token has read/write access to your code. Guard it carefully and make sure config.toml is only readable by root.
+
+### Event stream
+
+The event stream pushes a thin hint (repo, event, action, PR or issue number)
+to each GitHub user octobot notifies about a change, so local tools can refetch
+from GitHub without polling. Hints follow octobot's direct messages: the same
+events, to the same people, except that they also go to the sender and ignore
+Slack mute settings. So there are none for draft pull requests, or for events
+octobot only posts to channels, such as a pull request opening. Only octobot
+users can subscribe.
+They authenticate by signing a challenge with an SSH key registered to their
+GitHub account. An open stream closes within 5 minutes of the user being
+removed from octobot, and within about 10 minutes of the key being removed
+from GitHub. The `octobot_events` crate has the protocol and a client.
+
+A challenge tells anyone who asks whether a login is an octobot user, and lists
+that user's SSH key fingerprints. A private-mode GitHub Enterprise shows its
+users as much, so serve the event stream only on the network that can reach it.
+
+The client's `subscribe` reconnects on its own and yields `Reset` on every
+connect, `Change` for each hint, and `Disconnected` (with a cause, the error and
+when it retries) whenever it is not connected. Resync from GitHub on `Reset`. It
+signs with an ssh-agent, found through `SSH_AUTH_SOCK` or a given socket path
+(`AgentSigner`), or with an unencrypted key file (`ssh_key::PrivateKey`).
 
 ### Web UI
 

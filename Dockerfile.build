@@ -42,6 +42,8 @@ COPY Cargo.toml .
 COPY Cargo.lock .
 COPY rust-toolchain.toml .
 
+COPY events/Cargo.toml events/build.rs events/
+COPY events/proto events/proto
 COPY ldap/Cargo.toml ldap/
 COPY lib/Cargo.toml lib/
 COPY octobot/Cargo.toml octobot/
@@ -53,6 +55,7 @@ RUN cargo build; exit 0
 RUN cargo build --release; exit 0
 
 # now add source
+COPY events/src events/src
 COPY ldap/src ldap/src
 COPY lib/src lib/src
 COPY octobot/src octobot/src

@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package octobot.events.v1;
+
+// Pushes thin change hints to the GitHub users octobot notifies about them.
+// Clients refetch the real data from GitHub with their own credentials.
+service Events {
+  // PERMISSION_DENIED for logins that are not octobot users.
+  rpc Challenge(ChallengeRequest) returns (ChallengeResponse);
+
+  // UNAUTHENTICATED unless `auth` is signed with one of the user's GitHub
+  // keys. FAILED_PRECONDITION when its challenge is unknown or expired: get a
+  // new one.
+  rpc Subscribe(SubscribeRequest) returns (stream Event);
+}
+
+message ChallengeRequest {
+  string username = 1;
+}
+
+message ChallengeResponse {
+  bytes nonce = 1;
+  int64 expires_unix = 2;
+  // SHA-256 fingerprints ("SHA256:...") of the user's SSH keys on GitHub,
+  // so the client can sign with one of them
+  repeated string key_fingerprints = 3;
+}
+
+// Streams are live only: changes from before a (re)connect are not sent, so
+// load state from GitHub after each one.
+message SubscribeRequest {
+  Auth auth = 1;
+  // Kinds to receive; empty means all.
+  repeated Kind kinds = 2;
+}
+
+// Proof that the caller holds an SSH key registered to `username` on GitHub
+message Auth {
+  // GitHub login
+  string username = 1;
+  // From the username's Challenge
+  bytes nonce = 2;
+  // Armored SSH signature (namespace "octobot-events") over
+  // `octobot-events-v1|<authority>|<nonce>`
+  string signature = 3;
+}
+
+// A stream that falls behind ends with ABORTED, since changes were dropped.
+message Event {
+  oneof body {
+    Change change = 1;
+    // Sent every 30s; a silent stream is dead.
+    Heartbeat heartbeat = 2;
+  }
+}
+
+message Change {
+  // "org/repo"
+  string repo = 1;
+  Kind kind = 2;
+  // GitHub's webhook action (opened, submitted, ...); empty for push.
+  string action = 3;
+  // The pull request or issue, if there is one
+  optional uint64 number = 4;
+}
+
+// The GitHub webhook events (X-GitHub-Event) octobot notifies people about
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  KIND_PULL_REQUEST = 1;
+  KIND_PULL_REQUEST_REVIEW = 2;
+  KIND_PULL_REQUEST_REVIEW_COMMENT = 3;
+  KIND_COMMIT_COMMENT = 4;
+  KIND_ISSUE_COMMENT = 5;
+  KIND_PUSH = 6;
+}
+
+message Heartbeat {}

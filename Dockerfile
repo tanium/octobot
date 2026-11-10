@@ -36,6 +36,8 @@ VOLUME /data
 WORKDIR $HOME/bin
 
 EXPOSE 3000
+# gRPC event stream, when [events] is configured
+EXPOSE 3002
 
 ENV USER=octobot
 ENV RUST_LOG=info
