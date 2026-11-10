@@ -49,7 +49,7 @@ pub fn start(config: Config) {
 
 async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     // Octobot is PID 1 in its container, where signals without a handler are ignored rather
-    // than fatal. Registering before startup means a stop is never ignored, only deferred.
+    // than fatal. Registering before startup means a stop is never ignored.
     let mut sigterm = signal(SignalKind::terminate()).expect("SIGTERM handler");
     let mut sigint = signal(SignalKind::interrupt()).expect("SIGINT handler");
     let stopping = CancellationToken::new();
@@ -82,32 +82,12 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         });
     }
 
-    let github_api: Arc<dyn github::api::GithubSessionFactory> = if config.github.app_id.is_some() {
-        match github::api::GithubApp::new(
-            &config.github.host,
-            config.github.app_id.expect("expected an app_id"),
-            &config.github.app_key().expect("expected an app_key"),
-            Some(metrics.clone()),
-        )
-        .await
-        {
-            Ok(s) => Arc::new(s),
-            Err(e) => panic!("Error initiating github session: {}", e),
-        }
-    } else {
-        match github::api::GithubOauthApp::new(
-            &config.github.host,
-            config
-                .github
-                .api_token
-                .as_ref()
-                .expect("expected an api_token"),
-            Some(metrics.clone()),
-        )
-        .await
-        {
-            Ok(s) => Arc::new(s),
-            Err(e) => panic!("Error initiating github session: {}", e),
+    // Nothing is open yet, so a stop here returns at once instead of waiting on GitHub or Jira.
+    let (github_api, jira_api) = tokio::select! {
+        apis = connect(&config, &metrics) => apis,
+        () = stopping.cancelled() => {
+            info!("Stopped during startup");
+            return;
         }
     };
 
@@ -115,15 +95,6 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     let latest_webhook_guid = webhook_db
         .get_latest_guid()
         .expect("failed to lookup latest guid");
-
-    let jira_api: Option<Arc<dyn jira::api::Session>> = if let Some(ref jira_config) = config.jira {
-        match JiraSession::new(jira_config, Some(metrics.clone())).await {
-            Ok(s) => Some(Arc::new(s)),
-            Err(e) => panic!("Error initiating jira session: {}", e),
-        }
-    } else {
-        None
-    };
 
     let http_addr: SocketAddr = match config.main.listen_addr {
         Some(ref addr_and_port) => addr_and_port.parse().unwrap(),
@@ -288,6 +259,54 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
     // Exit rather than return: dropping the jobs runtime from inside this runtime would panic,
     // and nothing left needs cleaning up.
     std::process::exit(0);
+}
+
+async fn connect(
+    config: &Config,
+    metrics: &Arc<metrics::Metrics>,
+) -> (
+    Arc<dyn github::api::GithubSessionFactory>,
+    Option<Arc<dyn jira::api::Session>>,
+) {
+    let github_api: Arc<dyn github::api::GithubSessionFactory> = if config.github.app_id.is_some() {
+        match github::api::GithubApp::new(
+            &config.github.host,
+            config.github.app_id.expect("expected an app_id"),
+            &config.github.app_key().expect("expected an app_key"),
+            Some(metrics.clone()),
+        )
+        .await
+        {
+            Ok(s) => Arc::new(s),
+            Err(e) => panic!("Error initiating github session: {}", e),
+        }
+    } else {
+        match github::api::GithubOauthApp::new(
+            &config.github.host,
+            config
+                .github
+                .api_token
+                .as_ref()
+                .expect("expected an api_token"),
+            Some(metrics.clone()),
+        )
+        .await
+        {
+            Ok(s) => Arc::new(s),
+            Err(e) => panic!("Error initiating github session: {}", e),
+        }
+    };
+
+    let jira_api: Option<Arc<dyn jira::api::Session>> = if let Some(ref jira_config) = config.jira {
+        match JiraSession::new(jira_config, Some(metrics.clone())).await {
+            Ok(s) => Some(Arc::new(s)),
+            Err(e) => panic!("Error initiating jira session: {}", e),
+        }
+    } else {
+        None
+    };
+
+    (github_api, jira_api)
 }
 
 /// Serves until `stop` completes, then stops accepting connections. The returned
