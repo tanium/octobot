@@ -9,7 +9,8 @@ service Events {
   rpc Challenge(ChallengeRequest) returns (ChallengeResponse);
 
   // UNAUTHENTICATED unless `auth` is signed with one of the user's GitHub
-  // keys over a challenge for them.
+  // keys. FAILED_PRECONDITION when its challenge is unknown or expired: get a
+  // new one.
   rpc Subscribe(SubscribeRequest) returns (stream Event);
 }
 

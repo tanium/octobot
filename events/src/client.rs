@@ -71,7 +71,8 @@ pub enum Cause {
     /// Something the user must fix: no key was accepted, the signer is unusable, or the
     /// endpoint or username is invalid. Retrying will not help until they do.
     Config,
-    /// Octobot could not be reached or could not answer.
+    /// Octobot could not be reached or could not answer, or the challenge went stale. Retrying
+    /// may help.
     Unreachable,
     /// A live stream ended: the server closed or aborted it, or it went silent.
     Ended,
@@ -149,8 +150,8 @@ fn ended(error: impl Into<anyhow::Error>) -> Failure {
     }
 }
 
-// A malformed username is ours to fix; anything else, such as UNAVAILABLE while octobot cannot
-// reach GitHub, may pass.
+// A bad username, a non-user or a refused signature is ours to fix. Anything else may pass, such
+// as UNAVAILABLE while octobot cannot reach GitHub, or FAILED_PRECONDITION for a stale challenge.
 fn refused(status: tonic::Status) -> Failure {
     match status.code() {
         Code::InvalidArgument | Code::PermissionDenied | Code::Unauthenticated => config(status),
@@ -317,10 +318,11 @@ mod tests {
     use crate::pb::ChallengeResponse;
     use crate::pb::events_server::{Events, EventsServer};
 
-    /// Lists one key, accepts every subscription, then ends it: with `end` as the error, or
-    /// cleanly.
+    /// Lists one key and refuses every subscription with `refuse`, or accepts it and then ends
+    /// it: with `end` as the error, or cleanly.
     struct EndingServer {
         fingerprint: String,
+        refuse: Option<(Code, &'static str)>,
         end: Option<(Code, &'static str)>,
     }
 
@@ -343,6 +345,9 @@ mod tests {
             &self,
             _req: Request<SubscribeRequest>,
         ) -> Result<Response<Self::SubscribeStream>, Status> {
+            if let Some((code, message)) = self.refuse {
+                return Err(Status::new(code, message));
+            }
             let end: Vec<_> = self
                 .end
                 .iter()
@@ -353,10 +358,14 @@ mod tests {
     }
 
     /// Starts an `EndingServer`, returning its endpoint and the key it lists.
-    async fn start(end: Option<(Code, &'static str)>) -> (String, Arc<PrivateKey>) {
+    async fn start(
+        refuse: Option<(Code, &'static str)>,
+        end: Option<(Code, &'static str)>,
+    ) -> (String, Arc<PrivateKey>) {
         let key = new_key();
         let server = EndingServer {
             fingerprint: key.public_key().fingerprint(HashAlg::Sha256).to_string(),
+            refuse,
             end,
         };
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -391,7 +400,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_reports_a_stream_the_server_ends_cleanly() {
-        let (endpoint, key) = start(None).await;
+        let (endpoint, key) = start(None, None).await;
         let mut updates = subscribe(joe(endpoint), key);
 
         // Twice, since a connect that worked resets the backoff the first retry doubled.
@@ -408,8 +417,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_reports_a_stale_challenge_as_passing() {
+        let refuse = Some((Code::FailedPrecondition, "unknown or expired challenge"));
+        let (endpoint, key) = start(refuse, None).await;
+        let mut updates = subscribe(joe(endpoint), key);
+
+        let disconnected = next(&mut updates).await;
+        assert!(
+            matches!(
+                &disconnected,
+                Update::Disconnected {
+                    cause: Cause::Unreachable,
+                    ..
+                }
+            ),
+            "{:?}",
+            disconnected
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reports_a_refused_signature_as_config() {
+        let refuse = Some((Code::Unauthenticated, "signature does not match"));
+        let (endpoint, key) = start(refuse, None).await;
+        let mut updates = subscribe(joe(endpoint), key);
+
+        let disconnected = next(&mut updates).await;
+        assert!(
+            matches!(
+                &disconnected,
+                Update::Disconnected {
+                    cause: Cause::Config,
+                    ..
+                }
+            ),
+            "{:?}",
+            disconnected
+        );
+    }
+
+    #[tokio::test]
     async fn test_reports_a_stream_the_server_aborts() {
-        let (endpoint, key) = start(Some((Code::Aborted, "stream fell behind"))).await;
+        let (endpoint, key) = start(None, Some((Code::Aborted, "stream fell behind"))).await;
         let mut updates = subscribe(joe(endpoint), key);
 
         assert_eq!(Update::Reset, next(&mut updates).await);

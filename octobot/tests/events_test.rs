@@ -414,7 +414,7 @@ async fn test_rejects_reused_nonce() {
         .raw_subscribe("joe", &nonce, &key, &authority)
         .await
         .unwrap_err();
-    assert_eq!(Code::Unauthenticated, err.code());
+    assert_eq!(Code::FailedPrecondition, err.code());
 }
 
 #[tokio::test]
@@ -430,7 +430,7 @@ async fn test_rejects_nonce_issued_to_another_user() {
         .raw_subscribe("joe", &nonce, &key, &authority)
         .await
         .unwrap_err();
-    assert_eq!(Code::Unauthenticated, err.code());
+    assert_eq!(Code::FailedPrecondition, err.code());
 }
 
 #[tokio::test]

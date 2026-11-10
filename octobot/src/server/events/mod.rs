@@ -194,7 +194,8 @@ impl AuthFailure {
         match self {
             AuthFailure::Malformed(msg) => Status::unauthenticated(msg),
             AuthFailure::NotUser => Status::permission_denied("not an octobot user"),
-            AuthFailure::Nonce => Status::unauthenticated("unknown or expired challenge"),
+            // Not a refusal: the challenge expired or outlived a restart, and a new one works.
+            AuthFailure::Nonce => Status::failed_precondition("unknown or expired challenge"),
             AuthFailure::Signature => {
                 Status::unauthenticated("signature does not match the user's GitHub keys")
             }
