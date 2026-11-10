@@ -680,9 +680,19 @@ impl GithubEventHandler {
                         .build(),
                 ];
 
-                if !pull_request.is_draft() {
+                let thread = self.build_thread(&pull_request);
+                if pull_request.is_draft() {
+                    if matches!(notify_mode, NotifyMode::All) {
+                        self.messenger.publish_to_all(
+                            &pull_request.user,
+                            &self.data.sender,
+                            &self.repository,
+                            &self.all_participants(&pull_request, &commits).await,
+                            &[thread],
+                        );
+                    }
+                } else {
                     let msg = format!("Pull Request {}", verb);
-                    let thread = self.build_thread(&pull_request);
                     match notify_mode {
                         NotifyMode::Channel => self.messenger.send_to_channel(
                             &msg,
@@ -1135,8 +1145,19 @@ impl GithubEventHandler {
                     );
 
                     for pull_request in &prs {
+                        let commits = self.pull_request_commits(&pull_request).await;
+                        let participants = self.all_participants(&pull_request, &commits).await;
+                        let thread = self.build_thread(&pull_request);
+
                         if pull_request.is_draft() {
                             info!("Skipping WIP PR #{}", pull_request.number);
+                            self.messenger.publish_to_all(
+                                &pull_request.user,
+                                &self.data.sender,
+                                &self.repository,
+                                &participants,
+                                &[thread],
+                            );
                             continue;
                         }
 
@@ -1153,18 +1174,16 @@ impl GithubEventHandler {
                                 .build(),
                         );
 
-                        let commits = self.pull_request_commits(&pull_request).await;
-
                         self.messenger.send_to_all(
                             &message,
                             &attachments,
                             &pull_request.user,
                             &self.data.sender,
                             &self.repository,
-                            self.all_participants(&pull_request, &commits).await,
+                            participants,
                             &branch_name,
                             &commits,
-                            vec![self.build_thread(&pull_request)],
+                            vec![thread],
                         );
 
                         if self.data.forced()

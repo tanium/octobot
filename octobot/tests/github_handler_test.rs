@@ -4,12 +4,14 @@ use std::time::Duration;
 use anyhow::anyhow;
 use hyper::StatusCode;
 use tempfile::{TempDir, tempdir};
+use tokio::sync::broadcast;
 
 use mocks::mock_github::MockGithub;
 use mocks::mock_jira::MockJira;
 use mocks::mock_slack::MockSlack;
 use mocks::mock_worker::LockedMockWorker;
 use octobot::server::github_handler::{GithubEventHandler, TeamsCache};
+use octobot_events::Kind;
 use octobot_lib::config::{Config, JiraAuth, JiraConfig};
 use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github::api::Session;
@@ -17,6 +19,7 @@ use octobot_lib::github::*;
 use octobot_lib::jira::{self};
 use octobot_lib::repos;
 use octobot_lib::slack::SlackRecipient;
+use octobot_ops::event_bus::{Change, Event, EventBus};
 use octobot_ops::force_push::{self, ForcePushRequest};
 use octobot_ops::messenger;
 use octobot_ops::pr_merge::{self, PRMergeRequest};
@@ -123,6 +126,14 @@ impl GithubHandlerTest {
         );
 
         commits
+    }
+
+    fn subscribe_events(&mut self, kind: Kind) -> broadcast::Receiver<Arc<Event>> {
+        let bus = Arc::new(EventBus::new(10));
+        let receiver = bus.subscribe();
+        self.handler.messenger = messenger::new(self.config.clone(), self.slack.new_sender())
+            .with_events(bus, kind, &self.handler.action);
+        receiver
     }
 
     fn mock_get_team_members(&self, team_id: u32) -> Vec<User> {
@@ -1439,6 +1450,45 @@ async fn test_pull_request_closed() {
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
+// Drafts get no Slack messages, but tools still want hints about them.
+#[tokio::test]
+async fn test_pull_request_closed_draft_publishes() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "closed".into();
+    let mut pr = some_pr().unwrap();
+    pr.draft = Some(true);
+    test.handler.data.pull_request = Some(pr);
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::PullRequest);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert_eq!(
+        vec![
+            "assign1",
+            "bob-author",
+            "joe-reviewer",
+            "the-pr-closer",
+            "the-pr-owner"
+        ],
+        event.recipients.iter().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        Change {
+            repo: "some-user/some-repo".into(),
+            kind: Kind::PullRequest,
+            action: "closed".into(),
+            number: Some(32),
+        },
+        event.change
+    );
+    assert!(receiver.try_recv().is_err());
+}
+
 #[tokio::test]
 async fn test_pull_request_reopened() {
     let mut test = new_test();
@@ -2579,6 +2629,33 @@ async fn test_push_force_notify_wip() {
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
+}
+
+#[tokio::test]
+async fn test_push_draft_publishes() {
+    let mut test = new_test();
+
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/some-branch".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+
+    let mut pr = some_pr().unwrap();
+    pr.head.sha = "abcdef0000".into();
+    pr.draft = Some(true);
+    test.github
+        .mock_get_pull_requests("some-user", "some-repo", Some("open"), None, Ok(vec![pr]));
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::Push);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "push".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("joe-sender"));
+    assert!(event.is_for("the-pr-owner"));
+    assert_eq!(Some(32), event.change.number);
+    assert!(receiver.try_recv().is_err());
 }
 
 #[tokio::test]

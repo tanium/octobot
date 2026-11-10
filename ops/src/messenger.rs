@@ -222,8 +222,8 @@ impl Messenger {
         commits: &[T],
         threads: Vec<Thread>,
     ) {
+        self.publish_to_all(item_owner, sender, repo, &participants, &threads);
         participants.add_user(item_owner.clone());
-        self.publish(repo, &participants, sender, &threads);
 
         if self.is_ignored_user(sender) {
             info!("Ignoring message from ignored user: {}", sender.login(),);
@@ -246,13 +246,16 @@ impl Messenger {
         self.send_to_slackbots(participants, repo, msg, attachments, dm_thread, review);
     }
 
+    /// Publishes the hints `send_to_all` would, without messaging anyone. For changes octobot
+    /// keeps out of Slack, like those to draft PRs.
     // Every participant gets the hint, including the sender. The Slack filters (ignored users,
     // mutes, DM settings) are about noise for people; hints feed tools that refetch and decide.
-    fn publish(
+    pub fn publish_to_all(
         &self,
+        item_owner: &github::User,
+        sender: &github::User,
         repo: &github::Repo,
         participants: &Participants,
-        sender: &github::User,
         threads: &[Thread],
     ) {
         let Some(events) = &self.events else {
@@ -260,6 +263,7 @@ impl Messenger {
         };
 
         let mut recipients: BTreeSet<String> = participants.users.keys().cloned().collect();
+        recipients.insert(item_owner.login().to_string());
         recipients.insert(sender.login().to_string());
 
         let mut numbers: BTreeSet<Option<u64>> = threads.iter().map(|t| t.number).collect();
