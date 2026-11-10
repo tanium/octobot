@@ -222,8 +222,8 @@ impl Messenger {
         commits: &[T],
         threads: Vec<Thread>,
     ) {
-        self.publish_to_all(item_owner, sender, repo, &participants, &threads);
         participants.add_user(item_owner.clone());
+        self.publish_to_all(sender, repo, &participants, &threads);
 
         if self.is_ignored_user(sender) {
             info!("Ignoring message from ignored user: {}", sender.login(),);
@@ -253,7 +253,6 @@ impl Messenger {
     /// decide.
     pub fn publish_to_all(
         &self,
-        item_owner: &github::User,
         sender: &github::User,
         repo: &github::Repo,
         participants: &Participants,
@@ -264,7 +263,6 @@ impl Messenger {
         };
 
         let mut recipients: BTreeSet<String> = participants.users.keys().cloned().collect();
-        recipients.insert(item_owner.login().to_string());
         recipients.insert(sender.login().to_string());
 
         let mut numbers: BTreeSet<Option<u64>> = threads.iter().map(|t| t.number).collect();

@@ -698,7 +698,6 @@ impl GithubEventHandler {
                 match notify_mode {
                     NotifyMode::Channel => {
                         self.messenger.publish_to_all(
-                            &pull_request.user,
                             &self.data.sender,
                             &self.repository,
                             &self.all_participants(&pull_request, &commits).await,
@@ -728,7 +727,6 @@ impl GithubEventHandler {
                     ),
 
                     NotifyMode::Hint => self.messenger.publish_to_all(
-                        &pull_request.user,
                         &self.data.sender,
                         &self.repository,
                         &self.all_participants(&pull_request, &commits).await,
@@ -1170,7 +1168,6 @@ impl GithubEventHandler {
                         if pull_request.is_draft() {
                             info!("Skipping WIP PR #{}", pull_request.number);
                             self.messenger.publish_to_all(
-                                &pull_request.user,
                                 &self.data.sender,
                                 &self.repository,
                                 &participants,
