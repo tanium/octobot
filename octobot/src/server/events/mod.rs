@@ -22,6 +22,8 @@ mod challenges;
 mod keys;
 
 use challenges::Challenges;
+#[cfg(test)]
+use keys::KEYS_REFETCH_FLOOR;
 use keys::{KEYS_TTL, KeyCache};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
@@ -123,7 +125,7 @@ impl Events for EventsService {
         // Subscribe then usually finds them cached.
         let keys = self
             .keys
-            .current(&login)
+            .recent(&login)
             .await
             .map_err(|e| AuthFailure::KeyLookup(e).status())?;
         let (nonce, expires) = self.challenges.issue(login.as_str())?;
@@ -471,7 +473,37 @@ mod tests {
         assert_eq!("octobot.example.com", service.authority);
     }
 
-    // A caller hanging up mid-lookup must neither skip the refetch floor nor block the next caller.
+    #[tokio::test(start_paused = true)]
+    async fn test_challenge_lists_a_key_added_on_github_after_refetch_floor() {
+        let directory = Arc::new(FakeDirectory::default());
+        let (old, new) = (new_key(), new_key());
+        directory.set("joe", &[&old]);
+        let service = EventsService::new(
+            Arc::new(EventBus::new(10)),
+            "octobot.example.com",
+            directory.clone(),
+            Metrics::new(),
+        )
+        .unwrap();
+        let listed = || async {
+            let req = Request::new(ChallengeRequest {
+                username: "joe".into(),
+            });
+            service
+                .challenge(req)
+                .await
+                .unwrap()
+                .into_inner()
+                .key_fingerprints
+                .len()
+        };
+        assert_eq!(1, listed().await);
+
+        directory.set("joe", &[&old, &new]);
+        tokio::time::advance(KEYS_REFETCH_FLOOR).await;
+        assert_eq!(2, listed().await);
+    }
+
     /// Starts a stream for joe, authenticated by `key`. It ends if the bus is dropped.
     fn start_stream(
         directory: Arc<FakeDirectory>,

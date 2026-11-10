@@ -14,7 +14,7 @@ use super::{AuthFailure, Directory};
 // Also how often an open stream rechecks that its user and key still exist.
 pub(super) const KEYS_TTL: Duration = Duration::from_secs(5 * 60);
 // Minimum time between GitHub key lookups for one login.
-const KEYS_REFETCH_FLOOR: Duration = Duration::from_secs(30);
+pub(super) const KEYS_REFETCH_FLOOR: Duration = Duration::from_secs(30);
 // Short of the heartbeat interval, since a stream's recheck waits on it.
 const KEYS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -86,13 +86,23 @@ impl KeyCache {
     }
 
     /// The user's keys, from the cache while it is fresh.
-    pub(super) async fn current(
-        self: &Arc<Self>,
-        login: &Login,
-    ) -> anyhow::Result<Arc<Vec<PublicKey>>> {
+    async fn current(self: &Arc<Self>, login: &Login) -> anyhow::Result<Arc<Vec<PublicKey>>> {
         match self.cached(login) {
             Some(keys) => Ok(keys),
             None => self.fetch(login).await?.ok_or_else(|| too_soon(login)),
+        }
+    }
+
+    /// The user's keys as of at most `KEYS_REFETCH_FLOOR` ago, so one just added on GitHub shows
+    /// up within that. Falls back to the cache while GitHub cannot be reached.
+    pub(super) async fn recent(
+        self: &Arc<Self>,
+        login: &Login,
+    ) -> anyhow::Result<Arc<Vec<PublicKey>>> {
+        match self.fetch(login).await {
+            Ok(Some(keys)) => Ok(keys),
+            Ok(None) => self.cached(login).ok_or_else(|| too_soon(login)),
+            Err(e) => self.cached(login).ok_or(e),
         }
     }
 
@@ -193,6 +203,34 @@ mod tests {
 
     fn sign(key: &PrivateKey) -> SshSig {
         key.sign(NAMESPACE, HashAlg::Sha512, b"msg").unwrap()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_recent_keys_pick_up_a_new_key_after_refetch_floor() {
+        let directory = Arc::new(FakeDirectory::default());
+        let (old, new) = (new_key(), new_key());
+        directory.set("joe", &[&old]);
+        let cache = Arc::new(KeyCache::new(directory.clone()));
+        assert_eq!(1, cache.recent(&joe()).await.unwrap().len());
+
+        directory.set("joe", &[&old, &new]);
+        assert_eq!(1, cache.recent(&joe()).await.unwrap().len());
+
+        tokio::time::advance(KEYS_REFETCH_FLOOR).await;
+        assert_eq!(2, cache.recent(&joe()).await.unwrap().len());
+        assert_eq!(2, directory.lookups.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_recent_keys_fall_back_to_cached_when_a_lookup_fails() {
+        let directory = Arc::new(FakeDirectory::default());
+        directory.set("joe", &[&new_key()]);
+        let cache = Arc::new(KeyCache::new(directory.clone()));
+        assert!(cache.recent(&joe()).await.is_ok());
+
+        directory.failing.store(true, Ordering::SeqCst);
+        tokio::time::advance(KEYS_REFETCH_FLOOR).await;
+        assert_eq!(1, cache.recent(&joe()).await.unwrap().len());
     }
 
     #[tokio::test(start_paused = true)]
