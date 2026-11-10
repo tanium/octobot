@@ -31,8 +31,8 @@ const KEYS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_STREAMS_PER_USER: usize = 10;
 const MAX_STREAMS: usize = 1_000;
-// Events are tens of bytes, so this is cheap headroom for bursts. Bounded, so a stuck client
-// still lags on the bus and is aborted instead of buffering here without limit.
+// Events are tens of bytes, so this is cheap headroom for bursts. A client that lets it fill
+// has stopped reading, and its stream is aborted.
 const STREAM_BUFFER: usize = 256;
 
 /// Serves the event bus to octobot users who prove they hold an SSH key registered to their
@@ -529,7 +529,7 @@ impl Stream {
                     Ok(false) => {
                         info!("Revoking event stream for {}", self.login);
                         let revoked = Status::unauthenticated("user or key no longer allowed");
-                        let _ = tx.send(Err(revoked)).await;
+                        let _ = tx.try_send(Err(revoked));
                         return;
                     }
                     // Revoking takes a positive answer; a GitHub outage must not drop every
@@ -554,9 +554,8 @@ impl Stream {
                     // Changes were dropped. Ending the stream makes the client reconnect and
                     // reload, the same as after any other disconnect.
                     Err(broadcast::error::RecvError::Lagged(_)) => {
-                        info!("Aborting lagging event stream for {}", self.login);
-                        self.metrics.event_stream_messages.with_label_values(&["aborted"]).inc();
-                        let _ = tx.send(Err(Status::aborted("stream fell behind"))).await;
+                        self.abort();
+                        let _ = tx.try_send(Err(Status::aborted("stream fell behind")));
                         return;
                     }
                     Err(broadcast::error::RecvError::Closed) => return,
@@ -566,14 +565,30 @@ impl Stream {
                 event::Body::Change(_) => "change",
                 event::Body::Heartbeat(_) => "heartbeat",
             };
-            if tx.send(Ok(pb::Event { body: Some(body) })).await.is_err() {
-                return;
+            // Never waits on the client: while waiting, the stream could not notice it falling
+            // behind or going away, and would hold its slot. A full buffer means the client
+            // stopped reading, so the stream ends and the client reloads when it reconnects.
+            match tx.try_send(Ok(pb::Event { body: Some(body) })) {
+                Ok(()) => self
+                    .metrics
+                    .event_stream_messages
+                    .with_label_values(&[kind])
+                    .inc(),
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    self.abort();
+                    return;
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => return,
             }
-            self.metrics
-                .event_stream_messages
-                .with_label_values(&[kind])
-                .inc();
         }
+    }
+
+    fn abort(&self) {
+        info!("Aborting lagging event stream for {}", self.login);
+        self.metrics
+            .event_stream_messages
+            .with_label_values(&["aborted"])
+            .inc();
     }
 
     async fn still_allowed(&self) -> anyhow::Result<bool> {
@@ -864,6 +879,31 @@ mod tests {
             let body = rx.recv().await.unwrap().unwrap().body;
             assert_eq!(Some(event::Body::Heartbeat(pb::Heartbeat {})), body);
         }
+    }
+
+    #[tokio::test]
+    async fn test_stream_ends_when_its_client_stops_reading() {
+        let directory = Arc::new(FakeDirectory::default());
+        let key = new_key();
+        directory.set("joe", &[&key]);
+        let (bus, rx) = start_stream(directory, &key);
+
+        // Nothing reads `rx` while the stream overfills it.
+        for number in 0..2 * STREAM_BUFFER as u64 {
+            bus.publish(
+                vec!["joe".to_string()],
+                octobot_ops::event_bus::Change {
+                    repo: "some-org/some-repo".into(),
+                    kind: Kind::Push,
+                    action: String::new(),
+                    number,
+                },
+            );
+            tokio::task::yield_now().await;
+        }
+
+        // Ended without anyone reading, which frees its slot.
+        assert!(rx.is_closed(), "stream still open");
     }
 
     #[tokio::test(start_paused = true)]
