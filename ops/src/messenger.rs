@@ -246,10 +246,11 @@ impl Messenger {
         self.send_to_slackbots(participants, repo, msg, attachments, dm_thread, review);
     }
 
-    /// Publishes the hints `send_to_all` would, without messaging anyone. For changes octobot
-    /// keeps out of Slack, like those to draft PRs.
-    // Every participant gets the hint, including the sender. The Slack filters (ignored users,
-    // mutes, DM settings) are about noise for people; hints feed tools that refetch and decide.
+    /// Publishes the hints `send_to_all` would, without messaging anyone.
+    ///
+    /// Every participant gets the hint, including the sender. The Slack filters (ignored users,
+    /// mutes, DM settings, drafts) are about noise for people; hints feed tools that refetch and
+    /// decide.
     pub fn publish_to_all(
         &self,
         item_owner: &github::User,
