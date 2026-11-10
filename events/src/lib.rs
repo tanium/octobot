@@ -10,7 +10,7 @@ pub mod pb {
     tonic::include_proto!("octobot.events.v1");
 }
 
-/// The GitHub webhook events octobot notifies people about
+/// The GitHub webhook events octobot publishes hints for
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     PullRequest,
@@ -19,10 +19,12 @@ pub enum Kind {
     CommitComment,
     IssueComment,
     Push,
+    CheckRun,
+    CheckSuite,
 }
 
 impl Kind {
-    /// From an X-GitHub-Event value; None for events octobot does not notify about.
+    /// From an X-GitHub-Event value; None for events octobot publishes no hints for.
     pub fn from_event(event: &str) -> Option<Kind> {
         Some(match event {
             "pull_request" => Kind::PullRequest,
@@ -31,6 +33,8 @@ impl Kind {
             "commit_comment" => Kind::CommitComment,
             "issue_comment" => Kind::IssueComment,
             "push" => Kind::Push,
+            "check_run" => Kind::CheckRun,
+            "check_suite" => Kind::CheckSuite,
             _ => return None,
         })
     }
@@ -45,6 +49,8 @@ impl Kind {
             pb::Kind::CommitComment => Kind::CommitComment,
             pb::Kind::IssueComment => Kind::IssueComment,
             pb::Kind::Push => Kind::Push,
+            pb::Kind::CheckRun => Kind::CheckRun,
+            pb::Kind::CheckSuite => Kind::CheckSuite,
         })
     }
 }
@@ -58,6 +64,8 @@ impl From<Kind> for pb::Kind {
             Kind::CommitComment => pb::Kind::CommitComment,
             Kind::IssueComment => pb::Kind::IssueComment,
             Kind::Push => pb::Kind::Push,
+            Kind::CheckRun => pb::Kind::CheckRun,
+            Kind::CheckSuite => pb::Kind::CheckSuite,
         }
     }
 }
@@ -100,6 +108,7 @@ mod tests {
     fn test_kind_from_event() {
         assert_eq!(Some(Kind::PullRequest), Kind::from_event("pull_request"));
         assert_eq!(Some(Kind::Push), Kind::from_event("push"));
+        assert_eq!(Some(Kind::CheckSuite), Kind::from_event("check_suite"));
         assert_eq!(None, Kind::from_event("ping"));
     }
 
@@ -112,6 +121,8 @@ mod tests {
             Kind::CommitComment,
             Kind::IssueComment,
             Kind::Push,
+            Kind::CheckRun,
+            Kind::CheckSuite,
         ] {
             assert_eq!(Some(kind), Kind::from_pb(pb::Kind::from(kind) as i32));
         }

@@ -32,6 +32,35 @@ pub struct HookBody {
     pub deleted: Option<bool>,
     pub created: Option<bool>,
     pub commits: Option<Vec<PushCommit>>,
+
+    pub check_suite: Option<CheckHook>,
+    pub check_run: Option<CheckHook>,
+}
+
+/// The parts of a check_suite or check_run webhook octobot reads. The full `CheckSuite` and
+/// `CheckRun` models reject statuses webhooks send, such as "requested".
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct CheckHook {
+    /// Kept as a string: webhooks send conclusions `Conclusion` does not parse, such as "skipped".
+    pub conclusion: Option<String>,
+    /// Open pull requests in this repository at the checked commit. GitHub leaves out those from
+    /// forks.
+    pub pull_requests: Vec<CheckPullRequest>,
+}
+
+impl CheckHook {
+    /// Cancelled runs are left out: fail-fast cancels a failed run's siblings.
+    pub fn failed(&self) -> bool {
+        matches!(
+            self.conclusion.as_deref(),
+            Some("failure" | "timed_out" | "startup_failure")
+        )
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct CheckPullRequest {
+    pub number: u32,
 }
 
 impl HookBody {
@@ -54,6 +83,8 @@ impl HookBody {
             deleted: None,
             created: None,
             commits: None,
+            check_suite: None,
+            check_run: None,
         }
     }
 
@@ -993,5 +1024,39 @@ mod tests {
         assert!(!pr.is_draft());
         pr.draft = Some(true);
         assert!(pr.is_draft());
+    }
+
+    #[test]
+    fn test_check_hook_parses_webhook_values() {
+        let body: HookBody = serde_json::from_str(
+            r#"{
+                "sender": {"id": 1, "login": "github-actions[bot]"},
+                "action": "requested",
+                "check_suite": {
+                    "status": "requested",
+                    "conclusion": "skipped",
+                    "pull_requests": [{"number": 32, "head": {"sha": "ffff0000"}}]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let suite = body.check_suite.unwrap();
+        assert_eq!(Some("skipped"), suite.conclusion.as_deref());
+        assert_eq!(vec![CheckPullRequest { number: 32 }], suite.pull_requests);
+    }
+
+    #[test]
+    fn test_check_hook_failed() {
+        let check = |conclusion: Option<&str>| CheckHook {
+            conclusion: conclusion.map(String::from),
+            pull_requests: vec![],
+        };
+        assert!(check(Some("failure")).failed());
+        assert!(check(Some("timed_out")).failed());
+        assert!(check(Some("startup_failure")).failed());
+        assert!(!check(Some("success")).failed());
+        assert!(!check(Some("cancelled")).failed());
+        assert!(!check(None).failed());
     }
 }

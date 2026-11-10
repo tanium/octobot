@@ -392,7 +392,7 @@ impl Handler for GithubHandler {
 
         let mut messenger = messenger::new(config.clone(), slack)
             .with_review_groups(self.state.review_groups.clone());
-        // Other events never message people.
+        // Other events never message people or publish hints.
         if let Some(kind) = Kind::from_event(&event) {
             messenger = messenger.with_events(self.state.event_bus.clone(), kind, &action);
         }
@@ -452,6 +452,8 @@ impl GithubEventHandler {
         "commit_comment" => handle_commit_comment,
         "issue_comment" => handle_issue_comment,
         "push" => handle_push,
+        "check_suite" => handle_check_suite,
+        "check_run" => handle_check_run,
     }
 
     pub async fn handle_event(&self) -> Option<EventResponse> {
@@ -1353,6 +1355,56 @@ impl GithubEventHandler {
         }
 
         (StatusCode::OK, "push".into())
+    }
+
+    async fn handle_check_suite(&self) -> EventResponse {
+        if let Some(ref suite) = self.data.check_suite {
+            self.publish_check(suite).await;
+        }
+        (StatusCode::OK, "check_suite".into())
+    }
+
+    // Every job reports a check run, so only failures get hints; their suite reports the rest
+    // when it completes.
+    async fn handle_check_run(&self) -> EventResponse {
+        match self.data.check_run {
+            Some(ref run) if self.action == "completed" && run.failed() => {
+                self.publish_check(run).await;
+                (StatusCode::OK, "check_run".into())
+            }
+            _ => (StatusCode::OK, "check_run [ignored]".into()),
+        }
+    }
+
+    // Checks message nobody in Slack; they only publish hints to each pull request's
+    // participants.
+    async fn publish_check(&self, check: &github::CheckHook) {
+        for pr in &check.pull_requests {
+            let pull_request = match self
+                .github_session
+                .get_pull_request(
+                    self.repository.owner.login(),
+                    &self.repository.name,
+                    pr.number,
+                )
+                .await
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    error!("Error looking up PR #{} for check: {}", pr.number, e);
+                    continue;
+                }
+            };
+            let pull_request = &pull_request;
+
+            let commits = self.pull_request_commits(&pull_request).await;
+            self.messenger.publish_to_all(
+                &self.data.sender,
+                &self.repository,
+                &self.all_participants(&pull_request, &commits).await,
+                &[self.build_thread(&pull_request)],
+            );
+        }
     }
 
     async fn merge_pull_request_all_labels(

@@ -382,7 +382,8 @@ async fn test_ping() {
 fn test_handles() {
     assert!(GithubEventHandler::handles("ping"));
     assert!(GithubEventHandler::handles("push"));
-    assert!(!GithubEventHandler::handles("check_run"));
+    assert!(GithubEventHandler::handles("check_run"));
+    assert!(!GithubEventHandler::handles("workflow_run"));
     assert!(!GithubEventHandler::handles("status"));
 }
 
@@ -3265,6 +3266,106 @@ async fn test_push_draft_publishes() {
         },
         event.change
     );
+    assert!(receiver.try_recv().is_err());
+}
+
+fn some_check(conclusion: Option<&str>) -> CheckHook {
+    CheckHook {
+        conclusion: conclusion.map(String::from),
+        pull_requests: vec![CheckPullRequest { number: 32 }],
+    }
+}
+
+#[tokio::test]
+async fn test_check_suite_publishes() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    test.handler.data.sender = User::new("github-actions[bot]");
+    test.handler.data.check_suite = Some(some_check(Some("success")));
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    // no slack mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert_eq!(
+        vec![
+            "assign1",
+            "bob-author",
+            "github-actions[bot]",
+            "joe-reviewer",
+            "the-pr-owner"
+        ],
+        event.recipients.iter().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        Change {
+            repo: "some-user/some-repo".into(),
+            kind: Kind::CheckSuite,
+            action: "completed".into(),
+            number: Some(32),
+        },
+        event.change
+    );
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn test_check_suite_without_pull_requests() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    let mut check = some_check(Some("success"));
+    check.pull_requests = vec![];
+    test.handler.data.check_suite = Some(check);
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn test_check_run_failed_publishes() {
+    let mut test = new_test();
+    test.handler.event = "check_run".into();
+    test.handler.action = "completed".into();
+    test.handler.data.check_run = Some(some_check(Some("failure")));
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::CheckRun);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_run".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("the-pr-owner"));
+    assert_eq!(Kind::CheckRun, event.change.kind);
+    assert_eq!("completed", event.change.action);
+    assert_eq!(Some(32), event.change.number);
+    assert!(receiver.try_recv().is_err());
+}
+
+// Every job reports a check run, so only failures are worth a hint; the suite reports the rest.
+#[tokio::test]
+async fn test_check_run_passed_is_ignored() {
+    let mut test = new_test();
+    test.handler.event = "check_run".into();
+    test.handler.action = "completed".into();
+    test.handler.data.check_run = Some(some_check(Some("success")));
+    let mut receiver = test.subscribe_events(Kind::CheckRun);
+
+    // no github mocks: a run that is not worth a hint costs no API calls
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_run [ignored]".into()), resp);
     assert!(receiver.try_recv().is_err());
 }
 
