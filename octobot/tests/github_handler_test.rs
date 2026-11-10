@@ -1490,7 +1490,7 @@ async fn test_pull_request_closed_draft_publishes() {
 }
 
 #[tokio::test]
-async fn test_pull_request_opened_draft() {
+async fn test_pull_request_opened_draft_publishes() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
@@ -1505,6 +1505,11 @@ async fn test_pull_request_opened_draft() {
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("the-pr-owner"));
+    assert_eq!("opened", event.change.action);
+    assert_eq!(Some(32), event.change.number);
     assert!(receiver.try_recv().is_err());
 }
 
@@ -1557,9 +1562,15 @@ async fn test_pull_request_reopened() {
             thread_root(REPO_MSG, 32),
         ),
     )]);
+    let mut receiver = test.subscribe_events(Kind::PullRequest);
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("the-pr-owner"));
+    assert_eq!("reopened", event.change.action);
+    assert!(receiver.try_recv().is_err());
 }
 
 #[tokio::test]

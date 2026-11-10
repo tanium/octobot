@@ -687,23 +687,33 @@ impl GithubEventHandler {
 
                 // Drafts stay out of Slack, but their participants still get hints.
                 let notify_mode = match notify_mode {
-                    NotifyMode::All if pull_request.is_draft() => NotifyMode::Hint,
-                    NotifyMode::Channel if pull_request.is_draft() => NotifyMode::None,
+                    NotifyMode::All | NotifyMode::Channel if pull_request.is_draft() => {
+                        NotifyMode::Hint
+                    }
                     mode => mode,
                 };
 
                 let msg = format!("Pull Request {}", verb);
                 let thread = self.build_thread(&pull_request);
                 match notify_mode {
-                    NotifyMode::Channel => self.messenger.send_to_channel(
-                        &msg,
-                        &attachments,
-                        &self.repository,
-                        branch_name,
-                        &commits,
-                        vec![thread],
-                        self.action == "opened",
-                    ),
+                    NotifyMode::Channel => {
+                        self.messenger.publish_to_all(
+                            &pull_request.user,
+                            &self.data.sender,
+                            &self.repository,
+                            &self.all_participants(&pull_request, &commits).await,
+                            std::slice::from_ref(&thread),
+                        );
+                        self.messenger.send_to_channel(
+                            &msg,
+                            &attachments,
+                            &self.repository,
+                            branch_name,
+                            &commits,
+                            vec![thread],
+                            self.action == "opened",
+                        )
+                    }
 
                     NotifyMode::All => self.messenger.send_to_all(
                         &msg,
