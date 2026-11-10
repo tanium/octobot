@@ -14,11 +14,14 @@ struct Claims {
     iss: String,
 }
 
-pub fn new_token(app_id: u32, app_key_bytes: &[u8]) -> Result<String> {
-    let now = SystemTime::now()
+pub fn unix_now() -> u64 {
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_secs();
+        .as_secs()
+}
+
+pub fn new_token(app_id: u32, app_key_bytes: &[u8], now: u64) -> Result<String> {
     let claims = Claims {
         iat: now,
         exp: now + (9 * 60),
