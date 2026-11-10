@@ -6,10 +6,9 @@ use ssh_key::{HashAlg, PrivateKey, PublicKey, SshSig};
 
 use crate::NAMESPACE;
 
-/// Signs subscribe challenges. The client tries each key until the server accepts one, since it
-/// cannot tell which of them are registered to the user on GitHub.
+/// Signs subscribe challenges, with the first of its keys that the user has on GitHub.
 pub trait Signer: Send + Sync {
-    /// The keys to try, in order.
+    /// The keys it can sign with, in order of preference.
     fn keys(&self) -> Result<Vec<PublicKey>>;
     fn sign(&self, key: &PublicKey, msg: &[u8]) -> Result<SshSig>;
 }
@@ -36,7 +35,7 @@ impl AgentSigner {
         Ok(AgentSigner::new(socket))
     }
 
-    /// Signs only with `key`, rather than trying each of the agent's keys.
+    /// Signs only with `key`, rather than the agent's first key on GitHub.
     pub fn with_key(self, key: PublicKey) -> AgentSigner {
         AgentSigner {
             key: Some(key),

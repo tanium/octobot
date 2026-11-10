@@ -281,7 +281,7 @@ async fn test_client_reconnects_and_resets_after_abort() {
 }
 
 #[tokio::test]
-async fn test_client_reports_a_key_the_server_refuses() {
+async fn test_client_reports_a_key_github_does_not_have() {
     let server = TestServer::start(10).await;
     server.directory.add("joe", &new_key());
 
@@ -290,11 +290,25 @@ async fn test_client_reports_a_key_the_server_refuses() {
         let disconnected = next(&mut updates).await;
         assert!(
             matches!(&disconnected, Update::Disconnected { cause: Cause::Config, error, .. }
-                if error.contains("no key was accepted")),
+                if error.contains("none of the signer's keys are registered")),
             "{:?}",
             disconnected
         );
     }
+}
+
+#[tokio::test]
+async fn test_client_reports_a_non_user() {
+    let server = TestServer::start(10).await;
+
+    let mut updates = server.subscribe("stranger", &[], new_key());
+    let disconnected = next(&mut updates).await;
+    assert!(
+        matches!(&disconnected, Update::Disconnected { cause: Cause::Config, error, .. }
+            if error.contains("not an octobot user")),
+        "{:?}",
+        disconnected
+    );
 }
 
 /// Several keys, like an ssh-agent, recording which signed.
@@ -320,7 +334,7 @@ impl Signer for Keys {
 }
 
 #[tokio::test]
-async fn test_client_finds_the_registered_key_and_tries_it_first_after() {
+async fn test_client_signs_only_with_its_registered_key() {
     let server = TestServer::start(1).await;
     let (other, registered) = (new_key(), new_key());
     server.directory.add("joe", &registered);
@@ -338,7 +352,7 @@ async fn test_client_finds_the_registered_key_and_tries_it_first_after() {
         signer.clone(),
     );
     assert_eq!(Update::Reset, next(&mut updates).await);
-    assert_eq!(vec![0, 1], *signer.signed.lock().unwrap());
+    assert_eq!(vec![1], *signer.signed.lock().unwrap());
 
     // Falling behind forces a reconnect.
     server.publish(&["joe"], Kind::Push, 1);
@@ -349,7 +363,7 @@ async fn test_client_finds_the_registered_key_and_tries_it_first_after() {
         Update::Disconnected { .. }
     ));
     assert_eq!(Update::Reset, next(&mut updates).await);
-    assert_eq!(vec![0, 1, 1], *signer.signed.lock().unwrap());
+    assert_eq!(vec![1, 1], *signer.signed.lock().unwrap());
 }
 
 #[tokio::test]
@@ -445,35 +459,45 @@ async fn test_refuses_subscribe_for_user_removed_after_challenge() {
         .raw_subscribe("joe", &nonce, &key, &server.addr.to_string())
         .await
         .unwrap_err();
-    assert_eq!(Code::Unauthenticated, err.code());
+    assert_eq!(Code::PermissionDenied, err.code());
 }
 
 #[tokio::test]
-async fn test_refusals_do_not_reveal_who_is_a_user() {
+async fn test_challenge_lists_the_users_key_fingerprints() {
     let server = TestServer::start(10).await;
-    server.directory.add("joe", &new_key());
-    let authority = server.addr.to_string();
+    let (first, second) = (new_key(), new_key());
+    server.directory.add("joe", &first);
+    server.directory.add("joe", &second);
 
-    // A challenge is issued for anyone, without a lookup.
-    let stranger_nonce = server.challenge("stranger").await;
-    let joe_nonce = server.challenge("joe").await;
-    assert_eq!(0, server.directory.lookups());
-
-    let stranger = server
-        .raw_subscribe("stranger", &stranger_nonce, &new_key(), &authority)
+    let response = server
+        .raw_client()
         .await
-        .unwrap_err();
-    let wrong_key = server
-        .raw_subscribe("joe", &joe_nonce, &new_key(), &authority)
+        .challenge(ChallengeRequest {
+            username: "joe".into(),
+        })
         .await
-        .unwrap_err();
-    assert_eq!(Code::Unauthenticated, stranger.code());
+        .unwrap()
+        .into_inner();
+    let fingerprint = |key: &PrivateKey| key.public_key().fingerprint(HashAlg::Sha256).to_string();
     assert_eq!(
-        (stranger.code(), stranger.message()),
-        (wrong_key.code(), wrong_key.message())
+        vec![fingerprint(&first), fingerprint(&second)],
+        response.key_fingerprints
     );
-    // Only joe's keys were looked up.
-    assert_eq!(1, server.directory.lookups());
+}
+
+#[tokio::test]
+async fn test_refuses_challenge_for_non_user() {
+    let server = TestServer::start(10).await;
+    let err = server
+        .raw_client()
+        .await
+        .challenge(ChallengeRequest {
+            username: "stranger".into(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(Code::PermissionDenied, err.code());
+    assert_eq!(0, server.directory.lookups());
 }
 
 #[tokio::test]

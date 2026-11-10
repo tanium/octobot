@@ -4,7 +4,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use log::{info, warn};
-use ssh_key::{PublicKey, SshSig};
+use ssh_key::{HashAlg, PublicKey, SshSig};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
@@ -116,14 +116,24 @@ impl Events for EventsService {
         &self,
         req: Request<ChallengeRequest>,
     ) -> Result<Response<ChallengeResponse>, Status> {
-        // Issued without looking the user up, so the answer is the same for anyone and reveals
-        // nothing about who is an octobot user. Subscribe checks.
-        let username = Login::parse(&req.into_inner().username)
-            .map_err(|_| Status::invalid_argument("invalid username"))?;
-        let (nonce, expires) = self.challenges.issue(username.as_str())?;
+        let username = req.into_inner().username;
+        Login::parse(&username).map_err(|_| Status::invalid_argument("invalid username"))?;
+        let login = self.octobot_user(&username).map_err(AuthFailure::status)?;
+        // Public on GitHub anyway; listing them lets the client sign with one GitHub knows.
+        // Subscribe then usually finds them cached.
+        let keys = self
+            .keys
+            .current(&login)
+            .await
+            .map_err(|e| AuthFailure::KeyLookup(e).status())?;
+        let (nonce, expires) = self.challenges.issue(login.as_str())?;
         Ok(Response::new(ChallengeResponse {
             nonce,
             expires_unix: expires.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+            key_fingerprints: keys
+                .iter()
+                .map(|key| key.fingerprint(HashAlg::Sha256).to_string())
+                .collect(),
         }))
     }
 
@@ -178,14 +188,14 @@ impl AuthFailure {
         }
     }
 
-    // Refusals all read the same, so a caller cannot tell a non-user from a wrong key. The
-    // reason is in the metrics.
     fn status(self) -> Status {
         match self {
-            AuthFailure::Malformed(_)
-            | AuthFailure::NotUser
-            | AuthFailure::Nonce
-            | AuthFailure::Signature => Status::unauthenticated("authentication failed"),
+            AuthFailure::Malformed(msg) => Status::unauthenticated(msg),
+            AuthFailure::NotUser => Status::permission_denied("not an octobot user"),
+            AuthFailure::Nonce => Status::unauthenticated("unknown or expired challenge"),
+            AuthFailure::Signature => {
+                Status::unauthenticated("signature does not match the user's GitHub keys")
+            }
             AuthFailure::UserLookup(e) => {
                 warn!("Error looking up octobot user: {:#}", e);
                 Status::unavailable("could not look up octobot users")

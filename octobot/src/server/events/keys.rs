@@ -81,11 +81,19 @@ impl KeyCache {
         login: &Login,
         key: &PublicKey,
     ) -> anyhow::Result<bool> {
-        let keys = match self.cached(login) {
-            Some(keys) => keys,
-            None => self.fetch(login).await?.ok_or_else(|| too_soon(login))?,
-        };
+        let keys = self.current(login).await?;
         Ok(keys.iter().any(|k| k.key_data() == key.key_data()))
+    }
+
+    /// The user's keys, from the cache while it is fresh.
+    pub(super) async fn current(
+        self: &Arc<Self>,
+        login: &Login,
+    ) -> anyhow::Result<Arc<Vec<PublicKey>>> {
+        match self.cached(login) {
+            Some(keys) => Ok(keys),
+            None => self.fetch(login).await?.ok_or_else(|| too_soon(login)),
+        }
     }
 
     fn cached(&self, login: &Login) -> Option<Arc<Vec<PublicKey>>> {

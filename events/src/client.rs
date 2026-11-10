@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use log::info;
 use rand::Rng;
-use ssh_key::{LineEnding, PublicKey};
+use ssh_key::{Fingerprint, HashAlg, LineEnding, PublicKey};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::Code;
@@ -87,8 +87,6 @@ pub fn subscribe(config: Config, signer: Arc<dyn Signer>) -> ReceiverStream<Upda
     let (tx, rx) = mpsc::channel(256);
     tokio::spawn(async move {
         let mut backoff = MIN_BACKOFF;
-        // Tried first on reconnect, so a hardware key with a touch prompt is usually the only
-        // one asked.
         let mut accepted = None;
         loop {
             // Heartbeats are not passed on, so a quiet stream would never notice that the
@@ -155,7 +153,7 @@ fn ended(error: impl Into<anyhow::Error>) -> Failure {
 // reach GitHub, may pass.
 fn refused(status: tonic::Status) -> Failure {
     match status.code() {
-        Code::InvalidArgument => config(status),
+        Code::InvalidArgument | Code::PermissionDenied | Code::Unauthenticated => config(status),
         _ => unreachable(status),
     }
 }
@@ -190,69 +188,68 @@ async fn run(
     let challenge = client.challenge(ChallengeRequest {
         username: config.username.clone(),
     });
-    let nonce = deadline("challenge", challenge)
+    let challenge = deadline("challenge", challenge)
         .await
         .map_err(unreachable)?
         .map_err(refused)?
-        .into_inner()
-        .nonce;
-    let msg = Arc::new(crate::signed_message(&authority, &nonce));
+        .into_inner();
+    let registered = challenge
+        .key_fingerprints
+        .iter()
+        .map(|fingerprint| fingerprint.parse())
+        .collect::<Result<Vec<Fingerprint>, _>>()
+        .context("parsing key fingerprints")
+        .map_err(unreachable)?;
 
-    let mut keys = blocking({
+    let keys = blocking({
         let signer = signer.clone();
         move || signer.keys()
     })
     .await
     .map_err(self::config)?;
-    if let Some(i) = keys.iter().position(|key| Some(key) == accepted.as_ref()) {
-        keys.swap(0, i);
-    }
+    let is_registered = |key: &PublicKey| registered.contains(&key.fingerprint(HashAlg::Sha256));
+    // The one that worked last time first, so a hardware key with a touch prompt is usually the
+    // only one asked.
+    let key = accepted
+        .as_ref()
+        .filter(|key| keys.contains(key) && is_registered(key))
+        .or_else(|| keys.iter().find(|key| is_registered(key)))
+        .cloned()
+        .ok_or_else(|| {
+            self::config(anyhow!(
+                "none of the signer's keys are registered on GitHub for {}",
+                config.username
+            ))
+        })?;
 
-    // The server refuses a wrong key the same way it refuses everything else, and the nonce
-    // stays valid until a subscribe succeeds, so each key gets a turn with it.
-    let mut stream = None;
-    for key in keys {
-        let sig = blocking({
-            let (signer, key, msg) = (signer.clone(), key.clone(), msg.clone());
-            move || signer.sign(&key, &msg)
-        })
+    let msg = crate::signed_message(&authority, &challenge.nonce);
+    let sig = blocking({
+        let (signer, key) = (signer.clone(), key.clone());
+        move || signer.sign(&key, &msg)
+    })
+    .await
+    .map_err(self::config)?
+    .to_pem(LineEnding::LF)
+    .map_err(self::config)?;
+
+    let req = SubscribeRequest {
+        auth: Some(pb::Auth {
+            username: config.username.clone(),
+            nonce: challenge.nonce,
+            signature: sig,
+        }),
+        kinds: config
+            .kinds
+            .iter()
+            .map(|&kind| pb::Kind::from(kind) as i32)
+            .collect(),
+    };
+    let mut stream = deadline("subscribe", client.subscribe(req))
         .await
-        .map_err(self::config)?
-        .to_pem(LineEnding::LF)
-        .map_err(self::config)?;
-
-        let req = SubscribeRequest {
-            auth: Some(pb::Auth {
-                username: config.username.clone(),
-                nonce: nonce.clone(),
-                signature: sig,
-            }),
-            kinds: config
-                .kinds
-                .iter()
-                .map(|&kind| pb::Kind::from(kind) as i32)
-                .collect(),
-        };
-        match deadline("subscribe", client.subscribe(req))
-            .await
-            .map_err(unreachable)?
-        {
-            Ok(response) => {
-                *accepted = Some(key);
-                stream = Some(response.into_inner());
-                break;
-            }
-            Err(status) if status.code() == Code::Unauthenticated => continue,
-            Err(status) => return Err(refused(status)),
-        }
-    }
-    let mut stream = stream.ok_or_else(|| {
-        self::config(anyhow!(
-            "no key was accepted for {}: is it an octobot user, with a key from the signer \
-             registered on GitHub?",
-            config.username
-        ))
-    })?;
+        .map_err(unreachable)?
+        .map_err(refused)?
+        .into_inner();
+    *accepted = Some(key);
     *connected = true;
 
     // The stream is live only, so anything before this point may have been missed. The server
@@ -320,8 +317,10 @@ mod tests {
     use crate::pb::ChallengeResponse;
     use crate::pb::events_server::{Events, EventsServer};
 
-    /// Accepts every subscription, then ends it: with `end` as the error, or cleanly.
+    /// Lists one key, accepts every subscription, then ends it: with `end` as the error, or
+    /// cleanly.
     struct EndingServer {
+        fingerprint: String,
         end: Option<(Code, &'static str)>,
     }
 
@@ -334,6 +333,7 @@ mod tests {
             Ok(Response::new(ChallengeResponse {
                 nonce: vec![1],
                 expires_unix: 0,
+                key_fingerprints: vec![self.fingerprint.clone()],
             }))
         }
 
@@ -352,7 +352,13 @@ mod tests {
         }
     }
 
-    async fn start(server: EndingServer) -> String {
+    /// Starts an `EndingServer`, returning its endpoint and the key it lists.
+    async fn start(end: Option<(Code, &'static str)>) -> (String, Arc<PrivateKey>) {
+        let key = new_key();
+        let server = EndingServer {
+            fingerprint: key.public_key().fingerprint(HashAlg::Sha256).to_string(),
+            end,
+        };
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(
@@ -360,7 +366,7 @@ mod tests {
                 .add_service(EventsServer::new(server))
                 .serve_with_incoming(TcpListenerStream::new(listener)),
         );
-        endpoint
+        (endpoint, key)
     }
 
     fn joe(endpoint: String) -> Config {
@@ -385,8 +391,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_reports_a_stream_the_server_ends_cleanly() {
-        let endpoint = start(EndingServer { end: None }).await;
-        let mut updates = subscribe(joe(endpoint), new_key());
+        let (endpoint, key) = start(None).await;
+        let mut updates = subscribe(joe(endpoint), key);
 
         // Twice, since a connect that worked resets the backoff the first retry doubled.
         for _ in 0..2 {
@@ -403,11 +409,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_reports_a_stream_the_server_aborts() {
-        let endpoint = start(EndingServer {
-            end: Some((Code::Aborted, "stream fell behind")),
-        })
-        .await;
-        let mut updates = subscribe(joe(endpoint), new_key());
+        let (endpoint, key) = start(Some((Code::Aborted, "stream fell behind"))).await;
+        let mut updates = subscribe(joe(endpoint), key);
 
         assert_eq!(Update::Reset, next(&mut updates).await);
         let disconnected = next(&mut updates).await;
