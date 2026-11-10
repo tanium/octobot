@@ -26,11 +26,14 @@ Setup
 
 This will result in docker image called `octobot:latest` that you can deploy as follows:
 
-    docker run --restart=always --privileged -d  -p 80:3000 -p 443:3001 \
+    docker run --restart=always --privileged -d  -p 80:3000 -p 443:3001 --stop-timeout 30 \
            -v /path/to/host/storage/:/data --name octobot --hostname octobot octobot:latest
 
 * Make sure that whatever path you map `/data` to is a persistent location since this is where configuration is stored.
 * Create a `config.toml` file in this location before deploying (see below).
+* On stop, octobot spends up to 25 seconds finishing open requests and background jobs
+  such as backports and Slack messages. The 30 second stop timeout gives it that time;
+  for a podman Quadlet, set `StopTimeout=30`.
 
 Using podman? use `build.py --use-podman`
 

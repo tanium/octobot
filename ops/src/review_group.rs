@@ -57,7 +57,7 @@ impl ReviewItem {
 
 /// Holds review events for users who group review DMs and sends one DM per (review, user) once
 /// the review has had no new events for `quiet`, or `max_wait` after its first event.
-/// Held events live only in memory and are lost on restart.
+/// Held events live only in memory: shutdown sends them early, and a crash loses them.
 pub struct ReviewGroups {
     slack: Arc<dyn Worker<SlackRequest>>,
     quiet: Duration,
@@ -134,6 +134,17 @@ impl ReviewGroups {
         });
     }
 
+    /// Sends every held review now, for shutdown.
+    pub fn flush_all(&self) {
+        let entries: Vec<Pending> = {
+            let mut pending = self.pending.lock().unwrap();
+            pending.drain().map(|(_, entry)| entry).collect()
+        };
+        for entry in entries {
+            self.send(entry);
+        }
+    }
+
     fn flush(&self, key: &(u64, String), generation: u64) {
         let entry = {
             let mut pending = self.pending.lock().unwrap();
@@ -142,7 +153,10 @@ impl ReviewGroups {
                 _ => return,
             }
         };
+        self.send(entry);
+    }
 
+    fn send(&self, entry: Pending) {
         let (msg, mut attachments) = entry.header.unwrap_or((entry.default_msg, vec![]));
         let mut comments = entry.comments;
         comments.sort_by_key(|(id, _)| *id);
@@ -385,5 +399,25 @@ mod tests {
         let reqs = capture.reqs.lock().unwrap();
         assert_eq!(1, reqs.len());
         assert_eq!(3, reqs[0].attachments.len());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_flush_all_sends_held_reviews_once() {
+        let (capture, groups) = new_test(50, 1000);
+
+        groups.add(&comment("one"), user(), Threading::Flat, "", &[]);
+        groups.add(
+            &ReviewItem::comment(2, 0, "dave reviewed PR", SlackAttachment::new("two")),
+            user(),
+            Threading::Flat,
+            "",
+            &[],
+        );
+
+        groups.flush_all();
+        assert_eq!(2, capture.reqs.lock().unwrap().len());
+
+        wait_ms(100).await;
+        assert_eq!(2, capture.reqs.lock().unwrap().len());
     }
 }
