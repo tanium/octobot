@@ -604,6 +604,8 @@ impl GithubEventHandler {
         enum NotifyMode {
             All,
             Channel,
+            /// Publish hints to participants, but message nobody
+            Hint,
             None,
         }
 
@@ -628,10 +630,13 @@ impl GithubEventHandler {
                 notify_mode = NotifyMode::Channel;
             } else if self.action == "edited" {
                 verb = Some("edited".to_string());
-                notify_mode = NotifyMode::None;
+                notify_mode = NotifyMode::Hint;
             } else if self.action == "ready_for_review" {
                 verb = Some("is ready for review".to_string());
                 notify_mode = NotifyMode::All;
+            } else if self.action == "converted_to_draft" {
+                verb = Some("converted to draft".to_string());
+                notify_mode = NotifyMode::Hint;
             } else if self.action == "assigned" {
                 let assignees_str = self.slack_user_names(&pull_request.assignees).join(", ");
                 verb = Some(format!("assigned to {}", assignees_str));
@@ -680,45 +685,48 @@ impl GithubEventHandler {
                         .build(),
                 ];
 
+                // Drafts stay out of Slack, but their participants still get hints.
+                let notify_mode = match notify_mode {
+                    NotifyMode::All if pull_request.is_draft() => NotifyMode::Hint,
+                    NotifyMode::Channel if pull_request.is_draft() => NotifyMode::None,
+                    mode => mode,
+                };
+
+                let msg = format!("Pull Request {}", verb);
                 let thread = self.build_thread(&pull_request);
-                if pull_request.is_draft() {
-                    if matches!(notify_mode, NotifyMode::All) {
-                        self.messenger.publish_to_all(
-                            &pull_request.user,
-                            &self.data.sender,
-                            &self.repository,
-                            &self.all_participants(&pull_request, &commits).await,
-                            &[thread],
-                        );
-                    }
-                } else {
-                    let msg = format!("Pull Request {}", verb);
-                    match notify_mode {
-                        NotifyMode::Channel => self.messenger.send_to_channel(
-                            &msg,
-                            &attachments,
-                            &self.repository,
-                            branch_name,
-                            &commits,
-                            vec![thread],
-                            self.action == "opened",
-                        ),
+                match notify_mode {
+                    NotifyMode::Channel => self.messenger.send_to_channel(
+                        &msg,
+                        &attachments,
+                        &self.repository,
+                        branch_name,
+                        &commits,
+                        vec![thread],
+                        self.action == "opened",
+                    ),
 
-                        NotifyMode::All => self.messenger.send_to_all(
-                            &msg,
-                            &attachments,
-                            &pull_request.user,
-                            &self.data.sender,
-                            &self.repository,
-                            self.all_participants(&pull_request, &commits).await,
-                            branch_name,
-                            &commits,
-                            vec![thread],
-                        ),
+                    NotifyMode::All => self.messenger.send_to_all(
+                        &msg,
+                        &attachments,
+                        &pull_request.user,
+                        &self.data.sender,
+                        &self.repository,
+                        self.all_participants(&pull_request, &commits).await,
+                        branch_name,
+                        &commits,
+                        vec![thread],
+                    ),
 
-                        NotifyMode::None => (),
-                    };
-                }
+                    NotifyMode::Hint => self.messenger.publish_to_all(
+                        &pull_request.user,
+                        &self.data.sender,
+                        &self.repository,
+                        &self.all_participants(&pull_request, &commits).await,
+                        &[thread],
+                    ),
+
+                    NotifyMode::None => (),
+                };
 
                 let jira_projects = self
                     .config

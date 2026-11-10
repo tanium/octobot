@@ -1490,6 +1490,29 @@ async fn test_pull_request_closed_draft_publishes() {
 }
 
 #[tokio::test]
+async fn test_pull_request_converted_to_draft_publishes() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "converted_to_draft".into();
+    let mut pr = some_pr().unwrap();
+    pr.draft = Some(true);
+    test.handler.data.pull_request = Some(pr);
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::PullRequest);
+
+    // no slack mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("the-pr-owner"));
+    assert_eq!("converted_to_draft", event.change.action);
+    assert_eq!(Some(32), event.change.number);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn test_pull_request_reopened() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
@@ -1589,11 +1612,17 @@ async fn test_pull_request_edited() {
     test.mock_pull_request_commits();
 
     expect_jira_ref_fail(&test.github);
+    let mut receiver = test.subscribe_events(Kind::PullRequest);
 
     // no slack mocks
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("the-pr-closer"));
+    assert_eq!("edited", event.change.action);
+    assert!(receiver.try_recv().is_err());
 }
 
 #[tokio::test]
@@ -2652,9 +2681,25 @@ async fn test_push_draft_publishes() {
     assert_eq!((StatusCode::OK, "push".into()), resp);
 
     let event = receiver.try_recv().expect("published a hint");
-    assert!(event.is_for("joe-sender"));
-    assert!(event.is_for("the-pr-owner"));
-    assert_eq!(Some(32), event.change.number);
+    assert_eq!(
+        vec![
+            "assign1",
+            "bob-author",
+            "joe-reviewer",
+            "joe-sender",
+            "the-pr-owner"
+        ],
+        event.recipients.iter().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        Change {
+            repo: "some-user/some-repo".into(),
+            kind: Kind::Push,
+            action: "".into(),
+            number: Some(32),
+        },
+        event.change
+    );
     assert!(receiver.try_recv().is_err());
 }
 
