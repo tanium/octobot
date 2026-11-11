@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime};
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::{Request, Response, StatusCode};
-use log::{error, info, warn};
+use log::{error, info};
 use serde_json;
 use tokio;
 
@@ -369,43 +369,6 @@ impl Handler for GithubHandler {
             }
         }
 
-        // refetch PR if present to get requested reviewers: they don't come on each webhook :cry:
-        let mut changed_pr = None;
-        if let Some(ref pull_request) = data.pull_request {
-            if pull_request.requested_reviewers.is_none() || pull_request.reviews.is_none() {
-                match github_session
-                    .get_pull_request(
-                        repository.owner.login(),
-                        &repository.name,
-                        pull_request.number,
-                    )
-                    .await
-                {
-                    Ok(mut refetched_pr) => {
-                        if refetched_pr.draft != pull_request.draft {
-                            warn!(
-                                "Refetched pull request had mismatched draft: {:?} != {:?}",
-                                refetched_pr.draft, pull_request.draft
-                            );
-                            refetched_pr.draft = pull_request.draft;
-                        }
-                        if refetched_pr.head.sha != pull_request.head.sha {
-                            warn!(
-                                "Refetched pull request had different HEAD commit hash: {:?} != {:?}",
-                                refetched_pr.head.sha, pull_request.head.sha
-                            );
-                        }
-
-                        changed_pr = Some(refetched_pr);
-                    }
-                    Err(e) => error!("Error refetching pull request to get reviewers: {}", e),
-                };
-            }
-        }
-        if let Some(changed_pr) = changed_pr {
-            data.pull_request = Some(changed_pr);
-        }
-
         let mut messenger = messenger::new(config.clone(), slack)
             .with_review_groups(self.state.review_groups.clone());
         // Other events never message people.
@@ -512,6 +475,28 @@ impl GithubEventHandler {
                 vec![]
             }
         }
+    }
+
+    // Webhook payloads carry no reviews, and reviewers leave requested_reviewers
+    // once they review. Participant messages and backports need them, so they are
+    // fetched only when one of those will happen.
+    async fn with_reviews(&self, pull_request: &github::PullRequest) -> github::PullRequest {
+        let mut pull_request = pull_request.clone();
+        if pull_request.reviews.is_none() {
+            match self
+                .github_session
+                .get_pull_request_reviews(
+                    self.repository.owner.login(),
+                    &self.repository.name,
+                    pull_request.number,
+                )
+                .await
+            {
+                Ok(r) => pull_request.reviews = Some(r),
+                Err(e) => error!("Error looking up PR reviews: {}", e),
+            }
+        }
+        pull_request
     }
 
     async fn all_participants(
@@ -664,6 +649,13 @@ impl GithubEventHandler {
                 return (StatusCode::OK, "pr".into());
             }
 
+            let pull_request =
+                &if matches!(notify_mode, NotifyMode::All) || self.action == "labeled" {
+                    self.with_reviews(pull_request).await
+                } else {
+                    pull_request.clone()
+                };
+
             let commits = self.pull_request_commits(&pull_request).await;
 
             if let Some(ref verb) = verb {
@@ -784,6 +776,7 @@ impl GithubEventHandler {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref comment) = self.data.comment {
                 if self.action == "created" {
+                    let pull_request = &self.with_reviews(pull_request).await;
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
 
@@ -821,6 +814,7 @@ impl GithubEventHandler {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref review) = self.data.review {
                 if self.action == "submitted" {
+                    let pull_request = &self.with_reviews(pull_request).await;
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
 
