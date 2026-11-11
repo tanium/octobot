@@ -752,14 +752,15 @@ impl GithubEventHandler {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref comment) = self.data.comment {
                 if self.action == "created" {
-                    let Some(text) = self.notifying_text(&comment) else {
+                    if self.is_ignored_comment(&comment) {
                         return (StatusCode::OK, "pr_review_comment".into());
-                    };
+                    }
                     let pull_request = &self.reviewed(pull_request).await;
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
 
                     let review = comment.pull_request_review_id.map(|id| {
+                        let text = github_markdown::visible_text(comment.body());
                         let grouped = SlackAttachmentBuilder::new(&text)
                             .title(comment.path.clone().unwrap_or_default())
                             .title_link(comment.html_url.as_str())
@@ -775,7 +776,6 @@ impl GithubEventHandler {
                     self.do_pull_request_comment(
                         &pull_request,
                         &comment,
-                        &text,
                         branch_name,
                         &commits,
                         review,
@@ -796,15 +796,14 @@ impl GithubEventHandler {
 
                     // just a comment. should just be handled by regular comment handler.
                     if review.state == "commented" {
-                        let Some(text) = self.notifying_text(&review) else {
+                        if self.is_ignored_comment(&review) {
                             return (StatusCode::OK, "pr_review [comment]".into());
-                        };
+                        }
                         let pull_request = &self.reviewed(pull_request).await;
                         let commits = self.pull_request_commits(&pull_request).await;
                         self.do_pull_request_comment(
                             &pull_request,
                             &review,
-                            &text,
                             &pull_request.base.ref_name,
                             &commits,
                             Some(ReviewItem::commented(review.id, &review_msg)),
@@ -874,12 +873,10 @@ impl GithubEventHandler {
         (StatusCode::OK, "pr_review".into())
     }
 
-    // The text to notify participants with, or None for a comment octobot ignores.
     // Checked before any lookups, so ignored comments cost no API calls.
-    fn notifying_text(&self, comment: &dyn github::CommentLike) -> Option<String> {
-        let text = github_markdown::visible_text(comment.body());
-        if text.is_empty() {
-            return None;
+    fn is_ignored_comment(&self, comment: &dyn github::CommentLike) -> bool {
+        if github_markdown::visible_text(comment.body()).is_empty() {
+            return true;
         }
 
         if comment.user().login() == self.github_session.bot_name()
@@ -894,17 +891,16 @@ impl GithubEventHandler {
                 comment.user().login(),
                 comment.body()
             );
-            return None;
+            return true;
         }
 
-        Some(text)
+        false
     }
 
     async fn do_pull_request_comment(
         &self,
         pull_request: &dyn github::Notifiable,
         comment: &dyn github::CommentLike,
-        text: &str,
         branch_name: &str,
         commits: &[github::Commit],
         review: Option<ReviewItem>,
@@ -915,7 +911,7 @@ impl GithubEventHandler {
         );
 
         let attachments = vec![
-            SlackAttachmentBuilder::new(text)
+            SlackAttachmentBuilder::new(&github_markdown::visible_text(comment.body()))
                 .title(format!("{} said:", self.slack_user_name(comment.user())))
                 .title_link(comment.html_url())
                 .build(),
@@ -1051,9 +1047,9 @@ impl GithubEventHandler {
     async fn handle_issue_comment(&self) -> EventResponse {
         if let (Some(comment), Some(issue)) = (&self.data.comment, &self.data.issue) {
             if self.action == "created" {
-                let Some(text) = self.notifying_text(&comment) else {
+                if self.is_ignored_comment(&comment) {
                     return (StatusCode::OK, "issue_comment".into());
-                };
+                }
 
                 // GitHub sends PR comments as issue comments; only the PR has a branch,
                 // commits and reviewers.
@@ -1061,18 +1057,11 @@ impl GithubEventHandler {
                     let pr = &self.reviewed(&pr).await;
                     let commits = self.pull_request_commits(&pr).await;
 
-                    self.do_pull_request_comment(
-                        &pr,
-                        &comment,
-                        &text,
-                        &pr.base.ref_name,
-                        &commits,
-                        None,
-                    )
-                    .await;
+                    self.do_pull_request_comment(&pr, &comment, &pr.base.ref_name, &commits, None)
+                        .await;
                 } else {
                     // issues do not have branches or commits -> main channel is fine.
-                    self.do_pull_request_comment(&issue, &comment, &text, "", &[], None)
+                    self.do_pull_request_comment(&issue, &comment, "", &[], None)
                         .await;
                 }
             }
