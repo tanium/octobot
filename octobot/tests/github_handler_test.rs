@@ -2349,6 +2349,26 @@ async fn test_push_no_pr() {
 }
 
 #[tokio::test]
+async fn test_push_branch_name_containing_refs_heads() {
+    let mut test = new_test();
+    test.handler.event = "push".into();
+    test.handler.data.ref_name = Some("refs/heads/feature/refs/heads/fix".into());
+    test.handler.data.before = Some("abcdef0000".into());
+    test.handler.data.after = Some("1111abcdef".into());
+
+    test.github.mock_get_pull_requests(
+        "some-user",
+        "some-repo",
+        Some("open"),
+        Some("feature/refs/heads/fix"),
+        Ok(vec![]),
+    );
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "push".into()), resp);
+}
+
+#[tokio::test]
 async fn test_push_with_pr() {
     let mut test = new_test();
     test.handler.event = "push".into();

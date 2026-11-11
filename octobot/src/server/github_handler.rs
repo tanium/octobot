@@ -1070,7 +1070,11 @@ impl GithubEventHandler {
             && !self.data.after().is_empty()
             && !self.data.before().is_empty()
         {
-            let branch_name = self.data.ref_name().replace("refs/heads/", "");
+            let ref_name = self.data.ref_name();
+            let branch_name = ref_name
+                .strip_prefix("refs/heads/")
+                .unwrap_or(ref_name)
+                .to_string();
 
             let release_branch_prefix = self.config.repos().release_branch_prefix(&self.repository);
             let is_versioned_branch = github::is_main_branch(&branch_name)
