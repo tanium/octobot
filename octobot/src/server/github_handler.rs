@@ -1084,7 +1084,7 @@ impl GithubEventHandler {
                         self.repository.owner.login(),
                         &self.repository.name,
                         Some("open"),
-                        None,
+                        Some(&branch_name),
                     )
                     .await
                 {

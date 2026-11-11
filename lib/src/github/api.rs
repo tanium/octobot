@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{anyhow, bail};
 use async_trait::async_trait;
 use log::{error, info};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -161,6 +162,9 @@ pub trait GithubSessionFactory: Send + Sync {
     async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>>;
     fn bot_name(&self) -> String;
 }
+
+// A page shorter than this is the last one.
+const PAGE_SIZE: usize = 100;
 
 pub fn api_base(host: &str) -> String {
     if host == "github.com" {
@@ -605,29 +609,20 @@ impl GithubSession {
         let mut pull_requests = vec![];
         let mut page = 1;
         loop {
-            let mut next_prs: Vec<PullRequest> = match self
+            let page_prs: Vec<PullRequest> = self
                 .client
-                .get::<Vec<PullRequest>>(&format!("{}&page={}", paging_url, page))
+                .get(&format!("{}&page={}", paging_url, page))
                 .await
-                .map_err(|e| anyhow!("{}: {}", err_fmt, e))
-                .map(|prs| {
-                    prs.into_iter()
-                        .filter(|p| {
-                            if let Some(head) = head {
-                                p.head.ref_name == head || p.head.sha == head
-                            } else {
-                                true
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                }) {
-                Ok(r) => r,
-                Err(e) => return Err(e),
-            };
+                .map_err(|e| anyhow!("{}: {}", err_fmt, e))?;
+            let last_page = page_prs.len() < PAGE_SIZE;
 
-            if next_prs.is_empty() {
-                break;
-            }
+            let mut next_prs: Vec<PullRequest> = page_prs
+                .into_iter()
+                .filter(|p| match head {
+                    Some(head) => p.head.ref_name == head || p.head.sha == head,
+                    None => true,
+                })
+                .collect();
 
             for pull_request in &mut next_prs {
                 if pull_request.reviews.is_none() {
@@ -642,6 +637,9 @@ impl GithubSession {
             }
 
             pull_requests.extend(next_prs);
+            if last_page {
+                break;
+            }
             page += 1;
         }
         Ok(pull_requests)
@@ -692,12 +690,17 @@ impl Session for GithubSession {
         state: Option<&str>,
         head: Option<&str>,
     ) -> Result<Vec<PullRequest>> {
+        // GitHub's head filter takes `owner:branch`.
+        let head_filter = head
+            .map(|h| utf8_percent_encode(&format!("{}:{}", owner, h), NON_ALPHANUMERIC).to_string())
+            .unwrap_or_default();
         let paging_url = &format!(
-            "repos/{}/{}/pulls?state={}&head={}&per_page=100",
+            "repos/{}/{}/pulls?state={}&head={}&per_page={}",
             owner,
             repo,
             state.unwrap_or(""),
-            head.unwrap_or(""),
+            head_filter,
+            PAGE_SIZE,
         );
         let err_fmt = &format!("Error looking up PRs for commit: {}/{}", owner, repo);
         return self
@@ -713,11 +716,12 @@ impl Session for GithubSession {
         head: Option<&str>,
     ) -> Result<Vec<PullRequest>> {
         let paging_url = &format!(
-            "repos/{}/{}/commits/{}/pulls?head={}&per_page=100",
+            "repos/{}/{}/commits/{}/pulls?head={}&per_page={}",
             owner,
             repo,
             commit,
             head.unwrap_or(""),
+            PAGE_SIZE,
         );
         let err_fmt = &format!(
             "Error looking up PRs for commit: {}/{}/{}",
@@ -835,8 +839,8 @@ impl Session for GithubSession {
             let next: Vec<Commit> = self
                 .client
                 .get(&format!(
-                    "repos/{}/{}/pulls/{}/commits?per_page=100&page={}",
-                    owner, repo, number, page,
+                    "repos/{}/{}/pulls/{}/commits?per_page={}&page={}",
+                    owner, repo, number, PAGE_SIZE, page,
                 ))
                 .await
                 .map_err(|e| {
@@ -849,11 +853,11 @@ impl Session for GithubSession {
                     )
                 })?;
 
-            if next.is_empty() {
+            let last_page = next.len() < PAGE_SIZE;
+            result.extend(next);
+            if last_page {
                 break;
             }
-
-            result.extend(next);
             page += 1;
         }
 
@@ -1066,8 +1070,8 @@ impl Session for GithubSession {
         let mut page = 1;
         loop {
             let url = format!(
-                "repos/{}/{}/issues/{}/timeline?per_page=100&page={}",
-                owner, repo, number, page
+                "repos/{}/{}/issues/{}/timeline?per_page={}&page={}",
+                owner, repo, number, PAGE_SIZE, page
             );
             let next_events: Vec<TimelineEvent> = match self.client.get(&url).await.map_err(|e| {
                 anyhow!(
@@ -1082,11 +1086,11 @@ impl Session for GithubSession {
                 Err(e) => return Err(e),
             };
 
-            if next_events.is_empty() {
+            let last_page = next_events.len() < PAGE_SIZE;
+            events.extend(next_events);
+            if last_page {
                 break;
             }
-
-            events.extend(next_events);
             page += 1;
         }
 
@@ -1594,6 +1598,106 @@ mod tests {
 
         lookup.assert_async().await;
         mint.assert_async().await;
+    }
+
+    fn pr_for_branch(number: u32, branch: &str) -> PullRequest {
+        let mut pr = PullRequest::new();
+        pr.number = number;
+        pr.head = BranchRef::new(branch);
+        pr
+    }
+
+    #[tokio::test]
+    async fn test_get_pull_requests_by_head_asks_for_one_branch() {
+        let mut server = mockito::Server::new_async().await;
+        let list = server
+            .mock("GET", "/repos/some-org/some-repo/pulls")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("state".into(), "open".into()),
+                mockito::Matcher::UrlEncoded("head".into(), "some-org:feature".into()),
+                mockito::Matcher::UrlEncoded("page".into(), "1".into()),
+            ]))
+            .with_body(serde_json::to_string(&vec![pr_for_branch(7, "feature")]).unwrap())
+            .expect(1)
+            .create_async()
+            .await;
+        let reviews = server
+            .mock("GET", "/repos/some-org/some-repo/pulls/7/reviews")
+            .with_body("[]")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let prs = session_for_test(&server.url())
+            .get_pull_requests("some-org", "some-repo", Some("open"), Some("feature"))
+            .await
+            .unwrap();
+
+        assert_eq!(vec![7], prs.iter().map(|p| p.number).collect::<Vec<_>>());
+        list.assert_async().await;
+        reviews.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_pull_request_commits_stops_at_short_page() {
+        let mut server = mockito::Server::new_async().await;
+        let commit = Commit {
+            sha: "abc".into(),
+            html_url: String::new(),
+            commit: CommitDetails {
+                message: "msg".into(),
+            },
+            author: None,
+        };
+        let page1 = server
+            .mock(
+                "GET",
+                "/repos/some-org/some-repo/pulls/7/commits?per_page=100&page=1",
+            )
+            .with_body(serde_json::to_string(&vec![commit.clone(); 100]).unwrap())
+            .expect(1)
+            .create_async()
+            .await;
+        let page2 = server
+            .mock(
+                "GET",
+                "/repos/some-org/some-repo/pulls/7/commits?per_page=100&page=2",
+            )
+            .with_body(serde_json::to_string(&vec![commit; 2]).unwrap())
+            .expect(1)
+            .create_async()
+            .await;
+
+        let commits = session_for_test(&server.url())
+            .get_pull_request_commits("some-org", "some-repo", 7)
+            .await
+            .unwrap();
+
+        assert_eq!(102, commits.len());
+        page1.assert_async().await;
+        page2.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_timeline_stops_at_short_page() {
+        let mut server = mockito::Server::new_async().await;
+        let page1 = server
+            .mock(
+                "GET",
+                "/repos/some-org/some-repo/issues/7/timeline?per_page=100&page=1",
+            )
+            .with_body(r#"[{"event": "labeled"}]"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let events = session_for_test(&server.url())
+            .get_timeline("some-org", "some-repo", 7)
+            .await
+            .unwrap();
+
+        assert_eq!(1, events.len());
+        page1.assert_async().await;
     }
 
     #[test]
