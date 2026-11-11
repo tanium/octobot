@@ -787,6 +787,7 @@ async fn test_pull_request_review_grouped_with_verdict_in_thread() {
         body: Some("It needs some work!".into()),
         html_url: "http://the-review".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.mock_pull_request_commits();
     let verdict = SlackAttachmentBuilder::new("It needs some work!")
@@ -849,6 +850,7 @@ async fn test_pull_request_review_commented() {
         body: Some("I think this file should change, cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.mock_pull_request_commits();
@@ -1144,6 +1146,7 @@ async fn test_pull_request_review_approved_hides_collapsed_details() {
         body: Some(COLLAPSED_BODY.into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.mock_pull_request_commits();
@@ -1235,6 +1238,7 @@ async fn test_pull_request_review_approved() {
         body: Some("I like it! cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.mock_pull_request_commits();
@@ -1300,6 +1304,7 @@ async fn test_pull_request_review_changes_requested() {
         body: Some("It needs some work! cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.mock_pull_request_commits();

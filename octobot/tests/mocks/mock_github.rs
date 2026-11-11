@@ -111,6 +111,11 @@ impl Drop for MockGithub {
                 *self.add_pr_labels_calls.lock().unwrap()
             );
             assert!(
+                self.get_pr_reviews_calls.lock().unwrap().len() == 0,
+                "Unmet get_pull_request_reviews calls: {:?}",
+                *self.get_pr_reviews_calls.lock().unwrap()
+            );
+            assert!(
                 self.assign_pr_calls.lock().unwrap().len() == 0,
                 "Unmet assign_pull_request calls: {:?}",
                 *self.assign_pr_calls.lock().unwrap()
@@ -447,11 +452,13 @@ impl Session for MockGithub {
         call.ret
     }
 
-    async fn get_timeline(
+    // Mocks hold the whole timeline oldest first, as GitHub pages it.
+    async fn get_timeline_newest_first(
         &self,
         owner: &str,
         repo: &str,
         number: u32,
+        _enough: &(dyn for<'e> Fn(&'e [TimelineEvent]) -> bool + Send + Sync),
     ) -> Result<Vec<TimelineEvent>> {
         let mut calls = self.get_timeline_calls.lock().unwrap();
         assert!(calls.len() > 0, "Unexpected call to get_timeline");
@@ -460,7 +467,7 @@ impl Session for MockGithub {
         assert_eq!(call.args[1], repo);
         assert_eq!(call.args[2], number.to_string());
 
-        call.ret
+        call.ret.map(|events| events.into_iter().rev().collect())
     }
 
     async fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>> {
