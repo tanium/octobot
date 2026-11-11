@@ -761,12 +761,10 @@ impl GithubEventHandler {
                     let commits = self.pull_request_commits(&pull_request).await;
 
                     let review = comment.pull_request_review_id.map(|id| {
-                        let grouped = SlackAttachmentBuilder::new(&github_markdown::visible_text(
-                            comment.body(),
-                        ))
-                        .title(comment.path.clone().unwrap_or_default())
-                        .title_link(comment.html_url.as_str())
-                        .build();
+                        let grouped = SlackAttachmentBuilder::new(&text)
+                            .title(comment.path.clone().unwrap_or_default())
+                            .title_link(comment.html_url.as_str())
+                            .build();
                         ReviewItem::comment(
                             id,
                             comment.id,

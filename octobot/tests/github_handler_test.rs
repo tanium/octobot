@@ -706,6 +706,65 @@ async fn test_issue_comment_on_pull_request() {
 }
 
 #[tokio::test]
+async fn test_issue_comment_on_pull_request_lookup_fails() {
+    let mut test = new_test();
+    test.handler.event = "issue_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.issue = Some(Issue {
+        number: 32,
+        html_url: "http://the-github-host/some-user/some-repo/pull/32".into(),
+        title: "The PR".into(),
+        user: User::new("the-pr-owner"),
+        assignees: vec![User::new("assign1")],
+    });
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: None,
+        path: None,
+        body: Some("Looks close".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Err(anyhow!("nope")));
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("Looks close")
+            .title("joe.reviewer said:")
+            .title_link("http://the-comment")
+            .build(),
+    ];
+    let msg = "Comment on \"<http://the-github-host/some-user/some-repo/pull/32|The PR>\"";
+
+    // Notified as a plain issue: no branch, commits or reviewers.
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Threading::Reply("some-user/some-repo/32".to_string()),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
+}
+
+#[tokio::test]
 async fn test_issue_comment_on_pull_request_ignores_octobot() {
     let mut test = new_test();
     test.handler.event = "issue_comment".into();
@@ -950,6 +1009,49 @@ impl octobot_ops::worker::Worker<slack::SlackRequest> for CaptureSlack {
     fn send(&self, req: slack::SlackRequest) {
         self.reqs.lock().unwrap().push(req);
     }
+}
+
+// A review of only inline comments arrives as "commented" with no body.
+#[tokio::test]
+async fn test_pull_request_review_commented_without_body() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review".into();
+    test.handler.action = "submitted".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.review = Some(Review {
+        id: 77,
+        state: "commented".into(),
+        body: Some("".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+
+    test.slack.expect(vec![]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review [comment]".into()), resp);
+}
+
+#[tokio::test]
+async fn test_pull_request_review_dismissed() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review".into();
+    test.handler.action = "submitted".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.review = Some(Review {
+        id: 77,
+        state: "dismissed".into(),
+        body: Some("Not needed".into()),
+        html_url: "http://the-review".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+
+    test.slack.expect(vec![]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review [ignored]".into()), resp);
 }
 
 #[tokio::test]
