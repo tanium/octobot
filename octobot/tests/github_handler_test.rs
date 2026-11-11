@@ -3374,7 +3374,6 @@ async fn test_check_run_failed_publishes() {
     assert!(receiver.try_recv().is_err());
 }
 
-// Every job reports a check run, so only failures are worth a hint; the suite reports the rest.
 #[tokio::test]
 async fn test_check_run_passed_is_ignored() {
     let mut test = new_test();

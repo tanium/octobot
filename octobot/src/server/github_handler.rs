@@ -1376,8 +1376,7 @@ impl GithubEventHandler {
         }
     }
 
-    // Checks message nobody in Slack; they only publish hints to each pull request's
-    // participants.
+    // Checks message nobody in Slack.
     async fn publish_check(&self, check: &github::CheckHook) {
         for pr in &check.pull_requests {
             let pull_request = match self
