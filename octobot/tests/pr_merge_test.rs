@@ -83,13 +83,18 @@ async fn test_pr_merge_basic() {
         github::User::new("the-pr-author"),
     ];
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
-    pr.reviews = Some(vec![
-        github::Review::new("fantastic change", github::User::new("reviewer2")),
-        github::Review::new(
-            "i like to comment on my own PRs",
-            github::User::new("the-pr-author"),
-        ),
-    ]);
+    test.github.mock_get_pull_request_reviews(
+        "the-owner",
+        "the-repo",
+        123,
+        Ok(vec![
+            github::Review::new("fantastic change", github::User::new("reviewer2")),
+            github::Review::new(
+                "i like to comment on my own PRs",
+                github::User::new("the-pr-author"),
+            ),
+        ]),
+    );
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
 
@@ -183,6 +188,8 @@ async fn test_pr_merge_skips_bots() {
     bot_author.user_type = Some("Bot".into());
     pr.user = bot_author;
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -250,6 +257,8 @@ async fn test_pr_merge_author_is_assignee() {
     pr.base = github::BranchRef::new("master");
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -341,6 +350,8 @@ if (true)    {
     pr.base = github::BranchRef::new("master");
     pr.assignees = vec![github::User::new("user1"), github::User::new("user2")];
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -445,6 +456,8 @@ if (true) {
     pr.base = github::BranchRef::new("master");
     pr.assignees = vec![github::User::new("user1"), github::User::new("user2")];
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -520,13 +533,18 @@ async fn test_pr_merge_conventional_commit() {
         github::User::new("the-pr-author"),
     ];
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
-    pr.reviews = Some(vec![
-        github::Review::new("fantastic change", github::User::new("reviewer2")),
-        github::Review::new(
-            "i like to comment on my own PRs",
-            github::User::new("the-pr-author"),
-        ),
-    ]);
+    test.github.mock_get_pull_request_reviews(
+        "the-owner",
+        "the-repo",
+        123,
+        Ok(vec![
+            github::Review::new("fantastic change", github::User::new("reviewer2")),
+            github::Review::new(
+                "i like to comment on my own PRs",
+                github::User::new("the-pr-author"),
+            ),
+        ]),
+    );
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
 
@@ -611,6 +629,8 @@ async fn test_pr_merge_assign_failure_does_not_fail_backport() {
     pr.assignees = vec![github::User::new("user1")];
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -679,6 +699,8 @@ async fn test_pr_merge_request_review_failure_does_not_fail_backport() {
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -732,6 +754,88 @@ async fn test_pr_merge_request_review_failure_does_not_fail_backport() {
     .await;
 }
 
+// A failed reviewer lookup still requests the PR's requested reviewers and
+// leaves its past reviewers to the owner.
+#[tokio::test]
+async fn test_pr_merge_reviewer_lookup_failure_does_not_fail_backport() {
+    let (test, _temp_dir) = new_test();
+
+    test.git.run_git(&["push", "origin", "master:release/1.0"]);
+
+    test.git.run_git(&["checkout", "master"]);
+    test.git
+        .add_repo_file("file.txt", "contents1", "I made a change");
+    let commit1 = test.git.git.current_commit().unwrap();
+
+    let mut pr = github::PullRequest::new();
+    pr.number = 123;
+    pr.title = "The Title".into();
+    pr.merged = Some(true);
+    pr.merge_commit_sha = Some(commit1.clone());
+    pr.head = github::BranchRef::new("my-feature-branch");
+    pr.base = github::BranchRef::new("master");
+    pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
+    pr.user = github::User::new("the-pr-author");
+    let pr = pr;
+    for _ in 0..2 {
+        test.github.mock_get_pull_request_reviews(
+            "the-owner",
+            "the-repo",
+            123,
+            Err(anyhow!("nope")),
+        );
+    }
+
+    let mut new_pr = github::PullRequest::new();
+    new_pr.number = 456;
+    let new_pr = new_pr;
+
+    test.github.mock_create_pull_request(
+        "the-owner",
+        "the-repo",
+        "master->1.0: I made a change",
+        &format!("(cherry-picked from {}, PR #123)", commit1),
+        "my-feature-branch-1.0",
+        "release/1.0",
+        Ok(new_pr),
+    );
+
+    test.github.mock_assign_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["the-pr-author".into()],
+        Ok(()),
+    );
+
+    test.github.mock_request_review(
+        "the-owner",
+        "the-repo",
+        456,
+        vec!["reviewer1".into()],
+        Ok(()),
+    );
+
+    test.github.mock_comment_pull_request(
+        "the-owner",
+        "the-repo",
+        456,
+        "Backport bot could not complete the following on this PR; please do them manually:\n\n- Request review from the reviewers of #123: `nope`",
+        Ok(()),
+    );
+
+    let repo = github::Repo::parse("http://the-github-host/the-owner/the-repo").unwrap();
+    let req = pr_merge::req(&repo, &pr, "release/1.0", "release/", &[]);
+    pr_merge::merge_pull_request(
+        &test.git.git,
+        &test.github,
+        &req,
+        test.config,
+        test.slack.new_sender(),
+    )
+    .await;
+}
+
 // When both assign and request_review fail, both failures should be
 // consolidated into a single comment on the backport PR.
 #[tokio::test]
@@ -756,6 +860,8 @@ async fn test_pr_merge_assign_and_review_failures_combined_in_one_comment() {
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -834,6 +940,8 @@ async fn test_pr_merge_assign_succeeds_on_retry() {
     pr.assignees = vec![github::User::new("user1")];
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -901,6 +1009,8 @@ async fn test_pr_merge_propagates_labels() {
         github::Label::new("skip-windows"),
     ]);
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -969,6 +1079,8 @@ async fn test_pr_merge_label_failure_does_not_fail_backport() {
         github::Label::new("skip-windows"),
     ]);
     let pr = pr;
+    test.github
+        .mock_get_pull_request_reviews("the-owner", "the-repo", 123, Ok(vec![]));
 
     let mut new_pr = github::PullRequest::new();
     new_pr.number = 456;
@@ -1049,13 +1161,6 @@ async fn test_pr_merge_backport_failure() {
         github::User::new("the-pr-author"),
     ];
     pr.requested_reviewers = Some(vec![github::User::new("reviewer1")]);
-    pr.reviews = Some(vec![
-        github::Review::new("fantastic change", github::User::new("reviewer2")),
-        github::Review::new(
-            "i like to comment on my own PRs",
-            github::User::new("the-pr-author"),
-        ),
-    ]);
     pr.user = github::User::new("the-pr-author");
     let pr = pr;
 

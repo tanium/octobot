@@ -111,6 +111,11 @@ impl Drop for MockGithub {
                 *self.add_pr_labels_calls.lock().unwrap()
             );
             assert!(
+                self.get_pr_reviews_calls.lock().unwrap().len() == 0,
+                "Unmet get_pull_request_reviews calls: {:?}",
+                *self.get_pr_reviews_calls.lock().unwrap()
+            );
+            assert!(
                 self.assign_pr_calls.lock().unwrap().len() == 0,
                 "Unmet assign_pull_request calls: {:?}",
                 *self.assign_pr_calls.lock().unwrap()

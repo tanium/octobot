@@ -69,6 +69,7 @@ pub struct GithubEventHandler {
     pub repo_version: Arc<dyn Worker<RepoVersionRequest>>,
     pub force_push: Arc<dyn Worker<ForcePushRequest>>,
     pub team_members_cache: TeamsCache,
+    pub metrics: Arc<Metrics>,
 }
 
 struct TeamCacheEntry {
@@ -389,6 +390,7 @@ impl Handler for GithubHandler {
             repo_version,
             force_push,
             team_members_cache: TeamsCache::new(Duration::from_secs(3600)),
+            metrics: self.state.metrics.clone(),
         };
 
         match handler.handle_event().await {
@@ -477,31 +479,31 @@ impl GithubEventHandler {
         }
     }
 
-    // Webhook payloads carry no reviews, and reviewers leave requested_reviewers
-    // once they review. Participant messages and backports need them, so they are
-    // fetched only when one of those will happen.
-    async fn with_reviews(&self, pull_request: &github::PullRequest) -> github::PullRequest {
-        let mut pull_request = pull_request.clone();
-        if pull_request.reviews.is_none() {
-            match self
-                .github_session
-                .get_pull_request_reviews(
-                    self.repository.owner.login(),
-                    &self.repository.name,
-                    pull_request.number,
-                )
-                .await
-            {
-                Ok(r) => pull_request.reviews = Some(r),
-                Err(e) => error!("Error looking up PR reviews: {}", e),
+    // Only participant messages need past reviewers, so only they pay for the lookup.
+    // A failed lookup notifies without them rather than dropping the event.
+    async fn reviewed(&self, pull_request: &github::PullRequest) -> github::ReviewedPullRequest {
+        let reviewers = match self
+            .github_session
+            .get_pull_request_reviews(
+                self.repository.owner.login(),
+                &self.repository.name,
+                pull_request.number,
+            )
+            .await
+        {
+            Ok(reviews) => reviews.into_iter().map(|r| r.user).collect(),
+            Err(e) => {
+                error!("Error looking up PR reviewers: {}", e);
+                self.metrics.github_reviewer_lookup_failures.inc();
+                vec![]
             }
-        }
-        pull_request
+        };
+        github::ReviewedPullRequest::new(pull_request.clone(), reviewers)
     }
 
     async fn all_participants(
         &self,
-        pull_request: &dyn github::PullRequestLike,
+        pull_request: &dyn github::Notifiable,
         pr_commits: &[github::Commit],
     ) -> Participants {
         let mut participants = Participants::new();
@@ -649,13 +651,6 @@ impl GithubEventHandler {
                 return (StatusCode::OK, "pr".into());
             }
 
-            let pull_request =
-                &if matches!(notify_mode, NotifyMode::All) || self.action == "labeled" {
-                    self.with_reviews(pull_request).await
-                } else {
-                    pull_request.clone()
-                };
-
             let commits = self.pull_request_commits(&pull_request).await;
 
             if let Some(ref verb) = verb {
@@ -686,17 +681,20 @@ impl GithubEventHandler {
                             self.action == "opened",
                         ),
 
-                        NotifyMode::All => self.messenger.send_to_all(
-                            &msg,
-                            &attachments,
-                            &pull_request.user,
-                            &self.data.sender,
-                            &self.repository,
-                            self.all_participants(&pull_request, &commits).await,
-                            branch_name,
-                            &commits,
-                            vec![thread],
-                        ),
+                        NotifyMode::All => {
+                            let reviewed = &self.reviewed(pull_request).await;
+                            self.messenger.send_to_all(
+                                &msg,
+                                &attachments,
+                                &pull_request.user,
+                                &self.data.sender,
+                                &self.repository,
+                                self.all_participants(&reviewed, &commits).await,
+                                branch_name,
+                                &commits,
+                                vec![thread],
+                            )
+                        }
 
                         NotifyMode::None => (),
                     };
@@ -776,7 +774,7 @@ impl GithubEventHandler {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref comment) = self.data.comment {
                 if self.action == "created" {
-                    let pull_request = &self.with_reviews(pull_request).await;
+                    let pull_request = &self.reviewed(pull_request).await;
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
 
@@ -814,7 +812,7 @@ impl GithubEventHandler {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref review) = self.data.review {
                 if self.action == "submitted" {
-                    let pull_request = &self.with_reviews(pull_request).await;
+                    let pull_request = &self.reviewed(pull_request).await;
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
 
@@ -892,7 +890,7 @@ impl GithubEventHandler {
 
     async fn do_pull_request_comment(
         &self,
-        pull_request: &dyn github::PullRequestLike,
+        pull_request: &dyn github::Notifiable,
         comment: &dyn github::CommentLike,
         branch_name: &str,
         commits: &[github::Commit],
@@ -1036,6 +1034,7 @@ impl GithubEventHandler {
             if self.action == "created" {
                 // Check to see if we remapped this "issue" to a PR
                 if let Some(ref pr) = self.data.pull_request {
+                    let pr = &self.reviewed(pr).await;
                     let branch_name = &pr.base.ref_name;
                     let commits = self.pull_request_commits(&pr).await;
 
@@ -1148,6 +1147,7 @@ impl GithubEventHandler {
                         );
 
                         let commits = self.pull_request_commits(&pull_request).await;
+                        let reviewed = &self.reviewed(pull_request).await;
 
                         self.messenger.send_to_all(
                             &message,
@@ -1155,7 +1155,7 @@ impl GithubEventHandler {
                             &pull_request.user,
                             &self.data.sender,
                             &self.repository,
-                            self.all_participants(&pull_request, &commits).await,
+                            self.all_participants(&reviewed, &commits).await,
                             &branch_name,
                             &commits,
                             vec![self.build_thread(&pull_request)],

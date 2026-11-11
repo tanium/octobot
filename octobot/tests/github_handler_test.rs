@@ -15,6 +15,7 @@ use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github::api::Session;
 use octobot_lib::github::*;
 use octobot_lib::jira::{self};
+use octobot_lib::metrics::Metrics;
 use octobot_lib::repos;
 use octobot_lib::slack::SlackRecipient;
 use octobot_ops::force_push::{self, ForcePushRequest};
@@ -76,11 +77,7 @@ impl GithubHandlerTest {
         commits: Vec<Commit>,
     ) {
         let repo = &self.handler.repository;
-        // Backports carry the reviews the handler fetched, which these tests mock as empty.
-        let pr = &PullRequest {
-            reviews: Some(vec![]),
-            ..self.handler.data.pull_request.clone().unwrap()
-        };
+        let pr = &self.handler.data.pull_request.as_ref().unwrap();
 
         for branch in branches {
             self.pr_merge.expect_req(pr_merge::req(
@@ -246,6 +243,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             repo_version: repo_version_sender,
             force_push: force_push_sender,
             team_members_cache: TeamsCache::new(Duration::new(3600, 0)),
+            metrics: Metrics::new(),
         },
     }
 }
@@ -288,7 +286,6 @@ fn some_pr() -> Option<PullRequest> {
         assignees: vec![User::new("assign1")],
         requested_reviewers: Some(vec![User::new("joe-reviewer")]),
         requested_teams: None,
-        reviews: None,
         head: BranchRef {
             ref_name: "pr-branch".into(),
             sha: "ffff0000".into(),
@@ -1621,6 +1618,76 @@ async fn test_pull_request_ready_for_review_notifies_past_reviewers() {
 }
 
 #[tokio::test]
+async fn test_pull_request_ready_for_review_reviewer_lookup_fails() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "ready_for_review".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.mock_pull_request_commits();
+    test.github.mock_get_pull_request_reviews(
+        "some-user",
+        "some-repo",
+        32,
+        Err(anyhow!("reviews are down")),
+    );
+
+    expect_jira_ref_fail(&test.github);
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    let msg = "Pull Request is ready for review";
+
+    // Everyone the webhook names is still notified.
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Threading::ReplyOrStart(
+                "some-user/some-repo/32".to_string(),
+                thread_root(REPO_MSG, 32),
+            ),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+    assert_eq!(
+        1,
+        test.handler.metrics.github_reviewer_lookup_failures.get()
+    );
+}
+
+#[tokio::test]
 async fn test_pull_request_edited() {
     let mut test = new_test();
     test.handler.event = "pull_request".into();
@@ -1987,7 +2054,6 @@ async fn test_pull_request_other() {
 #[tokio::test]
 async fn test_pull_request_labeled_not_merged() {
     let mut test = new_test();
-    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2352,7 +2418,6 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
 #[tokio::test]
 async fn test_pull_request_merged_retroactively_labeled() {
     let mut test = new_test();
-    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2373,7 +2438,6 @@ async fn test_pull_request_merged_retroactively_labeled() {
 #[tokio::test]
 async fn test_pull_request_merged_master_branch() {
     let mut test = new_test();
-    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2394,7 +2458,6 @@ async fn test_pull_request_merged_master_branch() {
 #[tokio::test]
 async fn test_pull_request_merged_develop_branch() {
     let mut test = new_test();
-    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2415,7 +2478,6 @@ async fn test_pull_request_merged_develop_branch() {
 #[tokio::test]
 async fn test_pull_request_merged_main_branch() {
     let mut test = new_test();
-    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2491,6 +2553,9 @@ async fn test_push_with_pr() {
         .mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
     test.github
         .mock_get_pull_request_commits("some-user", "some-repo", 99, Ok(some_commits()));
+    test.mock_pull_request_reviews(vec![]);
+    test.github
+        .mock_get_pull_request_reviews("some-user", "some-repo", 99, Ok(vec![]));
 
     test.github.mock_get_pull_requests(
         "some-user",
@@ -2611,6 +2676,7 @@ async fn test_push_force_notify() {
     );
 
     test.mock_pull_request_commits();
+    test.mock_pull_request_reviews(vec![]);
 
     expect_jira_ref_fail_pr(&test.github, &pr, &some_commits());
 
@@ -2718,6 +2784,8 @@ async fn test_push_force_notify_ignored() {
         32,
         Ok(some_commits()),
     );
+    test.github
+        .mock_get_pull_request_reviews("some-other-user", "some-other-repo", 32, Ok(vec![]));
     expect_jira_ref_fail_pr(&test.github, &pr, &some_commits());
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";

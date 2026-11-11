@@ -596,8 +596,6 @@ impl GithubSession {
 
     async fn do_get_pull_requests(
         &self,
-        owner: &str,
-        repo: &str,
         head: Option<&str>,
         paging_url: &str,
         err_fmt: &str,
@@ -605,7 +603,7 @@ impl GithubSession {
         let mut pull_requests = vec![];
         let mut page = 1;
         loop {
-            let mut next_prs: Vec<PullRequest> = match self
+            let next_prs: Vec<PullRequest> = match self
                 .client
                 .get::<Vec<PullRequest>>(&format!("{}&page={}", paging_url, page))
                 .await
@@ -627,18 +625,6 @@ impl GithubSession {
 
             if next_prs.is_empty() {
                 break;
-            }
-
-            for pull_request in &mut next_prs {
-                if pull_request.reviews.is_none() {
-                    match self
-                        .get_pull_request_reviews(owner, repo, pull_request.number)
-                        .await
-                    {
-                        Ok(r) => pull_request.reviews = Some(r),
-                        Err(e) => error!("Error refetching pull request reviews: {}", e),
-                    };
-                }
             }
 
             pull_requests.extend(next_prs);
@@ -667,22 +653,10 @@ impl Session for GithubSession {
     }
 
     async fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
-        let pull_request: Result<PullRequest> = self
-            .client
+        self.client
             .get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
             .await
-            .map_err(|e| anyhow!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e));
-        let mut pull_request = pull_request?;
-
-        // Always fetch PR's reviewers. Users get removed from requested_reviewers after they submit their review. :cry:
-        if pull_request.reviews.is_none() {
-            match self.get_pull_request_reviews(owner, repo, number).await {
-                Ok(r) => pull_request.reviews = Some(r),
-                Err(e) => error!("Error refetching pull request reviews: {}", e),
-            };
-        }
-
-        Ok(pull_request)
+            .map_err(|e| anyhow!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e))
     }
 
     async fn get_pull_requests(
@@ -700,9 +674,7 @@ impl Session for GithubSession {
             head.unwrap_or(""),
         );
         let err_fmt = &format!("Error looking up PRs for commit: {}/{}", owner, repo);
-        return self
-            .do_get_pull_requests(owner, repo, head, paging_url, err_fmt)
-            .await;
+        return self.do_get_pull_requests(head, paging_url, err_fmt).await;
     }
 
     async fn get_pull_requests_by_commit(
@@ -723,9 +695,7 @@ impl Session for GithubSession {
             "Error looking up PRs for commit: {}/{}/{}",
             owner, repo, commit
         );
-        return self
-            .do_get_pull_requests(owner, repo, head, paging_url, err_fmt)
-            .await;
+        return self.do_get_pull_requests(head, paging_url, err_fmt).await;
     }
 
     async fn get_pull_request_files(
