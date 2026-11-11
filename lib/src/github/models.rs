@@ -41,10 +41,11 @@ pub struct HookBody {
 /// `CheckRun` models reject statuses webhooks send, such as "requested".
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct CheckHook {
+    pub head_sha: String,
     /// Kept as a string: webhooks send conclusions `Conclusion` does not parse, such as "skipped".
     pub conclusion: Option<String>,
-    /// Open pull requests in this repository at the checked commit. GitHub leaves out those from
-    /// forks.
+    /// Open pull requests whose head matches the checked branch and commit. These may belong to
+    /// another repository, such as the upstream of a fork.
     pub pull_requests: Vec<CheckPullRequest>,
 }
 
@@ -1033,6 +1034,7 @@ mod tests {
                 "sender": {"id": 1, "login": "github-actions[bot]"},
                 "action": "requested",
                 "check_suite": {
+                    "head_sha": "ffff0000",
                     "status": "requested",
                     "conclusion": "skipped",
                     "pull_requests": [{"number": 32, "head": {"sha": "ffff0000"}}]
@@ -1049,6 +1051,7 @@ mod tests {
     #[test]
     fn test_check_hook_failed() {
         let check = |conclusion: Option<&str>| CheckHook {
+            head_sha: "ffff0000".into(),
             conclusion: conclusion.map(String::from),
             pull_requests: vec![],
         };

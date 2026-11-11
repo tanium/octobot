@@ -1395,6 +1395,13 @@ impl GithubEventHandler {
                     continue;
                 }
             };
+            if pull_request.head.sha != check.head_sha {
+                info!(
+                    "Skipping PR #{} for check: its head is not the checked commit",
+                    pr.number
+                );
+                continue;
+            }
             let pull_request = &pull_request;
 
             let commits = self.pull_request_commits(&pull_request).await;

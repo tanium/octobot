@@ -3270,7 +3270,9 @@ async fn test_push_draft_publishes() {
 }
 
 fn some_check(conclusion: Option<&str>) -> CheckHook {
+    // At some_pr()'s head
     CheckHook {
+        head_sha: "ffff0000".into(),
         conclusion: conclusion.map(String::from),
         pull_requests: vec![CheckPullRequest { number: 32 }],
     }
@@ -3331,6 +3333,25 @@ async fn test_check_suite_without_pull_requests() {
     assert!(receiver.try_recv().is_err());
 }
 
+// A listed PR can be another repository's, such as a fork's upstream, so its number names some
+// other PR here. A PR pushed since the check ran is also skipped: the check is stale.
+#[tokio::test]
+async fn test_check_suite_skips_pull_request_at_another_commit() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    let mut check = some_check(Some("success"));
+    check.head_sha = "abcdef0000".into();
+    test.handler.data.check_suite = Some(check);
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
 #[tokio::test]
 async fn test_check_run_failed_publishes() {
     let mut test = new_test();
@@ -3363,6 +3384,20 @@ async fn test_check_run_passed_is_ignored() {
     let mut receiver = test.subscribe_events(Kind::CheckRun);
 
     // no github mocks: a run that is not worth a hint costs no API calls
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_run [ignored]".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
+// A rerequested run still carries its old conclusion.
+#[tokio::test]
+async fn test_check_run_rerequested_is_ignored() {
+    let mut test = new_test();
+    test.handler.event = "check_run".into();
+    test.handler.action = "rerequested".into();
+    test.handler.data.check_run = Some(some_check(Some("failure")));
+    let mut receiver = test.subscribe_events(Kind::CheckRun);
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "check_run [ignored]".into()), resp);

@@ -73,8 +73,9 @@ enum Kind {
   KIND_COMMIT_COMMENT = 4;
   KIND_ISSUE_COMMENT = 5;
   KIND_PUSH = 6;
-  // Only for runs that complete with a failure; a check suite completes once all its runs do.
+  // Only for runs that complete with a failure
   KIND_CHECK_RUN = 7;
+  // Completes once all its runs do
   KIND_CHECK_SUITE = 8;
 }
 
