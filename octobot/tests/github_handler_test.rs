@@ -236,7 +236,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             pr_merge: pr_merge_sender,
             repo_version: repo_version_sender,
             force_push: force_push_sender,
-            team_members_cache: TeamsCache::new(Duration::new(3600, 0)),
+            team_members_cache: Arc::new(TeamsCache::new(Duration::new(3600, 0))),
         },
     }
 }

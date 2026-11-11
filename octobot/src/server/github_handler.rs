@@ -50,6 +50,7 @@ pub struct GithubHandlerState {
     event_bus: Arc<EventBus>,
     metrics: Arc<Metrics>,
     git_clone_manager: Arc<GitCloneManager>,
+    team_members_cache: Arc<TeamsCache>,
 }
 
 pub struct GithubHandler {
@@ -68,7 +69,7 @@ pub struct GithubEventHandler {
     pub pr_merge: Arc<dyn Worker<PRMergeRequest>>,
     pub repo_version: Arc<dyn Worker<RepoVersionRequest>>,
     pub force_push: Arc<dyn Worker<ForcePushRequest>>,
-    pub team_members_cache: TeamsCache,
+    pub team_members_cache: Arc<TeamsCache>,
 }
 
 struct TeamCacheEntry {
@@ -183,6 +184,7 @@ impl GithubHandlerState {
             event_bus,
             metrics,
             git_clone_manager,
+            team_members_cache: Arc::new(TeamsCache::new(Duration::from_secs(3600))),
         }
     }
 
@@ -425,7 +427,7 @@ impl Handler for GithubHandler {
             pr_merge,
             repo_version,
             force_push,
-            team_members_cache: TeamsCache::new(Duration::from_secs(3600)),
+            team_members_cache: self.state.team_members_cache.clone(),
         };
 
         match handler.handle_event().await {
