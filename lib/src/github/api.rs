@@ -641,7 +641,13 @@ impl GithubSession {
         let mut next = Some(url.to_string());
         while let Some(url) = next {
             let res = self.client.get_raw(&url).await?;
-            next = parse_next_link(&res);
+            // Next links are absolute; a relative path keeps later pages under their
+            // route in the request metrics.
+            next =
+                parse_next_link(&res).map(|link| match link.strip_prefix(&self.client.api_base) {
+                    Some(path) => path.to_string(),
+                    None => link,
+                });
             let page: Vec<T> = self.client.parse_json(res).await?;
             items.extend(page);
         }
