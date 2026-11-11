@@ -487,7 +487,6 @@ impl GithubEventHandler {
     ) -> Participants {
         let mut participants = Participants::new();
 
-        // start with the assignees and reviewers
         for u in pull_request.assignees_and_reviewers().into_iter() {
             participants.add_user(u);
         }
@@ -1023,7 +1022,8 @@ impl GithubEventHandler {
         (StatusCode::OK, "commit_comment".into())
     }
 
-    // A failed lookup treats the PR as a plain issue rather than dropping the comment.
+    // None for a plain issue, and also when the PR lookup fails, so the comment
+    // still notifies as an issue.
     async fn issue_pull_request(&self, issue: &github::Issue) -> Option<github::PullRequest> {
         if !issue.html_url.contains("/pull/") {
             return None;
