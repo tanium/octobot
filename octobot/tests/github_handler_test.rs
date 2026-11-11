@@ -630,6 +630,111 @@ async fn test_pull_request_comment() {
     assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
 }
 
+#[tokio::test]
+async fn test_issue_comment_on_pull_request() {
+    let mut test = new_test();
+    test.handler.event = "issue_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.issue = Some(Issue {
+        number: 32,
+        html_url: "http://the-github-host/some-user/some-repo/pull/32".into(),
+        title: "The PR".into(),
+        user: User::new("the-pr-owner"),
+        assignees: vec![],
+    });
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: None,
+        path: None,
+        body: Some("Looks close".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_reviews(vec![Review::new("lgtm", User::new("smith-reviewer"))]);
+    test.mock_pull_request_commits();
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("Looks close")
+            .title("joe.reviewer said:")
+            .title_link("http://the-comment")
+            .build(),
+    ];
+    let msg = "Comment on \"<http://the-pr|The PR>\"";
+
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Threading::ReplyOrStart(
+                "some-user/some-repo/32".to_string(),
+                thread_root(REPO_MSG, 32),
+            ),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("smith.reviewer"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
+}
+
+#[tokio::test]
+async fn test_issue_comment_on_pull_request_ignores_octobot() {
+    let mut test = new_test();
+    test.handler.event = "issue_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.issue = Some(Issue {
+        number: 32,
+        html_url: "http://the-github-host/some-user/some-repo/pull/32".into(),
+        title: "The PR".into(),
+        user: User::new("the-pr-owner"),
+        assignees: vec![],
+    });
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: None,
+        path: None,
+        body: Some("Build passed".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("octobot[bot]"),
+    });
+    test.handler.data.sender = User::new("octobot[bot]");
+
+    // No lookups at all: not the PR, its reviewers, or its commits.
+    test.slack.expect(vec![]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
+}
+
 #[tokio::test(start_paused = true)]
 async fn test_pull_request_review_comment_grouped() {
     let mut test = new_test();
@@ -915,7 +1020,6 @@ async fn test_pull_request_review_commented() {
 #[tokio::test]
 async fn test_pull_request_comments_ignore_empty_messages() {
     let mut test = new_test();
-    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
@@ -929,7 +1033,6 @@ async fn test_pull_request_comments_ignore_empty_messages() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
@@ -940,7 +1043,6 @@ async fn test_pull_request_comments_ignore_empty_messages() {
 #[tokio::test]
 async fn test_pull_request_comments_ignore_octobot() {
     let mut test = new_test();
-    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
@@ -954,7 +1056,6 @@ async fn test_pull_request_comments_ignore_octobot() {
         user: User::new("octobot[bot]"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
@@ -965,7 +1066,6 @@ async fn test_pull_request_comments_ignore_octobot() {
 #[tokio::test]
 async fn test_pull_request_comments_ignore_user() {
     let mut test = new_test();
-    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
@@ -979,7 +1079,6 @@ async fn test_pull_request_comments_ignore_user() {
         user: User::new("ignore-me[bot]"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
@@ -1067,7 +1166,6 @@ async fn test_pull_request_comment_hides_collapsed_details() {
 #[tokio::test]
 async fn test_pull_request_comments_ignore_hidden_only_messages() {
     let mut test = new_test();
-    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
@@ -1081,7 +1179,6 @@ async fn test_pull_request_comments_ignore_hidden_only_messages() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 

@@ -15,7 +15,6 @@ use octobot_lib::config::Config;
 use octobot_lib::errors::Result;
 use octobot_lib::github;
 use octobot_lib::github::CommentLike;
-use octobot_lib::github::api::Session;
 use octobot_lib::jira;
 use octobot_lib::metrics::{self, Metrics};
 use octobot_ops::event_bus::EventBus;
@@ -305,7 +304,7 @@ impl Handler for GithubHandler {
             return http_util::new_msg_resp(StatusCode::FORBIDDEN, "Invalid signature");
         }
 
-        let mut data: github::HookBody = match serde_json::from_slice(&body) {
+        let data: github::HookBody = match serde_json::from_slice(&body) {
             Ok(h) => h,
             Err(e) => {
                 error!(
@@ -349,26 +348,6 @@ impl Handler for GithubHandler {
             Some(ref a) => a.clone(),
             None => String::new(),
         };
-
-        // Try to remap issues which are PRs as pull requests. This gives us access to PR information
-        // like reviewers which do not exist for issues.
-        if let Some(ref issue) = data.issue {
-            if data.pull_request.is_none() && issue.html_url.contains("/pull/") {
-                data.pull_request = match github_session
-                    .get_pull_request(repository.owner.login(), &repository.name, issue.number)
-                    .await
-                {
-                    Ok(pr) => Some(pr),
-                    Err(e) => {
-                        error!(
-                            "Error refetching issue #{} as pull request: {}",
-                            issue.number, e
-                        );
-                        None
-                    }
-                };
-            }
-        }
 
         let mut messenger = messenger::new(config.clone(), slack)
             .with_review_groups(self.state.review_groups.clone());
@@ -508,8 +487,8 @@ impl GithubEventHandler {
     ) -> Participants {
         let mut participants = Participants::new();
 
-        // start with the assignees
-        for u in pull_request.assignees().into_iter() {
+        // start with the assignees and reviewers
+        for u in pull_request.assignees_and_reviewers().into_iter() {
             participants.add_user(u);
         }
         // add the author of the PR
@@ -774,6 +753,9 @@ impl GithubEventHandler {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref comment) = self.data.comment {
                 if self.action == "created" {
+                    let Some(text) = self.notifying_text(&comment) else {
+                        return (StatusCode::OK, "pr_review_comment".into());
+                    };
                     let pull_request = &self.reviewed(pull_request).await;
                     let branch_name = &pull_request.base.ref_name;
                     let commits = self.pull_request_commits(&pull_request).await;
@@ -796,6 +778,7 @@ impl GithubEventHandler {
                     self.do_pull_request_comment(
                         &pull_request,
                         &comment,
+                        &text,
                         branch_name,
                         &commits,
                         review,
@@ -812,18 +795,20 @@ impl GithubEventHandler {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref review) = self.data.review {
                 if self.action == "submitted" {
-                    let pull_request = &self.reviewed(pull_request).await;
-                    let branch_name = &pull_request.base.ref_name;
-                    let commits = self.pull_request_commits(&pull_request).await;
-
-                    // just a comment. should just be handled by regular comment handler.
                     let review_msg = self.review_msg(pull_request, &review.user);
 
+                    // just a comment. should just be handled by regular comment handler.
                     if review.state == "commented" {
+                        let Some(text) = self.notifying_text(&review) else {
+                            return (StatusCode::OK, "pr_review [comment]".into());
+                        };
+                        let pull_request = &self.reviewed(pull_request).await;
+                        let commits = self.pull_request_commits(&pull_request).await;
                         self.do_pull_request_comment(
                             &pull_request,
                             &review,
-                            branch_name,
+                            &text,
+                            &pull_request.base.ref_name,
                             &commits,
                             Some(ReviewItem::commented(review.id, &review_msg)),
                         )
@@ -845,6 +830,10 @@ impl GithubEventHandler {
                     } else {
                         return (StatusCode::OK, "pr_review [ignored]".into());
                     }
+
+                    let pull_request = &self.reviewed(pull_request).await;
+                    let branch_name = &pull_request.base.ref_name;
+                    let commits = self.pull_request_commits(&pull_request).await;
 
                     let msg = format!(
                         "{} {} PR \"{}\"",
@@ -888,17 +877,12 @@ impl GithubEventHandler {
         (StatusCode::OK, "pr_review".into())
     }
 
-    async fn do_pull_request_comment(
-        &self,
-        pull_request: &dyn github::Notifiable,
-        comment: &dyn github::CommentLike,
-        branch_name: &str,
-        commits: &[github::Commit],
-        review: Option<ReviewItem>,
-    ) {
+    // The text to notify participants with, or None for a comment octobot ignores.
+    // Checked before any lookups, so ignored comments cost no API calls.
+    fn notifying_text(&self, comment: &dyn github::CommentLike) -> Option<String> {
         let text = github_markdown::visible_text(comment.body());
         if text.is_empty() {
-            return;
+            return None;
         }
 
         if comment.user().login() == self.github_session.bot_name()
@@ -913,16 +897,28 @@ impl GithubEventHandler {
                 comment.user().login(),
                 comment.body()
             );
-            return;
+            return None;
         }
 
+        Some(text)
+    }
+
+    async fn do_pull_request_comment(
+        &self,
+        pull_request: &dyn github::Notifiable,
+        comment: &dyn github::CommentLike,
+        text: &str,
+        branch_name: &str,
+        commits: &[github::Commit],
+        review: Option<ReviewItem>,
+    ) {
         let msg = format!(
             "Comment on \"{}\"",
             util::make_link(pull_request.html_url(), pull_request.title())
         );
 
         let attachments = vec![
-            SlackAttachmentBuilder::new(&text)
+            SlackAttachmentBuilder::new(text)
                 .title(format!("{} said:", self.slack_user_name(comment.user())))
                 .title_link(comment.html_url())
                 .build(),
@@ -1029,23 +1025,56 @@ impl GithubEventHandler {
         (StatusCode::OK, "commit_comment".into())
     }
 
+    // A failed lookup treats the PR as a plain issue rather than dropping the comment.
+    async fn issue_pull_request(&self, issue: &github::Issue) -> Option<github::PullRequest> {
+        if !issue.html_url.contains("/pull/") {
+            return None;
+        }
+        match self
+            .github_session
+            .get_pull_request(
+                self.repository.owner.login(),
+                &self.repository.name,
+                issue.number,
+            )
+            .await
+        {
+            Ok(pr) => Some(pr),
+            Err(e) => {
+                error!(
+                    "Error refetching issue #{} as pull request: {}",
+                    issue.number, e
+                );
+                None
+            }
+        }
+    }
+
     async fn handle_issue_comment(&self) -> EventResponse {
-        if let Some(ref comment) = self.data.comment {
+        if let (Some(comment), Some(issue)) = (&self.data.comment, &self.data.issue) {
             if self.action == "created" {
-                // Check to see if we remapped this "issue" to a PR
-                if let Some(ref pr) = self.data.pull_request {
-                    let pr = &self.reviewed(pr).await;
-                    let branch_name = &pr.base.ref_name;
+                let Some(text) = self.notifying_text(&comment) else {
+                    return (StatusCode::OK, "issue_comment".into());
+                };
+
+                // GitHub sends PR comments as issue comments; only the PR has a branch,
+                // commits and reviewers.
+                if let Some(pr) = self.issue_pull_request(issue).await {
+                    let pr = &self.reviewed(&pr).await;
                     let commits = self.pull_request_commits(&pr).await;
 
-                    self.do_pull_request_comment(&pr, &comment, branch_name, &commits, None)
-                        .await;
-                } else if let Some(ref issue) = self.data.issue {
+                    self.do_pull_request_comment(
+                        &pr,
+                        &comment,
+                        &text,
+                        &pr.base.ref_name,
+                        &commits,
+                        None,
+                    )
+                    .await;
+                } else {
                     // issues do not have branches or commits -> main channel is fine.
-                    let branch_name = "";
-                    let commits = vec![];
-
-                    self.do_pull_request_comment(&issue, &comment, branch_name, &commits, None)
+                    self.do_pull_request_comment(&issue, &comment, &text, "", &[], None)
                         .await;
                 }
             }

@@ -226,7 +226,7 @@ pub trait PullRequestLike: Send + Sync {
 // implement this: reviewers leave `requested_reviewers` once they review, so only
 // a `ReviewedPullRequest` knows all of them.
 pub trait Notifiable: PullRequestLike {
-    fn assignees(&self) -> Vec<User>;
+    fn assignees_and_reviewers(&self) -> Vec<User>;
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -351,7 +351,7 @@ impl PullRequestLike for &ReviewedPullRequest {
 }
 
 impl Notifiable for &ReviewedPullRequest {
-    fn assignees(&self) -> Vec<User> {
+    fn assignees_and_reviewers(&self) -> Vec<User> {
         let mut assignees = self.pull_request.assignees.clone();
         assignees.extend(self.all_reviewers());
         assignees
@@ -432,7 +432,7 @@ impl PullRequestLike for &Issue {
 }
 
 impl Notifiable for &Issue {
-    fn assignees(&self) -> Vec<User> {
+    fn assignees_and_reviewers(&self) -> Vec<User> {
         self.assignees.clone()
     }
 }
@@ -915,7 +915,7 @@ mod tests {
         pr.requested_reviewers = None;
 
         let reviewed = ReviewedPullRequest::new(pr.clone(), vec![]);
-        assert_eq!(users, (&reviewed).assignees());
+        assert_eq!(users, (&reviewed).assignees_and_reviewers());
 
         let reviewers = vec![User::new("userC"), User::new("userD")];
         pr.requested_reviewers = Some(reviewers);
@@ -927,7 +927,7 @@ mod tests {
             User::new("userD"),
         ];
         let reviewed = ReviewedPullRequest::new(pr.clone(), vec![]);
-        assert_eq!(all_users, (&reviewed).assignees());
+        assert_eq!(all_users, (&reviewed).assignees_and_reviewers());
 
         let reviews = vec![
             Review::new("i like it", User::new("userE")),
@@ -943,7 +943,7 @@ mod tests {
             User::new("userF"),
         ];
         let reviewed = ReviewedPullRequest::new(pr, reviews.into_iter().map(|r| r.user).collect());
-        assert_eq!(even_more_users, (&reviewed).assignees());
+        assert_eq!(even_more_users, (&reviewed).assignees_and_reviewers());
     }
 
     #[test]
