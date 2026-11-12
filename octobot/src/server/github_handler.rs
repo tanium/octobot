@@ -1401,15 +1401,10 @@ impl GithubEventHandler {
                 );
                 continue;
             }
-            let pull_request = &pull_request;
 
-            let commits = self.pull_request_commits(&pull_request).await;
-            self.messenger.publish_to_all(
-                &self.data.sender,
-                &self.repository,
-                &self.all_participants(&pull_request, &commits).await,
-                &[self.build_thread(&pull_request)],
-            );
+            let reviewed = &self.reviewed(&pull_request).await;
+            let commits = self.pull_request_commits(&reviewed).await;
+            self.publish_hint(&reviewed, &commits).await;
         }
     }
 

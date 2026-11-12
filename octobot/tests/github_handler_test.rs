@@ -3287,6 +3287,7 @@ async fn test_check_suite_publishes() {
     test.handler.data.check_suite = Some(some_check(Some("success")));
     test.github
         .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_reviews(vec![Review::new("lgtm", User::new("smith-reviewer"))]);
     test.mock_pull_request_commits();
     let mut receiver = test.subscribe_events(Kind::CheckSuite);
 
@@ -3302,6 +3303,7 @@ async fn test_check_suite_publishes() {
             "bob-author",
             "github-actions[bot]",
             "joe-reviewer",
+            "smith-reviewer",
             "the-pr-owner"
         ],
         event.recipients.iter().collect::<Vec<_>>()
@@ -3360,6 +3362,7 @@ async fn test_check_run_failed_publishes() {
     test.handler.data.check_run = Some(some_check(Some("failure")));
     test.github
         .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_reviews(vec![]);
     test.mock_pull_request_commits();
     let mut receiver = test.subscribe_events(Kind::CheckRun);
 
