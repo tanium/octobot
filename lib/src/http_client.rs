@@ -132,10 +132,7 @@ impl HTTPClient {
         T: DeserializeOwned + Send + 'static,
     {
         let res = self.get_raw(path).await?;
-        let res = self.parse_json(res).await?;
-
-        self.maybe_record_ok();
-        Ok(res)
+        self.parse_json(res).await
     }
 
     pub async fn post<T, U: Serialize>(&self, path: &str, body: &U) -> Result<T>
@@ -300,5 +297,31 @@ impl HTTPClient {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::Metrics;
+
+    #[tokio::test]
+    async fn test_get_records_one_response() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/thing")
+            .with_body("{}")
+            .create_async()
+            .await;
+        let metrics = Metrics::new();
+        let client = HTTPClient::new(&server.url()).unwrap().with_metrics(
+            metrics.github_api_responses.clone(),
+            metrics.github_api_duration.clone(),
+        );
+
+        let _: serde_json::Value = client.get("/thing").await.unwrap();
+
+        let ok = metrics.github_api_responses.with_label_values(&["200"]);
+        assert_eq!(1, ok.get());
     }
 }
