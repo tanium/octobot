@@ -20,6 +20,7 @@ pub struct HookBody {
     pub pull_request: Option<PullRequest>,
     pub review: Option<Review>,
     pub label: Option<Label>,
+    pub requested_reviewer: Option<User>,
 
     // push event related stuff
     #[serde(rename = "ref")]
@@ -44,6 +45,7 @@ impl HookBody {
             pull_request: None,
             review: None,
             label: None,
+            requested_reviewer: None,
             ref_name: None,
             after: None,
             before: None,
