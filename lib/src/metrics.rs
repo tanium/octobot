@@ -12,8 +12,9 @@ use std::sync::Arc;
 pub struct Metrics {
     pub registry: Arc<Registry>,
 
-    pub http_responses: IntCounterVec,
     pub http_duration: HistogramVec,
+
+    pub webhook_events: IntCounterVec,
 
     pub slack_api_responses: IntCounterVec,
     pub slack_api_duration: HistogramVec,
@@ -45,7 +46,9 @@ pub struct Metrics {
 }
 
 fn http_duration_buckets() -> Vec<f64> {
-    vec![0.005, 0.1, 0.5, 1.0, 2.0, 10.0, 30.0, 60.0]
+    vec![
+        0.005, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0,
+    ]
 }
 
 fn job_duration_buckets() -> Vec<f64> {
@@ -62,19 +65,19 @@ impl Metrics {
         Arc::new(Metrics {
             registry: registry.clone(),
 
-            http_responses: register_int_counter_vec_with_registry!(
-                "http_responses",
-                "HTTP response codes",
-                &["status"],
+            http_duration: register_histogram_vec_with_registry!(
+                "http_requests_duration",
+                "Duration of HTTP requests in seconds",
+                &["method", "path", "status"],
+                http_duration_buckets(),
                 registry.as_ref()
             )
             .unwrap(),
 
-            http_duration: register_histogram_vec_with_registry!(
-                "http_requests_duration",
-                "Duration of HTTP requests in seconds",
-                &["method", "path"],
-                http_duration_buckets(),
+            webhook_events: register_int_counter_vec_with_registry!(
+                "webhook_events",
+                "GitHub webhook deliveries by outcome",
+                &["event", "outcome"],
                 registry.as_ref()
             )
             .unwrap(),
@@ -114,7 +117,7 @@ impl Metrics {
             .unwrap(),
 
             github_api_responses: register_int_counter_vec_with_registry!(
-                "gihtub_api_responses",
+                "github_api_responses",
                 "Github API responses",
                 &["status"],
                 registry.as_ref()
