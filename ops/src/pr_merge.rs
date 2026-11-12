@@ -232,8 +232,7 @@ pub async fn try_merge_pull_request(
     // the owner knows to finish those steps by hand.
     let mut manual_steps: Vec<String> = Vec::new();
 
-    // The merged PR's past reviewers come only from a reviews lookup, so only
-    // backports that get this far pay for it.
+    // The merged PR's past reviewers come only from a reviews lookup.
     let reviewed = match retry_once("get_pull_request_reviews", || {
         session.get_pull_request_reviews(owner, repo, pull_request.number)
     })

@@ -877,7 +877,6 @@ impl GithubEventHandler {
         (StatusCode::OK, "pr_review".into())
     }
 
-    // Checked before any lookups, so ignored comments cost no API calls.
     fn is_ignored_comment(&self, comment: &dyn github::CommentLike) -> bool {
         if github_markdown::visible_text(comment.body()).is_empty() {
             return true;
