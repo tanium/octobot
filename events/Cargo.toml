@@ -13,7 +13,7 @@ path = "src/lib.rs"
 anyhow = "1.0.72"
 log = "0.4.19"
 prost = "0.14"
-rand = "0.9"
+rand = "0.10"
 ssh-agent-client-rs = "1.1.4"
 ssh-key = { version = "0.6.7", features = ["std", "ed25519", "rsa", "ecdsa", "p256", "p384"] }
 tokio = { version = "1.43.1", features = ["rt", "sync", "time", "macros"] }
@@ -27,5 +27,5 @@ tokio = { version = "1.43.1", features = ["net"] }
 tokio-stream = { version = "0.1.17", features = ["net"] }
 
 [build-dependencies]
-protox = "0.9"
+protox = "0.10"
 tonic-prost-build = "0.14"

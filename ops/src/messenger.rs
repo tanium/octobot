@@ -223,7 +223,7 @@ impl Messenger {
         threads: Vec<Thread>,
     ) {
         participants.add_user(item_owner.clone());
-        self.publish(repo, &participants, sender, &threads);
+        self.publish_to_all(sender, repo, &participants, &threads);
 
         if self.is_ignored_user(sender) {
             info!("Ignoring message from ignored user: {}", sender.login(),);
@@ -246,13 +246,15 @@ impl Messenger {
         self.send_to_slackbots(participants, repo, msg, attachments, dm_thread, review);
     }
 
-    // Every participant gets the hint, including the sender. The Slack filters (ignored users,
-    // mutes, DM settings) are about noise for people; hints feed tools that refetch and decide.
-    fn publish(
+    /// Publishes a hint to `participants` and the sender, without messaging anyone.
+    ///
+    /// The Slack filters (ignored users, mutes, DM settings) do not apply. They are about noise
+    /// for people; hints feed tools that refetch and decide.
+    pub fn publish_to_all(
         &self,
+        sender: &github::User,
         repo: &github::Repo,
         participants: &Participants,
-        sender: &github::User,
         threads: &[Thread],
     ) {
         let Some(events) = &self.events else {
