@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{anyhow, bail};
 use maplit::hashmap;
 use prometheus::{HistogramTimer, HistogramVec, IntCounterVec};
@@ -29,6 +31,10 @@ impl std::fmt::Display for HttpError {
 
 impl std::error::Error for HttpError {}
 
+/// Produces a bearer token for each request, for credentials that expire
+/// sooner than the client that uses them.
+pub type BearerSource = Arc<dyn Fn() -> Result<String> + Send + Sync>;
+
 pub struct HTTPClient {
     pub api_base: String,
     pub client: reqwest::Client,
@@ -36,6 +42,7 @@ pub struct HTTPClient {
     metric_api_responses: Option<IntCounterVec>,
     metric_api_duration: Option<HistogramVec>,
     secret_path: Option<String>,
+    bearer: Option<BearerSource>,
 }
 
 impl HTTPClient {
@@ -50,6 +57,7 @@ impl HTTPClient {
             metric_api_responses: None,
             metric_api_duration: None,
             secret_path: None,
+            bearer: None,
         })
     }
 
@@ -65,6 +73,7 @@ impl HTTPClient {
             metric_api_responses: None,
             metric_api_duration: None,
             secret_path: None,
+            bearer: None,
         })
     }
 
@@ -84,6 +93,19 @@ impl HTTPClient {
         self
     }
 
+    pub fn with_bearer_source(mut self, bearer: BearerSource) -> Self {
+        self.bearer = Some(bearer);
+        self
+    }
+
+    fn request(&self, method: reqwest::Method, path: &str) -> Result<reqwest::RequestBuilder> {
+        let req = self.client.request(method, self.make_url(path));
+        match self.bearer {
+            None => Ok(req),
+            Some(ref bearer) => Ok(req.bearer_auth(bearer()?)),
+        }
+    }
+
     fn make_url(&self, path: &str) -> String {
         if path.is_empty() {
             self.api_base.clone()
@@ -98,7 +120,7 @@ impl HTTPClient {
 
     pub async fn get_raw(&self, path: &str) -> Result<Response> {
         let _timer = self.maybe_start_timer("get", path);
-        let res = self.client.get(self.make_url(path)).send().await;
+        let res = self.request(reqwest::Method::GET, path)?.send().await;
         let res = self.process_resp(res).await?;
 
         self.maybe_record_ok();
@@ -122,8 +144,7 @@ impl HTTPClient {
     {
         let _timer = self.maybe_start_timer("post", path);
         let res = self
-            .client
-            .post(self.make_url(path))
+            .request(reqwest::Method::POST, path)?
             .json(body)
             .send()
             .await;
@@ -137,8 +158,7 @@ impl HTTPClient {
     pub async fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
         let _timer = self.maybe_start_timer("post", path);
         let res = self
-            .client
-            .post(self.make_url(path))
+            .request(reqwest::Method::POST, path)?
             .json(body)
             .send()
             .await;
@@ -150,7 +170,7 @@ impl HTTPClient {
 
     pub async fn post_void_opt<U: Serialize>(&self, path: &str, body: Option<&U>) -> Result<()> {
         let _timer = self.maybe_start_timer("post", path);
-        let res = self.client.post(self.make_url(path));
+        let res = self.request(reqwest::Method::POST, path)?;
         let res = match body {
             None => res,
             Some(body) => res.json(body),
@@ -167,7 +187,11 @@ impl HTTPClient {
         T: DeserializeOwned + Send + 'static,
     {
         let _timer = self.maybe_start_timer("put", path);
-        let res = self.client.put(self.make_url(path)).json(body).send().await;
+        let res = self
+            .request(reqwest::Method::PUT, path)?
+            .json(body)
+            .send()
+            .await;
         let res = self.process_resp(res).await?;
         let res = self.parse_json(res).await?;
 
@@ -177,7 +201,11 @@ impl HTTPClient {
 
     pub async fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
         let _timer = self.maybe_start_timer("put", path);
-        let res = self.client.put(self.make_url(path)).json(body).send().await;
+        let res = self
+            .request(reqwest::Method::PUT, path)?
+            .json(body)
+            .send()
+            .await;
         self.process_resp(res).await?;
 
         self.maybe_record_ok();
@@ -186,7 +214,7 @@ impl HTTPClient {
 
     pub async fn delete_void(&self, path: &str) -> Result<()> {
         let _timer = self.maybe_start_timer("delete", path);
-        let res = self.client.delete(self.make_url(path)).send().await;
+        let res = self.request(reqwest::Method::DELETE, path)?.send().await;
         self.process_resp(res).await?;
 
         self.maybe_record_ok();
