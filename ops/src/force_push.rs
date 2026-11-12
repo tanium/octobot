@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::{Context, bail};
 use log::{error, info};
 
 use crate::diffs::DiffOfDiffs;
@@ -204,21 +205,15 @@ pub fn new_runner(
 
 #[async_trait::async_trait]
 impl worker::Runner<ForcePushRequest> for Runner {
-    async fn handle(&self, req: ForcePushRequest) {
+    async fn handle(&self, req: ForcePushRequest) -> Result<()> {
         let _scoped_count = metrics::scoped_inc(&self.metrics.current_force_push_count);
         let _scoped_timer = self.metrics.force_push_duration.start_timer();
 
-        let github = match self
+        let github = self
             .github_app
             .new_session(req.repo.owner.login(), &req.repo.name)
             .await
-        {
-            Ok(g) => g,
-            Err(e) => {
-                error!("Error getting new session: {}", e);
-                return;
-            }
-        };
+            .context("getting new session")?;
 
         let diffs = diff_force_push(
             &github,
@@ -230,8 +225,10 @@ impl worker::Runner<ForcePushRequest> for Runner {
             &req.after_hash,
         )
         .await;
+        // The comment still goes out, saying the diff couldn't be calculated.
+        let diff_failed = diffs.is_err();
 
-        let comment = comment_force_push(
+        comment_force_push(
             diffs,
             &github,
             req.repo.owner.login(),
@@ -240,9 +237,11 @@ impl worker::Runner<ForcePushRequest> for Runner {
             &req.before_hash,
             &req.after_hash,
         )
-        .await;
-        if let Err(e) = comment {
-            error!("Error diffing force push: {}", e);
+        .await
+        .context("commenting on force push")?;
+        if diff_failed {
+            bail!("could not diff force push");
         }
+        Ok(())
     }
 }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use log;
 #[cfg(target_os = "linux")]
 use log::debug;
@@ -227,7 +227,7 @@ pub fn new_runner(
 
 #[async_trait::async_trait]
 impl worker::Runner<RepoVersionRequest> for Runner {
-    async fn handle(&self, req: RepoVersionRequest) {
+    async fn handle(&self, req: RepoVersionRequest) -> Result<()> {
         let _scoped_count = metrics::scoped_inc(&self.metrics.current_repo_version_count);
         let _scoped_timer = self.metrics.repo_version_duration.start_timer();
 
@@ -236,6 +236,9 @@ impl worker::Runner<RepoVersionRequest> for Runner {
             let repos_lock = self.config.repos();
             configs = repos_lock.jira_configs(&req.repo, &req.branch);
         }
+
+        // Each project still resolves after another's script fails.
+        let mut failed_projects = vec![];
 
         if let Some(ref jira_session) = self.jira_session {
             if let Some(ref jira_config) = self.config.jira {
@@ -269,6 +272,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                                 "Error running version script {}: {}",
                                 config.version_script, e
                             );
+                            failed_projects.push(config.jira_project.clone());
                             let messenger = messenger::new(self.config.clone(), self.slack.clone());
 
                             let attach = SlackAttachmentBuilder::new(&format!("{}", e))
@@ -308,6 +312,11 @@ impl worker::Runner<RepoVersionRequest> for Runner {
                 }
             }
         }
+
+        if !failed_projects.is_empty() {
+            bail!("version script failed for {}", failed_projects.join(", "));
+        }
+        Ok(())
     }
 }
 

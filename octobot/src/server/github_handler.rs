@@ -125,11 +125,16 @@ impl GithubHandlerState {
     ) -> GithubHandlerState {
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
 
-        let jobs = Jobs::new(runtime::new(MAX_CONCURRENT_JOBS, "jobs", metrics.clone()));
+        let jobs = Jobs::new(
+            runtime::new(MAX_CONCURRENT_JOBS, "jobs", metrics.clone()),
+            metrics.clone(),
+        );
 
-        let slack_worker = TokioWorker::new_worker(jobs.clone(), slack::new_runner(slack.clone()));
+        let slack_worker =
+            TokioWorker::new_worker(jobs.clone(), "slack", slack::new_runner(slack.clone()));
         let pr_merge_worker = TokioWorker::new_worker(
             jobs.clone(),
+            "backport",
             pr_merge::new_runner(
                 config.clone(),
                 github_app.clone(),
@@ -140,6 +145,7 @@ impl GithubHandlerState {
         );
         let repo_version_worker = TokioWorker::new_worker(
             jobs.clone(),
+            "repo_version",
             repo_version::new_runner(
                 config.clone(),
                 github_app.clone(),
@@ -151,6 +157,7 @@ impl GithubHandlerState {
         );
         let force_push_worker = TokioWorker::new_worker(
             jobs.clone(),
+            "force_push",
             force_push::new_runner(
                 github_app.clone(),
                 git_clone_manager.clone(),

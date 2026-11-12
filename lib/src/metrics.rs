@@ -33,6 +33,9 @@ pub struct Metrics {
     pub current_force_push_count: Gauge,
     pub current_repo_version_count: Gauge,
 
+    pub jobs_queued: GaugeVec,
+    pub jobs_finished: IntCounterVec,
+
     pub event_bus_published: IntCounterVec,
     pub current_event_stream_count: Gauge,
     pub event_stream_messages: IntCounterVec,
@@ -174,6 +177,22 @@ impl Metrics {
                 "current_repo_version_count",
                 "The number of current repo version jobs being run",
                 registry.as_ref(),
+            )
+            .unwrap(),
+
+            jobs_queued: register_gauge_vec_with_registry!(
+                "jobs_queued",
+                "Background jobs waiting for a job thread",
+                &["job"],
+                registry.as_ref()
+            )
+            .unwrap(),
+
+            jobs_finished: register_int_counter_vec_with_registry!(
+                "jobs_finished",
+                "Background jobs finished, by outcome",
+                &["job", "outcome"],
+                registry.as_ref()
             )
             .unwrap(),
 

@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::sync::Arc;
 
-use anyhow::anyhow;
+use anyhow::{Context, anyhow};
 use conventional::{Commit, Simple as _};
 use log::{error, info};
 use regex::Regex;
@@ -47,43 +47,34 @@ async fn clone_and_merge_pull_request<'a>(
     req: &'a PRMergeRequest,
     config: Arc<Config>,
     slack: Arc<dyn worker::Worker<SlackRequest>>,
-) {
+) -> Result<()> {
     let owner = &req.repo.owner.login();
     let repo = &req.repo.name;
 
-    let session = match github_app.new_session(owner, repo).await {
-        Ok(s) => s,
-        Err(e) => {
-            error!("Error getting new session: {}", e);
-            return;
-        }
-    };
-    let held_clone_dir = match clone_mgr.clone(owner, repo).await {
-        Ok(h) => h,
-        Err(e) => {
-            error!("Error getting new session: {}", e);
-            return;
-        }
-    };
+    let session = github_app
+        .new_session(owner, repo)
+        .await
+        .context("getting new session")?;
+    let held_clone_dir = clone_mgr.clone(owner, repo).await.context("cloning repo")?;
     let clone_dir = held_clone_dir.dir();
     let git = Git::new(session.github_host(), session.github_token(), clone_dir);
 
     merge_pull_request(&git, &session, req, config, slack).await
 }
 
+/// Fails if the backport does, after telling its owner.
 pub async fn merge_pull_request<'a>(
     git: &'a Git,
     session: &'a dyn Session,
     req: &'a PRMergeRequest,
     config: Arc<Config>,
     slack: Arc<dyn worker::Worker<SlackRequest>>,
-) {
+) -> Result<()> {
     if let Err(e) = try_merge_pull_request(git, session, req).await {
         let msg = format!(
             "Error backporting PR from {} to {}",
             req.pull_request.head.ref_name, req.target_branch
         );
-        error!("{}: {}", msg, e);
 
         let github_markdown = format!(
             "{}\n<details>\n<summary>Details</summary>\n\n```\n{}\n```\n</details>",
@@ -140,7 +131,9 @@ pub async fn merge_pull_request<'a>(
         {
             error!("Error adding failed-backport label on pull request: {}", e);
         }
+        return Err(e.context(msg));
     }
+    Ok(())
 }
 
 pub async fn try_merge_pull_request(
@@ -571,7 +564,7 @@ pub fn new_runner(
 
 #[async_trait::async_trait]
 impl worker::Runner<PRMergeRequest> for Runner {
-    async fn handle(&self, req: PRMergeRequest) {
+    async fn handle(&self, req: PRMergeRequest) -> Result<()> {
         let _scoped_count = metrics::scoped_inc(&self.metrics.current_backport_count);
         let _scoped_timer = self.metrics.backport_duration.start_timer();
 
@@ -582,7 +575,7 @@ impl worker::Runner<PRMergeRequest> for Runner {
             self.config.clone(),
             self.slack.clone(),
         )
-        .await;
+        .await
     }
 }
 
