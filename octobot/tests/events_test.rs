@@ -8,15 +8,16 @@ use async_trait::async_trait;
 use ssh_key::rand_core::OsRng;
 use ssh_key::{Algorithm, HashAlg, LineEnding, PrivateKey, PublicKey, SshSig};
 use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 use tokio_stream::StreamExt;
-use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::sync::CancellationToken;
 use tonic::{Code, Status, Streaming};
 
-use octobot::server::events::{Directory, EventsService};
+use octobot::server::events::{self, Directory, EventsService};
 use octobot_events::Kind;
 use octobot_events::client::{self, Cause, Update};
 use octobot_events::pb::events_client::EventsClient;
-use octobot_events::pb::events_server::EventsServer;
 use octobot_events::pb::{self, ChallengeRequest, SubscribeRequest};
 use octobot_events::sign::Signer;
 use octobot_lib::github::Login;
@@ -74,6 +75,8 @@ struct TestServer {
     addr: SocketAddr,
     bus: Arc<EventBus>,
     directory: Arc<FakeDirectory>,
+    stopping: CancellationToken,
+    served: JoinHandle<Result<(), tonic::transport::Error>>,
 }
 
 impl TestServer {
@@ -82,22 +85,22 @@ impl TestServer {
         let addr = listener.local_addr().unwrap();
         let bus = Arc::new(EventBus::new(lag_capacity));
         let directory = Arc::new(FakeDirectory::default());
+        let stopping = CancellationToken::new();
         let service = EventsService::new(
             bus.clone(),
             &addr.to_string(),
             directory.clone(),
+            stopping.clone(),
             Metrics::new(),
         )
         .unwrap();
-        tokio::spawn(
-            tonic::transport::Server::builder()
-                .add_service(EventsServer::new(service))
-                .serve_with_incoming(TcpListenerStream::new(listener)),
-        );
+        let served = tokio::spawn(events::serve(listener, service, stopping.clone()));
         TestServer {
             addr,
             bus,
             directory,
+            stopping,
+            served,
         }
     }
 
@@ -256,6 +259,30 @@ async fn test_lagging_stream_is_aborted() {
     let status = next(&mut stream).await.unwrap_err();
     assert_eq!(Code::Aborted, status.code());
     assert!(stream.next().await.is_none());
+}
+
+#[tokio::test]
+async fn test_stopping_ends_streams_and_the_server() {
+    let server = TestServer::start(10).await;
+    let key = new_key();
+    server.directory.add("joe", &key);
+
+    let nonce = server.challenge("joe").await;
+    let mut stream = server
+        .raw_subscribe("joe", &nonce, &key, &server.addr.to_string())
+        .await
+        .unwrap();
+
+    server.stopping.cancel();
+
+    let status = next(&mut stream).await.unwrap_err();
+    assert_eq!(Code::Unavailable, status.code());
+    assert!(stream.next().await.is_none());
+    tokio::time::timeout(Duration::from_secs(10), server.served)
+        .await
+        .expect("server still running")
+        .unwrap()
+        .unwrap();
 }
 
 #[tokio::test]

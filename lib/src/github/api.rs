@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{anyhow, bail};
 use async_trait::async_trait;
 use log::{error, info};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -24,12 +25,13 @@ pub trait Session: Send + Sync {
     fn github_app_id(&self) -> Option<u32>;
 
     async fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest>;
+    // `branch` is a head branch in `owner`'s own repo; fork PRs never match it.
     async fn get_pull_requests(
         &self,
         owner: &str,
         repo: &str,
         state: Option<&str>,
-        head: Option<&str>,
+        branch: Option<&str>,
     ) -> Result<Vec<PullRequest>>;
     async fn get_pull_requests_by_commit(
         &self,
@@ -161,6 +163,8 @@ pub trait GithubSessionFactory: Send + Sync {
     async fn get_user_keys(&self, login: &Login) -> Result<Vec<String>>;
     fn bot_name(&self) -> String;
 }
+
+const PAGE_SIZE: usize = 100;
 
 pub fn api_base(host: &str) -> String {
     if host == "github.com" {
@@ -602,49 +606,52 @@ impl GithubSession {
         paging_url: &str,
         err_fmt: &str,
     ) -> Result<Vec<PullRequest>> {
-        let mut pull_requests = vec![];
-        let mut page = 1;
-        loop {
-            let mut next_prs: Vec<PullRequest> = match self
-                .client
-                .get::<Vec<PullRequest>>(&format!("{}&page={}", paging_url, page))
-                .await
-                .map_err(|e| anyhow!("{}: {}", err_fmt, e))
-                .map(|prs| {
-                    prs.into_iter()
-                        .filter(|p| {
-                            if let Some(head) = head {
-                                p.head.ref_name == head || p.head.sha == head
-                            } else {
-                                true
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                }) {
-                Ok(r) => r,
-                Err(e) => return Err(e),
-            };
+        let mut pull_requests: Vec<PullRequest> = self
+            .get_all_pages::<PullRequest>(paging_url)
+            .await
+            .map_err(|e| anyhow!("{}: {}", err_fmt, e))?
+            .into_iter()
+            .filter(|p| match head {
+                Some(head) => p.head.ref_name == head || p.head.sha == head,
+                None => true,
+            })
+            .collect();
 
-            if next_prs.is_empty() {
-                break;
+        for pull_request in &mut pull_requests {
+            if pull_request.reviews.is_none() {
+                match self
+                    .get_pull_request_reviews(owner, repo, pull_request.number)
+                    .await
+                {
+                    Ok(r) => pull_request.reviews = Some(r),
+                    Err(e) => error!("Error refetching pull request reviews: {}", e),
+                };
             }
-
-            for pull_request in &mut next_prs {
-                if pull_request.reviews.is_none() {
-                    match self
-                        .get_pull_request_reviews(owner, repo, pull_request.number)
-                        .await
-                    {
-                        Ok(r) => pull_request.reviews = Some(r),
-                        Err(e) => error!("Error refetching pull request reviews: {}", e),
-                    };
-                }
-            }
-
-            pull_requests.extend(next_prs);
-            page += 1;
         }
         Ok(pull_requests)
+    }
+
+    // GitHub marks every page but the last with a `Link: rel="next"` header. Page
+    // sizes are no signal: some endpoints return short pages before the end.
+    async fn get_all_pages<T>(&self, url: &str) -> Result<Vec<T>>
+    where
+        T: serde::de::DeserializeOwned + Send + 'static,
+    {
+        let mut items = vec![];
+        let mut next = Some(url.to_string());
+        while let Some(url) = next {
+            let res = self.client.get_raw(&url).await?;
+            // Next links are absolute; a relative path keeps later pages under their
+            // route in the request metrics.
+            next =
+                parse_next_link(&res).map(|link| match link.strip_prefix(&self.client.api_base) {
+                    Some(path) => path.to_string(),
+                    None => link,
+                });
+            let page: Vec<T> = self.client.parse_json(res).await?;
+            items.extend(page);
+        }
+        Ok(items)
     }
 }
 
@@ -690,18 +697,23 @@ impl Session for GithubSession {
         owner: &str,
         repo: &str,
         state: Option<&str>,
-        head: Option<&str>,
+        branch: Option<&str>,
     ) -> Result<Vec<PullRequest>> {
+        // GitHub's head filter takes `owner:branch`.
+        let head_filter = branch
+            .map(|b| utf8_percent_encode(&format!("{}:{}", owner, b), NON_ALPHANUMERIC).to_string())
+            .unwrap_or_default();
         let paging_url = &format!(
-            "repos/{}/{}/pulls?state={}&head={}&per_page=100",
+            "repos/{}/{}/pulls?state={}&head={}&per_page={}",
             owner,
             repo,
             state.unwrap_or(""),
-            head.unwrap_or(""),
+            head_filter,
+            PAGE_SIZE,
         );
         let err_fmt = &format!("Error looking up PRs for commit: {}/{}", owner, repo);
         return self
-            .do_get_pull_requests(owner, repo, head, paging_url, err_fmt)
+            .do_get_pull_requests(owner, repo, branch, paging_url, err_fmt)
             .await;
     }
 
@@ -713,11 +725,12 @@ impl Session for GithubSession {
         head: Option<&str>,
     ) -> Result<Vec<PullRequest>> {
         let paging_url = &format!(
-            "repos/{}/{}/commits/{}/pulls?head={}&per_page=100",
+            "repos/{}/{}/commits/{}/pulls?head={}&per_page={}",
             owner,
             repo,
             commit,
             head.unwrap_or(""),
+            PAGE_SIZE,
         );
         let err_fmt = &format!(
             "Error looking up PRs for commit: {}/{}/{}",
@@ -828,36 +841,20 @@ impl Session for GithubSession {
         repo: &str,
         number: u32,
     ) -> Result<Vec<Commit>> {
-        let mut result = vec![];
-        let mut page = 1;
-
-        loop {
-            let next: Vec<Commit> = self
-                .client
-                .get(&format!(
-                    "repos/{}/{}/pulls/{}/commits?per_page=100&page={}",
-                    owner, repo, number, page,
-                ))
-                .await
-                .map_err(|e| {
-                    anyhow!(
-                        "Error looking up PR commits: {}/{} #{}: {}",
-                        owner,
-                        repo,
-                        number,
-                        e
-                    )
-                })?;
-
-            if next.is_empty() {
-                break;
-            }
-
-            result.extend(next);
-            page += 1;
-        }
-
-        Ok(result)
+        self.get_all_pages(&format!(
+            "repos/{}/{}/pulls/{}/commits?per_page={}",
+            owner, repo, number, PAGE_SIZE,
+        ))
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "Error looking up PR commits: {}/{} #{}: {}",
+                owner,
+                repo,
+                number,
+                e
+            )
+        })
     }
 
     async fn get_pull_request_reviews(
@@ -1062,35 +1059,20 @@ impl Session for GithubSession {
         repo: &str,
         number: u32,
     ) -> Result<Vec<TimelineEvent>> {
-        let mut events = vec![];
-        let mut page = 1;
-        loop {
-            let url = format!(
-                "repos/{}/{}/issues/{}/timeline?per_page=100&page={}",
-                owner, repo, number, page
-            );
-            let next_events: Vec<TimelineEvent> = match self.client.get(&url).await.map_err(|e| {
-                anyhow!(
-                    "Error getting timeline for PR: {}/{} #{}: {}",
-                    owner,
-                    repo,
-                    number,
-                    e
-                )
-            }) {
-                Ok(r) => r,
-                Err(e) => return Err(e),
-            };
-
-            if next_events.is_empty() {
-                break;
-            }
-
-            events.extend(next_events);
-            page += 1;
-        }
-
-        Ok(events)
+        self.get_all_pages(&format!(
+            "repos/{}/{}/issues/{}/timeline?per_page={}",
+            owner, repo, number, PAGE_SIZE
+        ))
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "Error getting timeline for PR: {}/{} #{}: {}",
+                owner,
+                repo,
+                number,
+                e
+            )
+        })
     }
 
     async fn get_suites(&self, pr: &PullRequest) -> Result<Vec<CheckSuite>> {
@@ -1277,21 +1259,16 @@ fn parse_link_header(value: &str) -> HashMap<String, String> {
     result
 }
 
-fn parse_next_cursor(res: &reqwest::Response) -> Option<String> {
-    if let Some(value) = res.headers().get(reqwest::header::LINK) {
-        let values = parse_link_header(value.to_str().unwrap_or(""));
-        if let Some(next) = values.get("next") {
-            if let Ok(url) = url::Url::parse(next) {
-                for (key, value) in url.query_pairs() {
-                    if key == "cursor" {
-                        return Some(value.into_owned());
-                    }
-                }
-            }
-        }
-    }
+fn parse_next_link(res: &reqwest::Response) -> Option<String> {
+    let value = res.headers().get(reqwest::header::LINK)?;
+    parse_link_header(value.to_str().unwrap_or("")).remove("next")
+}
 
-    None
+fn parse_next_cursor(res: &reqwest::Response) -> Option<String> {
+    let url = url::Url::parse(&parse_next_link(res)?).ok()?;
+    url.query_pairs()
+        .find(|(key, _)| key == "cursor")
+        .map(|(_, value)| value.into_owned())
 }
 
 #[cfg(test)]
@@ -1594,6 +1571,109 @@ mod tests {
 
         lookup.assert_async().await;
         mint.assert_async().await;
+    }
+
+    fn pr_for_branch(number: u32, branch: &str) -> PullRequest {
+        let mut pr = PullRequest::new();
+        pr.number = number;
+        pr.head = BranchRef::new(branch);
+        pr
+    }
+
+    #[tokio::test]
+    async fn test_get_pull_requests_by_head_asks_for_one_branch() {
+        let mut server = mockito::Server::new_async().await;
+        let list = server
+            .mock("GET", "/repos/some-org/some-repo/pulls")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("state".into(), "open".into()),
+                mockito::Matcher::UrlEncoded("head".into(), "some-org:feat/a+b&c".into()),
+            ]))
+            .with_body(serde_json::to_string(&vec![pr_for_branch(7, "feat/a+b&c")]).unwrap())
+            .expect(1)
+            .create_async()
+            .await;
+        let reviews = server
+            .mock("GET", "/repos/some-org/some-repo/pulls/7/reviews")
+            .with_body("[]")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let prs = session_for_test(&server.url())
+            .get_pull_requests("some-org", "some-repo", Some("open"), Some("feat/a+b&c"))
+            .await
+            .unwrap();
+
+        assert_eq!(vec![7], prs.iter().map(|p| p.number).collect::<Vec<_>>());
+        list.assert_async().await;
+        reviews.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_pull_request_commits_follows_next_link_past_short_page() {
+        let mut server = mockito::Server::new_async().await;
+        let commit = Commit {
+            sha: "abc".into(),
+            html_url: String::new(),
+            commit: CommitDetails {
+                message: "msg".into(),
+            },
+            author: None,
+        };
+        let path = "/repos/some-org/some-repo/pulls/7/commits";
+        let page1 = server
+            .mock("GET", format!("{}?per_page=100", path).as_str())
+            .with_header(
+                "link",
+                &format!(
+                    r#"<{}{}?per_page=100&page=2>; rel="next""#,
+                    server.url(),
+                    path
+                ),
+            )
+            .with_body(serde_json::to_string(&vec![commit.clone(); 1]).unwrap())
+            .expect(1)
+            .create_async()
+            .await;
+        let page2 = server
+            .mock("GET", format!("{}?per_page=100&page=2", path).as_str())
+            .with_body(serde_json::to_string(&vec![commit; 2]).unwrap())
+            .expect(1)
+            .create_async()
+            .await;
+
+        let commits = session_for_test(&server.url())
+            .get_pull_request_commits("some-org", "some-repo", 7)
+            .await
+            .unwrap();
+
+        assert_eq!(3, commits.len());
+        page1.assert_async().await;
+        page2.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_timeline_stops_without_next_link() {
+        let mut server = mockito::Server::new_async().await;
+        let event = r#"{"event": "labeled"}"#;
+        let page1 = server
+            .mock(
+                "GET",
+                "/repos/some-org/some-repo/issues/7/timeline?per_page=100",
+            )
+            .with_body(format!("[{}]", vec![event; 100].join(",")))
+            .expect(1)
+            .create_async()
+            .await;
+
+        let events = session_for_test(&server.url())
+            .get_timeline("some-org", "some-repo", 7)
+            .await
+            .unwrap();
+
+        assert_eq!(100, events.len());
+        page1.assert_async().await;
     }
 
     #[test]
