@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The Dependabot workflow dispatches this after it merges, since its
+  # merges start no push runs.
+  workflow_dispatch:
 
 permissions:
   contents: read
