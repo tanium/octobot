@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use http_body_util::BodyExt;
-use hyper::body::Incoming;
-use hyper::{Request, Response, StatusCode};
+use hyper::body::{Bytes, Incoming};
+use hyper::{HeaderMap, Request, Response, StatusCode};
 use log::{error, info};
 use serde_json;
 
@@ -238,24 +238,68 @@ impl Handler for GithubHandler {
     async fn handle_ok(&self, req: Request<Incoming>) -> Response<Body> {
         let _scoped_count = metrics::scoped_inc(&self.state.metrics.current_webhook_count);
 
+        let (parts, body) = req.into_parts();
+        let body = body.collect().await.map(|b| b.to_bytes());
+        self.state
+            .receive(&parts.headers, body.map_err(Into::into))
+            .await
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Outcome {
+    Handled,
+    Ignored,
+    Rejected,
+}
+
+impl Outcome {
+    fn label(self) -> &'static str {
+        match self {
+            Outcome::Handled => "handled",
+            Outcome::Ignored => "ignored",
+            Outcome::Rejected => "rejected",
+        }
+    }
+}
+
+impl GithubHandlerState {
+    /// Handles one webhook delivery and counts its outcome.
+    pub async fn receive(&self, headers: &HeaderMap, body: Result<Bytes>) -> Response<Body> {
+        let (event, outcome, resp) = self.deliver(headers, body).await;
+        self.metrics
+            .webhook_events
+            .with_label_values(&[event.as_str(), outcome.label()])
+            .inc();
+        resp
+    }
+
+    /// Returns the event for labels, which stays empty until the signature is verified:
+    /// an unsigned request must not add label values.
+    async fn deliver(
+        &self,
+        headers: &HeaderMap,
+        body: Result<Bytes>,
+    ) -> (String, Outcome, Response<Body>) {
+        let rejected = |resp| (String::new(), Outcome::Rejected, resp);
+
         let event_id;
         {
-            let values = req
-                .headers()
+            let values = headers
                 .get_all("x-github-delivery")
                 .iter()
                 .collect::<Vec<_>>();
             if values.len() != 1 {
                 let msg = "Expected to find exactly one event id header";
                 error!("{}", msg);
-                return http_util::new_bad_req_resp(msg);
+                return rejected(http_util::new_bad_req_resp(msg));
             }
 
             event_id = String::from_utf8_lossy(values[0].as_bytes()).into_owned();
         }
 
         // make sure event id is valid
-        match self.state.webhook_db.maybe_record(&event_id) {
+        match self.webhook_db.maybe_record(&event_id) {
             Err(e) => {
                 error!("Failed to record webhook event guid {}: {}", event_id, e);
             }
@@ -265,48 +309,49 @@ impl Handler for GithubHandler {
             Ok(false) => {
                 let msg = format!("Duplicate webhook event: {}", event_id);
                 error!("{}", msg);
-                return http_util::new_bad_req_resp(msg);
+                return rejected(http_util::new_bad_req_resp(msg));
             }
         };
 
         let event;
         {
-            let values = req
-                .headers()
-                .get_all("x-github-event")
-                .iter()
-                .collect::<Vec<_>>();
+            let values = headers.get_all("x-github-event").iter().collect::<Vec<_>>();
             if values.len() != 1 {
                 let msg = "Expected to find exactly one event header";
                 error!("{}", msg);
-                return http_util::new_bad_req_resp(msg);
+                return rejected(http_util::new_bad_req_resp(msg));
             }
             event = String::from_utf8_lossy(values[0].as_bytes()).into_owned();
         }
 
-        let headers = req.headers().clone();
-        let github_app = self.state.github_app.clone();
-        let config = self.state.config.clone();
-        let jira_session = self.state.jira_session.clone();
-        let pr_merge = self.state.pr_merge_worker.clone();
-        let repo_version = self.state.repo_version_worker.clone();
-        let force_push = self.state.force_push_worker.clone();
-        let slack = self.state.slack_worker.clone();
+        let github_app = self.github_app.clone();
+        let config = self.config.clone();
+        let jira_session = self.jira_session.clone();
+        let pr_merge = self.pr_merge_worker.clone();
+        let repo_version = self.repo_version_worker.clone();
+        let force_push = self.force_push_worker.clone();
+        let slack = self.slack_worker.clone();
 
-        let body = match req.into_body().collect().await {
-            Ok(b) => b.to_bytes(),
+        let body = match body {
+            Ok(b) => b,
             Err(e) => {
                 error!("Error reading request body: {}", e);
-                return http_util::new_bad_req_resp(format!("Error reading request body: {}", e));
+                let msg = format!("Error reading request body: {}", e);
+                return rejected(http_util::new_bad_req_resp(msg));
             }
         };
 
         let verifier = GithubWebhookVerifier {
             secret: config.github.webhook_secret.clone(),
         };
-        if !verifier.is_req_valid(&headers, &body) {
-            return http_util::new_msg_resp(StatusCode::FORBIDDEN, "Invalid signature");
+        if !verifier.is_req_valid(headers, &body) {
+            return rejected(http_util::new_msg_resp(
+                StatusCode::FORBIDDEN,
+                "Invalid signature",
+            ));
         }
+
+        let reply = |outcome, resp| (event.clone(), outcome, resp);
 
         let data: github::HookBody = match serde_json::from_slice(&body) {
             Ok(h) => h,
@@ -316,19 +361,25 @@ impl Handler for GithubHandler {
                     e,
                     String::from_utf8_lossy(&body)
                 );
-                return http_util::new_bad_req_resp(format!("Error parsing JSON: {}", e));
+                let msg = format!("Error parsing JSON: {}", e);
+                return reply(Outcome::Rejected, http_util::new_bad_req_resp(msg));
             }
         };
 
         // Installation events have no repository, ignore
         let repository = match data.repository {
             Some(ref r) => r.clone(),
-            None => return http_util::new_msg_resp(StatusCode::OK, "no repository, ignored"),
+            None => {
+                let resp = http_util::new_msg_resp(StatusCode::OK, "no repository, ignored");
+                return reply(Outcome::Ignored, resp);
+            }
         };
 
         // Bail before creating a session: unhandled events shouldn't cost API calls.
         if !GithubEventHandler::handles(&event) {
-            return http_util::new_msg_resp(StatusCode::OK, format!("Unhandled event: {}", event));
+            let resp =
+                http_util::new_msg_resp(StatusCode::OK, format!("Unhandled event: {}", event));
+            return reply(Outcome::Ignored, resp);
         }
 
         let github_session = match github_app
@@ -344,7 +395,8 @@ impl Handler for GithubHandler {
                     &repository.name,
                     e
                 );
-                return http_util::new_bad_req_resp("Could not create github session");
+                let resp = http_util::new_bad_req_resp("Could not create github session");
+                return reply(Outcome::Rejected, resp);
             }
         };
 
@@ -353,11 +405,11 @@ impl Handler for GithubHandler {
             None => String::new(),
         };
 
-        let mut messenger = messenger::new(config.clone(), slack)
-            .with_review_groups(self.state.review_groups.clone());
+        let mut messenger =
+            messenger::new(config.clone(), slack).with_review_groups(self.review_groups.clone());
         // Other events never message people.
         if let Some(kind) = Kind::from_event(&event) {
-            messenger = messenger.with_events(self.state.event_bus.clone(), kind, &action);
+            messenger = messenger.with_events(self.event_bus.clone(), kind, &action);
         }
 
         let handler = GithubEventHandler {
@@ -372,13 +424,17 @@ impl Handler for GithubHandler {
             pr_merge,
             repo_version,
             force_push,
-            team_members_cache: self.state.team_members_cache.clone(),
-            metrics: self.state.metrics.clone(),
+            team_members_cache: self.team_members_cache.clone(),
+            metrics: self.metrics.clone(),
         };
 
         match handler.handle_event().await {
-            Some((status, resp)) => http_util::new_msg_resp(status, resp),
-            None => http_util::new_msg_resp(StatusCode::OK, format!("Unhandled event: {}", event)),
+            Some((status, resp)) => reply(Outcome::Handled, http_util::new_msg_resp(status, resp)),
+            None => {
+                let resp =
+                    http_util::new_msg_resp(StatusCode::OK, format!("Unhandled event: {}", event));
+                reply(Outcome::Ignored, resp)
+            }
         }
     }
 }
