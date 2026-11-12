@@ -8,7 +8,6 @@ use hyper::body::Incoming;
 use hyper::{Request, Response, StatusCode};
 use log::{error, info, warn};
 use serde_json;
-use tokio;
 
 use octobot_events::Kind;
 use octobot_lib::config::Config;
@@ -29,7 +28,7 @@ use octobot_ops::review_group::{ReviewGroups, ReviewItem};
 use octobot_ops::slack::{self, Slack, SlackAttachmentBuilder, SlackRequest};
 use octobot_ops::util;
 use octobot_ops::webhook_db::WebhookDatabase;
-use octobot_ops::worker::{TokioWorker, Worker};
+use octobot_ops::worker::{Jobs, TokioWorker, Worker};
 
 use crate::http_util::{self, Body};
 use crate::runtime;
@@ -40,7 +39,7 @@ pub struct GithubHandlerState {
     pub config: Arc<Config>,
     pub github_app: Arc<dyn github::api::GithubSessionFactory>,
     pub jira_session: Option<Arc<dyn jira::api::Session>>,
-    _runtime: Arc<Mutex<tokio::runtime::Runtime>>,
+    jobs: Arc<Jobs>,
     pr_merge_worker: Arc<dyn Worker<PRMergeRequest>>,
     repo_version_worker: Arc<dyn Worker<RepoVersionRequest>>,
     force_push_worker: Arc<dyn Worker<ForcePushRequest>>,
@@ -50,6 +49,7 @@ pub struct GithubHandlerState {
     event_bus: Arc<EventBus>,
     metrics: Arc<Metrics>,
     git_clone_manager: Arc<GitCloneManager>,
+    team_members_cache: Arc<TeamsCache>,
 }
 
 pub struct GithubHandler {
@@ -68,7 +68,7 @@ pub struct GithubEventHandler {
     pub pr_merge: Arc<dyn Worker<PRMergeRequest>>,
     pub repo_version: Arc<dyn Worker<RepoVersionRequest>>,
     pub force_push: Arc<dyn Worker<ForcePushRequest>>,
-    pub team_members_cache: TeamsCache,
+    pub team_members_cache: Arc<TeamsCache>,
 }
 
 struct TeamCacheEntry {
@@ -125,16 +125,11 @@ impl GithubHandlerState {
     ) -> GithubHandlerState {
         let git_clone_manager = Arc::new(GitCloneManager::new(github_app.clone(), config.clone()));
 
-        let runtime = Arc::new(Mutex::new(runtime::new(
-            MAX_CONCURRENT_JOBS,
-            "jobs",
-            metrics.clone(),
-        )));
+        let jobs = Jobs::new(runtime::new(MAX_CONCURRENT_JOBS, "jobs", metrics.clone()));
 
-        let slack_worker =
-            TokioWorker::new_worker(runtime.clone(), slack::new_runner(slack.clone()));
+        let slack_worker = TokioWorker::new_worker(jobs.clone(), slack::new_runner(slack.clone()));
         let pr_merge_worker = TokioWorker::new_worker(
-            runtime.clone(),
+            jobs.clone(),
             pr_merge::new_runner(
                 config.clone(),
                 github_app.clone(),
@@ -144,7 +139,7 @@ impl GithubHandlerState {
             ),
         );
         let repo_version_worker = TokioWorker::new_worker(
-            runtime.clone(),
+            jobs.clone(),
             repo_version::new_runner(
                 config.clone(),
                 github_app.clone(),
@@ -155,7 +150,7 @@ impl GithubHandlerState {
             ),
         );
         let force_push_worker = TokioWorker::new_worker(
-            runtime.clone(),
+            jobs.clone(),
             force_push::new_runner(
                 github_app.clone(),
                 git_clone_manager.clone(),
@@ -173,7 +168,7 @@ impl GithubHandlerState {
             config,
             github_app: github_app.clone(),
             jira_session: jira_session.clone(),
-            _runtime: runtime,
+            jobs,
             pr_merge_worker,
             repo_version_worker,
             force_push_worker,
@@ -183,6 +178,7 @@ impl GithubHandlerState {
             event_bus,
             metrics,
             git_clone_manager,
+            team_members_cache: Arc::new(TeamsCache::new(Duration::from_secs(3600))),
         }
     }
 
@@ -195,6 +191,14 @@ impl GithubHandlerState {
         if let Err(e) = self.webhook_db.clean(SystemTime::now() - (7 * day)) {
             log::error!("Failed to clean webhook db: {}", e);
         }
+    }
+
+    /// Sends held review DMs and waits for background jobs. Call once no more webhooks can
+    /// arrive: reviews held after the flush are lost.
+    /// Returns how many jobs were still running at the deadline.
+    pub async fn shutdown(&self, deadline: Duration) -> usize {
+        self.review_groups.flush_all();
+        self.jobs.shutdown(deadline).await
     }
 }
 
@@ -425,7 +429,7 @@ impl Handler for GithubHandler {
             pr_merge,
             repo_version,
             force_push,
-            team_members_cache: TeamsCache::new(Duration::from_secs(3600)),
+            team_members_cache: self.state.team_members_cache.clone(),
         };
 
         match handler.handle_event().await {
@@ -1070,7 +1074,11 @@ impl GithubEventHandler {
             && !self.data.after().is_empty()
             && !self.data.before().is_empty()
         {
-            let branch_name = self.data.ref_name().replace("refs/heads/", "");
+            let ref_name = self.data.ref_name();
+            let branch_name = ref_name
+                .strip_prefix("refs/heads/")
+                .unwrap_or(ref_name)
+                .to_string();
 
             let release_branch_prefix = self.config.repos().release_branch_prefix(&self.repository);
             let is_versioned_branch = github::is_main_branch(&branch_name)
@@ -1084,7 +1092,7 @@ impl GithubEventHandler {
                         self.repository.owner.login(),
                         &self.repository.name,
                         Some("open"),
-                        None,
+                        Some(&branch_name),
                     )
                     .await
                 {
