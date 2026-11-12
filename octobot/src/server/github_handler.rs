@@ -514,6 +514,25 @@ impl GithubEventHandler {
         }
     }
 
+    /// Publishes a hint to the PR's participants without messaging anyone.
+    async fn publish_hint(
+        &self,
+        pull_request: &dyn github::PullRequestLike,
+        pr_commits: &[github::Commit],
+    ) {
+        let mut participants = self.all_participants(pull_request, pr_commits).await;
+        // The PR no longer lists a reviewer whose request was just removed.
+        if let Some(ref reviewer) = self.data.requested_reviewer {
+            participants.add_user(reviewer.clone());
+        }
+        self.messenger.publish_to_all(
+            &self.data.sender,
+            &self.repository,
+            &participants,
+            &[self.build_thread(pull_request)],
+        );
+    }
+
     async fn all_participants(
         &self,
         pull_request: &dyn github::PullRequestLike,
@@ -604,7 +623,6 @@ impl GithubEventHandler {
         enum NotifyMode {
             All,
             Channel,
-            /// Publish hints to participants, but message nobody
             Hint,
             None,
         }
@@ -658,18 +676,26 @@ impl GithubEventHandler {
                 notify_mode = NotifyMode::All;
             } else if self.action == "synchronize" {
                 verb = Some("synchronize".to_string());
+                // The push event publishes the hint.
                 notify_mode = NotifyMode::None;
             } else {
                 verb = None;
-                notify_mode = NotifyMode::None;
+                notify_mode = NotifyMode::Hint;
             }
 
-            // early exit if we have nothing to do here.
-            if verb.is_none() && self.action != "labeled" {
-                return (StatusCode::OK, "pr".into());
-            }
+            let notify_mode = match notify_mode {
+                NotifyMode::All | NotifyMode::Channel if pull_request.is_draft() => {
+                    NotifyMode::Hint
+                }
+                mode => mode,
+            };
 
             let commits = self.pull_request_commits(&pull_request).await;
+
+            // `send_to_all` publishes its own hint.
+            if matches!(notify_mode, NotifyMode::Channel | NotifyMode::Hint) {
+                self.publish_hint(&pull_request, &commits).await;
+            }
 
             if let Some(ref verb) = verb {
                 let branch_name = &pull_request.base.ref_name;
@@ -685,34 +711,18 @@ impl GithubEventHandler {
                         .build(),
                 ];
 
-                // Drafts stay out of Slack, but their participants still get hints.
-                let notify_mode = match notify_mode {
-                    NotifyMode::All | NotifyMode::Channel if pull_request.is_draft() => {
-                        NotifyMode::Hint
-                    }
-                    mode => mode,
-                };
-
                 let msg = format!("Pull Request {}", verb);
                 let thread = self.build_thread(&pull_request);
                 match notify_mode {
-                    NotifyMode::Channel => {
-                        self.messenger.publish_to_all(
-                            &self.data.sender,
-                            &self.repository,
-                            &self.all_participants(&pull_request, &commits).await,
-                            std::slice::from_ref(&thread),
-                        );
-                        self.messenger.send_to_channel(
-                            &msg,
-                            &attachments,
-                            &self.repository,
-                            branch_name,
-                            &commits,
-                            vec![thread],
-                            self.action == "opened",
-                        )
-                    }
+                    NotifyMode::Channel => self.messenger.send_to_channel(
+                        &msg,
+                        &attachments,
+                        &self.repository,
+                        branch_name,
+                        &commits,
+                        vec![thread],
+                        self.action == "opened",
+                    ),
 
                     NotifyMode::All => self.messenger.send_to_all(
                         &msg,
@@ -726,14 +736,7 @@ impl GithubEventHandler {
                         vec![thread],
                     ),
 
-                    NotifyMode::Hint => self.messenger.publish_to_all(
-                        &self.data.sender,
-                        &self.repository,
-                        &self.all_participants(&pull_request, &commits).await,
-                        &[thread],
-                    ),
-
-                    NotifyMode::None => (),
+                    NotifyMode::Hint | NotifyMode::None => (),
                 };
 
                 let jira_projects = self
@@ -877,6 +880,7 @@ impl GithubEventHandler {
                         state_msg = "Approved";
                         color = "good";
                     } else {
+                        self.publish_hint(&pull_request, &commits).await;
                         return (StatusCode::OK, "pr_review [ignored]".into());
                     }
 
@@ -915,6 +919,9 @@ impl GithubEventHandler {
                         &commits,
                         vec![self.build_thread(&pull_request)],
                     );
+                } else {
+                    let commits = self.pull_request_commits(&pull_request).await;
+                    self.publish_hint(&pull_request, &commits).await;
                 }
             }
         }
@@ -1162,17 +1169,10 @@ impl GithubEventHandler {
 
                     for pull_request in &prs {
                         let commits = self.pull_request_commits(&pull_request).await;
-                        let participants = self.all_participants(&pull_request, &commits).await;
-                        let thread = self.build_thread(&pull_request);
 
                         if pull_request.is_draft() {
                             info!("Skipping WIP PR #{}", pull_request.number);
-                            self.messenger.publish_to_all(
-                                &self.data.sender,
-                                &self.repository,
-                                &participants,
-                                &[thread],
-                            );
+                            self.publish_hint(&pull_request, &commits).await;
                             continue;
                         }
 
@@ -1195,10 +1195,10 @@ impl GithubEventHandler {
                             &pull_request.user,
                             &self.data.sender,
                             &self.repository,
-                            participants,
+                            self.all_participants(&pull_request, &commits).await,
                             &branch_name,
                             &commits,
-                            vec![thread],
+                            vec![self.build_thread(&pull_request)],
                         );
 
                         if self.data.forced()

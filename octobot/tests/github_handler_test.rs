@@ -1176,6 +1176,35 @@ async fn test_pull_request_review_approved_hides_collapsed_details() {
 }
 
 #[tokio::test]
+async fn test_pull_request_review_dismissed_publishes() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review".into();
+    test.handler.action = "dismissed".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.review = Some(Review {
+        id: 77,
+        state: "dismissed".into(),
+        body: None,
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("the-pr-owner");
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::PullRequestReview);
+
+    // no slack mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("joe-reviewer"));
+    assert_eq!("dismissed", event.change.action);
+    assert_eq!(Some(32), event.change.number);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn test_commit_comment_hides_collapsed_details() {
     let mut test = new_test();
     test.handler.event = "commit_comment".into();
@@ -1510,6 +1539,61 @@ async fn test_pull_request_opened_draft_publishes() {
     assert!(event.is_for("the-pr-owner"));
     assert_eq!("opened", event.change.action);
     assert_eq!(Some(32), event.change.number);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn test_pull_request_unlisted_action_publishes() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "milestoned".into();
+    test.handler.data.pull_request = some_pr();
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::PullRequest);
+
+    // no slack mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("the-pr-owner"));
+    assert_eq!("milestoned", event.change.action);
+    assert_eq!(Some(32), event.change.number);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn test_pull_request_review_request_removed_publishes_to_removed_reviewer() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "review_request_removed".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.requested_reviewer = Some(User::new("smith-reviewer"));
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::PullRequest);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("smith-reviewer"));
+    assert!(event.is_for("the-pr-owner"));
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn test_pull_request_synchronize_leaves_hint_to_push() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "synchronize".into();
+    test.handler.data.pull_request = some_pr();
+    test.mock_pull_request_commits();
+    expect_jira_ref_fail(&test.github);
+    let mut receiver = test.subscribe_events(Kind::PullRequest);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
     assert!(receiver.try_recv().is_err());
 }
 
@@ -1979,20 +2063,6 @@ async fn test_pull_request_review_no_username() {
             Threading::Flat,
         ),
     ]);
-
-    let resp = test.handler.handle_event().await.unwrap();
-    assert_eq!((StatusCode::OK, "pr".into()), resp);
-}
-
-#[tokio::test]
-async fn test_pull_request_other() {
-    let mut test = new_test();
-    test.handler.event = "pull_request".into();
-    test.handler.action = "some-other-action".into();
-    test.handler.data.pull_request = some_pr();
-    test.handler.data.sender = User::new("the-pr-closer");
-
-    // should not do anything!
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), resp);
