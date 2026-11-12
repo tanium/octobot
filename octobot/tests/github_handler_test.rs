@@ -1036,6 +1036,7 @@ async fn test_pull_request_review_commented_without_body() {
         body: Some("".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
 
@@ -1058,6 +1059,7 @@ async fn test_pull_request_review_dismissed() {
         body: Some("Not needed".into()),
         html_url: "http://the-review".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     // No Slack message, but its hint reaches the participants.
