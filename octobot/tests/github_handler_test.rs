@@ -2801,8 +2801,13 @@ async fn test_push_draft_publishes() {
     let mut pr = some_pr().unwrap();
     pr.head.sha = "abcdef0000".into();
     pr.draft = Some(true);
-    test.github
-        .mock_get_pull_requests("some-user", "some-repo", Some("open"), None, Ok(vec![pr]));
+    test.github.mock_get_pull_requests(
+        "some-user",
+        "some-repo",
+        Some("open"),
+        Some("some-branch"),
+        Ok(vec![pr]),
+    );
     test.mock_pull_request_commits();
     let mut receiver = test.subscribe_events(Kind::Push);
 
