@@ -51,9 +51,7 @@ pub struct Metrics {
 }
 
 fn http_duration_buckets() -> Vec<f64> {
-    vec![
-        0.005, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0,
-    ]
+    vec![0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0]
 }
 
 fn job_duration_buckets() -> Vec<f64> {
