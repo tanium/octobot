@@ -1,15 +1,20 @@
 version: 2
+
+# Each ecosystem gets one PR for all minor and patch bumps.
+# Major bumps stay out of the groups, so each gets its own PR.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      github-actions-minor:
+        update-types: [minor, patch]
 
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
-    # One PR for compatible bumps; major bumps still get their own PRs.
     groups:
       cargo-minor:
         update-types: [minor, patch]
