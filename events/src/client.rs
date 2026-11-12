@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use log::info;
-use rand::Rng;
+use rand::RngExt;
 use ssh_key::{Fingerprint, HashAlg, LineEnding, PublicKey};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
