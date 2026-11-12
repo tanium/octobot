@@ -302,12 +302,13 @@ impl ReviewedPullRequest {
     }
 
     pub fn all_reviewers(&self) -> Vec<User> {
-        let mut reviewers = self
-            .pull_request
-            .requested_reviewers
-            .clone()
-            .unwrap_or_default();
-        reviewers.extend(self.reviewers.iter().cloned());
+        let mut reviewers: Vec<User> = vec![];
+        let requested = self.pull_request.requested_reviewers.iter().flatten();
+        for user in requested.chain(self.reviewers.iter()) {
+            if !reviewers.iter().any(|r| r.login() == user.login()) {
+                reviewers.push(user.clone());
+            }
+        }
         reviewers
     }
 }
@@ -944,6 +945,21 @@ mod tests {
         ];
         let reviewed = ReviewedPullRequest::new(pr, reviews.into_iter().map(|r| r.user).collect());
         assert_eq!(even_more_users, (&reviewed).assignees_and_reviewers());
+    }
+
+    #[test]
+    fn test_pr_all_reviewers_lists_each_reviewer_once() {
+        let mut pr = PullRequest::new();
+        pr.requested_reviewers = Some(vec![User::new("userC")]);
+
+        // userE reviewed twice; userC reviewed and was requested again.
+        let reviewers = vec![User::new("userE"), User::new("userC"), User::new("userE")];
+        let reviewed = ReviewedPullRequest::new(pr, reviewers);
+
+        assert_eq!(
+            vec![User::new("userC"), User::new("userE")],
+            reviewed.all_reviewers()
+        );
     }
 
     #[test]
