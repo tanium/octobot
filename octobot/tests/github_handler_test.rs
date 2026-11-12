@@ -1190,6 +1190,7 @@ async fn test_pull_request_review_dismissed_publishes() {
         body: None,
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("the-pr-owner");
     test.mock_pull_request_commits();
