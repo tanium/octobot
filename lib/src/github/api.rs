@@ -600,13 +600,11 @@ impl GithubSession {
 
     async fn do_get_pull_requests(
         &self,
-        owner: &str,
-        repo: &str,
         head: Option<&str>,
         paging_url: &str,
         err_fmt: &str,
     ) -> Result<Vec<PullRequest>> {
-        let mut pull_requests: Vec<PullRequest> = self
+        Ok(self
             .get_all_pages::<PullRequest>(paging_url)
             .await
             .map_err(|e| anyhow!("{}: {}", err_fmt, e))?
@@ -615,20 +613,7 @@ impl GithubSession {
                 Some(head) => p.head.ref_name == head || p.head.sha == head,
                 None => true,
             })
-            .collect();
-
-        for pull_request in &mut pull_requests {
-            if pull_request.reviews.is_none() {
-                match self
-                    .get_pull_request_reviews(owner, repo, pull_request.number)
-                    .await
-                {
-                    Ok(r) => pull_request.reviews = Some(r),
-                    Err(e) => error!("Error refetching pull request reviews: {}", e),
-                };
-            }
-        }
-        Ok(pull_requests)
+            .collect())
     }
 
     // GitHub marks every page but the last with a `Link: rel="next"` header. Page
@@ -674,22 +659,10 @@ impl Session for GithubSession {
     }
 
     async fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
-        let pull_request: Result<PullRequest> = self
-            .client
+        self.client
             .get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
             .await
-            .map_err(|e| anyhow!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e));
-        let mut pull_request = pull_request?;
-
-        // Always fetch PR's reviewers. Users get removed from requested_reviewers after they submit their review. :cry:
-        if pull_request.reviews.is_none() {
-            match self.get_pull_request_reviews(owner, repo, number).await {
-                Ok(r) => pull_request.reviews = Some(r),
-                Err(e) => error!("Error refetching pull request reviews: {}", e),
-            };
-        }
-
-        Ok(pull_request)
+            .map_err(|e| anyhow!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e))
     }
 
     async fn get_pull_requests(
@@ -712,9 +685,7 @@ impl Session for GithubSession {
             PAGE_SIZE,
         );
         let err_fmt = &format!("Error looking up PRs for commit: {}/{}", owner, repo);
-        return self
-            .do_get_pull_requests(owner, repo, branch, paging_url, err_fmt)
-            .await;
+        return self.do_get_pull_requests(branch, paging_url, err_fmt).await;
     }
 
     async fn get_pull_requests_by_commit(
@@ -736,9 +707,7 @@ impl Session for GithubSession {
             "Error looking up PRs for commit: {}/{}/{}",
             owner, repo, commit
         );
-        return self
-            .do_get_pull_requests(owner, repo, head, paging_url, err_fmt)
-            .await;
+        return self.do_get_pull_requests(head, paging_url, err_fmt).await;
     }
 
     async fn get_pull_request_files(
@@ -1593,12 +1562,6 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let reviews = server
-            .mock("GET", "/repos/some-org/some-repo/pulls/7/reviews")
-            .with_body("[]")
-            .expect(1)
-            .create_async()
-            .await;
 
         let prs = session_for_test(&server.url())
             .get_pull_requests("some-org", "some-repo", Some("open"), Some("feat/a+b&c"))
@@ -1607,7 +1570,6 @@ mod tests {
 
         assert_eq!(vec![7], prs.iter().map(|p| p.number).collect::<Vec<_>>());
         list.assert_async().await;
-        reviews.assert_async().await;
     }
 
     #[tokio::test]
