@@ -33,7 +33,8 @@ pub fn encoding_key(app_key_bytes: &[u8]) -> EncodingKey {
 
 pub fn new_token(app_id: u32, key: &EncodingKey, now: u64) -> Result<String> {
     let claims = Claims {
-        iat: now,
+        // Backdated so a host clock running slightly fast is not rejected.
+        iat: now - 60,
         exp: now + (9 * 60),
         iss: app_id.to_string(),
     };
