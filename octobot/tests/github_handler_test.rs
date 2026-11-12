@@ -1479,7 +1479,6 @@ async fn test_pull_request_closed() {
     assert_eq!((StatusCode::OK, "pr".into()), resp);
 }
 
-// Drafts get no Slack messages, but tools still want hints about them.
 #[tokio::test]
 async fn test_pull_request_closed_draft_publishes() {
     let mut test = new_test();
