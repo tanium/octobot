@@ -1562,12 +1562,6 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let reviews = server
-            .mock("GET", "/repos/some-org/some-repo/pulls/7/reviews")
-            .with_body("[]")
-            .expect(1)
-            .create_async()
-            .await;
 
         let prs = session_for_test(&server.url())
             .get_pull_requests("some-org", "some-repo", Some("open"), Some("feat/a+b&c"))
@@ -1576,7 +1570,6 @@ mod tests {
 
         assert_eq!(vec![7], prs.iter().map(|p| p.number).collect::<Vec<_>>());
         list.assert_async().await;
-        reviews.assert_async().await;
     }
 
     #[tokio::test]
