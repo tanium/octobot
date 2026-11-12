@@ -1700,7 +1700,7 @@ dependencies = [
  "log",
  "prost",
  "protox",
- "rand 0.9.5",
+ "rand 0.10.3",
  "ssh-agent-client-rs",
  "ssh-key",
  "tokio",
