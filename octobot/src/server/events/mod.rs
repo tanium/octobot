@@ -5,12 +5,14 @@ use std::time::{Duration, UNIX_EPOCH};
 use async_trait::async_trait;
 use log::{info, warn};
 use ssh_key::{HashAlg, PublicKey, SshSig};
+use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
+use tokio_util::sync::CancellationToken;
 use tonic::{Request, Response, Status};
 
-use octobot_events::pb::events_server::Events;
+use octobot_events::pb::events_server::{Events, EventsServer};
 use octobot_events::pb::{self, ChallengeRequest, ChallengeResponse, SubscribeRequest, event};
 use octobot_lib::config::Config;
 use octobot_lib::github::Login;
@@ -33,6 +35,19 @@ const MAX_STREAMS: usize = 1_000;
 // has stopped reading, and its stream is aborted.
 const STREAM_BUFFER: usize = 256;
 
+/// Serves `service` until `stopping` is cancelled, then returns once its open RPCs finish.
+pub async fn serve(
+    listener: TcpListener,
+    service: EventsService,
+    stopping: CancellationToken,
+) -> Result<(), tonic::transport::Error> {
+    tonic::transport::Server::builder()
+        .http2_keepalive_interval(Some(Duration::from_secs(30)))
+        .add_service(EventsServer::new(service))
+        .serve_with_incoming_shutdown(TcpListenerStream::new(listener), stopping.cancelled_owned())
+        .await
+}
+
 /// Serves the event bus to octobot users who prove they hold an SSH key registered to their
 /// GitHub login. Each stream carries only the changes octobot notified that login about.
 pub struct EventsService {
@@ -42,14 +57,17 @@ pub struct EventsService {
     challenges: Challenges,
     keys: Arc<KeyCache>,
     streams: Arc<StreamCounts>,
+    stopping: CancellationToken,
     metrics: Arc<Metrics>,
 }
 
 impl EventsService {
+    /// Cancelling `stopping` ends every stream, so the server can finish its open RPCs.
     pub fn new(
         bus: Arc<EventBus>,
         authority: &str,
         directory: Arc<dyn Directory>,
+        stopping: CancellationToken,
         metrics: Arc<Metrics>,
     ) -> anyhow::Result<EventsService> {
         // Clients connect through the TLS proxy, so they dial https.
@@ -61,6 +79,7 @@ impl EventsService {
             challenges: Challenges::new(),
             keys: Arc::new(KeyCache::new(directory)),
             streams: Arc::new(StreamCounts::new()),
+            stopping,
             metrics,
         })
     }
@@ -162,6 +181,7 @@ impl Events for EventsService {
             directory: self.directory.clone(),
             keys: self.keys.clone(),
             kinds: req.kinds().collect(),
+            stopping: self.stopping.clone(),
             metrics: self.metrics.clone(),
             _slot: slot,
             _count: metrics::scoped_inc(&self.metrics.current_event_stream_count),
@@ -298,6 +318,7 @@ struct Stream {
     keys: Arc<KeyCache>,
     /// Empty means all.
     kinds: HashSet<pb::Kind>,
+    stopping: CancellationToken,
     metrics: Arc<Metrics>,
     _slot: StreamSlot,
     _count: ScopedGaugeCounter,
@@ -315,6 +336,11 @@ impl Stream {
         loop {
             let body = tokio::select! {
                 _ = tx.closed() => return,
+                // The client reconnects, to this octobot's replacement.
+                _ = self.stopping.cancelled() => {
+                    let _ = tx.try_send(Err(Status::unavailable("octobot is shutting down")));
+                    return;
+                }
                 _ = heartbeat.tick() => event::Body::Heartbeat(pb::Heartbeat {}),
                 _ = recheck.tick() => match self.still_allowed().await {
                     Ok(true) => continue,
@@ -474,6 +500,7 @@ mod tests {
             Arc::new(EventBus::new(10)),
             "Octobot.Example.com:443",
             Arc::new(FakeDirectory::default()),
+            CancellationToken::new(),
             Metrics::new(),
         )
         .unwrap();
@@ -487,6 +514,7 @@ mod tests {
             Arc::new(EventBus::new(10)),
             "octobot.example.com",
             Arc::new(FakeDirectory::default()),
+            CancellationToken::new(),
             metrics.clone(),
         )
         .unwrap();
@@ -510,6 +538,7 @@ mod tests {
             Arc::new(EventBus::new(10)),
             "octobot.example.com",
             directory.clone(),
+            CancellationToken::new(),
             Metrics::new(),
         )
         .unwrap();
@@ -546,6 +575,7 @@ mod tests {
             // Empty, so the first recheck asks the directory.
             keys: Arc::new(KeyCache::new(directory)),
             kinds: HashSet::new(),
+            stopping: CancellationToken::new(),
             metrics: metrics.clone(),
             _slot: StreamCounts::open(&counts, "joe").unwrap(),
             _count: metrics::scoped_inc(&metrics.current_event_stream_count),
