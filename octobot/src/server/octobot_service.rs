@@ -66,23 +66,22 @@ impl OctobotService {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
         debug!("Received request: {} {}", method, path);
+        let mut timer = metrics::RequestTimer::start(
+            &self.metrics.http_duration,
+            method.as_str(),
+            &metrics::cleanup_path(&path),
+        );
 
         let handler = self.route(&req);
         let res = handler.handle_ok(req).await;
-
-        let elapsed = std::time::Instant::now() - start;
-        let metrics_path = metrics::cleanup_path(&path);
-        self.metrics
-            .http_duration
-            .with_label_values(&[method.as_str(), &metrics_path, res.status().as_str()])
-            .observe(elapsed.as_secs_f64());
+        timer.respond(res.status().as_str());
 
         info!(
             "{} {} {} ({})",
             method,
             path,
             res.status(),
-            util::format_duration(elapsed)
+            util::format_duration(std::time::Instant::now() - start)
         );
 
         Ok(res)

@@ -138,24 +138,28 @@ fn test_handled_event_is_counted() {
     assert_eq!(1, test.count("ping", "handled"));
 }
 
+// The signature covers only the body, so a replayed body can carry any event header.
 #[test]
-fn test_unhandled_event_is_ignored() {
+fn test_unhandled_event_is_ignored_as_other() {
     let test = new_test(false);
 
     assert_eq!(
         StatusCode::OK,
-        test.send_signed("1", "check_run", &with_repo())
+        test.send_signed("1", "made-up-event", &with_repo())
     );
-    assert_eq!(1, test.count("check_run", "ignored"));
+    assert_eq!(1, test.count("other", "ignored"));
+    assert_eq!(0, test.count("made-up-event", "ignored"));
 }
 
 #[test]
 fn test_event_without_repository_is_ignored() {
     let test = new_test(false);
-    let body = serde_json::to_vec(&HookBody::new()).unwrap();
+    let mut body = HookBody::new();
+    body.repository = None;
+    let body = serde_json::to_vec(&body).unwrap();
 
-    assert_eq!(StatusCode::OK, test.send_signed("1", "installation", &body));
-    assert_eq!(1, test.count("installation", "ignored"));
+    assert_eq!(StatusCode::OK, test.send_signed("1", "push", &body));
+    assert_eq!(1, test.count("push", "ignored"));
 }
 
 #[test]
@@ -190,11 +194,11 @@ fn test_bad_json_is_rejected() {
 }
 
 #[test]
-fn test_session_failure_is_rejected() {
+fn test_session_failure_is_failed() {
     let test = new_test(true);
 
     let status = test.send_signed("1", "ping", &with_repo());
 
     assert_eq!(StatusCode::BAD_REQUEST, status);
-    assert_eq!(1, test.count("ping", "rejected"));
+    assert_eq!(1, test.count("ping", "failed"));
 }

@@ -74,7 +74,8 @@ impl<T: Send + Sync + 'static> Worker<T> for TokioWorker<T> {
         let name = self.name;
         let runner = self.runner.clone();
         let metrics = self.jobs.metrics.clone();
-        // Queued until a job thread is free: git runs block the threads they run on.
+        // Queued until a job thread first runs it. Git runs block the threads they run on, so
+        // jobs wait behind them. A started job waiting again is not counted.
         let queued = metrics.jobs_queued.with_label_values(&[name]);
         queued.inc();
         self.jobs.spawn(async move {

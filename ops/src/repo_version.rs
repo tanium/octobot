@@ -314,7 +314,7 @@ impl worker::Runner<RepoVersionRequest> for Runner {
         }
 
         if !failed_projects.is_empty() {
-            bail!("version script failed for {}", failed_projects.join(", "));
+            bail!("could not version {}", failed_projects.join(", "));
         }
         Ok(())
     }

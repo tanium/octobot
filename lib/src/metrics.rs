@@ -8,6 +8,7 @@ use prometheus::{HistogramVec, register_histogram_vec_with_registry};
 use prometheus::{IntCounter, register_int_counter_with_registry};
 use prometheus::{IntCounterVec, register_int_counter_vec_with_registry};
 use std::sync::Arc;
+use std::time::Instant;
 
 pub struct Metrics {
     pub registry: Arc<Registry>,
@@ -180,7 +181,7 @@ impl Metrics {
 
             jobs_queued: register_gauge_vec_with_registry!(
                 "jobs_queued",
-                "Background jobs waiting for a job thread",
+                "Background jobs not yet started on a job thread",
                 &["job"],
                 registry.as_ref()
             )
@@ -324,5 +325,71 @@ pub fn scoped_inc(gauge: &Gauge) -> ScopedGaugeCounter {
 impl Drop for ScopedGaugeCounter {
     fn drop(&mut self) {
         self.gauge.dec()
+    }
+}
+
+/// Observes a request's duration when dropped. Hyper drops a request whose client hangs up,
+/// so one dropped before `respond` is observed with status "cancelled".
+pub struct RequestTimer {
+    histogram: HistogramVec,
+    method: String,
+    path: String,
+    start: Instant,
+    status: Option<String>,
+}
+
+impl RequestTimer {
+    pub fn start(histogram: &HistogramVec, method: &str, path: &str) -> RequestTimer {
+        RequestTimer {
+            histogram: histogram.clone(),
+            method: method.to_string(),
+            path: path.to_string(),
+            start: Instant::now(),
+            status: None,
+        }
+    }
+
+    pub fn respond(&mut self, status: &str) {
+        self.status = Some(status.to_string());
+    }
+}
+
+impl Drop for RequestTimer {
+    fn drop(&mut self) {
+        let status = self.status.as_deref().unwrap_or("cancelled");
+        self.histogram
+            .with_label_values(&[self.method.as_str(), &self.path, status])
+            .observe(self.start.elapsed().as_secs_f64());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn count(metrics: &Metrics, status: &str) -> u64 {
+        metrics
+            .http_duration
+            .with_label_values(&["GET", "/hooks", status])
+            .get_sample_count()
+    }
+
+    #[test]
+    fn test_request_timer_observes_status() {
+        let metrics = Metrics::new();
+        let mut timer = RequestTimer::start(&metrics.http_duration, "GET", "/hooks");
+        timer.respond("200");
+        drop(timer);
+
+        assert_eq!(1, count(&metrics, "200"));
+        assert_eq!(0, count(&metrics, "cancelled"));
+    }
+
+    #[test]
+    fn test_request_dropped_without_response_is_cancelled() {
+        let metrics = Metrics::new();
+        drop(RequestTimer::start(&metrics.http_duration, "GET", "/hooks"));
+
+        assert_eq!(1, count(&metrics, "cancelled"));
     }
 }

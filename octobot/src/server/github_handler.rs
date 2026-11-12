@@ -257,7 +257,10 @@ impl Handler for GithubHandler {
 enum Outcome {
     Handled,
     Ignored,
+    /// A bad request
     Rejected,
+    /// Octobot's own failure
+    Failed,
 }
 
 impl Outcome {
@@ -266,6 +269,7 @@ impl Outcome {
             Outcome::Handled => "handled",
             Outcome::Ignored => "ignored",
             Outcome::Rejected => "rejected",
+            Outcome::Failed => "failed",
         }
     }
 }
@@ -274,15 +278,21 @@ impl GithubHandlerState {
     /// Handles one webhook delivery and counts its outcome.
     pub async fn receive(&self, headers: &HeaderMap, body: Result<Bytes>) -> Response<Body> {
         let (event, outcome, resp) = self.deliver(headers, body).await;
+        // The signature covers only the body, so the event header is still the sender's
+        // claim: only events octobot handles become label values.
+        let event = match event.as_str() {
+            "" => "",
+            e if GithubEventHandler::handles(e) => e,
+            _ => "other",
+        };
         self.metrics
             .webhook_events
-            .with_label_values(&[event.as_str(), outcome.label()])
+            .with_label_values(&[event, outcome.label()])
             .inc();
         resp
     }
 
-    /// Returns the event for labels, which stays empty until the signature is verified:
-    /// an unsigned request must not add label values.
+    /// Returns the event, which stays empty until the signature is verified.
     async fn deliver(
         &self,
         headers: &HeaderMap,
@@ -403,7 +413,7 @@ impl GithubHandlerState {
                     e
                 );
                 let resp = http_util::new_bad_req_resp("Could not create github session");
-                return reply(Outcome::Rejected, resp);
+                return reply(Outcome::Failed, resp);
             }
         };
 
