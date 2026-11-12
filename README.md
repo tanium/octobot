@@ -101,15 +101,14 @@ For the octobot github user token, you will need to:
 ### Event stream
 
 The event stream pushes a thin hint (repo, event, action, PR or issue number)
-to each GitHub user octobot notifies about a change, so local tools can refetch
-from GitHub without polling. Hints follow octobot's direct messages: the same
-events, to the same people, except that they also go to the sender and ignore
-Slack mute settings. So there are none for draft pull requests, or for events
-octobot only posts to channels, such as a pull request opening. Check suites
-and failed check runs get hints too, to the participants of each pull request
-at the checked commit, though octobot messages nobody about them. They need the
-GitHub App subscribed to check suite and check run events. Only octobot users
-can subscribe.
+to the people octobot would notify about a change, so local tools can refetch
+from GitHub without polling. Hints go to a pull request's participants and the
+sender, regardless of Slack mute settings. Every pull request and review action
+publishes one, including on drafts and for actions octobot posts only to a
+channel or not at all. Check suites and failed check runs publish hints to the
+participants of each pull request at the checked commit; they need the GitHub
+App subscribed to check suite and check run events. Only octobot users can
+subscribe.
 They authenticate by signing a challenge with an SSH key registered to their
 GitHub account. An open stream closes within 5 minutes of the user being
 removed from octobot, and within about 10 minutes of the key being removed
