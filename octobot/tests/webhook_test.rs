@@ -80,7 +80,7 @@ fn new_test(sessions_fail: bool) -> WebhookTest {
             metrics.clone(),
         )),
         Arc::new(WebhookDatabase::new(&path("webhooks.sqlite3")).unwrap()),
-        Arc::new(EventBus::new(10)),
+        Arc::new(EventBus::new(10, Metrics::new())),
         metrics.clone(),
     );
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -142,7 +142,10 @@ fn test_handled_event_is_counted() {
 fn test_unhandled_event_is_ignored() {
     let test = new_test(false);
 
-    assert_eq!(StatusCode::OK, test.send_signed("1", "check_run", &with_repo()));
+    assert_eq!(
+        StatusCode::OK,
+        test.send_signed("1", "check_run", &with_repo())
+    );
     assert_eq!(1, test.count("check_run", "ignored"));
 }
 

@@ -103,7 +103,7 @@ async fn run_server(config: Config, metrics: Arc<metrics::Metrics>) {
         None => "0.0.0.0:3000".parse().unwrap(),
     };
 
-    let event_bus = Arc::new(EventBus::new(EVENT_LAG_CAPACITY));
+    let event_bus = Arc::new(EventBus::new(EVENT_LAG_CAPACITY, metrics.clone()));
     let events_served = if let Some(ref events_config) = config.events {
         let service = EventsService::new(
             event_bus.clone(),

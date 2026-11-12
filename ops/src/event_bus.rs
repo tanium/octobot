@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use octobot_events::Kind;
+use octobot_lib::metrics::Metrics;
 use tokio::sync::broadcast;
 
 /// A hint that something on GitHub changed. Subscribers refetch it themselves.
@@ -30,13 +31,14 @@ impl Event {
 /// Fans changes out to live subscribers. Nothing is kept for subscribers that connect later.
 pub struct EventBus {
     sender: broadcast::Sender<Arc<Event>>,
+    metrics: Arc<Metrics>,
 }
 
 impl EventBus {
     /// A receiver that falls `lag_capacity` events behind sees `RecvError::Lagged`.
-    pub fn new(lag_capacity: usize) -> EventBus {
+    pub fn new(lag_capacity: usize, metrics: Arc<Metrics>) -> EventBus {
         let (sender, _) = broadcast::channel(lag_capacity);
-        EventBus { sender }
+        EventBus { sender, metrics }
     }
 
     pub fn publish(&self, recipients: impl IntoIterator<Item = String>, change: Change) {
@@ -47,6 +49,10 @@ impl EventBus {
         if recipients.is_empty() {
             return;
         }
+        self.metrics
+            .event_bus_published
+            .with_label_values(&[change.kind.as_event()])
+            .inc();
         // An error only means nobody is subscribed.
         let _ = self.sender.send(Arc::new(Event { recipients, change }));
     }
@@ -71,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_recipients_match_case_insensitively() {
-        let bus = EventBus::new(10);
+        let bus = EventBus::new(10, Metrics::new());
         let mut receiver = bus.subscribe();
         bus.publish(vec!["Joe".to_string()], change(1));
 
@@ -83,16 +89,33 @@ mod tests {
 
     #[test]
     fn test_no_recipients_publishes_nothing() {
-        let bus = EventBus::new(10);
+        let metrics = Metrics::new();
+        let bus = EventBus::new(10, metrics.clone());
         let mut receiver = bus.subscribe();
         bus.publish(Vec::new(), change(1));
 
         assert!(receiver.try_recv().is_err());
+        let published = metrics
+            .event_bus_published
+            .with_label_values(&["pull_request"]);
+        assert_eq!(0, published.get());
+    }
+
+    #[test]
+    fn test_published_changes_are_counted_by_kind() {
+        let metrics = Metrics::new();
+        let bus = EventBus::new(10, metrics.clone());
+        bus.publish(vec!["joe".to_string()], change(1));
+
+        let published = metrics
+            .event_bus_published
+            .with_label_values(&["pull_request"]);
+        assert_eq!(1, published.get());
     }
 
     #[test]
     fn test_subscriber_sees_only_later_events() {
-        let bus = EventBus::new(10);
+        let bus = EventBus::new(10, Metrics::new());
         bus.publish(vec!["joe".to_string()], change(1));
         let mut receiver = bus.subscribe();
         bus.publish(vec!["joe".to_string()], change(2));

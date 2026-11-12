@@ -33,8 +33,10 @@ pub struct Metrics {
     pub current_force_push_count: Gauge,
     pub current_repo_version_count: Gauge,
 
+    pub event_bus_published: IntCounterVec,
     pub current_event_stream_count: Gauge,
     pub event_stream_messages: IntCounterVec,
+    pub event_stream_ends: IntCounterVec,
     pub event_stream_auth_failures: IntCounterVec,
 
     pub backport_duration: Histogram,
@@ -175,6 +177,14 @@ impl Metrics {
             )
             .unwrap(),
 
+            event_bus_published: register_int_counter_vec_with_registry!(
+                "event_bus_published",
+                "Changes published to event stream subscribers",
+                &["kind"],
+                registry.as_ref()
+            )
+            .unwrap(),
+
             current_event_stream_count: register_gauge_with_registry!(
                 "current_event_stream_count",
                 "The number of open event streams",
@@ -186,6 +196,14 @@ impl Metrics {
                 "event_stream_messages",
                 "Messages sent on event streams",
                 &["type"],
+                registry.as_ref()
+            )
+            .unwrap(),
+
+            event_stream_ends: register_int_counter_vec_with_registry!(
+                "event_stream_ends",
+                "Event streams ended, by why they ended",
+                &["reason"],
                 registry.as_ref()
             )
             .unwrap(),
