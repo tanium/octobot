@@ -5,6 +5,7 @@ use prometheus::{Gauge, register_gauge_with_registry};
 use prometheus::{GaugeVec, register_gauge_vec_with_registry};
 use prometheus::{Histogram, register_histogram_with_registry};
 use prometheus::{HistogramVec, register_histogram_vec_with_registry};
+use prometheus::{IntCounter, register_int_counter_with_registry};
 use prometheus::{IntCounterVec, register_int_counter_vec_with_registry};
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ pub struct Metrics {
 
     pub github_api_responses: IntCounterVec,
     pub github_api_duration: HistogramVec,
+    pub github_reviewer_lookup_failures: IntCounter,
 
     pub current_connection_count: Gauge,
     pub current_webhook_count: Gauge,
@@ -124,6 +126,13 @@ impl Metrics {
                 "Duration of github API requests",
                 &["method", "path"],
                 http_duration_buckets(),
+                registry.as_ref()
+            )
+            .unwrap(),
+
+            github_reviewer_lookup_failures: register_int_counter_with_registry!(
+                "github_reviewer_lookup_failures",
+                "Failed PR reviewer lookups, each notifying without past reviewers",
                 registry.as_ref()
             )
             .unwrap(),

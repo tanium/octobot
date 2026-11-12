@@ -17,6 +17,7 @@ use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github::api::Session;
 use octobot_lib::github::*;
 use octobot_lib::jira::{self};
+use octobot_lib::metrics::Metrics;
 use octobot_lib::repos;
 use octobot_lib::slack::SlackRecipient;
 use octobot_ops::event_bus::{Change, Event, EventBus};
@@ -126,6 +127,11 @@ impl GithubHandlerTest {
         );
 
         commits
+    }
+
+    fn mock_pull_request_reviews(&self, reviews: Vec<Review>) {
+        self.github
+            .mock_get_pull_request_reviews("some-user", "some-repo", 32, Ok(reviews));
     }
 
     fn subscribe_events(&mut self, kind: Kind) -> broadcast::Receiver<Arc<Event>> {
@@ -248,6 +254,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             repo_version: repo_version_sender,
             force_push: force_push_sender,
             team_members_cache: Arc::new(TeamsCache::new(Duration::new(3600, 0))),
+            metrics: Metrics::new(),
         },
     }
 }
@@ -290,7 +297,6 @@ fn some_pr() -> Option<PullRequest> {
         assignees: vec![User::new("assign1")],
         requested_reviewers: Some(vec![User::new("joe-reviewer")]),
         requested_teams: None,
-        reviews: None,
         head: BranchRef {
             ref_name: "pr-branch".into(),
             sha: "ffff0000".into(),
@@ -571,6 +577,7 @@ async fn test_issue_comment() {
 #[tokio::test]
 async fn test_pull_request_comment() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
@@ -634,9 +641,174 @@ async fn test_pull_request_comment() {
     assert_eq!((StatusCode::OK, "pr_review_comment".into()), resp);
 }
 
+#[tokio::test]
+async fn test_issue_comment_on_pull_request() {
+    let mut test = new_test();
+    test.handler.event = "issue_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.issue = Some(Issue {
+        number: 32,
+        html_url: "http://the-github-host/some-user/some-repo/pull/32".into(),
+        title: "The PR".into(),
+        user: User::new("the-pr-owner"),
+        assignees: vec![],
+    });
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: None,
+        path: None,
+        body: Some("Looks close".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_reviews(vec![Review::new("lgtm", User::new("smith-reviewer"))]);
+    test.mock_pull_request_commits();
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("Looks close")
+            .title("joe.reviewer said:")
+            .title_link("http://the-comment")
+            .build(),
+    ];
+    let msg = "Comment on \"<http://the-pr|The PR>\"";
+
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Threading::ReplyOrStart(
+                "some-user/some-repo/32".to_string(),
+                thread_root(REPO_MSG, 32),
+            ),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("smith.reviewer"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
+}
+
+#[tokio::test]
+async fn test_issue_comment_on_pull_request_lookup_fails() {
+    let mut test = new_test();
+    test.handler.event = "issue_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.issue = Some(Issue {
+        number: 32,
+        html_url: "http://the-github-host/some-user/some-repo/pull/32".into(),
+        title: "The PR".into(),
+        user: User::new("the-pr-owner"),
+        assignees: vec![User::new("assign1")],
+    });
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: None,
+        path: None,
+        body: Some("Looks close".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Err(anyhow!("nope")));
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("Looks close")
+            .title("joe.reviewer said:")
+            .title_link("http://the-comment")
+            .build(),
+    ];
+    let msg = "Comment on \"<http://the-github-host/some-user/some-repo/pull/32|The PR>\"";
+
+    // Notified as a plain issue: no branch, commits or reviewers.
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Threading::Reply("some-user/some-repo/32".to_string()),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
+}
+
+#[tokio::test]
+async fn test_issue_comment_on_pull_request_ignores_octobot() {
+    let mut test = new_test();
+    test.handler.event = "issue_comment".into();
+    test.handler.action = "created".into();
+    test.handler.data.issue = Some(Issue {
+        number: 32,
+        html_url: "http://the-github-host/some-user/some-repo/pull/32".into(),
+        title: "The PR".into(),
+        user: User::new("the-pr-owner"),
+        assignees: vec![],
+    });
+    test.handler.data.comment = Some(Comment {
+        id: 0,
+        pull_request_review_id: None,
+        commit_id: None,
+        path: None,
+        body: Some("Build passed".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("octobot[bot]"),
+    });
+    test.handler.data.sender = User::new("octobot[bot]");
+
+    // No lookups at all: not the PR, its reviewers, or its commits.
+    test.slack.expect(vec![]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
+}
+
 #[tokio::test(start_paused = true)]
 async fn test_pull_request_review_comment_grouped() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
@@ -776,6 +948,7 @@ async fn test_pull_request_review_grouped_with_verdict_in_thread() {
             user: User::new("joe-reviewer"),
         });
         test.mock_pull_request_commits();
+        test.mock_pull_request_reviews(vec![]);
         let attach = vec![
             SlackAttachmentBuilder::new(body)
                 .title("joe.reviewer said:")
@@ -801,6 +974,7 @@ async fn test_pull_request_review_grouped_with_verdict_in_thread() {
         commit_id: None,
     });
     test.mock_pull_request_commits();
+    test.mock_pull_request_reviews(vec![]);
     let verdict = SlackAttachmentBuilder::new("It needs some work!")
         .title("Review: Changes Requested")
         .title_link("http://the-review")
@@ -849,9 +1023,56 @@ impl octobot_ops::worker::Worker<slack::SlackRequest> for CaptureSlack {
     }
 }
 
+// A review of only inline comments arrives as "commented" with no body.
+#[tokio::test]
+async fn test_pull_request_review_commented_without_body() {
+    let mut test = new_test();
+    test.handler.event = "pull_request_review".into();
+    test.handler.action = "submitted".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.review = Some(Review {
+        id: 77,
+        state: "commented".into(),
+        body: Some("".into()),
+        html_url: "http://the-comment".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+
+    test.slack.expect(vec![]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review [comment]".into()), resp);
+}
+
+#[tokio::test]
+async fn test_pull_request_review_dismissed() {
+    let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
+    test.handler.event = "pull_request_review".into();
+    test.handler.action = "submitted".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.review = Some(Review {
+        id: 77,
+        state: "dismissed".into(),
+        body: Some("Not needed".into()),
+        html_url: "http://the-review".into(),
+        user: User::new("joe-reviewer"),
+    });
+    test.handler.data.sender = User::new("joe-reviewer");
+    // No Slack message, but its hint reaches the participants.
+    test.mock_pull_request_commits();
+
+    test.slack.expect(vec![]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr_review [ignored]".into()), resp);
+}
+
 #[tokio::test]
 async fn test_pull_request_review_commented() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review".into();
     test.handler.action = "submitted".into();
     test.handler.data.pull_request = some_pr();
@@ -930,7 +1151,6 @@ async fn test_pull_request_comments_ignore_empty_messages() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
@@ -954,7 +1174,6 @@ async fn test_pull_request_comments_ignore_octobot() {
         user: User::new("octobot[bot]"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
@@ -978,7 +1197,6 @@ async fn test_pull_request_comments_ignore_user() {
         user: User::new("ignore-me[bot]"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
@@ -1031,6 +1249,7 @@ fn mentioned_reqs(msg: &str, attach: &[slack::SlackAttachment]) -> Vec<slack::Sl
 #[tokio::test]
 async fn test_pull_request_comment_hides_collapsed_details() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
@@ -1078,7 +1297,6 @@ async fn test_pull_request_comments_ignore_hidden_only_messages() {
         user: User::new("joe-reviewer"),
     });
     test.handler.data.sender = User::new("joe-reviewer");
-    test.mock_pull_request_commits();
 
     test.slack.expect(vec![]);
 
@@ -1089,6 +1307,7 @@ async fn test_pull_request_comments_ignore_hidden_only_messages() {
 #[tokio::test(start_paused = true)]
 async fn test_pull_request_review_comment_grouped_hides_collapsed_details() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
     test.handler.data.pull_request = some_pr();
@@ -1148,6 +1367,7 @@ async fn test_pull_request_review_comment_grouped_hides_collapsed_details() {
 #[tokio::test]
 async fn test_pull_request_review_approved_hides_collapsed_details() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review".into();
     test.handler.action = "submitted".into();
     test.handler.data.pull_request = some_pr();
@@ -1181,6 +1401,7 @@ async fn test_pull_request_review_approved_hides_collapsed_details() {
 #[tokio::test]
 async fn test_pull_request_review_dismissed_publishes() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review".into();
     test.handler.action = "dismissed".into();
     test.handler.data.pull_request = some_pr();
@@ -1270,6 +1491,7 @@ async fn test_commit_comment_ignore_hidden_only_messages() {
 #[tokio::test]
 async fn test_pull_request_review_approved() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review".into();
     test.handler.action = "submitted".into();
     test.handler.data.pull_request = some_pr();
@@ -1336,6 +1558,7 @@ async fn test_pull_request_review_approved() {
 #[tokio::test]
 async fn test_pull_request_review_changes_requested() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request_review".into();
     test.handler.action = "submitted".into();
     test.handler.data.pull_request = some_pr();
@@ -1401,6 +1624,7 @@ async fn test_pull_request_review_changes_requested() {
 #[tokio::test]
 async fn test_pull_request_opened() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
     test.handler.data.pull_request = some_pr();
@@ -1431,6 +1655,7 @@ async fn test_pull_request_opened() {
 #[tokio::test]
 async fn test_pull_request_closed() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
     test.handler.data.pull_request = some_pr();
@@ -1488,6 +1713,7 @@ async fn test_pull_request_closed() {
 #[tokio::test]
 async fn test_pull_request_closed_draft_publishes() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
     let mut pr = some_pr().unwrap();
@@ -1526,6 +1752,7 @@ async fn test_pull_request_closed_draft_publishes() {
 #[tokio::test]
 async fn test_pull_request_opened_draft_publishes() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
     let mut pr = some_pr().unwrap();
@@ -1550,6 +1777,7 @@ async fn test_pull_request_opened_draft_publishes() {
 #[tokio::test]
 async fn test_pull_request_unlisted_action_publishes() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "milestoned".into();
     test.handler.data.pull_request = some_pr();
@@ -1571,6 +1799,7 @@ async fn test_pull_request_unlisted_action_publishes() {
 #[tokio::test]
 async fn test_pull_request_review_request_removed_publishes_to_removed_reviewer() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "review_request_removed".into();
     test.handler.data.pull_request = some_pr();
@@ -1605,6 +1834,7 @@ async fn test_pull_request_synchronize_leaves_hint_to_push() {
 #[tokio::test]
 async fn test_pull_request_converted_to_draft_publishes() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "converted_to_draft".into();
     let mut pr = some_pr().unwrap();
@@ -1626,8 +1856,28 @@ async fn test_pull_request_converted_to_draft_publishes() {
 }
 
 #[tokio::test]
+async fn test_pull_request_hint_reaches_past_reviewers() {
+    let mut test = new_test();
+    test.mock_pull_request_reviews(vec![Review::new("lgtm", User::new("smith-reviewer"))]);
+    test.handler.event = "pull_request".into();
+    test.handler.action = "converted_to_draft".into();
+    let mut pr = some_pr().unwrap();
+    pr.draft = Some(true);
+    test.handler.data.pull_request = Some(pr);
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::PullRequest);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("smith-reviewer"));
+}
+
+#[tokio::test]
 async fn test_pull_request_reopened() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "reopened".into();
     test.handler.data.pull_request = some_pr();
@@ -1665,6 +1915,7 @@ async fn test_pull_request_reopened() {
 #[tokio::test]
 async fn test_pull_request_ready_for_review() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "ready_for_review".into();
     test.handler.data.pull_request = some_pr();
@@ -1722,8 +1973,145 @@ async fn test_pull_request_ready_for_review() {
 }
 
 #[tokio::test]
+async fn test_pull_request_ready_for_review_notifies_past_reviewers() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "ready_for_review".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.mock_pull_request_commits();
+    test.mock_pull_request_reviews(vec![Review::new("lgtm", User::new("smith-reviewer"))]);
+
+    expect_jira_ref_fail(&test.github);
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    let msg = "Pull Request is ready for review";
+
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Threading::ReplyOrStart(
+                "some-user/some-repo/32".to_string(),
+                thread_root(REPO_MSG, 32),
+            ),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("smith.reviewer"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+}
+
+#[tokio::test]
+async fn test_pull_request_ready_for_review_reviewer_lookup_fails() {
+    let mut test = new_test();
+    test.handler.event = "pull_request".into();
+    test.handler.action = "ready_for_review".into();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.sender = User::new("the-pr-closer");
+    test.mock_pull_request_commits();
+    test.github.mock_get_pull_request_reviews(
+        "some-user",
+        "some-repo",
+        32,
+        Err(anyhow!("reviews are down")),
+    );
+
+    expect_jira_ref_fail(&test.github);
+
+    let attach = vec![
+        SlackAttachmentBuilder::new("")
+            .title("Pull Request #32: \"The PR\"")
+            .title_link("http://the-pr")
+            .build(),
+    ];
+    let msg = "Pull Request is ready for review";
+
+    // Everyone the webhook names is still notified.
+    test.slack.expect(vec![
+        slack::req(
+            SlackRecipient::by_name("the-reviews-channel"),
+            &format!("{} {}", msg, REPO_MSG),
+            &attach,
+            Threading::ReplyOrStart(
+                "some-user/some-repo/32".to_string(),
+                thread_root(REPO_MSG, 32),
+            ),
+        ),
+        slack::req(
+            SlackRecipient::user_mention("assign1"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("bob.author"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("joe.reviewer"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+        slack::req(
+            SlackRecipient::user_mention("the.pr.owner"),
+            msg,
+            &attach,
+            Threading::Flat,
+        ),
+    ]);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "pr".into()), resp);
+    assert_eq!(
+        1,
+        test.handler.metrics.github_reviewer_lookup_failures.get()
+    );
+}
+
+#[tokio::test]
 async fn test_pull_request_edited() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "edited".into();
     test.handler.data.pull_request = some_pr();
@@ -1764,6 +2152,7 @@ async fn test_pull_request_synchronize() {
 #[tokio::test]
 async fn test_pull_request_assigned() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "assigned".into();
     test.handler.data.pull_request = some_pr();
@@ -1830,6 +2219,7 @@ async fn test_pull_request_assigned() {
 #[tokio::test]
 async fn test_pull_request_unassigned() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "unassigned".into();
     test.handler.data.pull_request = some_pr();
@@ -1861,6 +2251,7 @@ async fn test_pull_request_unassigned() {
 #[tokio::test]
 async fn test_pull_request_review_requested() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "review_requested".into();
     test.handler.data.pull_request = some_pr();
@@ -1941,6 +2332,7 @@ async fn test_pull_request_review_requested() {
 #[tokio::test]
 async fn test_pull_request_review_requested_muted_team() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "review_requested".into();
     test.handler.data.pull_request = some_pr();
@@ -2019,6 +2411,7 @@ async fn test_pull_request_review_requested_muted_team() {
 #[tokio::test]
 async fn test_pull_request_review_no_username() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "review_requested".into();
     test.handler.data.pull_request = some_pr();
@@ -2076,6 +2469,7 @@ async fn test_pull_request_review_no_username() {
 #[tokio::test]
 async fn test_pull_request_labeled_not_merged() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2094,6 +2488,7 @@ async fn test_pull_request_labeled_not_merged() {
 #[tokio::test]
 async fn test_pull_request_merged_error_getting_labels() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
     test.handler.data.pull_request = some_pr();
@@ -2180,6 +2575,7 @@ async fn test_pull_request_merged_error_getting_labels() {
 #[tokio::test]
 async fn test_pull_request_merged_no_labels() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
     test.handler.data.pull_request = some_pr();
@@ -2243,6 +2639,7 @@ async fn test_pull_request_merged_no_labels() {
 #[tokio::test]
 async fn test_pull_request_merged_backport_labels() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
     test.handler.data.pull_request = some_pr();
@@ -2326,6 +2723,8 @@ async fn test_pull_request_merged_backport_labels() {
 #[tokio::test]
 async fn test_pull_request_merged_backport_labels_custom_pattern() {
     let mut test = new_test();
+    test.github
+        .mock_get_pull_request_reviews("some-user", "custom-branches-repo", 32, Ok(vec![]));
     test.handler.event = "pull_request".into();
     test.handler.action = "closed".into();
     test.handler.data.pull_request = some_pr();
@@ -2435,6 +2834,7 @@ async fn test_pull_request_merged_backport_labels_custom_pattern() {
 #[tokio::test]
 async fn test_pull_request_merged_retroactively_labeled() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2455,6 +2855,7 @@ async fn test_pull_request_merged_retroactively_labeled() {
 #[tokio::test]
 async fn test_pull_request_merged_master_branch() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2475,6 +2876,7 @@ async fn test_pull_request_merged_master_branch() {
 #[tokio::test]
 async fn test_pull_request_merged_develop_branch() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2495,6 +2897,7 @@ async fn test_pull_request_merged_develop_branch() {
 #[tokio::test]
 async fn test_pull_request_merged_main_branch() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "labeled".into();
     test.handler.data.pull_request = some_pr();
@@ -2595,6 +2998,9 @@ async fn test_push_with_pr() {
         .mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(some_commits()));
     test.github
         .mock_get_pull_request_commits("some-user", "some-repo", 99, Ok(some_commits()));
+    test.mock_pull_request_reviews(vec![]);
+    test.github
+        .mock_get_pull_request_reviews("some-user", "some-repo", 99, Ok(vec![]));
 
     test.github.mock_get_pull_requests(
         "some-user",
@@ -2715,6 +3121,7 @@ async fn test_push_force_notify() {
     );
 
     test.mock_pull_request_commits();
+    test.mock_pull_request_reviews(vec![]);
 
     expect_jira_ref_fail_pr(&test.github, &pr, &some_commits());
 
@@ -2770,6 +3177,7 @@ async fn test_push_force_notify() {
 #[tokio::test]
 async fn test_push_force_notify_wip() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
 
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/some-branch".into());
@@ -2798,6 +3206,7 @@ async fn test_push_force_notify_wip() {
 #[tokio::test]
 async fn test_push_draft_publishes() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
 
     test.handler.event = "push".into();
     test.handler.data.ref_name = Some("refs/heads/some-branch".into());
@@ -2875,6 +3284,8 @@ async fn test_push_force_notify_ignored() {
         32,
         Ok(some_commits()),
     );
+    test.github
+        .mock_get_pull_request_reviews("some-other-user", "some-other-repo", 32, Ok(vec![]));
     expect_jira_ref_fail_pr(&test.github, &pr, &some_commits());
 
     let msg = "joe.sender pushed 0 commit(s) to branch some-branch";
@@ -2920,6 +3331,7 @@ async fn test_push_force_notify_ignored() {
 #[tokio::test]
 async fn test_team_members_cache() {
     let mut test = new_test();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "review_requested".into();
     test.handler.data.pull_request = some_pr();
@@ -2929,6 +3341,7 @@ async fn test_team_members_cache() {
     test.handler.data.sender = User::new("the-pr-closer");
     test.mock_pull_request_commits();
     test.mock_pull_request_commits();
+    test.mock_pull_request_reviews(vec![]);
     test.mock_get_team_members(100);
 
     let attach = vec![
@@ -3122,6 +3535,7 @@ fn some_jira_push_commits() -> Vec<PushCommit> {
 #[tokio::test]
 async fn test_jira_pull_request_opened() {
     let mut test = new_test_with_jira();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
     test.handler.data.pull_request = some_pr();
@@ -3178,6 +3592,7 @@ async fn test_jira_pull_request_opened() {
 #[tokio::test]
 async fn test_jira_pull_request_opened_too_many_commits() {
     let mut test = new_test_with_jira();
+    test.mock_pull_request_reviews(vec![]);
     test.handler.event = "pull_request".into();
     test.handler.action = "opened".into();
     test.handler.data.pull_request = some_pr();

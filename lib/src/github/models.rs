@@ -216,13 +216,19 @@ impl BranchRef {
 
 pub trait PullRequestLike: Send + Sync {
     fn user(&self) -> &User;
-    fn assignees(&self) -> Vec<User>;
     fn teams(&self) -> Vec<Team>;
     fn title(&self) -> &str;
     fn html_url(&self) -> &str;
     fn number(&self) -> u32;
     fn has_commits(&self) -> bool;
     fn repo(&self) -> Option<&Repo>;
+}
+
+// Everyone to notify about an issue or pull request. A bare `PullRequest` does not
+// implement this: reviewers leave `requested_reviewers` once they review, so only
+// a `ReviewedPullRequest` knows all of them.
+pub trait Notifiable: PullRequestLike {
+    fn assignees_and_reviewers(&self) -> Vec<User>;
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -240,7 +246,6 @@ pub struct PullRequest {
     pub base: BranchRef,
     pub requested_reviewers: Option<Vec<User>>,
     pub requested_teams: Option<Vec<Team>>,
-    pub reviews: Option<Vec<Review>>,
     pub draft: Option<bool>,
     pub labels: Option<Vec<Label>>,
 }
@@ -265,7 +270,6 @@ impl PullRequest {
             assignees: vec![],
             requested_reviewers: None,
             requested_teams: None,
-            reviews: None,
             head: BranchRef::new(""),
             base: BranchRef::new(""),
             draft: None,
@@ -280,35 +284,86 @@ impl PullRequest {
     pub fn is_draft(&self) -> bool {
         self.draft.unwrap_or(false) || self.title.to_lowercase().starts_with("wip:")
     }
+}
+
+// A pull request with everyone who has reviewed it. Webhooks and pull request
+// lookups never include those reviewers; they come only from a reviews lookup.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReviewedPullRequest {
+    pull_request: PullRequest,
+    reviewers: Vec<User>,
+}
+
+impl ReviewedPullRequest {
+    // `reviewers` are the authors of the PR's submitted reviews.
+    pub fn new(pull_request: PullRequest, reviewers: Vec<User>) -> ReviewedPullRequest {
+        ReviewedPullRequest {
+            pull_request,
+            reviewers,
+        }
+    }
 
     pub fn all_reviewers(&self) -> Vec<User> {
-        let mut reviewers = vec![];
-        if let Some(ref requested_reviewers) = self.requested_reviewers {
-            reviewers.extend(requested_reviewers.clone());
+        let mut reviewers: Vec<User> = vec![];
+        let requested = self.pull_request.requested_reviewers.iter().flatten();
+        for user in requested.chain(self.reviewers.iter()) {
+            if !reviewers.iter().any(|r| r.login() == user.login()) {
+                reviewers.push(user.clone());
+            }
         }
-
-        if let Some(ref reviews) = self.reviews {
-            reviewers.extend(reviews.iter().map(|r| r.user.clone()));
-        }
-
         reviewers
+    }
+}
+
+impl std::ops::Deref for ReviewedPullRequest {
+    type Target = PullRequest;
+
+    fn deref(&self) -> &PullRequest {
+        &self.pull_request
+    }
+}
+
+impl PullRequestLike for &ReviewedPullRequest {
+    fn user(&self) -> &User {
+        &self.pull_request.user
+    }
+
+    fn teams(&self) -> Vec<Team> {
+        (&self.pull_request).teams()
+    }
+
+    fn title(&self) -> &str {
+        &self.pull_request.title
+    }
+
+    fn html_url(&self) -> &str {
+        &self.pull_request.html_url
+    }
+
+    fn number(&self) -> u32 {
+        self.pull_request.number
+    }
+
+    fn has_commits(&self) -> bool {
+        true
+    }
+
+    fn repo(&self) -> Option<&Repo> {
+        Some(&self.pull_request.base.repo)
+    }
+}
+
+impl Notifiable for &ReviewedPullRequest {
+    fn assignees_and_reviewers(&self) -> Vec<User> {
+        let mut assignees = self.pull_request.assignees.clone();
+        assignees.extend(self.all_reviewers());
+        assignees
     }
 }
 
 impl PullRequestLike for &PullRequest {
     fn user(&self) -> &User {
         &self.user
-    }
-
-    fn assignees(&self) -> Vec<User> {
-        let mut assignees = self.assignees.clone();
-        if let Some(ref reviewers) = self.requested_reviewers {
-            assignees.extend(reviewers.iter().cloned());
-        }
-        if let Some(ref reviews) = self.reviews {
-            assignees.extend(reviews.iter().map(|r| r.user.clone()));
-        }
-        assignees
     }
 
     fn teams(&self) -> Vec<Team> {
@@ -354,10 +409,6 @@ impl PullRequestLike for &Issue {
         &self.user
     }
 
-    fn assignees(&self) -> Vec<User> {
-        self.assignees.clone()
-    }
-
     fn teams(&self) -> Vec<Team> {
         vec![]
     }
@@ -380,6 +431,12 @@ impl PullRequestLike for &Issue {
 
     fn repo(&self) -> Option<&Repo> {
         None
+    }
+}
+
+impl Notifiable for &Issue {
+    fn assignees_and_reviewers(&self) -> Vec<User> {
+        self.assignees.clone()
     }
 }
 
@@ -864,7 +921,8 @@ mod tests {
         pr.assignees = users.clone();
         pr.requested_reviewers = None;
 
-        assert_eq!(users, (&pr).assignees());
+        let reviewed = ReviewedPullRequest::new(pr.clone(), vec![]);
+        assert_eq!(users, (&reviewed).assignees_and_reviewers());
 
         let reviewers = vec![User::new("userC"), User::new("userD")];
         pr.requested_reviewers = Some(reviewers);
@@ -875,13 +933,13 @@ mod tests {
             User::new("userC"),
             User::new("userD"),
         ];
-        assert_eq!(all_users, (&pr).assignees());
+        let reviewed = ReviewedPullRequest::new(pr.clone(), vec![]);
+        assert_eq!(all_users, (&reviewed).assignees_and_reviewers());
 
         let reviews = vec![
             Review::new("i like it", User::new("userE")),
             Review::new("i like it", User::new("userF")),
         ];
-        pr.reviews = Some(reviews);
 
         let even_more_users = vec![
             User::new("user1"),
@@ -891,7 +949,23 @@ mod tests {
             User::new("userE"),
             User::new("userF"),
         ];
-        assert_eq!(even_more_users, (&pr).assignees());
+        let reviewed = ReviewedPullRequest::new(pr, reviews.into_iter().map(|r| r.user).collect());
+        assert_eq!(even_more_users, (&reviewed).assignees_and_reviewers());
+    }
+
+    #[test]
+    fn test_pr_all_reviewers_lists_each_reviewer_once() {
+        let mut pr = PullRequest::new();
+        pr.requested_reviewers = Some(vec![User::new("userC")]);
+
+        // userE reviewed twice; userC reviewed and was requested again.
+        let reviewers = vec![User::new("userE"), User::new("userC"), User::new("userE")];
+        let reviewed = ReviewedPullRequest::new(pr, reviewers);
+
+        assert_eq!(
+            vec![User::new("userC"), User::new("userE")],
+            reviewed.all_reviewers()
+        );
     }
 
     #[test]

@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, bail};
 use async_trait::async_trait;
+use jsonwebtoken::EncodingKey;
 use log::{error, info};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use regex::Regex;
@@ -13,7 +14,7 @@ use crate::errors::*;
 use crate::github::Login;
 use crate::github::models::*;
 use crate::github::models_checks::*;
-use crate::http_client::{HTTPClient, HttpError};
+use crate::http_client::{BearerSource, HTTPClient, HttpError};
 use crate::jwt;
 use crate::metrics::Metrics;
 
@@ -197,11 +198,12 @@ pub struct GithubApp {
     // Derived from `host` except in tests, which point it at a local mock server.
     api_base: String,
     app_id: u32,
-    // DER formatted API private key
-    app_key: Vec<u8>,
+    app_key: EncodingKey,
     app: Option<App>,
     metrics: Option<Arc<Metrics>>,
     tokens: Mutex<HashMap<String, CachedToken>>,
+    // Unix seconds used to sign app JWTs; tests substitute their own.
+    clock: Arc<dyn Fn() -> u64 + Send + Sync>,
 }
 
 pub struct GithubOauthApp {
@@ -222,10 +224,11 @@ impl GithubApp {
             host: host.into(),
             api_base: api_base(host),
             app_id,
-            app_key: app_key.into(),
+            app_key: jwt::encoding_key(app_key),
             app: None,
             metrics,
             tokens: Mutex::new(HashMap::new()),
+            clock: Arc::new(jwt::unix_now),
         };
 
         github.app = Some(
@@ -247,15 +250,16 @@ impl GithubApp {
             host: "github.test".into(),
             api_base: api_base.into(),
             app_id: 1,
-            app_key: app_key.into(),
+            app_key: jwt::encoding_key(app_key),
             app: None,
             metrics: None,
             tokens: Mutex::new(HashMap::new()),
+            clock: Arc::new(jwt::unix_now),
         }
     }
 
     fn new_client(&self) -> Result<HTTPClient> {
-        let jwt_token = jwt::new_token(self.app_id, &self.app_key)?;
+        let jwt_token = jwt::new_token(self.app_id, &self.app_key, (self.clock)())?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.append(
@@ -436,11 +440,14 @@ impl GithubSessionFactory for GithubApp {
     }
 
     async fn new_service_session(&self) -> Result<GithubSession> {
-        let jwt_token = jwt::new_token(self.app_id, &self.app_key)?;
-        GithubSession::new(
+        let app_id = self.app_id;
+        let app_key = self.app_key.clone();
+        let clock = self.clock.clone();
+        GithubSession::with_api_base(
             &self.host,
+            &self.api_base,
             &self.bot_name(),
-            &jwt_token,
+            SessionAuth::AppJwt(Arc::new(move || jwt::new_token(app_id, &app_key, clock()))),
             Some(self.app_id),
             self.metrics.clone(),
         )
@@ -515,9 +522,16 @@ impl GithubSessionFactory for GithubOauthApp {
 pub struct GithubSession {
     client: HTTPClient,
     host: String,
+    // Empty for app JWT sessions, which cannot authenticate git.
     token: String,
     bot_name: String,
     app_id: Option<u32>,
+}
+
+enum SessionAuth {
+    Token(String),
+    // App JWTs expire within minutes, so each request signs a fresh one.
+    AppJwt(BearerSource),
 }
 
 impl GithubSession {
@@ -528,7 +542,14 @@ impl GithubSession {
         app_id: Option<u32>,
         metrics: Option<Arc<Metrics>>,
     ) -> Result<GithubSession> {
-        GithubSession::with_api_base(host, &api_base(host), bot_name, token, app_id, metrics)
+        GithubSession::with_api_base(
+            host,
+            &api_base(host),
+            bot_name,
+            SessionAuth::Token(token.to_string()),
+            app_id,
+            metrics,
+        )
     }
 
     // `api_base` differs from the host's only in tests, which point it at a local mock server.
@@ -536,7 +557,7 @@ impl GithubSession {
         host: &str,
         api_base: &str,
         bot_name: &str,
-        token: &str,
+        auth: SessionAuth,
         app_id: Option<u32>,
         metrics: Option<Arc<Metrics>>,
     ) -> Result<GithubSession> {
@@ -558,12 +579,20 @@ impl GithubSession {
             reqwest::header::ACCEPT,
             accept_headers.as_str().parse().unwrap(),
         );
-        headers.insert(
-            reqwest::header::AUTHORIZATION,
-            format!("Bearer {}", token).parse().unwrap(),
-        );
 
-        let client = HTTPClient::new_with_headers(api_base, headers)?;
+        let (client, token) = match auth {
+            SessionAuth::Token(token) => {
+                headers.insert(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {}", token).parse().unwrap(),
+                );
+                (HTTPClient::new_with_headers(api_base, headers)?, token)
+            }
+            SessionAuth::AppJwt(bearer) => (
+                HTTPClient::new_with_headers(api_base, headers)?.with_bearer_source(bearer),
+                String::new(),
+            ),
+        };
         let client = match metrics {
             None => client,
             Some(ref m) => client.with_metrics(
@@ -576,7 +605,7 @@ impl GithubSession {
             client,
             bot_name: bot_name.to_string(),
             host: host.to_string(),
-            token: token.to_string(),
+            token,
             app_id,
         })
     }
@@ -603,13 +632,11 @@ impl GithubSession {
 
     async fn do_get_pull_requests(
         &self,
-        owner: &str,
-        repo: &str,
         head: Option<&str>,
         paging_url: &str,
         err_fmt: &str,
     ) -> Result<Vec<PullRequest>> {
-        let mut pull_requests: Vec<PullRequest> = self
+        Ok(self
             .get_all_pages::<PullRequest>(paging_url)
             .await
             .map_err(|e| anyhow!("{}: {}", err_fmt, e))?
@@ -618,20 +645,7 @@ impl GithubSession {
                 Some(head) => p.head.ref_name == head || p.head.sha == head,
                 None => true,
             })
-            .collect();
-
-        for pull_request in &mut pull_requests {
-            if pull_request.reviews.is_none() {
-                match self
-                    .get_pull_request_reviews(owner, repo, pull_request.number)
-                    .await
-                {
-                    Ok(r) => pull_request.reviews = Some(r),
-                    Err(e) => error!("Error refetching pull request reviews: {}", e),
-                };
-            }
-        }
-        Ok(pull_requests)
+            .collect())
     }
 
     // GitHub marks every page but the last with a `Link: rel="next"` header. Page
@@ -718,22 +732,10 @@ impl Session for GithubSession {
     }
 
     async fn get_pull_request(&self, owner: &str, repo: &str, number: u32) -> Result<PullRequest> {
-        let pull_request: Result<PullRequest> = self
-            .client
+        self.client
             .get(&format!("repos/{}/{}/pulls/{}", owner, repo, number))
             .await
-            .map_err(|e| anyhow!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e));
-        let mut pull_request = pull_request?;
-
-        // Always fetch PR's reviewers. Users get removed from requested_reviewers after they submit their review. :cry:
-        if pull_request.reviews.is_none() {
-            match self.get_pull_request_reviews(owner, repo, number).await {
-                Ok(r) => pull_request.reviews = Some(r),
-                Err(e) => error!("Error refetching pull request reviews: {}", e),
-            };
-        }
-
-        Ok(pull_request)
+            .map_err(|e| anyhow!("Error looking up PR: {}/{} #{}: {}", owner, repo, number, e))
     }
 
     async fn get_pull_requests(
@@ -756,9 +758,7 @@ impl Session for GithubSession {
             PAGE_SIZE,
         );
         let err_fmt = &format!("Error looking up PRs for commit: {}/{}", owner, repo);
-        return self
-            .do_get_pull_requests(owner, repo, branch, paging_url, err_fmt)
-            .await;
+        return self.do_get_pull_requests(branch, paging_url, err_fmt).await;
     }
 
     async fn get_pull_requests_by_commit(
@@ -780,9 +780,7 @@ impl Session for GithubSession {
             "Error looking up PRs for commit: {}/{}/{}",
             owner, repo, commit
         );
-        return self
-            .do_get_pull_requests(owner, repo, head, paging_url, err_fmt)
-            .await;
+        return self.do_get_pull_requests(head, paging_url, err_fmt).await;
     }
 
     async fn get_pull_request_files(
@@ -1362,7 +1360,15 @@ mod tests {
     }
 
     fn session_for_test(api_base: &str) -> GithubSession {
-        GithubSession::with_api_base("github.test", api_base, "bot", "token", None, None).unwrap()
+        GithubSession::with_api_base(
+            "github.test",
+            api_base,
+            "bot",
+            SessionAuth::Token("token".into()),
+            None,
+            None,
+        )
+        .unwrap()
     }
 
     #[tokio::test]
@@ -1620,6 +1626,46 @@ mod tests {
         mint.assert_async().await;
     }
 
+    #[tokio::test]
+    async fn test_service_session_outlives_jwt_lifetime() {
+        let mut server = mockito::Server::new_async().await;
+        let mut app = GithubApp::new_for_test(&server.url(), test_app_key());
+        let now = Arc::new(std::sync::atomic::AtomicU64::new(1_000_000));
+        let clock = now.clone();
+        app.clock = Arc::new(move || clock.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Stands in for GitHub: only a JWT that is unexpired right now is accepted.
+        let server_now = now.clone();
+        let redeliver = server
+            .mock("POST", "/app/hook/deliveries/1/attempts")
+            .match_request(move |req| {
+                let Some(token) = req
+                    .header("authorization")
+                    .first()
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(|h| h.strip_prefix("Bearer "))
+                    .map(str::to_string)
+                else {
+                    return false;
+                };
+                let claims: serde_json::Value =
+                    jsonwebtoken::dangerous::insecure_decode_claims(token).unwrap();
+                claims["exp"].as_u64().unwrap()
+                    > server_now.load(std::sync::atomic::Ordering::SeqCst)
+            })
+            .expect(2)
+            .create_async()
+            .await;
+
+        let session = app.new_service_session().await.unwrap();
+        session.redeliver_webhook(1).await.unwrap();
+
+        now.fetch_add(60 * 60, std::sync::atomic::Ordering::SeqCst);
+        session.redeliver_webhook(1).await.unwrap();
+
+        redeliver.assert_async().await;
+    }
+
     fn pr_for_branch(number: u32, branch: &str) -> PullRequest {
         let mut pr = PullRequest::new();
         pr.number = number;
@@ -1640,15 +1686,6 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let reviews = server
-            .mock(
-                "GET",
-                "/repos/some-org/some-repo/pulls/7/reviews?per_page=100",
-            )
-            .with_body("[]")
-            .expect(1)
-            .create_async()
-            .await;
 
         let prs = session_for_test(&server.url())
             .get_pull_requests("some-org", "some-repo", Some("open"), Some("feat/a+b&c"))
@@ -1657,7 +1694,6 @@ mod tests {
 
         assert_eq!(vec![7], prs.iter().map(|p| p.number).collect::<Vec<_>>());
         list.assert_async().await;
-        reviews.assert_async().await;
     }
 
     #[tokio::test]
