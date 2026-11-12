@@ -118,29 +118,19 @@ impl HTTPClient {
         }
     }
 
+    /// A successful response is counted once `parse_json` parses it.
     pub async fn get_raw(&self, path: &str) -> Result<Response> {
-        let res = self.send_get(path).await?;
-
-        self.maybe_record_ok();
-        Ok(res)
+        let _timer = self.maybe_start_timer("get", path);
+        let res = self.request(reqwest::Method::GET, path)?.send().await;
+        self.process_resp(res).await
     }
 
     pub async fn get<T>(&self, path: &str) -> Result<T>
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let res = self.send_get(path).await?;
-        let res = self.parse_json(res).await?;
-
-        self.maybe_record_ok();
-        Ok(res)
-    }
-
-    /// Counts only a failed response; the caller counts success.
-    async fn send_get(&self, path: &str) -> Result<Response> {
-        let _timer = self.maybe_start_timer("get", path);
-        let res = self.request(reqwest::Method::GET, path)?.send().await;
-        self.process_resp(res).await
+        let res = self.get_raw(path).await?;
+        self.parse_json(res).await
     }
 
     pub async fn post<T, U: Serialize>(&self, path: &str, body: &U) -> Result<T>
@@ -154,10 +144,7 @@ impl HTTPClient {
             .send()
             .await;
         let res = self.process_resp(res).await?;
-        let res = self.parse_json(res).await?;
-
-        self.maybe_record_ok();
-        Ok(res)
+        self.parse_json(res).await
     }
 
     pub async fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
@@ -198,10 +185,7 @@ impl HTTPClient {
             .send()
             .await;
         let res = self.process_resp(res).await?;
-        let res = self.parse_json(res).await?;
-
-        self.maybe_record_ok();
-        Ok(res)
+        self.parse_json(res).await
     }
 
     pub async fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
@@ -294,7 +278,10 @@ impl HTTPClient {
 
         let result: serde_json::Result<T> = serde_json::from_str(&text);
         match result {
-            Ok(r) => Ok(r),
+            Ok(r) => {
+                self.maybe_record_ok();
+                Ok(r)
+            }
             Err(e) => {
                 self.maybe_record_status("<invalid json>");
                 let err: Result<()> = self.make_clean_err(e);
