@@ -34,6 +34,7 @@ use crate::runtime;
 use crate::server::commits_cache::CommitsCache;
 use crate::server::github_verify::GithubWebhookVerifier;
 use crate::server::http::Handler;
+use crate::server::people_cache::PeopleCache;
 use crate::server::reviewers_cache::ReviewersCache;
 
 pub struct GithubHandlerState {
@@ -53,6 +54,7 @@ pub struct GithubHandlerState {
     team_members_cache: Arc<TeamsCache>,
     reviewers_cache: Arc<ReviewersCache>,
     commits_cache: Arc<CommitsCache>,
+    people_cache: Arc<PeopleCache>,
 }
 
 pub struct GithubHandler {
@@ -74,6 +76,7 @@ pub struct GithubEventHandler {
     pub team_members_cache: Arc<TeamsCache>,
     pub reviewers_cache: Arc<ReviewersCache>,
     pub commits_cache: Arc<CommitsCache>,
+    pub people_cache: Arc<PeopleCache>,
     pub metrics: Arc<Metrics>,
 }
 
@@ -187,6 +190,7 @@ impl GithubHandlerState {
             team_members_cache: Arc::new(TeamsCache::new(Duration::from_secs(3600))),
             reviewers_cache: Arc::new(ReviewersCache::new(Duration::from_secs(3600))),
             commits_cache: Arc::new(CommitsCache::new(Duration::from_secs(3600))),
+            people_cache: Arc::new(PeopleCache::new(Duration::from_secs(3600))),
         }
     }
 
@@ -197,6 +201,7 @@ impl GithubHandlerState {
         self.git_clone_manager.clean(1 * day);
         self.reviewers_cache.clean();
         self.commits_cache.clean();
+        self.people_cache.clean();
 
         if let Err(e) = self.webhook_db.clean(SystemTime::now() - (7 * day)) {
             log::error!("Failed to clean webhook db: {}", e);
@@ -385,6 +390,7 @@ impl Handler for GithubHandler {
             team_members_cache: self.state.team_members_cache.clone(),
             reviewers_cache: self.state.reviewers_cache.clone(),
             commits_cache: self.state.commits_cache.clone(),
+            people_cache: self.state.people_cache.clone(),
             metrics: self.state.metrics.clone(),
         };
 
@@ -433,6 +439,9 @@ impl GithubEventHandler {
             if self.action.is_empty() { "" } else { "." },
             self.action
         );
+        if let Some(ref pull_request) = self.data.pull_request {
+            self.people_cache.update(&self.repository, pull_request);
+        }
         self.dispatch_event().await
     }
 

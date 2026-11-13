@@ -8,6 +8,7 @@ pub mod login;
 pub mod main;
 pub mod metrics;
 mod octobot_service;
+pub mod people_cache;
 pub mod reviewers_cache;
 mod sessions;
 mod ui_handler;

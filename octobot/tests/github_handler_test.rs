@@ -12,6 +12,7 @@ use mocks::mock_slack::MockSlack;
 use mocks::mock_worker::LockedMockWorker;
 use octobot::server::commits_cache::CommitsCache;
 use octobot::server::github_handler::{GithubEventHandler, TeamsCache};
+use octobot::server::people_cache::PeopleCache;
 use octobot::server::reviewers_cache::ReviewersCache;
 use octobot_events::Kind;
 use octobot_lib::config::{Config, JiraAuth, JiraConfig};
@@ -258,6 +259,7 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             team_members_cache: Arc::new(TeamsCache::new(Duration::new(3600, 0))),
             reviewers_cache: Arc::new(ReviewersCache::new(Duration::new(3600, 0))),
             commits_cache: Arc::new(CommitsCache::new(Duration::new(3600, 0))),
+            people_cache: Arc::new(PeopleCache::new(Duration::new(3600, 0))),
             metrics: Metrics::new(),
         },
     }
@@ -315,6 +317,7 @@ fn some_pr() -> Option<PullRequest> {
         },
         draft: None,
         labels: None,
+        updated_at: Some("2026-11-13T10:00:00Z".into()),
     })
 }
 
@@ -3525,6 +3528,40 @@ async fn test_commits_cache() {
     test.handler.data.pull_request = Some(pr);
     test.mock_pull_request_commits();
     hint_recipients(&mut test, "pull_request", "milestoned").await;
+}
+
+#[tokio::test]
+async fn test_people_cache() {
+    let mut test = new_test();
+    test.handler.data.sender = User::new("the-pr-owner");
+    let pr = |updated_at: &str, assignee: &str| {
+        let mut pr = some_pr().unwrap();
+        pr.updated_at = Some(updated_at.into());
+        pr.assignees = vec![User::new(assignee)];
+        Some(pr)
+    };
+    let assignees = |test: &GithubHandlerTest| {
+        let people = test.handler.people_cache.get(&the_repo(), 32).unwrap();
+        people.assignees
+    };
+    test.mock_pull_request_reviews(vec![]);
+
+    test.handler.data.pull_request = pr("2026-11-13T10:00:01Z", "newer");
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request", "milestoned").await;
+    assert_eq!(vec![User::new("newer")], assignees(&test));
+
+    // A review webhook that GitHub sent earlier arrives late.
+    test.handler.data.pull_request = pr("2026-11-13T10:00:00Z", "older");
+    test.handler.data.review = Some(Review::new("", User::new("joe-reviewer")));
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request_review", "dismissed").await;
+    assert_eq!(vec![User::new("newer")], assignees(&test));
+
+    test.handler.data.pull_request = pr("2026-11-13T10:00:02Z", "newest");
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request_review", "dismissed").await;
+    assert_eq!(vec![User::new("newest")], assignees(&test));
 }
 
 fn new_issue(key: &str) -> jira::Issue {
