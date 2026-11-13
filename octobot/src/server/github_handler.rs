@@ -1379,6 +1379,13 @@ impl GithubEventHandler {
     // Checks message nobody in Slack.
     async fn publish_check(&self, check: &github::CheckHook) {
         for pr in &check.pull_requests {
+            if pr.base.repo.id != self.repository.id {
+                info!(
+                    "Skipping PR #{} for check: it is in another repository",
+                    pr.number
+                );
+                continue;
+            }
             let pull_request = match self
                 .github_session
                 .get_pull_request(
@@ -1394,13 +1401,6 @@ impl GithubEventHandler {
                     continue;
                 }
             };
-            if pull_request.head.sha != check.head_sha {
-                info!(
-                    "Skipping PR #{} for check: its head is not the checked commit",
-                    pr.number
-                );
-                continue;
-            }
 
             let reviewed = &self.reviewed(&pull_request).await;
             let commits = self.pull_request_commits(&reviewed).await;

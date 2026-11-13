@@ -3274,7 +3274,12 @@ fn some_check(conclusion: Option<&str>) -> CheckHook {
     CheckHook {
         head_sha: "ffff0000".into(),
         conclusion: conclusion.map(String::from),
-        pull_requests: vec![CheckPullRequest { number: 32 }],
+        pull_requests: vec![CheckPullRequest {
+            number: 32,
+            base: CheckPullRequestBase {
+                repo: CheckRepo { id: the_repo().id },
+            },
+        }],
     }
 }
 
@@ -3336,22 +3341,45 @@ async fn test_check_suite_without_pull_requests() {
 }
 
 // A listed PR can be another repository's, such as a fork's upstream, so its number names some
-// other PR here. A PR pushed since the check ran is also skipped: the check is stale.
+// other PR here.
 #[tokio::test]
-async fn test_check_suite_skips_pull_request_at_another_commit() {
+async fn test_check_suite_skips_pull_request_in_another_repo() {
     let mut test = new_test();
     test.handler.event = "check_suite".into();
     test.handler.action = "completed".into();
     let mut check = some_check(Some("success"));
-    check.head_sha = "abcdef0000".into();
+    check.pull_requests[0].base.repo.id = 99;
     test.handler.data.check_suite = Some(check);
-    test.github
-        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
     let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    // no github mocks
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "check_suite".into()), resp);
     assert!(receiver.try_recv().is_err());
+}
+
+// The PR API can briefly return the old head after a push, so the webhook decides which PRs
+// are at the checked commit.
+#[tokio::test]
+async fn test_check_suite_publishes_while_pull_request_head_lags() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "requested".into();
+    let mut check = some_check(None);
+    check.head_sha = "abcdef0000".into();
+    test.handler.data.check_suite = Some(check);
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_reviews(vec![]);
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert_eq!(Some(32), event.change.number);
 }
 
 #[tokio::test]

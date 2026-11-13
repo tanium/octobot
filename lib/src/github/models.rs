@@ -44,8 +44,9 @@ pub struct CheckHook {
     pub head_sha: String,
     /// Kept as a string: webhooks send conclusions `Conclusion` does not parse, such as "skipped".
     pub conclusion: Option<String>,
-    /// Open pull requests whose head matches the checked branch and commit. These may belong to
-    /// another repository, such as the upstream of a fork.
+    /// Open pull requests whose head is the checked branch and commit. These may belong to
+    /// another repository, such as the upstream of a fork. GitHub leaves out pull requests from
+    /// forks.
     pub pull_requests: Vec<CheckPullRequest>,
 }
 
@@ -62,6 +63,17 @@ impl CheckHook {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct CheckPullRequest {
     pub number: u32,
+    pub base: CheckPullRequestBase,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct CheckPullRequestBase {
+    pub repo: CheckRepo,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct CheckRepo {
+    pub id: u64,
 }
 
 impl HookBody {
@@ -181,6 +193,7 @@ impl PartialEq for User {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Repo {
+    pub id: u64,
     pub html_url: String,
     pub full_name: String,
     pub name: String,
@@ -191,6 +204,7 @@ pub struct Repo {
 impl Repo {
     pub fn new() -> Repo {
         Repo {
+            id: 0,
             html_url: String::new(),
             full_name: String::new(),
             name: String::new(),
@@ -213,6 +227,7 @@ impl Repo {
         let repo = segments[1];
 
         Ok(Repo {
+            id: 0,
             html_url: html_url.to_string(),
             full_name: format!("{}/{}", user, repo),
             name: repo.to_string(),
@@ -1037,7 +1052,11 @@ mod tests {
                     "head_sha": "ffff0000",
                     "status": "requested",
                     "conclusion": "skipped",
-                    "pull_requests": [{"number": 32, "head": {"sha": "ffff0000"}}]
+                    "pull_requests": [{
+                        "number": 32,
+                        "head": {"sha": "ffff0000"},
+                        "base": {"ref": "main", "repo": {"id": 7, "name": "some-repo"}}
+                    }]
                 }
             }"#,
         )
@@ -1045,7 +1064,15 @@ mod tests {
 
         let suite = body.check_suite.unwrap();
         assert_eq!(Some("skipped"), suite.conclusion.as_deref());
-        assert_eq!(vec![CheckPullRequest { number: 32 }], suite.pull_requests);
+        assert_eq!(
+            vec![CheckPullRequest {
+                number: 32,
+                base: CheckPullRequestBase {
+                    repo: CheckRepo { id: 7 }
+                }
+            }],
+            suite.pull_requests
+        );
     }
 
     #[test]
