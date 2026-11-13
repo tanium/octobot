@@ -6,11 +6,9 @@ use tokio::time::Instant;
 
 use octobot_lib::github;
 
-// Each PR's commits, keyed by its head and base, so a push or a base change makes
-// a new key rather than changing an old one. GitHub moves a PR's base only when
-// the PR changes, not when its base branch does, so busy base branches still hit.
-// That same base may hide commits that land in the base branch through a merge
-// commit and leave the PR's list; the TTL bounds how long those linger.
+// Each PR's commits, keyed by its head and base: a push or a base change makes a
+// new key. GitHub moves a PR's base only when the PR changes, so a busy base
+// branch doesn't empty this, but commits a merge lands in it linger until expiry.
 pub struct CommitsCache {
     entries: Mutex<HashMap<Key, (Vec<github::Commit>, Instant)>>,
     ttl: Duration,
@@ -78,7 +76,7 @@ impl CommitsCache {
         self.entries.lock().unwrap().len()
     }
 
-    // The commits dominate the cache's memory, far more than its entries.
+    // This cache's memory grows with its commits, not its entries.
     pub fn commit_count(&self) -> usize {
         let entries = self.entries.lock().unwrap();
         entries.values().map(|(commits, _)| commits.len()).sum()

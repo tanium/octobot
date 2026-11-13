@@ -8,9 +8,8 @@ use tokio::time::Instant;
 
 use octobot_lib::github;
 
-// The people on each PR, for events that name a PR without carrying it (check
-// runs and suites). Every PR a webhook or lookup carries updates it, so it needs
-// no API calls of its own beyond a lookup on a miss.
+// The people on each PR, for events that name a PR without carrying it, like check
+// runs. Every PR that a webhook or lookup brings updates it.
 pub struct PeopleCache {
     entries: Mutex<HashMap<(String, u32), Entry>>,
     ttl: Duration,

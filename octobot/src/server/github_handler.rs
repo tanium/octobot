@@ -1233,7 +1233,7 @@ impl GithubEventHandler {
                     .filter(|pr| {
                         pr.head.sha == self.data.before() || pr.head.sha == self.data.after()
                     })
-                    // The push is the head, and the cached commits for the old one are not.
+                    // The push sets the head; commits cached for the old head are stale.
                     .map(|mut pr| {
                         pr.head.sha = self.data.after().to_string();
                         pr
