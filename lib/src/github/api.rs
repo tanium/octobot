@@ -126,11 +126,14 @@ pub trait Session: Send + Sync {
         commit_hash: &str,
         comment: Option<&str>,
     ) -> Result<()>;
-    async fn get_timeline(
+    // The newest events of an issue or PR timeline, newest first. Pages are fetched
+    // from the end until `enough` holds for the events so far, or the timeline runs out.
+    async fn get_timeline_newest_first(
         &self,
         owner: &str,
         repo: &str,
         number: u32,
+        enough: &(dyn for<'e> Fn(&'e [TimelineEvent]) -> bool + Send + Sync),
     ) -> Result<Vec<TimelineEvent>>;
 
     // checks api
@@ -655,18 +658,59 @@ impl GithubSession {
         let mut next = Some(url.to_string());
         while let Some(url) = next {
             let res = self.client.get_raw(&url).await?;
-            // Next links are absolute; a relative path keeps later pages under their
-            // route in the request metrics.
-            next =
-                parse_next_link(&res).map(|link| match link.strip_prefix(&self.client.api_base) {
-                    Some(path) => path.to_string(),
-                    None => link,
-                });
+            next = self.page_link(&res, "next");
             let page: Vec<T> = self.client.parse_json(res).await?;
             items.extend(page);
         }
         Ok(items)
     }
+
+    // Walks back from the `last` page by `prev` links. The first page is fetched
+    // first to learn where the last one is, so it is kept rather than fetched again.
+    async fn get_pages_newest_first<T>(
+        &self,
+        url: &str,
+        enough: &(dyn Fn(&[T]) -> bool + Send + Sync),
+    ) -> Result<Vec<T>>
+    where
+        T: serde::de::DeserializeOwned + Send + 'static,
+    {
+        let res = self.client.get_raw(url).await?;
+        let mut prev = self.page_link(&res, "last");
+        let first_page: Vec<T> = self.client.parse_json(res).await?;
+
+        let mut items = vec![];
+        while let Some(url) = prev {
+            if page_number(&url) == Some(1) {
+                break;
+            }
+            let res = self.client.get_raw(&url).await?;
+            prev = self.page_link(&res, "prev");
+            let page: Vec<T> = self.client.parse_json(res).await?;
+            items.extend(page.into_iter().rev());
+            if enough(&items) {
+                return Ok(items);
+            }
+        }
+        items.extend(first_page.into_iter().rev());
+        Ok(items)
+    }
+
+    // Links are absolute; a relative path keeps every page under its route in the
+    // request metrics.
+    fn page_link(&self, res: &reqwest::Response, rel: &str) -> Option<String> {
+        let link = parse_link(res, rel)?;
+        match link.strip_prefix(&self.client.api_base) {
+            Some(path) => Some(path.to_string()),
+            None => Some(link),
+        }
+    }
+}
+
+fn page_number(url: &str) -> Option<u32> {
+    url.split(['?', '&'])
+        .find_map(|param| param.strip_prefix("page="))
+        .and_then(|page| page.parse().ok())
 }
 
 #[async_trait]
@@ -861,21 +905,20 @@ impl Session for GithubSession {
         repo: &str,
         number: u32,
     ) -> Result<Vec<Review>> {
-        self.client
-            .get(&format!(
-                "repos/{}/{}/pulls/{}/reviews",
-                owner, repo, number
-            ))
-            .await
-            .map_err(|e| {
-                anyhow!(
-                    "Error looking up PR reviews: {}/{} #{}: {}",
-                    owner,
-                    repo,
-                    number,
-                    e
-                )
-            })
+        self.get_all_pages(&format!(
+            "repos/{}/{}/pulls/{}/reviews?per_page={}",
+            owner, repo, number, PAGE_SIZE
+        ))
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "Error looking up PR reviews: {}/{} #{}: {}",
+                owner,
+                repo,
+                number,
+                e
+            )
+        })
     }
 
     async fn assign_pull_request(
@@ -1051,16 +1094,20 @@ impl Session for GithubSession {
             .map_err(|e| anyhow!("Error approving PR {}/{} #{}: {}", owner, repo, number, e))
     }
 
-    async fn get_timeline(
+    async fn get_timeline_newest_first(
         &self,
         owner: &str,
         repo: &str,
         number: u32,
+        enough: &(dyn for<'e> Fn(&'e [TimelineEvent]) -> bool + Send + Sync),
     ) -> Result<Vec<TimelineEvent>> {
-        self.get_all_pages(&format!(
-            "repos/{}/{}/issues/{}/timeline?per_page={}",
-            owner, repo, number, PAGE_SIZE
-        ))
+        self.get_pages_newest_first::<TimelineEvent>(
+            &format!(
+                "repos/{}/{}/issues/{}/timeline?per_page={}",
+                owner, repo, number, PAGE_SIZE
+            ),
+            enough,
+        )
         .await
         .map_err(|e| {
             anyhow!(
@@ -1252,13 +1299,13 @@ fn parse_link_header(value: &str) -> HashMap<String, String> {
     result
 }
 
-fn parse_next_link(res: &reqwest::Response) -> Option<String> {
+fn parse_link(res: &reqwest::Response, rel: &str) -> Option<String> {
     let value = res.headers().get(reqwest::header::LINK)?;
-    parse_link_header(value.to_str().unwrap_or("")).remove("next")
+    parse_link_header(value.to_str().unwrap_or("")).remove(rel)
 }
 
 fn parse_next_cursor(res: &reqwest::Response) -> Option<String> {
-    let url = url::Url::parse(&parse_next_link(res)?).ok()?;
+    let url = url::Url::parse(&parse_link(res, "next")?).ok()?;
     url.query_pairs()
         .find(|(key, _)| key == "cursor")
         .map(|(_, value)| value.into_owned())
@@ -1719,27 +1766,163 @@ mod tests {
         page2.assert_async().await;
     }
 
+    const TIMELINE_PATH: &str = "/repos/some-org/some-repo/issues/7/timeline";
+
+    fn timeline_page(ids: std::ops::RangeInclusive<u32>) -> String {
+        let events: Vec<String> = ids
+            .map(|id| format!(r#"{{"id": {}, "event": "labeled"}}"#, id))
+            .collect();
+        format!("[{}]", events.join(","))
+    }
+
+    fn timeline_link(server: &mockito::Server, rels: &[(&str, u32)]) -> String {
+        rels.iter()
+            .map(|(rel, page)| {
+                format!(
+                    r#"<{}{}?per_page=100&page={}>; rel="{}""#,
+                    server.url(),
+                    TIMELINE_PATH,
+                    page,
+                    rel
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    fn event_ids(events: &[TimelineEvent]) -> Vec<u32> {
+        events.iter().map(|e| e.id.unwrap()).collect()
+    }
+
+    // A three-page timeline: 1-100, 101-200, 201-250.
+    async fn mock_timeline(server: &mut mockito::Server, expect: [usize; 3]) -> [mockito::Mock; 3] {
+        let link1 = timeline_link(server, &[("next", 2), ("last", 3)]);
+        let link2 = timeline_link(server, &[("prev", 1), ("next", 3), ("last", 3)]);
+        let link3 = timeline_link(server, &[("prev", 2)]);
+        [
+            server
+                .mock("GET", format!("{}?per_page=100", TIMELINE_PATH).as_str())
+                .with_header("link", &link1)
+                .with_body(timeline_page(1..=100))
+                .expect(expect[0])
+                .create_async()
+                .await,
+            server
+                .mock(
+                    "GET",
+                    format!("{}?per_page=100&page=2", TIMELINE_PATH).as_str(),
+                )
+                .with_header("link", &link2)
+                .with_body(timeline_page(101..=200))
+                .expect(expect[1])
+                .create_async()
+                .await,
+            server
+                .mock(
+                    "GET",
+                    format!("{}?per_page=100&page=3", TIMELINE_PATH).as_str(),
+                )
+                .with_header("link", &link3)
+                .with_body(timeline_page(201..=250))
+                .expect(expect[2])
+                .create_async()
+                .await,
+        ]
+    }
+
     #[tokio::test]
-    async fn test_get_timeline_stops_without_next_link() {
+    async fn test_get_timeline_newest_first_single_page() {
         let mut server = mockito::Server::new_async().await;
-        let event = r#"{"event": "labeled"}"#;
-        let page1 = server
-            .mock(
-                "GET",
-                "/repos/some-org/some-repo/issues/7/timeline?per_page=100",
-            )
-            .with_body(format!("[{}]", vec![event; 100].join(",")))
+        let page = server
+            .mock("GET", format!("{}?per_page=100", TIMELINE_PATH).as_str())
+            .with_body(timeline_page(1..=3))
             .expect(1)
             .create_async()
             .await;
 
         let events = session_for_test(&server.url())
-            .get_timeline("some-org", "some-repo", 7)
+            .get_timeline_newest_first("some-org", "some-repo", 7, &|_| false)
             .await
             .unwrap();
 
-        assert_eq!(100, events.len());
+        assert_eq!(vec![3, 2, 1], event_ids(&events));
+        page.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_timeline_newest_first_stops_when_enough() {
+        let mut server = mockito::Server::new_async().await;
+        let pages = mock_timeline(&mut server, [1, 0, 1]).await;
+
+        let events = session_for_test(&server.url())
+            .get_timeline_newest_first("some-org", "some-repo", 7, &|events| {
+                events.iter().any(|e| e.id == Some(230))
+            })
+            .await
+            .unwrap();
+
+        assert_eq!((201..=250).rev().collect::<Vec<_>>(), event_ids(&events));
+        for page in pages {
+            page.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_timeline_newest_first_reuses_first_page() {
+        let mut server = mockito::Server::new_async().await;
+        let pages = mock_timeline(&mut server, [1, 1, 1]).await;
+
+        let events = session_for_test(&server.url())
+            .get_timeline_newest_first("some-org", "some-repo", 7, &|_| false)
+            .await
+            .unwrap();
+
+        assert_eq!((1..=250).rev().collect::<Vec<_>>(), event_ids(&events));
+        for page in pages {
+            page.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_pull_request_reviews_follows_next_link() {
+        let mut server = mockito::Server::new_async().await;
+        let path = "/repos/some-org/some-repo/pulls/7/reviews";
+        let review = |id: u32| {
+            format!(
+                r#"{{"id": {}, "state": "DISMISSED", "html_url": "", "user": {{"id": 1, "login": "joe"}}, "commit_id": "abc"}}"#,
+                id
+            )
+        };
+        let page1 = server
+            .mock("GET", format!("{}?per_page=100", path).as_str())
+            .with_header(
+                "link",
+                &format!(
+                    r#"<{}{}?per_page=100&page=2>; rel="next""#,
+                    server.url(),
+                    path
+                ),
+            )
+            .with_body(format!("[{}]", review(1)))
+            .expect(1)
+            .create_async()
+            .await;
+        let page2 = server
+            .mock("GET", format!("{}?per_page=100&page=2", path).as_str())
+            .with_body(format!("[{}]", review(2)))
+            .expect(1)
+            .create_async()
+            .await;
+
+        let reviews = session_for_test(&server.url())
+            .get_pull_request_reviews("some-org", "some-repo", 7)
+            .await
+            .unwrap();
+
+        assert_eq!(vec![1, 2], reviews.iter().map(|r| r.id).collect::<Vec<_>>());
+        assert_eq!(Some("abc"), reviews[0].commit_id.as_deref());
         page1.assert_async().await;
+        page2.assert_async().await;
     }
 
     #[test]

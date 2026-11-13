@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use hyper::body::Incoming;
+use hyper::header::HeaderValue;
 use hyper::{HeaderMap, Request, Response, StatusCode};
 
 use octobot_lib::config::Config;
@@ -68,8 +69,31 @@ impl Handler for MetricsScrapeHandler {
             return Ok(http_util::new_msg_resp(err, msg));
         }
 
-        let metrics = self.registry.registry.gather();
-        let text = prometheus::TextEncoder::new().encode_to_string(&metrics)?;
-        Ok(http_util::new_msg_resp(hyper::StatusCode::OK, text))
+        scrape_resp(&self.registry)
+    }
+}
+
+fn scrape_resp(registry: &Metrics) -> Result<Response<Body>> {
+    let metrics = registry.registry.gather();
+    let text = prometheus::TextEncoder::new().encode_to_string(&metrics)?;
+    let mut resp = http_util::new_msg_resp(hyper::StatusCode::OK, text);
+    resp.headers_mut().insert(
+        hyper::header::CONTENT_TYPE,
+        HeaderValue::from_static(prometheus::TEXT_FORMAT),
+    );
+    Ok(resp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scrape_content_type() {
+        let resp = scrape_resp(&Metrics::new()).unwrap();
+        assert_eq!(
+            resp.headers().get(hyper::header::CONTENT_TYPE).unwrap(),
+            "text/plain; version=0.0.4"
+        );
     }
 }

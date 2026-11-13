@@ -248,6 +248,7 @@ pub struct PullRequest {
     pub requested_teams: Option<Vec<Team>>,
     pub draft: Option<bool>,
     pub labels: Option<Vec<Label>>,
+    pub updated_at: Option<String>,
 }
 
 // https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests-files
@@ -274,6 +275,7 @@ impl PullRequest {
             base: BranchRef::new(""),
             draft: None,
             labels: None,
+            updated_at: None,
         }
     }
 
@@ -464,6 +466,9 @@ pub struct Review {
     pub body: Option<String>,
     pub html_url: String,
     pub user: User,
+    // The commit reviewed.
+    #[serde(default)]
+    pub commit_id: Option<String>,
 }
 
 impl Review {
@@ -474,6 +479,7 @@ impl Review {
             body: Some(body.into()),
             html_url: String::new(),
             user,
+            commit_id: None,
         }
     }
 }

@@ -8,6 +8,81 @@ use octobot_lib::github;
 use octobot_ops::diffs::DiffOfDiffs;
 use octobot_ops::force_push;
 
+fn dismissed_review(commit_id: &str) -> github::Review {
+    let mut review = github::Review::new("lgtm", github::User::new("joe-reviewer"));
+    review.id = 1234;
+    review.state = "DISMISSED".into();
+    review.commit_id = Some(commit_id.into());
+    review
+}
+
+fn identical_diffs() -> Result<DiffOfDiffs, anyhow::Error> {
+    let diff = "this is a big diff\n\nIt has lots of lines,\n\nbut it is the same".to_string();
+    Ok(DiffOfDiffs::new(&diff, &diff))
+}
+
+#[tokio::test]
+async fn test_force_push_identical_dismissed_review_of_other_commit() {
+    let mut pr = github::PullRequest::new();
+    pr.number = 32;
+
+    let github = MockGithub::new();
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
+        "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase.",
+        Ok(()),
+    );
+    // Dismissed, but it reviewed an older commit than this push replaced: no timeline.
+    github.mock_get_pull_request_reviews(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(vec![dismissed_review("0000000older")]),
+    );
+
+    force_push::comment_force_push(
+        identical_diffs(),
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        "abcdef0999999",
+        "1111abc9999999",
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_force_push_identical_reviews_lookup_fails() {
+    let mut pr = github::PullRequest::new();
+    pr.number = 32;
+
+    let github = MockGithub::new();
+    github.mock_comment_pull_request(
+        "some-user",
+        "some-repo",
+        32,
+        "Force-push detected: before: abcdef0, after: 1111abc: Identical diff post-rebase.",
+        Ok(()),
+    );
+    github.mock_get_pull_request_reviews("some-user", "some-repo", 32, Err(anyhow!("nope")));
+
+    force_push::comment_force_push(
+        identical_diffs(),
+        &github,
+        "some-user",
+        "some-repo",
+        &pr,
+        "abcdef0999999",
+        "1111abc9999999",
+    )
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
 async fn test_force_push_identical() {
     let mut pr = github::PullRequest::new();
@@ -26,7 +101,8 @@ async fn test_force_push_identical() {
         Ok(()),
     );
 
-    github.mock_get_timeline("some-user", "some-repo", 32, Ok(vec![]));
+    // No dismissed review of the old head: nothing to reapprove, so no timeline.
+    github.mock_get_pull_request_reviews("some-user", "some-repo", 32, Ok(vec![]));
 
     force_push::comment_force_push(
         diffs,
@@ -250,6 +326,13 @@ async fn test_force_push_identical_no_previous_approve_dismissal() {
         Ok(()),
     );
 
+    github.mock_get_pull_request_reviews(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(vec![dismissed_review("abcdef0999999")]),
+    );
+
     github.mock_get_timeline("some-user", "some-repo", 32, Ok(vec![]));
 
     // Do not mock approve_pull_request: Should not re-approve
@@ -286,6 +369,13 @@ async fn test_force_push_identical_no_previous_approval() {
     );
 
     // Claims to have dismissed a review, but no such review is in the timeline. Skip.
+    github.mock_get_pull_request_reviews(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(vec![dismissed_review("abcdef0999999")]),
+    );
+
     github.mock_get_timeline(
         "some-user",
         "some-repo",
@@ -326,6 +416,13 @@ async fn test_force_push_identical_reapprove() {
 
     // This timeline is valid for reapproval because the latest dismissal came from a code change
     // with a commit hash that is the exact same as the `before_hash` for this force push.
+    github.mock_get_pull_request_reviews(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(vec![dismissed_review("abcdef0999999")]),
+    );
+
     github.mock_get_timeline(
         "some-user",
         "some-repo",
@@ -395,6 +492,13 @@ async fn test_force_push_identical_wrong_previous_approval() {
 
     let before_hash = "abcdef0999999";
     let after_hash = "1111abc9999999";
+
+    github.mock_get_pull_request_reviews(
+        "some-user",
+        "some-repo",
+        32,
+        Ok(vec![dismissed_review("abcdef0999999")]),
+    );
 
     github.mock_get_timeline(
         "some-user",

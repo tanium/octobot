@@ -10,7 +10,10 @@ use mocks::mock_github::MockGithub;
 use mocks::mock_jira::MockJira;
 use mocks::mock_slack::MockSlack;
 use mocks::mock_worker::LockedMockWorker;
+use octobot::server::commits_cache::CommitsCache;
 use octobot::server::github_handler::{GithubEventHandler, TeamsCache};
+use octobot::server::people_cache::PeopleCache;
+use octobot::server::reviewers_cache::ReviewersCache;
 use octobot_events::Kind;
 use octobot_lib::config::{Config, JiraAuth, JiraConfig};
 use octobot_lib::config_db::ConfigDatabase;
@@ -254,6 +257,9 @@ fn new_test_with(jira: Option<JiraConfig>) -> GithubHandlerTest {
             repo_version: repo_version_sender,
             force_push: force_push_sender,
             team_members_cache: Arc::new(TeamsCache::new(Duration::new(3600, 0))),
+            reviewers_cache: Arc::new(ReviewersCache::new(Duration::new(3600, 0))),
+            commits_cache: Arc::new(CommitsCache::new(Duration::new(3600, 0))),
+            people_cache: Arc::new(PeopleCache::new(Duration::new(3600, 0))),
             metrics: Metrics::new(),
         },
     }
@@ -311,6 +317,7 @@ fn some_pr() -> Option<PullRequest> {
         },
         draft: None,
         labels: None,
+        updated_at: Some("2026-11-13T10:00:00Z".into()),
     })
 }
 
@@ -714,6 +721,8 @@ async fn test_issue_comment_on_pull_request() {
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
+    // The lookup feeds the people cache too.
+    assert!(test.handler.people_cache.get(&the_repo(), 32).is_some());
 }
 
 #[tokio::test]
@@ -937,6 +946,8 @@ async fn test_pull_request_review_grouped_with_verdict_in_thread() {
     let comment_msg = "Comment on \"<http://the-pr|The PR>\"";
     test.handler.event = "pull_request_review_comment".into();
     test.handler.action = "created".into();
+    // Every later event reuses the first one's reviewers.
+    test.mock_pull_request_reviews(vec![]);
     for (id, path, body) in [(9, "src/b.rs", "second"), (3, "src/a.rs", "first")] {
         test.handler.data.comment = Some(Comment {
             id,
@@ -948,7 +959,6 @@ async fn test_pull_request_review_grouped_with_verdict_in_thread() {
             user: User::new("joe-reviewer"),
         });
         test.mock_pull_request_commits();
-        test.mock_pull_request_reviews(vec![]);
         let attach = vec![
             SlackAttachmentBuilder::new(body)
                 .title("joe.reviewer said:")
@@ -971,9 +981,9 @@ async fn test_pull_request_review_grouped_with_verdict_in_thread() {
         body: Some("It needs some work!".into()),
         html_url: "http://the-review".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.mock_pull_request_commits();
-    test.mock_pull_request_reviews(vec![]);
     let verdict = SlackAttachmentBuilder::new("It needs some work!")
         .title("Review: Changes Requested")
         .title_link("http://the-review")
@@ -1035,6 +1045,7 @@ async fn test_pull_request_review_commented_without_body() {
         body: Some("".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
 
@@ -1057,6 +1068,7 @@ async fn test_pull_request_review_dismissed() {
         body: Some("Not needed".into()),
         html_url: "http://the-review".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     // No Slack message, but its hint reaches the participants.
@@ -1081,6 +1093,7 @@ async fn test_pull_request_review_commented() {
         body: Some("I think this file should change, cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.mock_pull_request_commits();
@@ -1375,6 +1388,7 @@ async fn test_pull_request_review_approved_hides_collapsed_details() {
         body: Some(COLLAPSED_BODY.into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.mock_pull_request_commits();
@@ -1408,6 +1422,7 @@ async fn test_pull_request_review_dismissed_publishes() {
         body: None,
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("the-pr-owner");
     test.mock_pull_request_commits();
@@ -1497,6 +1512,7 @@ async fn test_pull_request_review_approved() {
         body: Some("I like it! cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.mock_pull_request_commits();
@@ -1563,6 +1579,7 @@ async fn test_pull_request_review_changes_requested() {
         body: Some("It needs some work! cc: @mentioned-participant".into()),
         html_url: "http://the-comment".into(),
         user: User::new("joe-reviewer"),
+        commit_id: None,
     });
     test.handler.data.sender = User::new("joe-reviewer");
     test.mock_pull_request_commits();
@@ -3091,6 +3108,9 @@ async fn test_push_with_pr() {
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
+    // The listing feeds the people cache too.
+    let people = test.handler.people_cache.get(&the_repo(), 99).unwrap();
+    assert_eq!(vec![User::new("assign2")], people.assignees);
 }
 
 #[tokio::test]
@@ -3113,6 +3133,8 @@ async fn test_push_force_notify() {
         Some("some-branch"),
         Ok(vec![pr.clone()]),
     );
+    // The listing lags the push, which octobot takes as the head.
+    pr.head.sha = "1111abcdef".into();
 
     test.mock_pull_request_commits();
     test.mock_pull_request_reviews(vec![]);
@@ -3335,7 +3357,6 @@ async fn test_team_members_cache() {
     test.handler.data.sender = User::new("the-pr-closer");
     test.mock_pull_request_commits();
     test.mock_pull_request_commits();
-    test.mock_pull_request_reviews(vec![]);
     test.mock_get_team_members(100);
 
     let attach = vec![
@@ -3454,6 +3475,178 @@ async fn test_team_members_cache() {
     ]);
     let another_resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "pr".into()), another_resp);
+}
+
+// Runs an event whose only effect is a hint, returning who it reached.
+async fn hint_recipients(test: &mut GithubHandlerTest, event: &str, action: &str) -> Vec<String> {
+    test.handler.event = event.into();
+    test.handler.action = action.into();
+    let kind = Kind::from_event(event).unwrap();
+    let mut receiver = test.subscribe_events(kind);
+    test.handler.handle_event().await.unwrap();
+    let hint = receiver.try_recv().expect("published a hint");
+    hint.recipients.iter().cloned().collect()
+}
+
+#[tokio::test]
+async fn test_reviewers_cache() {
+    let mut test = new_test();
+    test.handler.data.pull_request = some_pr();
+    test.handler.data.sender = User::new("the-pr-owner");
+
+    test.mock_pull_request_reviews(vec![Review::new("", User::new("past-reviewer"))]);
+    test.mock_pull_request_commits();
+    let recipients = hint_recipients(&mut test, "pull_request", "milestoned").await;
+    assert!(recipients.contains(&"past-reviewer".into()));
+
+    // A review webhook adds its reviewer without another lookup.
+    test.handler.data.review = Some(Review::new("", User::new("new-reviewer")));
+    test.mock_pull_request_commits();
+    let recipients = hint_recipients(&mut test, "pull_request_review", "dismissed").await;
+    assert!(recipients.contains(&"past-reviewer".into()));
+    assert!(recipients.contains(&"new-reviewer".into()));
+
+    test.handler.data.review = None;
+    test.mock_pull_request_commits();
+    let recipients = hint_recipients(&mut test, "pull_request", "milestoned").await;
+    assert!(recipients.contains(&"past-reviewer".into()));
+    assert!(recipients.contains(&"new-reviewer".into()));
+}
+
+#[tokio::test]
+async fn test_commits_cache() {
+    let mut test = new_test();
+    let commits = some_commits();
+    let mut pr = some_pr().unwrap();
+    pr.head.sha = commits.last().unwrap().sha.clone();
+    test.handler.data.pull_request = Some(pr.clone());
+    test.handler.data.sender = User::new("the-pr-owner");
+
+    test.mock_pull_request_reviews(vec![]);
+    test.mock_pull_request_commits();
+    let recipients = hint_recipients(&mut test, "pull_request", "milestoned").await;
+    assert!(recipients.contains(&"bob-author".into()));
+
+    let recipients = hint_recipients(&mut test, "pull_request", "milestoned").await;
+    assert!(recipients.contains(&"bob-author".into()));
+
+    // A new head looks its commits up again.
+    pr.head.sha = "abcabc".into();
+    test.handler.data.pull_request = Some(pr);
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request", "milestoned").await;
+}
+
+#[tokio::test]
+async fn test_push_with_lagging_pr_skips_cached_commits() {
+    let mut test = new_test();
+    let commit = |sha: &str, author: &str| Commit {
+        sha: sha.into(),
+        html_url: format!("http://commit/{}", sha),
+        author: Some(User::new(author)),
+        commit: CommitDetails {
+            message: "a commit".into(),
+        },
+    };
+    let mut pr = some_pr().unwrap();
+    pr.draft = Some(true);
+    pr.head.sha = "the-before-commit".into();
+    test.handler.data.pull_request = Some(pr.clone());
+    test.handler.data.sender = User::new("the-pr-owner");
+
+    // An earlier event caches the commits up to the push's before.
+    let before = vec![commit("the-before-commit", "bob-author")];
+    test.mock_pull_request_reviews(vec![]);
+    test.github
+        .mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(before));
+    hint_recipients(&mut test, "pull_request", "milestoned").await;
+
+    // GitHub lists the PR before it has seen the push.
+    test.handler.data.pull_request = None;
+    test.handler.data.ref_name = Some("refs/heads/pr-branch".into());
+    test.handler.data.before = Some("the-before-commit".into());
+    test.handler.data.after = Some("the-after-commit".into());
+    test.github.mock_get_pull_requests(
+        "some-user",
+        "some-repo",
+        Some("open"),
+        Some("pr-branch"),
+        Ok(vec![pr]),
+    );
+    let after = vec![
+        commit("the-before-commit", "bob-author"),
+        commit("the-after-commit", "new-author"),
+    ];
+    test.github
+        .mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(after));
+    let recipients = hint_recipients(&mut test, "push", "").await;
+    assert!(recipients.contains(&"new-author".into()));
+}
+
+#[tokio::test]
+async fn test_people_cache_drops_removed_people() {
+    let mut test = new_test();
+    test.handler.data.sender = User::new("the-pr-owner");
+    let mut pr = some_pr().unwrap();
+    pr.draft = Some(true);
+    test.mock_pull_request_reviews(vec![]);
+
+    pr.updated_at = Some("2026-11-13T10:00:00Z".into());
+    test.handler.data.pull_request = Some(pr.clone());
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request", "milestoned").await;
+
+    pr.updated_at = Some("2026-11-13T10:00:01Z".into());
+    pr.assignees = vec![];
+    test.handler.data.pull_request = Some(pr.clone());
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request", "unassigned").await;
+    let people = test.handler.people_cache.get(&the_repo(), 32).unwrap();
+    assert!(people.assignees.is_empty());
+    assert_eq!(vec![User::new("joe-reviewer")], people.requested_reviewers);
+
+    pr.updated_at = Some("2026-11-13T10:00:02Z".into());
+    pr.requested_reviewers = Some(vec![]);
+    test.handler.data.pull_request = Some(pr);
+    test.handler.data.requested_reviewer = Some(User::new("joe-reviewer"));
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request", "review_request_removed").await;
+    let people = test.handler.people_cache.get(&the_repo(), 32).unwrap();
+    assert!(people.requested_reviewers.is_empty());
+}
+
+#[tokio::test]
+async fn test_people_cache() {
+    let mut test = new_test();
+    test.handler.data.sender = User::new("the-pr-owner");
+    let pr = |updated_at: &str, assignee: &str| {
+        let mut pr = some_pr().unwrap();
+        pr.updated_at = Some(updated_at.into());
+        pr.assignees = vec![User::new(assignee)];
+        Some(pr)
+    };
+    let assignees = |test: &GithubHandlerTest| {
+        let people = test.handler.people_cache.get(&the_repo(), 32).unwrap();
+        people.assignees
+    };
+    test.mock_pull_request_reviews(vec![]);
+
+    test.handler.data.pull_request = pr("2026-11-13T10:00:01Z", "newer");
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request", "milestoned").await;
+    assert_eq!(vec![User::new("newer")], assignees(&test));
+
+    // A review webhook that GitHub sent earlier arrives late.
+    test.handler.data.pull_request = pr("2026-11-13T10:00:00Z", "older");
+    test.handler.data.review = Some(Review::new("", User::new("joe-reviewer")));
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request_review", "dismissed").await;
+    assert_eq!(vec![User::new("newer")], assignees(&test));
+
+    test.handler.data.pull_request = pr("2026-11-13T10:00:02Z", "newest");
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request_review", "dismissed").await;
+    assert_eq!(vec![User::new("newest")], assignees(&test));
 }
 
 fn new_issue(key: &str) -> jira::Issue {
