@@ -137,7 +137,8 @@ async fn test_pr_merge_basic() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 
     let (user, email) = test
         .git
@@ -232,7 +233,8 @@ async fn test_pr_merge_skips_bots() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -291,7 +293,8 @@ async fn test_pr_merge_author_is_assignee() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -392,7 +395,8 @@ if (true)    {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 
     assert_eq!(
         contents_10_final,
@@ -498,7 +502,8 @@ if (true) {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 
     assert_eq!(
         contents_10_final,
@@ -587,7 +592,8 @@ async fn test_pr_merge_conventional_commit() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 
     let (user, email) = test
         .git
@@ -674,7 +680,8 @@ async fn test_pr_merge_assign_failure_does_not_fail_backport() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 // Same as above but for `request_review`.
@@ -751,7 +758,8 @@ async fn test_pr_merge_request_review_failure_does_not_fail_backport() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 // A failed reviewer lookup still requests the PR's requested reviewers and
@@ -833,7 +841,8 @@ async fn test_pr_merge_reviewer_lookup_failure_does_not_fail_backport() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 // When both assign and request_review fail, both failures should be
@@ -915,7 +924,8 @@ async fn test_pr_merge_assign_and_review_failures_combined_in_one_comment() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 // Verify the retry is single-shot, not infinite, and that a transient
@@ -981,7 +991,8 @@ async fn test_pr_merge_assign_succeeds_on_retry() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 // Labels on the source PR are copied to the backport PR, except for the
@@ -1051,7 +1062,8 @@ async fn test_pr_merge_propagates_labels() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 // A failure to add labels must not fail the backport; it is listed in the
@@ -1131,7 +1143,8 @@ async fn test_pr_merge_label_failure_does_not_fail_backport() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -1215,5 +1228,6 @@ async fn test_pr_merge_backport_failure() {
         test.config,
         test.slack.new_sender(),
     )
-    .await;
+    .await
+    .unwrap_err();
 }

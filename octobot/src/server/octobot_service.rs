@@ -1,7 +1,6 @@
 use hyper::body::Incoming;
 use hyper::{self, Method, Request, Response};
 use log::{debug, info};
-use maplit::hashmap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -67,19 +66,15 @@ impl OctobotService {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
         debug!("Received request: {} {}", method, path);
-
-        let metrics_path = &metrics::cleanup_path(req.uri().path());
-        let _timer = self
-            .metrics
-            .http_duration
-            .with(&hashmap! {
-                    "method" => req.method().as_str(),
-                    "path" => metrics_path,
-            })
-            .start_timer();
+        let mut timer = metrics::RequestTimer::start(
+            &self.metrics.http_duration,
+            method.as_str(),
+            &metrics::cleanup_path(&path),
+        );
 
         let handler = self.route(&req);
         let res = handler.handle_ok(req).await;
+        timer.respond(res.status().as_str());
 
         info!(
             "{} {} {} ({})",

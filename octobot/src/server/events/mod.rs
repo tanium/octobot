@@ -172,7 +172,12 @@ impl Events for EventsService {
     ) -> Result<Response<Self::SubscribeStream>, Status> {
         let req = req.into_inner();
         let (login, key) = self.authenticate(req.auth.as_ref()).await?;
-        let slot = StreamCounts::open(&self.streams, login.as_str())?;
+        let slot = StreamCounts::open(&self.streams, login.as_str()).inspect_err(|_| {
+            self.metrics
+                .event_stream_auth_failures
+                .with_label_values(&["subscribe", "stream_limit"])
+                .inc();
+        })?;
         info!("Opening event stream for {}", login);
 
         let stream = Stream {
@@ -327,19 +332,32 @@ struct Stream {
 impl Stream {
     async fn run(
         self,
-        mut receiver: broadcast::Receiver<Arc<Event>>,
+        receiver: broadcast::Receiver<Arc<Event>>,
         tx: mpsc::Sender<Result<pb::Event, Status>>,
     ) {
+        let reason = self.send_until_end(receiver, tx).await;
+        self.metrics
+            .event_stream_ends
+            .with_label_values(&[reason])
+            .inc();
+    }
+
+    /// Returns why the stream ended.
+    async fn send_until_end(
+        &self,
+        mut receiver: broadcast::Receiver<Arc<Event>>,
+        tx: mpsc::Sender<Result<pb::Event, Status>>,
+    ) -> &'static str {
         let mut heartbeat =
             tokio::time::interval_at(Instant::now() + HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL);
         let mut recheck = tokio::time::interval_at(Instant::now() + KEYS_TTL, KEYS_TTL);
         loop {
             let body = tokio::select! {
-                _ = tx.closed() => return,
+                _ = tx.closed() => return "client_closed",
                 // The client reconnects, to this octobot's replacement.
                 _ = self.stopping.cancelled() => {
                     let _ = tx.try_send(Err(Status::unavailable("octobot is shutting down")));
-                    return;
+                    return "shutdown";
                 }
                 _ = heartbeat.tick() => event::Body::Heartbeat(pb::Heartbeat {}),
                 _ = recheck.tick() => match self.still_allowed().await {
@@ -348,7 +366,7 @@ impl Stream {
                         info!("Revoking event stream for {}", self.login);
                         let revoked = Status::unauthenticated("user or key no longer allowed");
                         let _ = tx.try_send(Err(revoked));
-                        return;
+                        return "revoked";
                     }
                     // Revoking takes a positive answer; a GitHub outage must not drop every
                     // stream at once.
@@ -372,11 +390,11 @@ impl Stream {
                     // Changes were dropped. Ending the stream makes the client reconnect and
                     // reload, the same as after any other disconnect.
                     Err(broadcast::error::RecvError::Lagged(_)) => {
-                        self.abort();
+                        info!("Aborting lagging event stream for {}", self.login);
                         let _ = tx.try_send(Err(Status::aborted("stream fell behind")));
-                        return;
+                        return "lagged";
                     }
-                    Err(broadcast::error::RecvError::Closed) => return,
+                    Err(broadcast::error::RecvError::Closed) => return "bus_closed",
                 },
             };
             let kind = match body {
@@ -393,20 +411,12 @@ impl Stream {
                     .with_label_values(&[kind])
                     .inc(),
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    self.abort();
-                    return;
+                    info!("Aborting unread event stream for {}", self.login);
+                    return "buffer_full";
                 }
-                Err(mpsc::error::TrySendError::Closed(_)) => return,
+                Err(mpsc::error::TrySendError::Closed(_)) => return "client_closed",
             }
         }
-    }
-
-    fn abort(&self) {
-        info!("Aborting lagging event stream for {}", self.login);
-        self.metrics
-            .event_stream_messages
-            .with_label_values(&["aborted"])
-            .inc();
     }
 
     async fn still_allowed(&self) -> anyhow::Result<bool> {
@@ -497,7 +507,7 @@ mod tests {
     #[test]
     fn test_configured_authority_is_signed_form() {
         let service = EventsService::new(
-            Arc::new(EventBus::new(10)),
+            Arc::new(EventBus::new(10, Metrics::new())),
             "Octobot.Example.com:443",
             Arc::new(FakeDirectory::default()),
             CancellationToken::new(),
@@ -511,7 +521,7 @@ mod tests {
     async fn test_challenge_refusals_are_counted() {
         let metrics = Metrics::new();
         let service = EventsService::new(
-            Arc::new(EventBus::new(10)),
+            Arc::new(EventBus::new(10, Metrics::new())),
             "octobot.example.com",
             Arc::new(FakeDirectory::default()),
             CancellationToken::new(),
@@ -535,7 +545,7 @@ mod tests {
         let (old, new) = (new_key(), new_key());
         directory.set("joe", &[&old]);
         let service = EventsService::new(
-            Arc::new(EventBus::new(10)),
+            Arc::new(EventBus::new(10, Metrics::new())),
             "octobot.example.com",
             directory.clone(),
             CancellationToken::new(),
@@ -561,11 +571,24 @@ mod tests {
         assert_eq!(2, listed().await);
     }
 
+    struct TestStream {
+        bus: EventBus,
+        rx: mpsc::Receiver<Result<pb::Event, Status>>,
+        metrics: Arc<Metrics>,
+        task: tokio::task::JoinHandle<()>,
+    }
+
+    impl TestStream {
+        /// Waits for the stream to end, then asserts it ended for `reason`.
+        async fn assert_ended(self, reason: &str) {
+            self.task.await.unwrap();
+            let ends = self.metrics.event_stream_ends.with_label_values(&[reason]);
+            assert_eq!(1, ends.get());
+        }
+    }
+
     /// Starts a stream for joe, authenticated by `key`. It ends if the bus is dropped.
-    fn start_stream(
-        directory: Arc<FakeDirectory>,
-        key: &PrivateKey,
-    ) -> (EventBus, mpsc::Receiver<Result<pb::Event, Status>>) {
+    fn start_stream(directory: Arc<FakeDirectory>, key: &PrivateKey) -> TestStream {
         let metrics = Metrics::new();
         let counts = Arc::new(StreamCounts::new());
         let stream = Stream {
@@ -580,31 +603,39 @@ mod tests {
             _slot: StreamCounts::open(&counts, "joe").unwrap(),
             _count: metrics::scoped_inc(&metrics.current_event_stream_count),
         };
-        let bus = EventBus::new(10);
+        let bus = EventBus::new(10, metrics.clone());
         let (tx, rx) = mpsc::channel(STREAM_BUFFER);
-        tokio::spawn(stream.run(bus.subscribe(), tx));
-        (bus, rx)
+        let task = tokio::spawn(stream.run(bus.subscribe(), tx));
+        TestStream {
+            bus,
+            rx,
+            metrics,
+            task,
+        }
     }
 
+    /// Runs the stream until it ends, returning what it sent.
     async fn run_stream(
         directory: Arc<FakeDirectory>,
         key: &PrivateKey,
-    ) -> Vec<Result<pb::Event, Status>> {
-        let (_bus, mut rx) = start_stream(directory, key);
+    ) -> (Vec<Result<pb::Event, Status>>, TestStream) {
+        let mut stream = start_stream(directory, key);
         let mut sent = vec![];
         let collect = async {
-            while let Some(msg) = rx.recv().await {
+            while let Some(msg) = stream.rx.recv().await {
                 sent.push(msg);
             }
         };
         tokio::time::timeout(2 * KEYS_TTL, collect)
             .await
             .expect("stream still open");
-        sent
+        (sent, stream)
     }
 
     // The last heartbeat and the recheck share a tick, so either may come first.
-    fn assert_revoked_at_recheck(sent: Vec<Result<pb::Event, Status>>) {
+    async fn assert_revoked_at_recheck(
+        (sent, stream): (Vec<Result<pb::Event, Status>>, TestStream),
+    ) {
         let (last, heartbeats) = sent.split_last().unwrap();
         let interval_count = (KEYS_TTL.as_secs() / HEARTBEAT_INTERVAL.as_secs()) as usize;
         assert!(heartbeats.len() >= interval_count - 1);
@@ -614,6 +645,7 @@ mod tests {
         }
         let status = last.as_ref().unwrap_err();
         assert_eq!(tonic::Code::Unauthenticated, status.code());
+        stream.assert_ended("revoked").await;
     }
 
     #[tokio::test(start_paused = true)]
@@ -622,7 +654,7 @@ mod tests {
         let key = new_key();
         directory.set("joe", &[&new_key()]);
 
-        assert_revoked_at_recheck(run_stream(directory, &key).await);
+        assert_revoked_at_recheck(run_stream(directory, &key).await).await;
     }
 
     #[tokio::test(start_paused = true)]
@@ -632,7 +664,7 @@ mod tests {
         directory.set("joe", &[&key]);
         directory.remove_user("joe");
 
-        assert_revoked_at_recheck(run_stream(directory, &key).await);
+        assert_revoked_at_recheck(run_stream(directory, &key).await).await;
     }
 
     #[tokio::test(start_paused = true)]
@@ -640,12 +672,12 @@ mod tests {
         let directory = Arc::new(FakeDirectory::default());
         let key = new_key();
         directory.set("joe", &[&key]);
-        let (_bus, mut rx) = start_stream(directory, &key);
+        let mut stream = start_stream(directory, &key);
 
         // Past two rechecks.
         let heartbeats = 2 * KEYS_TTL.as_secs() / HEARTBEAT_INTERVAL.as_secs() + 1;
         for _ in 0..heartbeats {
-            let body = rx.recv().await.unwrap().unwrap().body;
+            let body = stream.rx.recv().await.unwrap().unwrap().body;
             assert_eq!(Some(event::Body::Heartbeat(pb::Heartbeat {})), body);
         }
     }
@@ -655,11 +687,11 @@ mod tests {
         let directory = Arc::new(FakeDirectory::default());
         let key = new_key();
         directory.set("joe", &[&key]);
-        let (bus, rx) = start_stream(directory, &key);
+        let stream = start_stream(directory, &key);
 
         // Nothing reads `rx` while the stream overfills it.
         for number in 0..2 * STREAM_BUFFER as u64 {
-            bus.publish(
+            stream.bus.publish(
                 vec!["joe".to_string()],
                 octobot_ops::event_bus::Change {
                     repo: "some-org/some-repo".into(),
@@ -672,7 +704,20 @@ mod tests {
         }
 
         // Ended without anyone reading, which frees its slot.
-        assert!(rx.is_closed(), "stream still open");
+        assert!(stream.rx.is_closed(), "stream still open");
+        stream.assert_ended("buffer_full").await;
+    }
+
+    #[tokio::test]
+    async fn test_stream_ends_when_its_client_goes_away() {
+        let directory = Arc::new(FakeDirectory::default());
+        let key = new_key();
+        directory.set("joe", &[&key]);
+        let mut stream = start_stream(directory, &key);
+
+        stream.rx.close();
+
+        stream.assert_ended("client_closed").await;
     }
 
     #[test]

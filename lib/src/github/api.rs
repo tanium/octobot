@@ -1255,18 +1255,13 @@ impl Session for GithubSession {
 
             let res = self.client.get_raw(&url).await?;
             next_cursor = parse_next_cursor(&res);
-
-            if next_cursor.is_none() {
-                break;
-            }
-
             let results: Vec<WebhookDelivery> = self.client.parse_json(res).await?;
 
             let done = results.iter().any(|d| d.guid == guid);
 
             result.extend(results);
 
-            if done {
+            if done || next_cursor.is_none() {
                 break;
             } else if result.len() >= max_count {
                 log::error!(
@@ -1369,6 +1364,38 @@ mod tests {
             None,
         )
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_webhook_deliveries_include_the_last_page() {
+        let mut server = mockito::Server::new_async().await;
+        let _page = server
+            .mock("GET", "/app/hook/deliveries?per_page=100")
+            .with_body(
+                r#"[{"id": 1, "guid": "abc", "redelivery": false, "status_code": 200,
+                     "delivered_at": "2026-01-01T00:00:00Z"}]"#,
+            )
+            .create_async()
+            .await;
+        let session = GithubSession::with_api_base(
+            "github.test",
+            &server.url(),
+            "bot",
+            SessionAuth::Token("token".into()),
+            Some(1),
+            None,
+        )
+        .unwrap();
+
+        let deliveries = session
+            .get_webhook_deliveries_since("abc", 10)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            vec!["abc"],
+            deliveries.iter().map(|d| &d.guid).collect::<Vec<_>>()
+        );
     }
 
     #[tokio::test]

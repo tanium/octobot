@@ -118,13 +118,11 @@ impl HTTPClient {
         }
     }
 
+    /// A successful response is counted once `parse_json` parses it.
     pub async fn get_raw(&self, path: &str) -> Result<Response> {
         let _timer = self.maybe_start_timer("get", path);
         let res = self.request(reqwest::Method::GET, path)?.send().await;
-        let res = self.process_resp(res).await?;
-
-        self.maybe_record_ok();
-        Ok(res)
+        self.process_resp(res).await
     }
 
     pub async fn get<T>(&self, path: &str) -> Result<T>
@@ -132,10 +130,7 @@ impl HTTPClient {
         T: DeserializeOwned + Send + 'static,
     {
         let res = self.get_raw(path).await?;
-        let res = self.parse_json(res).await?;
-
-        self.maybe_record_ok();
-        Ok(res)
+        self.parse_json(res).await
     }
 
     pub async fn post<T, U: Serialize>(&self, path: &str, body: &U) -> Result<T>
@@ -149,10 +144,7 @@ impl HTTPClient {
             .send()
             .await;
         let res = self.process_resp(res).await?;
-        let res = self.parse_json(res).await?;
-
-        self.maybe_record_ok();
-        Ok(res)
+        self.parse_json(res).await
     }
 
     pub async fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
@@ -193,10 +185,7 @@ impl HTTPClient {
             .send()
             .await;
         let res = self.process_resp(res).await?;
-        let res = self.parse_json(res).await?;
-
-        self.maybe_record_ok();
-        Ok(res)
+        self.parse_json(res).await
     }
 
     pub async fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
@@ -289,7 +278,10 @@ impl HTTPClient {
 
         let result: serde_json::Result<T> = serde_json::from_str(&text);
         match result {
-            Ok(r) => Ok(r),
+            Ok(r) => {
+                self.maybe_record_ok();
+                Ok(r)
+            }
             Err(e) => {
                 self.maybe_record_status("<invalid json>");
                 let err: Result<()> = self.make_clean_err(e);
@@ -300,5 +292,53 @@ impl HTTPClient {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::Metrics;
+
+    #[tokio::test]
+    async fn test_get_records_one_response() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/thing")
+            .with_body("{}")
+            .create_async()
+            .await;
+        let metrics = Metrics::new();
+        let client = HTTPClient::new(&server.url()).unwrap().with_metrics(
+            metrics.github_api_responses.clone(),
+            metrics.github_api_duration.clone(),
+        );
+
+        let _: serde_json::Value = client.get("/thing").await.unwrap();
+
+        let ok = metrics.github_api_responses.with_label_values(&["200"]);
+        assert_eq!(1, ok.get());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_invalid_json_is_not_ok() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/thing")
+            .with_body("not json")
+            .create_async()
+            .await;
+        let metrics = Metrics::new();
+        let client = HTTPClient::new(&server.url()).unwrap().with_metrics(
+            metrics.github_api_responses.clone(),
+            metrics.github_api_duration.clone(),
+        );
+
+        let res: Result<serde_json::Value> = client.get("/thing").await;
+
+        assert!(res.is_err());
+        let responses = &metrics.github_api_responses;
+        assert_eq!(0, responses.with_label_values(&["200"]).get());
+        assert_eq!(1, responses.with_label_values(&["<invalid json>"]).get());
     }
 }
