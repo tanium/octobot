@@ -3270,15 +3270,17 @@ async fn test_push_draft_publishes() {
 }
 
 fn some_check(conclusion: Option<&str>) -> CheckHook {
-    // At some_pr()'s head
+    let pr = some_pr().unwrap();
+    let check_ref = |sha: &str| CheckRef {
+        sha: sha.into(),
+        repo: CheckRepo { id: the_repo().id },
+    };
     CheckHook {
-        head_sha: "ffff0000".into(),
         conclusion: conclusion.map(String::from),
         pull_requests: vec![CheckPullRequest {
-            number: 32,
-            base: CheckPullRequestBase {
-                repo: CheckRepo { id: the_repo().id },
-            },
+            number: pr.number,
+            head: check_ref(&pr.head.sha),
+            base: check_ref(&pr.base.sha),
         }],
     }
 }
@@ -3325,6 +3327,34 @@ async fn test_check_suite_publishes() {
     assert!(receiver.try_recv().is_err());
 }
 
+// Every job and workflow reports a check, so checks after the first must cost no API calls.
+#[tokio::test]
+async fn test_check_suite_reuses_cached_participants() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    let mut pr = some_pr().unwrap();
+    pr.head.sha = some_commits().last().unwrap().sha.clone();
+    let mut check = some_check(Some("success"));
+    check.pull_requests[0].head.sha = pr.head.sha.clone();
+    test.handler.data.check_suite = Some(check);
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(pr));
+    test.mock_pull_request_reviews(vec![Review::new("lgtm", User::new("smith-reviewer"))]);
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    test.handler.handle_event().await.unwrap();
+    let looked_up = receiver.try_recv().expect("published a hint");
+
+    // no more github mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+    let cached = receiver.try_recv().expect("published a hint");
+    assert_eq!(looked_up, cached);
+}
+
 #[tokio::test]
 async fn test_check_suite_without_pull_requests() {
     let mut test = new_test();
@@ -3367,7 +3397,7 @@ async fn test_check_suite_publishes_while_pull_request_head_lags() {
     test.handler.event = "check_suite".into();
     test.handler.action = "requested".into();
     let mut check = some_check(None);
-    check.head_sha = "abcdef0000".into();
+    check.pull_requests[0].head.sha = "abcdef0000".into();
     test.handler.data.check_suite = Some(check);
     test.github
         .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));

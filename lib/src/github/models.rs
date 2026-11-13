@@ -41,7 +41,6 @@ pub struct HookBody {
 /// `CheckRun` models reject statuses webhooks send, such as "requested".
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct CheckHook {
-    pub head_sha: String,
     /// Kept as a string: webhooks send conclusions `Conclusion` does not parse, such as "skipped".
     pub conclusion: Option<String>,
     /// Open pull requests whose head is the checked branch and commit. These may belong to
@@ -63,11 +62,13 @@ impl CheckHook {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct CheckPullRequest {
     pub number: u32,
-    pub base: CheckPullRequestBase,
+    pub head: CheckRef,
+    pub base: CheckRef,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct CheckPullRequestBase {
+pub struct CheckRef {
+    pub sha: String,
     pub repo: CheckRepo,
 }
 
@@ -1054,8 +1055,8 @@ mod tests {
                     "conclusion": "skipped",
                     "pull_requests": [{
                         "number": 32,
-                        "head": {"sha": "ffff0000"},
-                        "base": {"ref": "main", "repo": {"id": 7, "name": "some-repo"}}
+                        "head": {"ref": "the-branch", "sha": "ffff0000", "repo": {"id": 7}},
+                        "base": {"ref": "main", "sha": "1111eeee", "repo": {"id": 7}}
                     }]
                 }
             }"#,
@@ -1064,12 +1065,15 @@ mod tests {
 
         let suite = body.check_suite.unwrap();
         assert_eq!(Some("skipped"), suite.conclusion.as_deref());
+        let check_ref = |sha: &str| CheckRef {
+            sha: sha.into(),
+            repo: CheckRepo { id: 7 },
+        };
         assert_eq!(
             vec![CheckPullRequest {
                 number: 32,
-                base: CheckPullRequestBase {
-                    repo: CheckRepo { id: 7 }
-                }
+                head: check_ref("ffff0000"),
+                base: check_ref("1111eeee"),
             }],
             suite.pull_requests
         );
@@ -1078,7 +1082,6 @@ mod tests {
     #[test]
     fn test_check_hook_failed() {
         let check = |conclusion: Option<&str>| CheckHook {
-            head_sha: "ffff0000".into(),
             conclusion: conclusion.map(String::from),
             pull_requests: vec![],
         };

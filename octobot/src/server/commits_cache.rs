@@ -31,6 +31,15 @@ impl Key {
             base: pull_request.base.sha.clone(),
         }
     }
+
+    fn for_check(repo: &github::Repo, pull_request: &github::CheckPullRequest) -> Key {
+        Key {
+            repo: repo.full_name.clone(),
+            number: pull_request.number,
+            head: pull_request.head.sha.clone(),
+            base: pull_request.base.sha.clone(),
+        }
+    }
 }
 
 impl CommitsCache {
@@ -42,8 +51,21 @@ impl CommitsCache {
     }
 
     pub fn get(&self, pull_request: &github::PullRequest) -> Option<Vec<github::Commit>> {
+        self.get_key(&Key::new(pull_request))
+    }
+
+    /// `repo` is the one the check webhook came from, which is the PR's base.
+    pub fn get_for_check(
+        &self,
+        repo: &github::Repo,
+        pull_request: &github::CheckPullRequest,
+    ) -> Option<Vec<github::Commit>> {
+        self.get_key(&Key::for_check(repo, pull_request))
+    }
+
+    fn get_key(&self, key: &Key) -> Option<Vec<github::Commit>> {
         let entries = self.entries.lock().unwrap();
-        let (commits, expiry) = entries.get(&Key::new(pull_request))?;
+        let (commits, expiry) = entries.get(key)?;
         if Instant::now() >= *expiry {
             return None;
         }

@@ -577,46 +577,25 @@ impl GithubEventHandler {
         pull_request: &dyn github::Notifiable,
         pr_commits: &[github::Commit],
     ) -> Participants {
-        let mut participants = Participants::new();
-
-        for u in pull_request.assignees_and_reviewers().into_iter() {
-            participants.add_user(u);
-        }
-        // add the author of the PR
-        participants.add_user(pull_request.user().clone());
-        // add team participants
-        for (team, members) in self.team_participants(pull_request).await {
-            for u in members {
-                participants.add_team_member(u, &team);
-            }
-        }
-
-        // look up commits and add the authors of those
-        for commit in pr_commits {
-            if let Some(ref author) = commit.author {
-                participants.add_user(author.clone());
-            }
-        }
-
-        participants
+        // Issues do not have a repo and cannot have teams assigned
+        let teams = match pull_request.repo() {
+            Some(repo) => self.team_participants(repo, pull_request.teams()).await,
+            None => vec![],
+        };
+        participants_of(
+            pull_request.user(),
+            pull_request.assignees_and_reviewers(),
+            teams,
+            pr_commits,
+        )
     }
 
     async fn team_participants(
         &self,
-        pull_request: &dyn github::PullRequestLike,
+        repo: &github::Repo,
+        teams: Vec<github::Team>,
     ) -> Vec<(String, Vec<github::User>)> {
         let mut participants = vec![];
-
-        // Issues do not have a repo and cannot have teams assigned
-        let repo = match pull_request.repo() {
-            None => {
-                return participants;
-            }
-            Some(r) => r,
-        };
-
-        // add team members
-        let teams = pull_request.teams();
 
         for t in teams {
             let team = format!("{}/{}", repo.owner.login(), t.slug).to_lowercase();
@@ -1386,6 +1365,25 @@ impl GithubEventHandler {
                 );
                 continue;
             }
+
+            if let Some(participants) = self.cached_participants(pr).await {
+                let guid = format!(
+                    "{}/{}/{}",
+                    self.repository.owner.login(),
+                    self.repository.name,
+                    pr.number
+                );
+                // Hints read only the thread's number.
+                let thread = messenger::Thread::for_issue(&guid, pr.number as u64);
+                self.messenger.publish_to_all(
+                    &self.data.sender,
+                    &self.repository,
+                    &participants,
+                    &[thread],
+                );
+                continue;
+            }
+
             let pull_request = match self
                 .github_session
                 .get_pull_request(
@@ -1401,11 +1399,38 @@ impl GithubEventHandler {
                     continue;
                 }
             };
+            self.people_cache.update(&self.repository, &pull_request);
 
             let reviewed = &self.reviewed(&pull_request).await;
-            let commits = self.pull_request_commits(&reviewed).await;
+            let commits = self.pull_request_commits(reviewed).await;
             self.publish_hint(&reviewed, &commits).await;
         }
+    }
+
+    // Checks name their PRs without carrying them. With the PR's people, reviewers and
+    // commits all cached, a check costs no API calls.
+    async fn cached_participants(&self, pr: &github::CheckPullRequest) -> Option<Participants> {
+        let people = self.people_cache.get(&self.repository, pr.number);
+        self.count_cache_lookup("people", people.is_some());
+        let people = people?;
+        // Misses go uncounted here: the lookup that follows counts them.
+        let reviewers = self.reviewers_cache.get(&self.repository, pr.number)?;
+        self.count_cache_lookup("reviewers", true);
+        let commits = self.commits_cache.get_for_check(&self.repository, pr)?;
+        self.count_cache_lookup("commits", true);
+
+        let mut assignees_and_reviewers = people.assignees;
+        assignees_and_reviewers.extend(people.requested_reviewers);
+        assignees_and_reviewers.extend(reviewers);
+        let teams = self
+            .team_participants(&self.repository, people.requested_teams)
+            .await;
+        Some(participants_of(
+            &people.author,
+            assignees_and_reviewers,
+            teams,
+            &commits,
+        ))
     }
 
     async fn merge_pull_request_all_labels(
@@ -1506,4 +1531,28 @@ impl GithubEventHandler {
 
         messenger::Thread::for_pull_request(&guid, number, &subject, attachment)
     }
+}
+
+fn participants_of(
+    author: &github::User,
+    assignees_and_reviewers: Vec<github::User>,
+    teams: Vec<(String, Vec<github::User>)>,
+    commits: &[github::Commit],
+) -> Participants {
+    let mut participants = Participants::new();
+    for u in assignees_and_reviewers {
+        participants.add_user(u);
+    }
+    participants.add_user(author.clone());
+    for (team, members) in teams {
+        for u in members {
+            participants.add_team_member(u, &team);
+        }
+    }
+    for commit in commits {
+        if let Some(ref author) = commit.author {
+            participants.add_user(author.clone());
+        }
+    }
+    participants
 }
