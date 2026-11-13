@@ -248,6 +248,7 @@ pub struct PullRequest {
     pub requested_teams: Option<Vec<Team>>,
     pub draft: Option<bool>,
     pub labels: Option<Vec<Label>>,
+    pub updated_at: Option<String>,
 }
 
 // https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests-files
@@ -274,6 +275,7 @@ impl PullRequest {
             base: BranchRef::new(""),
             draft: None,
             labels: None,
+            updated_at: None,
         }
     }
 
