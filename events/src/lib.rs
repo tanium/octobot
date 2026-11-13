@@ -10,7 +10,7 @@ pub mod pb {
     tonic::include_proto!("octobot.events.v1");
 }
 
-/// The GitHub webhook events octobot notifies people about
+/// The GitHub webhook events octobot publishes hints for
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     PullRequest,
@@ -19,19 +19,23 @@ pub enum Kind {
     CommitComment,
     IssueComment,
     Push,
+    CheckRun,
+    CheckSuite,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 6] = [
+    pub const ALL: [Kind; 8] = [
         Kind::PullRequest,
         Kind::PullRequestReview,
         Kind::PullRequestReviewComment,
         Kind::CommitComment,
         Kind::IssueComment,
         Kind::Push,
+        Kind::CheckRun,
+        Kind::CheckSuite,
     ];
 
-    /// From an X-GitHub-Event value; None for events octobot does not notify about.
+    /// From an X-GitHub-Event value; None for events octobot publishes no hints for.
     pub fn from_event(event: &str) -> Option<Kind> {
         Kind::ALL.into_iter().find(|kind| kind.as_event() == event)
     }
@@ -45,6 +49,8 @@ impl Kind {
             Kind::CommitComment => "commit_comment",
             Kind::IssueComment => "issue_comment",
             Kind::Push => "push",
+            Kind::CheckRun => "check_run",
+            Kind::CheckSuite => "check_suite",
         }
     }
 
@@ -58,6 +64,8 @@ impl Kind {
             pb::Kind::CommitComment => Kind::CommitComment,
             pb::Kind::IssueComment => Kind::IssueComment,
             pb::Kind::Push => Kind::Push,
+            pb::Kind::CheckRun => Kind::CheckRun,
+            pb::Kind::CheckSuite => Kind::CheckSuite,
         })
     }
 }
@@ -71,6 +79,8 @@ impl From<Kind> for pb::Kind {
             Kind::CommitComment => pb::Kind::CommitComment,
             Kind::IssueComment => pb::Kind::IssueComment,
             Kind::Push => pb::Kind::Push,
+            Kind::CheckRun => pb::Kind::CheckRun,
+            Kind::CheckSuite => pb::Kind::CheckSuite,
         }
     }
 }
@@ -113,6 +123,7 @@ mod tests {
     fn test_kind_from_event() {
         assert_eq!(Some(Kind::PullRequest), Kind::from_event("pull_request"));
         assert_eq!(Some(Kind::Push), Kind::from_event("push"));
+        assert_eq!(Some(Kind::CheckSuite), Kind::from_event("check_suite"));
         assert_eq!(None, Kind::from_event("ping"));
         for kind in Kind::ALL {
             assert_eq!(Some(kind), Kind::from_event(kind.as_event()));

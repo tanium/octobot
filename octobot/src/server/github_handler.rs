@@ -461,7 +461,7 @@ impl GithubHandlerState {
 
         let mut messenger =
             messenger::new(config.clone(), slack).with_review_groups(self.review_groups.clone());
-        // Other events never message people.
+        // Other events never message people or publish hints.
         if let Some(kind) = Kind::from_event(&event) {
             messenger = messenger.with_events(self.event_bus.clone(), kind, &action);
         }
@@ -525,6 +525,8 @@ impl GithubEventHandler {
         "commit_comment" => handle_commit_comment,
         "issue_comment" => handle_issue_comment,
         "push" => handle_push,
+        "check_suite" => handle_check_suite,
+        "check_run" => handle_check_run,
     }
 
     pub async fn handle_event(&self) -> Option<EventResponse> {
@@ -648,46 +650,25 @@ impl GithubEventHandler {
         pull_request: &dyn github::Notifiable,
         pr_commits: &[github::Commit],
     ) -> Participants {
-        let mut participants = Participants::new();
-
-        for u in pull_request.assignees_and_reviewers().into_iter() {
-            participants.add_user(u);
-        }
-        // add the author of the PR
-        participants.add_user(pull_request.user().clone());
-        // add team participants
-        for (team, members) in self.team_participants(pull_request).await {
-            for u in members {
-                participants.add_team_member(u, &team);
-            }
-        }
-
-        // look up commits and add the authors of those
-        for commit in pr_commits {
-            if let Some(ref author) = commit.author {
-                participants.add_user(author.clone());
-            }
-        }
-
-        participants
+        // Issues do not have a repo and cannot have teams assigned
+        let teams = match pull_request.repo() {
+            Some(repo) => self.team_participants(repo, pull_request.teams()).await,
+            None => vec![],
+        };
+        participants_of(
+            pull_request.user(),
+            pull_request.assignees_and_reviewers(),
+            teams,
+            pr_commits,
+        )
     }
 
     async fn team_participants(
         &self,
-        pull_request: &dyn github::PullRequestLike,
+        repo: &github::Repo,
+        teams: Vec<github::Team>,
     ) -> Vec<(String, Vec<github::User>)> {
         let mut participants = vec![];
-
-        // Issues do not have a repo and cannot have teams assigned
-        let repo = match pull_request.repo() {
-            None => {
-                return participants;
-            }
-            Some(r) => r,
-        };
-
-        // add team members
-        let teams = pull_request.teams();
 
         for t in teams {
             let team = format!("{}/{}", repo.owner.login(), t.slug).to_lowercase();
@@ -1428,6 +1409,116 @@ impl GithubEventHandler {
         (StatusCode::OK, "push".into())
     }
 
+    async fn handle_check_suite(&self) -> EventResponse {
+        match self.data.check_suite {
+            Some(ref suite) if !self.is_own_check(suite) => {
+                self.publish_check(suite).await;
+                (StatusCode::OK, "check_suite".into())
+            }
+            _ => (StatusCode::OK, "check_suite [ignored]".into()),
+        }
+    }
+
+    // Every job reports a check run, so only failures get hints; their suite reports the rest
+    // when it completes.
+    async fn handle_check_run(&self) -> EventResponse {
+        match self.data.check_run {
+            Some(ref run)
+                if self.action == "completed" && run.failed() && !self.is_own_check(run) =>
+            {
+                self.publish_check(run).await;
+                (StatusCode::OK, "check_run".into())
+            }
+            _ => (StatusCode::OK, "check_run [ignored]".into()),
+        }
+    }
+
+    // Octobot's own checks, like its Jira check, come from events that already publish hints.
+    fn is_own_check(&self, check: &github::CheckHook) -> bool {
+        self.github_session.github_app_id() == Some(check.app.id)
+    }
+
+    // Checks message nobody in Slack.
+    async fn publish_check(&self, check: &github::CheckHook) {
+        for pr in &check.pull_requests {
+            if pr.base.repo.id != self.repository.id {
+                info!(
+                    "Skipping PR #{} for check: it is in another repository",
+                    pr.number
+                );
+                continue;
+            }
+
+            if let Some(participants) = self.cached_participants(pr).await {
+                let guid = format!(
+                    "{}/{}/{}",
+                    self.repository.owner.login(),
+                    self.repository.name,
+                    pr.number
+                );
+                // Hints read only the thread's number.
+                let thread = messenger::Thread::for_issue(&guid, pr.number as u64);
+                self.messenger.publish_to_all(
+                    &self.data.sender,
+                    &self.repository,
+                    &participants,
+                    &[thread],
+                );
+                continue;
+            }
+
+            let pull_request = match self
+                .github_session
+                .get_pull_request(
+                    self.repository.owner.login(),
+                    &self.repository.name,
+                    pr.number,
+                )
+                .await
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    error!("Error looking up PR #{} for check: {}", pr.number, e);
+                    continue;
+                }
+            };
+            self.people_cache.update(&self.repository, &pull_request);
+
+            let reviewed = &self.reviewed(&pull_request).await;
+            let commits = self.pull_request_commits(reviewed).await;
+            self.publish_hint(&reviewed, &commits).await;
+        }
+    }
+
+    // Checks name their PRs without carrying them. With the PR's people, reviewers and
+    // commits all cached, a check costs no API calls.
+    async fn cached_participants(&self, pr: &github::CheckPullRequest) -> Option<Participants> {
+        let people = self.people_cache.get(&self.repository, pr.number);
+        self.count_cache_lookup("people", people.is_some());
+        let people = people?;
+        // Counted only on a full hit: otherwise the fallback reads them again and counts that.
+        let reviewers = self.reviewers_cache.get(&self.repository, pr.number);
+        let commits = self.commits_cache.get_for_check(&self.repository, pr);
+        let (Some(reviewers), Some(commits)) = (reviewers, commits) else {
+            return None;
+        };
+        self.count_cache_lookup("reviewers", true);
+        self.count_cache_lookup("commits", true);
+
+        let mut assignees_and_reviewers = people.assignees;
+        assignees_and_reviewers.extend(people.requested_reviewers);
+        assignees_and_reviewers.extend(reviewers);
+        let teams = self
+            .team_participants(&self.repository, people.requested_teams)
+            .await;
+        Some(participants_of(
+            &people.author,
+            assignees_and_reviewers,
+            teams,
+            &commits,
+        ))
+    }
+
     async fn merge_pull_request_all_labels(
         &self,
         pull_request: &github::PullRequest,
@@ -1526,4 +1617,28 @@ impl GithubEventHandler {
 
         messenger::Thread::for_pull_request(&guid, number, &subject, attachment)
     }
+}
+
+fn participants_of(
+    author: &github::User,
+    assignees_and_reviewers: Vec<github::User>,
+    teams: Vec<(String, Vec<github::User>)>,
+    commits: &[github::Commit],
+) -> Participants {
+    let mut participants = Participants::new();
+    for u in assignees_and_reviewers {
+        participants.add_user(u);
+    }
+    participants.add_user(author.clone());
+    for (team, members) in teams {
+        for u in members {
+            participants.add_team_member(u, &team);
+        }
+    }
+    for commit in commits {
+        if let Some(ref author) = commit.author {
+            participants.add_user(author.clone());
+        }
+    }
+    participants
 }

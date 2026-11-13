@@ -382,7 +382,8 @@ async fn test_ping() {
 fn test_handles() {
     assert!(GithubEventHandler::handles("ping"));
     assert!(GithubEventHandler::handles("push"));
-    assert!(!GithubEventHandler::handles("check_run"));
+    assert!(GithubEventHandler::handles("check_run"));
+    assert!(!GithubEventHandler::handles("workflow_run"));
     assert!(!GithubEventHandler::handles("status"));
 }
 
@@ -3265,6 +3266,235 @@ async fn test_push_draft_publishes() {
         },
         event.change
     );
+    assert!(receiver.try_recv().is_err());
+}
+
+fn some_check(conclusion: Option<&str>) -> CheckHook {
+    let pr = some_pr().unwrap();
+    let check_ref = |sha: &str| CheckRef {
+        sha: sha.into(),
+        repo: CheckRepo { id: the_repo().id },
+    };
+    CheckHook {
+        // Not octobot's: MockGithub's app id is 2
+        app: CheckApp { id: 15368 },
+        conclusion: conclusion.map(String::from),
+        pull_requests: vec![CheckPullRequest {
+            number: pr.number,
+            head: check_ref(&pr.head.sha),
+            base: check_ref(&pr.base.sha),
+        }],
+    }
+}
+
+#[tokio::test]
+async fn test_check_suite_publishes() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    test.handler.data.sender = User::new("github-actions[bot]");
+    test.handler.data.check_suite = Some(some_check(Some("success")));
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_reviews(vec![Review::new("lgtm", User::new("smith-reviewer"))]);
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    // no slack mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert_eq!(
+        vec![
+            "assign1",
+            "bob-author",
+            "github-actions[bot]",
+            "joe-reviewer",
+            "smith-reviewer",
+            "the-pr-owner"
+        ],
+        event.recipients.iter().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        Change {
+            repo: "some-user/some-repo".into(),
+            kind: Kind::CheckSuite,
+            action: "completed".into(),
+            number: Some(32),
+        },
+        event.change
+    );
+    assert!(receiver.try_recv().is_err());
+}
+
+// Every job and workflow reports a check, so checks after the first must cost no API calls.
+#[tokio::test]
+async fn test_check_suite_reuses_cached_participants() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    let mut pr = some_pr().unwrap();
+    pr.head.sha = some_commits().last().unwrap().sha.clone();
+    let mut check = some_check(Some("success"));
+    check.pull_requests[0].head.sha = pr.head.sha.clone();
+    test.handler.data.check_suite = Some(check);
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(pr));
+    test.mock_pull_request_reviews(vec![Review::new("lgtm", User::new("smith-reviewer"))]);
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    test.handler.handle_event().await.unwrap();
+    let looked_up = receiver.try_recv().expect("published a hint");
+
+    // no more github mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+    let cached = receiver.try_recv().expect("published a hint");
+    assert_eq!(looked_up, cached);
+}
+
+#[tokio::test]
+async fn test_check_suite_ignores_octobots_own() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    let mut check = some_check(Some("success"));
+    check.app.id = test.github.github_app_id().unwrap();
+    test.handler.data.check_suite = Some(check);
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    // no github mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite [ignored]".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn test_check_run_ignores_octobots_own() {
+    let mut test = new_test();
+    test.handler.event = "check_run".into();
+    test.handler.action = "completed".into();
+    let mut check = some_check(Some("failure"));
+    check.app.id = test.github.github_app_id().unwrap();
+    test.handler.data.check_run = Some(check);
+    let mut receiver = test.subscribe_events(Kind::CheckRun);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_run [ignored]".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn test_check_suite_without_pull_requests() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    let mut check = some_check(Some("success"));
+    check.pull_requests = vec![];
+    test.handler.data.check_suite = Some(check);
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
+// A listed PR can be another repository's, such as a fork's upstream, so its number names some
+// other PR here.
+#[tokio::test]
+async fn test_check_suite_skips_pull_request_in_another_repo() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    let mut check = some_check(Some("success"));
+    check.pull_requests[0].base.repo.id = 99;
+    test.handler.data.check_suite = Some(check);
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    // no github mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
+// The PR API can briefly return the old head after a push, so the webhook decides which PRs
+// are at the checked commit.
+#[tokio::test]
+async fn test_check_suite_publishes_while_pull_request_head_lags() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "requested".into();
+    let mut check = some_check(None);
+    check.pull_requests[0].head.sha = "abcdef0000".into();
+    test.handler.data.check_suite = Some(check);
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_reviews(vec![]);
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert_eq!(Some(32), event.change.number);
+}
+
+#[tokio::test]
+async fn test_check_run_failed_publishes() {
+    let mut test = new_test();
+    test.handler.event = "check_run".into();
+    test.handler.action = "completed".into();
+    test.handler.data.check_run = Some(some_check(Some("failure")));
+    test.github
+        .get_pull_request("some-user", "some-repo", 32, Ok(some_pr().unwrap()));
+    test.mock_pull_request_reviews(vec![]);
+    test.mock_pull_request_commits();
+    let mut receiver = test.subscribe_events(Kind::CheckRun);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_run".into()), resp);
+
+    let event = receiver.try_recv().expect("published a hint");
+    assert!(event.is_for("the-pr-owner"));
+    assert_eq!(Kind::CheckRun, event.change.kind);
+    assert_eq!("completed", event.change.action);
+    assert_eq!(Some(32), event.change.number);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn test_check_run_passed_is_ignored() {
+    let mut test = new_test();
+    test.handler.event = "check_run".into();
+    test.handler.action = "completed".into();
+    test.handler.data.check_run = Some(some_check(Some("success")));
+    let mut receiver = test.subscribe_events(Kind::CheckRun);
+
+    // no github mocks: a run that is not worth a hint costs no API calls
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_run [ignored]".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
+// A rerequested run still carries its old conclusion.
+#[tokio::test]
+async fn test_check_run_rerequested_is_ignored() {
+    let mut test = new_test();
+    test.handler.event = "check_run".into();
+    test.handler.action = "rerequested".into();
+    test.handler.data.check_run = Some(some_check(Some("failure")));
+    let mut receiver = test.subscribe_events(Kind::CheckRun);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_run [ignored]".into()), resp);
     assert!(receiver.try_recv().is_err());
 }
 
