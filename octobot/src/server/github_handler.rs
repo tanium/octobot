@@ -31,8 +31,10 @@ use octobot_ops::worker::{Jobs, TokioWorker, Worker};
 
 use crate::http_util::{self, Body};
 use crate::runtime;
+use crate::server::commits_cache::CommitsCache;
 use crate::server::github_verify::GithubWebhookVerifier;
 use crate::server::http::Handler;
+use crate::server::reviewers_cache::ReviewersCache;
 
 pub struct GithubHandlerState {
     pub config: Arc<Config>,
@@ -49,6 +51,8 @@ pub struct GithubHandlerState {
     metrics: Arc<Metrics>,
     git_clone_manager: Arc<GitCloneManager>,
     team_members_cache: Arc<TeamsCache>,
+    reviewers_cache: Arc<ReviewersCache>,
+    commits_cache: Arc<CommitsCache>,
 }
 
 pub struct GithubHandler {
@@ -68,6 +72,8 @@ pub struct GithubEventHandler {
     pub repo_version: Arc<dyn Worker<RepoVersionRequest>>,
     pub force_push: Arc<dyn Worker<ForcePushRequest>>,
     pub team_members_cache: Arc<TeamsCache>,
+    pub reviewers_cache: Arc<ReviewersCache>,
+    pub commits_cache: Arc<CommitsCache>,
     pub metrics: Arc<Metrics>,
 }
 
@@ -179,6 +185,8 @@ impl GithubHandlerState {
             metrics,
             git_clone_manager,
             team_members_cache: Arc::new(TeamsCache::new(Duration::from_secs(3600))),
+            reviewers_cache: Arc::new(ReviewersCache::new(Duration::from_secs(3600))),
+            commits_cache: Arc::new(CommitsCache::new(Duration::from_secs(3600))),
         }
     }
 
@@ -187,6 +195,8 @@ impl GithubHandlerState {
         let day = 24 * hour;
 
         self.git_clone_manager.clean(1 * day);
+        self.reviewers_cache.clean();
+        self.commits_cache.clean();
 
         if let Err(e) = self.webhook_db.clean(SystemTime::now() - (7 * day)) {
             log::error!("Failed to clean webhook db: {}", e);
@@ -373,6 +383,8 @@ impl Handler for GithubHandler {
             repo_version,
             force_push,
             team_members_cache: self.state.team_members_cache.clone(),
+            reviewers_cache: self.state.reviewers_cache.clone(),
+            commits_cache: self.state.commits_cache.clone(),
             metrics: self.state.metrics.clone(),
         };
 
@@ -439,10 +451,12 @@ impl GithubEventHandler {
 
     async fn pull_request_commits(
         &self,
-        pull_request: &dyn github::PullRequestLike,
+        pull_request: &github::PullRequest,
     ) -> Vec<github::Commit> {
-        if !pull_request.has_commits() {
-            return vec![];
+        let cached = self.commits_cache.get(pull_request);
+        self.count_cache_lookup("commits", cached.is_some());
+        if let Some(commits) = cached {
+            return commits;
         }
 
         match self
@@ -450,11 +464,14 @@ impl GithubEventHandler {
             .get_pull_request_commits(
                 self.repository.owner.login(),
                 &self.repository.name,
-                pull_request.number(),
+                pull_request.number,
             )
             .await
         {
-            Ok(commits) => commits,
+            Ok(commits) => {
+                self.commits_cache.insert(pull_request, commits.clone());
+                commits
+            }
             Err(e) => {
                 error!("Error looking up PR commits: {}", e);
                 vec![]
@@ -464,6 +481,14 @@ impl GithubEventHandler {
 
     // A failed lookup notifies without past reviewers rather than dropping the event.
     async fn reviewed(&self, pull_request: &github::PullRequest) -> github::ReviewedPullRequest {
+        let cached = self
+            .reviewers_cache
+            .get(&self.repository, pull_request.number);
+        self.count_cache_lookup("reviewers", cached.is_some());
+        if let Some(reviewers) = cached {
+            return github::ReviewedPullRequest::new(pull_request.clone(), reviewers);
+        }
+
         let reviewers = match self
             .github_session
             .get_pull_request_reviews(
@@ -473,7 +498,11 @@ impl GithubEventHandler {
             )
             .await
         {
-            Ok(reviews) => reviews.into_iter().map(|r| r.user).collect(),
+            Ok(reviews) => self.reviewers_cache.insert_looked_up(
+                &self.repository,
+                pull_request.number,
+                reviews.into_iter().map(|r| r.user).collect(),
+            ),
             Err(e) => {
                 error!("Error looking up PR reviewers: {}", e);
                 self.metrics.github_reviewer_lookup_failures.inc();
@@ -481,6 +510,14 @@ impl GithubEventHandler {
             }
         };
         github::ReviewedPullRequest::new(pull_request.clone(), reviewers)
+    }
+
+    fn count_cache_lookup(&self, cache: &str, hit: bool) {
+        let result = if hit { "hit" } else { "miss" };
+        self.metrics
+            .github_cache_lookups
+            .with_label_values(&[cache, result])
+            .inc();
     }
 
     /// Publishes a hint to the PR's participants without messaging anyone.
@@ -658,7 +695,7 @@ impl GithubEventHandler {
                 mode => mode,
             };
 
-            let commits = self.pull_request_commits(&pull_request).await;
+            let commits = self.pull_request_commits(pull_request).await;
 
             // `send_to_all` publishes its own hint.
             if matches!(notify_mode, NotifyMode::Channel | NotifyMode::Hint) {
@@ -790,7 +827,7 @@ impl GithubEventHandler {
                     }
                     let pull_request = &self.reviewed(pull_request).await;
                     let branch_name = &pull_request.base.ref_name;
-                    let commits = self.pull_request_commits(&pull_request).await;
+                    let commits = self.pull_request_commits(pull_request).await;
 
                     let review = comment.pull_request_review_id.map(|id| {
                         let text = github_markdown::visible_text(comment.body());
@@ -824,6 +861,9 @@ impl GithubEventHandler {
     async fn handle_pr_review(&self) -> EventResponse {
         if let Some(ref pull_request) = self.data.pull_request {
             if let Some(ref review) = self.data.review {
+                self.reviewers_cache
+                    .add(&self.repository, pull_request.number, &review.user);
+
                 if self.action == "submitted" {
                     let review_msg = self.review_msg(pull_request, &review.user);
 
@@ -833,7 +873,7 @@ impl GithubEventHandler {
                             return (StatusCode::OK, "pr_review [comment]".into());
                         }
                         let pull_request = &self.reviewed(pull_request).await;
-                        let commits = self.pull_request_commits(&pull_request).await;
+                        let commits = self.pull_request_commits(pull_request).await;
                         self.do_pull_request_comment(
                             &pull_request,
                             &review,
@@ -858,14 +898,14 @@ impl GithubEventHandler {
                         color = "good";
                     } else {
                         let reviewed = &self.reviewed(pull_request).await;
-                        let commits = self.pull_request_commits(&pull_request).await;
+                        let commits = self.pull_request_commits(pull_request).await;
                         self.publish_hint(&reviewed, &commits).await;
                         return (StatusCode::OK, "pr_review [ignored]".into());
                     }
 
                     let pull_request = &self.reviewed(pull_request).await;
                     let branch_name = &pull_request.base.ref_name;
-                    let commits = self.pull_request_commits(&pull_request).await;
+                    let commits = self.pull_request_commits(pull_request).await;
 
                     let msg = format!(
                         "{} {} PR \"{}\"",
@@ -904,7 +944,7 @@ impl GithubEventHandler {
                     );
                 } else {
                     let reviewed = &self.reviewed(pull_request).await;
-                    let commits = self.pull_request_commits(&pull_request).await;
+                    let commits = self.pull_request_commits(pull_request).await;
                     self.publish_hint(&reviewed, &commits).await;
                 }
             }
@@ -1094,7 +1134,7 @@ impl GithubEventHandler {
                 // commits and reviewers.
                 if let Some(pr) = self.issue_pull_request(issue).await {
                     let pr = &self.reviewed(&pr).await;
-                    let commits = self.pull_request_commits(&pr).await;
+                    let commits = self.pull_request_commits(pr).await;
 
                     self.do_pull_request_comment(&pr, &comment, &pr.base.ref_name, &commits, None)
                         .await;
@@ -1187,7 +1227,7 @@ impl GithubEventHandler {
                     );
 
                     for pull_request in &prs {
-                        let commits = self.pull_request_commits(&pull_request).await;
+                        let commits = self.pull_request_commits(pull_request).await;
                         let reviewed = &self.reviewed(pull_request).await;
 
                         if pull_request.is_draft() {

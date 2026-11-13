@@ -24,6 +24,7 @@ pub struct Metrics {
     pub github_api_responses: IntCounterVec,
     pub github_api_duration: HistogramVec,
     pub github_reviewer_lookup_failures: IntCounter,
+    pub github_cache_lookups: IntCounterVec,
 
     pub current_connection_count: Gauge,
     pub current_webhook_count: Gauge,
@@ -133,6 +134,14 @@ impl Metrics {
             github_reviewer_lookup_failures: register_int_counter_with_registry!(
                 "github_reviewer_lookup_failures",
                 "Failed PR reviewer lookups, each notifying without past reviewers",
+                registry.as_ref()
+            )
+            .unwrap(),
+
+            github_cache_lookups: register_int_counter_vec_with_registry!(
+                "github_cache_lookups",
+                "Lookups of cached github data, each miss costing API calls",
+                &["cache", "result"],
                 registry.as_ref()
             )
             .unwrap(),

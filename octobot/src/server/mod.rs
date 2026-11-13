@@ -1,4 +1,5 @@
 mod admin;
+pub mod commits_cache;
 pub mod events;
 pub mod github_handler;
 mod github_verify;
@@ -7,6 +8,7 @@ pub mod login;
 pub mod main;
 pub mod metrics;
 mod octobot_service;
+pub mod reviewers_cache;
 mod sessions;
 mod ui_handler;
 mod version_handler;
