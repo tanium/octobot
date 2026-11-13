@@ -73,6 +73,16 @@ impl CommitsCache {
             .unwrap()
             .retain(|_, (_, expiry)| now < *expiry);
     }
+
+    pub fn entry_count(&self) -> usize {
+        self.entries.lock().unwrap().len()
+    }
+
+    // The commits dominate the cache's memory, far more than its entries.
+    pub fn commit_count(&self) -> usize {
+        let entries = self.entries.lock().unwrap();
+        entries.values().map(|(commits, _)| commits.len()).sum()
+    }
 }
 
 #[cfg(test)]
@@ -139,12 +149,14 @@ mod tests {
         let cache = CommitsCache::new(TTL);
         cache.insert(&pr(32, "aaa", "base1"), vec![commit("aaa")]);
         tokio::time::advance(TTL / 2).await;
-        cache.insert(&pr(33, "aaa", "base1"), vec![commit("aaa")]);
+        cache.insert(&pr(33, "bbb", "base1"), vec![commit("aaa"), commit("bbb")]);
         tokio::time::advance(TTL / 2).await;
 
         cache.clean();
+        assert_eq!(1, cache.entry_count());
+        assert_eq!(2, cache.commit_count());
         let entries = cache.entries.lock().unwrap();
         assert!(!entries.contains_key(&Key::new(&pr(32, "aaa", "base1"))));
-        assert!(entries.contains_key(&Key::new(&pr(33, "aaa", "base1"))));
+        assert!(entries.contains_key(&Key::new(&pr(33, "bbb", "base1"))));
     }
 }

@@ -108,6 +108,10 @@ impl PeopleCache {
             .unwrap()
             .retain(|_, entry| now < entry.expiry);
     }
+
+    pub fn entry_count(&self) -> usize {
+        self.entries.lock().unwrap().len()
+    }
 }
 
 fn key(repo: &github::Repo, number: u32) -> (String, u32) {
@@ -191,6 +195,6 @@ mod tests {
         tokio::time::advance(TTL / 2).await;
         assert_eq!(None, assignee(&cache));
         cache.clean();
-        assert!(cache.entries.lock().unwrap().is_empty());
+        assert_eq!(0, cache.entry_count());
     }
 }

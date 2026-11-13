@@ -76,6 +76,10 @@ impl ReviewersCache {
             .unwrap()
             .retain(|_, entry| now < entry.updated + self.ttl);
     }
+
+    pub fn entry_count(&self) -> usize {
+        self.entries.lock().unwrap().len()
+    }
 }
 
 fn key(repo: &github::Repo, number: u32) -> (String, u32) {
@@ -165,6 +169,7 @@ mod tests {
         tokio::time::advance(TTL / 2).await;
 
         cache.clean();
+        assert_eq!(1, cache.entry_count());
         let entries = cache.entries.lock().unwrap();
         assert!(entries.contains_key(&key(&repo(), 32)));
         assert!(!entries.contains_key(&key(&repo(), 33)));

@@ -117,6 +117,11 @@ impl TeamsCache {
         }
         Some(entry.users.clone())
     }
+
+    // Includes expired teams until they are next looked up.
+    pub fn entry_count(&self) -> usize {
+        self.members.lock().unwrap().len()
+    }
 }
 
 const MAX_CONCURRENT_JOBS: usize = 20;
@@ -189,7 +194,7 @@ impl GithubHandlerState {
             git_clone_manager,
             team_members_cache: Arc::new(TeamsCache::new(Duration::from_secs(3600))),
             reviewers_cache: Arc::new(ReviewersCache::new(Duration::from_secs(3600))),
-            commits_cache: Arc::new(CommitsCache::new(Duration::from_secs(3600))),
+            commits_cache: Arc::new(CommitsCache::new(Duration::from_secs(30 * 60))),
             people_cache: Arc::new(PeopleCache::new(Duration::from_secs(3600))),
         }
     }
@@ -202,6 +207,23 @@ impl GithubHandlerState {
         self.reviewers_cache.clean();
         self.commits_cache.clean();
         self.people_cache.clean();
+
+        let sizes = &self.metrics.github_cache_entries;
+        sizes
+            .with_label_values(&["teams"])
+            .set(self.team_members_cache.entry_count() as f64);
+        sizes
+            .with_label_values(&["reviewers"])
+            .set(self.reviewers_cache.entry_count() as f64);
+        sizes
+            .with_label_values(&["commits"])
+            .set(self.commits_cache.entry_count() as f64);
+        sizes
+            .with_label_values(&["people"])
+            .set(self.people_cache.entry_count() as f64);
+        self.metrics
+            .github_cached_commits
+            .set(self.commits_cache.commit_count() as f64);
 
         if let Err(e) = self.webhook_db.clean(SystemTime::now() - (7 * day)) {
             log::error!("Failed to clean webhook db: {}", e);
