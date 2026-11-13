@@ -1143,7 +1143,10 @@ impl GithubEventHandler {
             )
             .await
         {
-            Ok(pr) => Some(pr),
+            Ok(pr) => {
+                self.people_cache.update(&self.repository, &pr);
+                Some(pr)
+            }
             Err(e) => {
                 error!(
                     "Error refetching issue #{} as pull request: {}",
@@ -1230,6 +1233,11 @@ impl GithubEventHandler {
                     .filter(|pr| {
                         pr.head.sha == self.data.before() || pr.head.sha == self.data.after()
                     })
+                    // The push is the head, and the cached commits for the old one are not.
+                    .map(|mut pr| {
+                        pr.head.sha = self.data.after().to_string();
+                        pr
+                    })
                     .collect();
 
                 if prs.is_empty() {
@@ -1258,6 +1266,7 @@ impl GithubEventHandler {
                     );
 
                     for pull_request in &prs {
+                        self.people_cache.update(&self.repository, pull_request);
                         let commits = self.pull_request_commits(pull_request).await;
                         let reviewed = &self.reviewed(pull_request).await;
 

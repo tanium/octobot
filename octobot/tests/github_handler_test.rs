@@ -721,6 +721,8 @@ async fn test_issue_comment_on_pull_request() {
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "issue_comment".into()), resp);
+    // The lookup feeds the people cache too.
+    assert!(test.handler.people_cache.get(&the_repo(), 32).is_some());
 }
 
 #[tokio::test]
@@ -3106,6 +3108,9 @@ async fn test_push_with_pr() {
 
     let resp = test.handler.handle_event().await.unwrap();
     assert_eq!((StatusCode::OK, "push".into()), resp);
+    // The listing feeds the people cache too.
+    let people = test.handler.people_cache.get(&the_repo(), 99).unwrap();
+    assert_eq!(vec![User::new("assign2")], people.assignees);
 }
 
 #[tokio::test]
@@ -3128,6 +3133,8 @@ async fn test_push_force_notify() {
         Some("some-branch"),
         Ok(vec![pr.clone()]),
     );
+    // The listing lags the push, which octobot takes as the head.
+    pr.head.sha = "1111abcdef".into();
 
     test.mock_pull_request_commits();
     test.mock_pull_request_reviews(vec![]);
@@ -3528,6 +3535,84 @@ async fn test_commits_cache() {
     test.handler.data.pull_request = Some(pr);
     test.mock_pull_request_commits();
     hint_recipients(&mut test, "pull_request", "milestoned").await;
+}
+
+#[tokio::test]
+async fn test_push_with_lagging_pr_skips_cached_commits() {
+    let mut test = new_test();
+    let commit = |sha: &str, author: &str| Commit {
+        sha: sha.into(),
+        html_url: format!("http://commit/{}", sha),
+        author: Some(User::new(author)),
+        commit: CommitDetails {
+            message: "a commit".into(),
+        },
+    };
+    let mut pr = some_pr().unwrap();
+    pr.draft = Some(true);
+    pr.head.sha = "the-before-commit".into();
+    test.handler.data.pull_request = Some(pr.clone());
+    test.handler.data.sender = User::new("the-pr-owner");
+
+    // An earlier event caches the commits up to the push's before.
+    let before = vec![commit("the-before-commit", "bob-author")];
+    test.mock_pull_request_reviews(vec![]);
+    test.github
+        .mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(before));
+    hint_recipients(&mut test, "pull_request", "milestoned").await;
+
+    // GitHub lists the PR before it has seen the push.
+    test.handler.data.pull_request = None;
+    test.handler.data.ref_name = Some("refs/heads/pr-branch".into());
+    test.handler.data.before = Some("the-before-commit".into());
+    test.handler.data.after = Some("the-after-commit".into());
+    test.github.mock_get_pull_requests(
+        "some-user",
+        "some-repo",
+        Some("open"),
+        Some("pr-branch"),
+        Ok(vec![pr]),
+    );
+    let after = vec![
+        commit("the-before-commit", "bob-author"),
+        commit("the-after-commit", "new-author"),
+    ];
+    test.github
+        .mock_get_pull_request_commits("some-user", "some-repo", 32, Ok(after));
+    let recipients = hint_recipients(&mut test, "push", "").await;
+    assert!(recipients.contains(&"new-author".into()));
+}
+
+#[tokio::test]
+async fn test_people_cache_drops_removed_people() {
+    let mut test = new_test();
+    test.handler.data.sender = User::new("the-pr-owner");
+    let mut pr = some_pr().unwrap();
+    pr.draft = Some(true);
+    test.mock_pull_request_reviews(vec![]);
+
+    pr.updated_at = Some("2026-11-13T10:00:00Z".into());
+    test.handler.data.pull_request = Some(pr.clone());
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request", "milestoned").await;
+
+    pr.updated_at = Some("2026-11-13T10:00:01Z".into());
+    pr.assignees = vec![];
+    test.handler.data.pull_request = Some(pr.clone());
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request", "unassigned").await;
+    let people = test.handler.people_cache.get(&the_repo(), 32).unwrap();
+    assert!(people.assignees.is_empty());
+    assert_eq!(vec![User::new("joe-reviewer")], people.requested_reviewers);
+
+    pr.updated_at = Some("2026-11-13T10:00:02Z".into());
+    pr.requested_reviewers = Some(vec![]);
+    test.handler.data.pull_request = Some(pr);
+    test.handler.data.requested_reviewer = Some(User::new("joe-reviewer"));
+    test.mock_pull_request_commits();
+    hint_recipients(&mut test, "pull_request", "review_request_removed").await;
+    let people = test.handler.people_cache.get(&the_repo(), 32).unwrap();
+    assert!(people.requested_reviewers.is_empty());
 }
 
 #[tokio::test]
