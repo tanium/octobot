@@ -22,17 +22,30 @@ pub enum Kind {
 }
 
 impl Kind {
+    pub const ALL: [Kind; 6] = [
+        Kind::PullRequest,
+        Kind::PullRequestReview,
+        Kind::PullRequestReviewComment,
+        Kind::CommitComment,
+        Kind::IssueComment,
+        Kind::Push,
+    ];
+
     /// From an X-GitHub-Event value; None for events octobot does not notify about.
     pub fn from_event(event: &str) -> Option<Kind> {
-        Some(match event {
-            "pull_request" => Kind::PullRequest,
-            "pull_request_review" => Kind::PullRequestReview,
-            "pull_request_review_comment" => Kind::PullRequestReviewComment,
-            "commit_comment" => Kind::CommitComment,
-            "issue_comment" => Kind::IssueComment,
-            "push" => Kind::Push,
-            _ => return None,
-        })
+        Kind::ALL.into_iter().find(|kind| kind.as_event() == event)
+    }
+
+    /// The X-GitHub-Event value
+    pub fn as_event(self) -> &'static str {
+        match self {
+            Kind::PullRequest => "pull_request",
+            Kind::PullRequestReview => "pull_request_review",
+            Kind::PullRequestReviewComment => "pull_request_review_comment",
+            Kind::CommitComment => "commit_comment",
+            Kind::IssueComment => "issue_comment",
+            Kind::Push => "push",
+        }
     }
 
     /// None for `KIND_UNSPECIFIED`, or a kind from a newer server.
@@ -101,18 +114,14 @@ mod tests {
         assert_eq!(Some(Kind::PullRequest), Kind::from_event("pull_request"));
         assert_eq!(Some(Kind::Push), Kind::from_event("push"));
         assert_eq!(None, Kind::from_event("ping"));
+        for kind in Kind::ALL {
+            assert_eq!(Some(kind), Kind::from_event(kind.as_event()));
+        }
     }
 
     #[test]
     fn test_kind_round_trips_through_the_proto() {
-        for kind in [
-            Kind::PullRequest,
-            Kind::PullRequestReview,
-            Kind::PullRequestReviewComment,
-            Kind::CommitComment,
-            Kind::IssueComment,
-            Kind::Push,
-        ] {
+        for kind in Kind::ALL {
             assert_eq!(Some(kind), Kind::from_pb(pb::Kind::from(kind) as i32));
         }
         assert_eq!(None, Kind::from_pb(pb::Kind::Unspecified as i32));

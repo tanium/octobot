@@ -1,8 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use log::error;
 use tokio;
 use tokio_util::task::TaskTracker;
+
+use octobot_lib::errors::Result;
+use octobot_lib::metrics::Metrics;
 
 pub trait Worker<T: Send + 'static>: Send + Sync {
     fn send(&self, req: T);
@@ -10,7 +14,8 @@ pub trait Worker<T: Send + 'static>: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait Runner<T: Send + 'static>: Send + Sync {
-    async fn handle(&self, req: T);
+    /// An error fails the job; the worker logs and counts it.
+    async fn handle(&self, req: T) -> Result<()>;
 }
 
 /// The runtime that worker jobs run on, tracked so that shutdown can wait for them.
@@ -18,13 +23,15 @@ pub trait Runner<T: Send + 'static>: Send + Sync {
 pub struct Jobs {
     runtime: tokio::runtime::Runtime,
     tracker: TaskTracker,
+    metrics: Arc<Metrics>,
 }
 
 impl Jobs {
-    pub fn new(runtime: tokio::runtime::Runtime) -> Arc<Jobs> {
+    pub fn new(runtime: tokio::runtime::Runtime, metrics: Arc<Metrics>) -> Arc<Jobs> {
         Arc::new(Jobs {
             runtime,
             tracker: TaskTracker::new(),
+            metrics,
         })
     }
 
@@ -46,20 +53,45 @@ impl Jobs {
 }
 
 pub struct TokioWorker<T: Send + Sync + 'static> {
+    /// The job label in metrics
+    name: &'static str,
     runner: Arc<dyn Runner<T>>,
     jobs: Arc<Jobs>,
 }
 
 impl<T: Send + Sync + 'static> TokioWorker<T> {
-    pub fn new_worker(jobs: Arc<Jobs>, runner: Arc<dyn Runner<T>>) -> Arc<dyn Worker<T>> {
-        Arc::new(TokioWorker { runner, jobs })
+    pub fn new_worker(
+        jobs: Arc<Jobs>,
+        name: &'static str,
+        runner: Arc<dyn Runner<T>>,
+    ) -> Arc<dyn Worker<T>> {
+        Arc::new(TokioWorker { name, runner, jobs })
     }
 }
 
 impl<T: Send + Sync + 'static> Worker<T> for TokioWorker<T> {
     fn send(&self, req: T) {
+        let name = self.name;
         let runner = self.runner.clone();
-        self.jobs.spawn(async move { runner.handle(req).await });
+        let metrics = self.jobs.metrics.clone();
+        // Queued until a job thread first runs it. Git runs block the threads they run on, so
+        // jobs wait behind them. A started job waiting again is not counted.
+        let queued = metrics.jobs_queued.with_label_values(&[name]);
+        queued.inc();
+        self.jobs.spawn(async move {
+            queued.dec();
+            let outcome = match runner.handle(req).await {
+                Ok(()) => "success",
+                Err(e) => {
+                    error!("{} job failed: {:#}", name, e);
+                    "failure"
+                }
+            };
+            metrics
+                .jobs_finished
+                .with_label_values(&[name, outcome])
+                .inc();
+        });
     }
 }
 
@@ -86,7 +118,7 @@ mod tests {
             .start_paused(paused)
             .build()
             .unwrap();
-        (Jobs::new(jobs_runtime), test_runtime)
+        (Jobs::new(jobs_runtime, Metrics::new()), test_runtime)
     }
 
     fn is_pending<F: Future>(test_runtime: &tokio::runtime::Runtime, fut: Pin<&mut F>) -> bool {
@@ -102,12 +134,13 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Runner<&'static str> for Gated {
-        async fn handle(&self, name: &'static str) {
+        async fn handle(&self, name: &'static str) -> Result<()> {
             let gate = self.gate.lock().unwrap().take();
             if let Some(gate) = gate {
                 let _ = gate.await;
             }
             self.done.lock().unwrap().push(name);
+            Ok(())
         }
     }
 
@@ -124,7 +157,7 @@ mod tests {
     fn test_shutdown_waits_for_running_job() {
         let (jobs, test_runtime) = new_jobs(false);
         let (runner, release) = gated();
-        let worker = TokioWorker::new_worker(jobs.clone(), runner.clone());
+        let worker = TokioWorker::new_worker(jobs.clone(), "gated", runner.clone());
 
         worker.send("job");
 
@@ -142,8 +175,9 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Runner<&'static str> for Forward {
-        async fn handle(&self, name: &'static str) {
+        async fn handle(&self, name: &'static str) -> Result<()> {
             self.next.send(name);
+            Ok(())
         }
     }
 
@@ -151,9 +185,10 @@ mod tests {
     fn test_shutdown_waits_for_jobs_sent_by_jobs() {
         let (jobs, test_runtime) = new_jobs(false);
         let (runner, release) = gated();
-        let gated_worker = TokioWorker::new_worker(jobs.clone(), runner.clone());
+        let gated_worker = TokioWorker::new_worker(jobs.clone(), "gated", runner.clone());
         let forward = TokioWorker::new_worker(
             jobs.clone(),
+            "forward",
             Arc::new(Forward {
                 next: gated_worker.clone(),
             }),
@@ -172,7 +207,7 @@ mod tests {
     fn test_shutdown_gives_up_at_deadline() {
         let (jobs, test_runtime) = new_jobs(true);
         let (runner, _release) = gated();
-        let worker = TokioWorker::new_worker(jobs.clone(), runner.clone());
+        let worker = TokioWorker::new_worker(jobs.clone(), "gated", runner.clone());
 
         worker.send("stuck");
 
@@ -181,5 +216,76 @@ mod tests {
             test_runtime.block_on(jobs.shutdown(Duration::from_secs(30)))
         );
         assert!(runner.done.lock().unwrap().is_empty());
+    }
+
+    /// Blocks its job thread until released, the way a git run does.
+    struct Blocking {
+        entered: Mutex<std::sync::mpsc::Sender<()>>,
+        release: Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+
+    #[async_trait::async_trait]
+    impl Runner<&'static str> for Blocking {
+        async fn handle(&self, _name: &'static str) -> Result<()> {
+            self.entered.lock().unwrap().send(()).unwrap();
+            self.release.lock().unwrap().recv().unwrap();
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_jobs_waiting_for_a_thread_are_queued() {
+        let (jobs, test_runtime) = new_jobs(false);
+        let (entered_tx, entered) = std::sync::mpsc::channel();
+        let (release, release_rx) = std::sync::mpsc::channel();
+        let runner = Arc::new(Blocking {
+            entered: Mutex::new(entered_tx),
+            release: Mutex::new(release_rx),
+        });
+        let worker = TokioWorker::new_worker(jobs.clone(), "blocking", runner);
+        let metrics = jobs.metrics.clone();
+        let queued = metrics.jobs_queued.with_label_values(&["blocking"]);
+
+        worker.send("first");
+        entered.recv().unwrap();
+        // The jobs runtime's one thread is blocked by the first job.
+        worker.send("second");
+        assert_eq!(1.0, queued.get());
+
+        release.send(()).unwrap();
+        release.send(()).unwrap();
+        assert_eq!(
+            0,
+            test_runtime.block_on(jobs.shutdown(Duration::from_secs(3600)))
+        );
+        assert_eq!(0.0, queued.get());
+        let succeeded = metrics
+            .jobs_finished
+            .with_label_values(&["blocking", "success"]);
+        assert_eq!(2, succeeded.get());
+    }
+
+    struct Failing;
+
+    #[async_trait::async_trait]
+    impl Runner<&'static str> for Failing {
+        async fn handle(&self, _name: &'static str) -> Result<()> {
+            Err(anyhow::anyhow!("failed"))
+        }
+    }
+
+    #[test]
+    fn test_failed_jobs_are_counted() {
+        let (jobs, test_runtime) = new_jobs(false);
+        let worker = TokioWorker::new_worker(jobs.clone(), "failing", Arc::new(Failing));
+
+        worker.send("job");
+        test_runtime.block_on(jobs.shutdown(Duration::from_secs(3600)));
+
+        let failed = jobs
+            .metrics
+            .jobs_finished
+            .with_label_values(&["failing", "failure"]);
+        assert_eq!(1, failed.get());
     }
 }

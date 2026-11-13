@@ -77,13 +77,15 @@ struct TestServer {
     directory: Arc<FakeDirectory>,
     stopping: CancellationToken,
     served: JoinHandle<Result<(), tonic::transport::Error>>,
+    metrics: Arc<Metrics>,
 }
 
 impl TestServer {
     async fn start(lag_capacity: usize) -> TestServer {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let bus = Arc::new(EventBus::new(lag_capacity));
+        let metrics = Metrics::new();
+        let bus = Arc::new(EventBus::new(lag_capacity, metrics.clone()));
         let directory = Arc::new(FakeDirectory::default());
         let stopping = CancellationToken::new();
         let service = EventsService::new(
@@ -91,7 +93,7 @@ impl TestServer {
             &addr.to_string(),
             directory.clone(),
             stopping.clone(),
-            Metrics::new(),
+            metrics.clone(),
         )
         .unwrap();
         let served = tokio::spawn(events::serve(listener, service, stopping.clone()));
@@ -101,7 +103,17 @@ impl TestServer {
             directory,
             stopping,
             served,
+            metrics,
         }
+    }
+
+    // The test runtime is single threaded, and a stream counts its end without yielding after
+    // its last message, so the count is in by the time the client sees the stream end.
+    fn ends(&self, reason: &str) -> u64 {
+        self.metrics
+            .event_stream_ends
+            .with_label_values(&[reason])
+            .get()
     }
 
     fn endpoint(&self) -> String {
@@ -259,6 +271,34 @@ async fn test_lagging_stream_is_aborted() {
     let status = next(&mut stream).await.unwrap_err();
     assert_eq!(Code::Aborted, status.code());
     assert!(stream.next().await.is_none());
+    assert_eq!(1, server.ends("lagged"));
+}
+
+#[tokio::test]
+async fn test_streams_over_the_limit_are_refused() {
+    let server = TestServer::start(10).await;
+    let key = new_key();
+    server.directory.add("joe", &key);
+    let authority = server.addr.to_string();
+
+    let mut streams = vec![];
+    for _ in 0..10 {
+        let nonce = server.challenge("joe").await;
+        let stream = server.raw_subscribe("joe", &nonce, &key, &authority).await;
+        streams.push(stream.unwrap());
+    }
+    let nonce = server.challenge("joe").await;
+    let status = server
+        .raw_subscribe("joe", &nonce, &key, &authority)
+        .await
+        .unwrap_err();
+
+    assert_eq!(Code::ResourceExhausted, status.code());
+    let refused = server
+        .metrics
+        .event_stream_auth_failures
+        .with_label_values(&["subscribe", "stream_limit"]);
+    assert_eq!(1, refused.get());
 }
 
 #[tokio::test]
@@ -278,6 +318,7 @@ async fn test_stopping_ends_streams_and_the_server() {
     let status = next(&mut stream).await.unwrap_err();
     assert_eq!(Code::Unavailable, status.code());
     assert!(stream.next().await.is_none());
+    assert_eq!(1, server.ends("shutdown"));
     tokio::time::timeout(Duration::from_secs(10), server.served)
         .await
         .expect("server still running")

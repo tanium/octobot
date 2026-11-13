@@ -12,6 +12,7 @@ use mocks::mock_slack::MockSlack;
 use octobot_lib::config::Config;
 use octobot_lib::config_db::ConfigDatabase;
 use octobot_lib::github;
+use octobot_lib::metrics::Metrics;
 use octobot_lib::repos::RepoInfo;
 use octobot_lib::slack::SlackRecipient;
 use octobot_ops::messenger;
@@ -676,7 +677,7 @@ fn test_publishes_to_participants_slack_ignores() {
     let mut config = Config::new(db);
     config.slack.ignored_users = vec!["the-sender".into()];
 
-    let bus = Arc::new(EventBus::new(10));
+    let bus = Arc::new(EventBus::new(10, Metrics::new()));
     let mut receiver = bus.subscribe();
 
     let mut participants = Participants::new();
@@ -717,7 +718,7 @@ fn test_publishes_to_participants_slack_ignores() {
 #[test]
 fn test_publishes_once_per_thread_number() {
     let (config, _temp) = new_test();
-    let bus = Arc::new(EventBus::new(10));
+    let bus = Arc::new(EventBus::new(10, Metrics::new()));
     let mut receiver = bus.subscribe();
 
     let slack = MockSlack::new(vec![slack::req(
@@ -759,7 +760,7 @@ fn test_publishes_once_per_thread_number() {
 #[test]
 fn test_publishes_without_thread_with_no_number() {
     let (config, _temp) = new_test();
-    let bus = Arc::new(EventBus::new(10));
+    let bus = Arc::new(EventBus::new(10, Metrics::new()));
     let mut receiver = bus.subscribe();
 
     let slack = MockSlack::new(vec![slack::req(

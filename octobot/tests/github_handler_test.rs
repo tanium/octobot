@@ -138,7 +138,7 @@ impl GithubHandlerTest {
     }
 
     fn subscribe_events(&mut self, kind: Kind) -> broadcast::Receiver<Arc<Event>> {
-        let bus = Arc::new(EventBus::new(10));
+        let bus = Arc::new(EventBus::new(10, Metrics::new()));
         let receiver = bus.subscribe();
         self.handler.messenger = messenger::new(self.config.clone(), self.slack.new_sender())
             .with_events(bus, kind, &self.handler.action);

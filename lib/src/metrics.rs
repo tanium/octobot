@@ -8,12 +8,14 @@ use prometheus::{HistogramVec, register_histogram_vec_with_registry};
 use prometheus::{IntCounter, register_int_counter_with_registry};
 use prometheus::{IntCounterVec, register_int_counter_vec_with_registry};
 use std::sync::Arc;
+use std::time::Instant;
 
 pub struct Metrics {
     pub registry: Arc<Registry>,
 
-    pub http_responses: IntCounterVec,
     pub http_duration: HistogramVec,
+
+    pub webhook_events: IntCounterVec,
 
     pub slack_api_responses: IntCounterVec,
     pub slack_api_duration: HistogramVec,
@@ -35,8 +37,13 @@ pub struct Metrics {
     pub current_force_push_count: Gauge,
     pub current_repo_version_count: Gauge,
 
+    pub jobs_queued: GaugeVec,
+    pub jobs_finished: IntCounterVec,
+
+    pub event_bus_published: IntCounterVec,
     pub current_event_stream_count: Gauge,
     pub event_stream_messages: IntCounterVec,
+    pub event_stream_ends: IntCounterVec,
     pub event_stream_auth_failures: IntCounterVec,
 
     pub backport_duration: Histogram,
@@ -48,7 +55,7 @@ pub struct Metrics {
 }
 
 fn http_duration_buckets() -> Vec<f64> {
-    vec![0.005, 0.1, 0.5, 1.0, 2.0, 10.0, 30.0, 60.0]
+    vec![0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0]
 }
 
 fn job_duration_buckets() -> Vec<f64> {
@@ -65,19 +72,19 @@ impl Metrics {
         Arc::new(Metrics {
             registry: registry.clone(),
 
-            http_responses: register_int_counter_vec_with_registry!(
-                "http_responses",
-                "HTTP response codes",
-                &["status"],
+            http_duration: register_histogram_vec_with_registry!(
+                "http_requests_duration",
+                "Duration of HTTP requests in seconds",
+                &["method", "path", "status"],
+                http_duration_buckets(),
                 registry.as_ref()
             )
             .unwrap(),
 
-            http_duration: register_histogram_vec_with_registry!(
-                "http_requests_duration",
-                "Duration of HTTP requests in seconds",
-                &["method", "path"],
-                http_duration_buckets(),
+            webhook_events: register_int_counter_vec_with_registry!(
+                "webhook_events",
+                "GitHub webhook deliveries by outcome",
+                &["event", "outcome"],
                 registry.as_ref()
             )
             .unwrap(),
@@ -117,7 +124,7 @@ impl Metrics {
             .unwrap(),
 
             github_api_responses: register_int_counter_vec_with_registry!(
-                "gihtub_api_responses",
+                "github_api_responses",
                 "Github API responses",
                 &["status"],
                 registry.as_ref()
@@ -198,6 +205,30 @@ impl Metrics {
             )
             .unwrap(),
 
+            jobs_queued: register_gauge_vec_with_registry!(
+                "jobs_queued",
+                "Background jobs not yet started on a job thread",
+                &["job"],
+                registry.as_ref()
+            )
+            .unwrap(),
+
+            jobs_finished: register_int_counter_vec_with_registry!(
+                "jobs_finished",
+                "Background jobs finished, by outcome",
+                &["job", "outcome"],
+                registry.as_ref()
+            )
+            .unwrap(),
+
+            event_bus_published: register_int_counter_vec_with_registry!(
+                "event_bus_published",
+                "Changes published to event stream subscribers",
+                &["kind"],
+                registry.as_ref()
+            )
+            .unwrap(),
+
             current_event_stream_count: register_gauge_with_registry!(
                 "current_event_stream_count",
                 "The number of open event streams",
@@ -209,6 +240,14 @@ impl Metrics {
                 "event_stream_messages",
                 "Messages sent on event streams",
                 &["type"],
+                registry.as_ref()
+            )
+            .unwrap(),
+
+            event_stream_ends: register_int_counter_vec_with_registry!(
+                "event_stream_ends",
+                "Event streams ended, by why they ended",
+                &["reason"],
                 registry.as_ref()
             )
             .unwrap(),
@@ -312,5 +351,71 @@ pub fn scoped_inc(gauge: &Gauge) -> ScopedGaugeCounter {
 impl Drop for ScopedGaugeCounter {
     fn drop(&mut self) {
         self.gauge.dec()
+    }
+}
+
+/// Observes a request's duration when dropped. Hyper drops a request whose client hangs up,
+/// so one dropped before `respond` is observed with status "cancelled".
+pub struct RequestTimer {
+    histogram: HistogramVec,
+    method: String,
+    path: String,
+    start: Instant,
+    status: Option<String>,
+}
+
+impl RequestTimer {
+    pub fn start(histogram: &HistogramVec, method: &str, path: &str) -> RequestTimer {
+        RequestTimer {
+            histogram: histogram.clone(),
+            method: method.to_string(),
+            path: path.to_string(),
+            start: Instant::now(),
+            status: None,
+        }
+    }
+
+    pub fn respond(&mut self, status: &str) {
+        self.status = Some(status.to_string());
+    }
+}
+
+impl Drop for RequestTimer {
+    fn drop(&mut self) {
+        let status = self.status.as_deref().unwrap_or("cancelled");
+        self.histogram
+            .with_label_values(&[self.method.as_str(), &self.path, status])
+            .observe(self.start.elapsed().as_secs_f64());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn count(metrics: &Metrics, status: &str) -> u64 {
+        metrics
+            .http_duration
+            .with_label_values(&["GET", "/hooks", status])
+            .get_sample_count()
+    }
+
+    #[test]
+    fn test_request_timer_observes_status() {
+        let metrics = Metrics::new();
+        let mut timer = RequestTimer::start(&metrics.http_duration, "GET", "/hooks");
+        timer.respond("200");
+        drop(timer);
+
+        assert_eq!(1, count(&metrics, "200"));
+        assert_eq!(0, count(&metrics, "cancelled"));
+    }
+
+    #[test]
+    fn test_request_dropped_without_response_is_cancelled() {
+        let metrics = Metrics::new();
+        drop(RequestTimer::start(&metrics.http_duration, "GET", "/hooks"));
+
+        assert_eq!(1, count(&metrics, "cancelled"));
     }
 }
