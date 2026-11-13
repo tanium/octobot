@@ -56,47 +56,10 @@ pub async fn comment_force_push(
     let mut reapprove = false;
 
     if identical_diff {
-        // Avoid failing the whole function if this fails
-        let timeline = match github.get_timeline(owner, repo, pull_request.number).await {
-            Ok(t) => t,
-            Err(e) => {
-                error!(
-                    "Error fetching timeline for PR #{}: {}",
-                    pull_request.number, e
-                );
-                vec![]
-            }
-        };
-
-        let mut approval_review_id = None;
-        let mut found_dismiss = false;
-        let mut review_msg = String::new();
-
-        for event in timeline.iter().rev() {
-            // Look for first dismissal
-            if !found_dismiss && event.is_review_dismissal() {
-                if event.is_review_dismissal_for(after_hash) {
-                    approval_review_id = event.dismissed_review_id();
-                }
-                found_dismiss = true;
-                continue;
-            }
-
-            // Look for the dismissed approval
-            if let Some(review_id) = approval_review_id {
-                if event.is_review_for(review_id, before_hash) {
-                    review_msg = event.review_user_message(review_id);
-                    reapprove = true;
-                    info!(
-                        "Reapproving PR {}/{} #{} based on review #{:?}",
-                        owner, repo, pull_request.number, review_id,
-                    );
-                    break;
-                }
-            }
-        }
-
-        if reapprove {
+        if let Some(review_msg) =
+            dismissed_approval(github, owner, repo, pull_request, before_hash, after_hash).await
+        {
+            reapprove = true;
             let msg = format!(
                 "{}\n\nReapproved based on review by {}",
                 comment, review_msg
@@ -124,6 +87,105 @@ pub async fn comment_force_push(
     }
 
     Ok(())
+}
+
+// Who approved `before_hash`, if this push's dismissal of that approval is the
+// PR's latest dismissal. Lookup failures mean no reapproval, never a failed push.
+async fn dismissed_approval(
+    github: &dyn github::api::Session,
+    owner: &str,
+    repo: &str,
+    pull_request: &github::PullRequest,
+    before_hash: &str,
+    after_hash: &str,
+) -> Option<String> {
+    // The reviews are usually one page and the timeline many, and only a dismissed
+    // review of the old head can be the approval to restore.
+    let reviews = match github
+        .get_pull_request_reviews(owner, repo, pull_request.number)
+        .await
+    {
+        Ok(reviews) => reviews,
+        Err(e) => {
+            error!(
+                "Error fetching reviews for PR #{}: {}",
+                pull_request.number, e
+            );
+            return None;
+        }
+    };
+    if !reviews
+        .iter()
+        .any(|r| r.state == "DISMISSED" && r.commit_id.as_deref() == Some(before_hash))
+    {
+        return None;
+    }
+
+    let timeline = match github
+        .get_timeline_newest_first(owner, repo, pull_request.number, &|events| {
+            find_reapproval(events, before_hash, after_hash) != Reapproval::Undecided
+        })
+        .await
+    {
+        Ok(timeline) => timeline,
+        Err(e) => {
+            error!(
+                "Error fetching timeline for PR #{}: {}",
+                pull_request.number, e
+            );
+            return None;
+        }
+    };
+
+    match find_reapproval(&timeline, before_hash, after_hash) {
+        Reapproval::Review { id, reviewer } => {
+            info!(
+                "Reapproving PR {}/{} #{} based on review #{}",
+                owner, repo, pull_request.number, id,
+            );
+            Some(reviewer)
+        }
+        Reapproval::No | Reapproval::Undecided => None,
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Reapproval {
+    // The events so far, newest first, end before the answer.
+    Undecided,
+    No,
+    Review { id: u32, reviewer: String },
+}
+
+// Only the latest dismissal counts: it must be this push dismissing an approval,
+// and that approval must have reviewed `before_hash`.
+fn find_reapproval(
+    events_newest_first: &[github::TimelineEvent],
+    before_hash: &str,
+    after_hash: &str,
+) -> Reapproval {
+    let mut approval_review_id = None;
+    for event in events_newest_first {
+        match approval_review_id {
+            None if event.is_review_dismissal() => {
+                if !event.is_review_dismissal_for(after_hash) {
+                    return Reapproval::No;
+                }
+                match event.dismissed_review_id() {
+                    Some(id) => approval_review_id = Some(id),
+                    None => return Reapproval::No,
+                }
+            }
+            Some(id) if event.is_review_for(id, before_hash) => {
+                return Reapproval::Review {
+                    id,
+                    reviewer: event.review_user_message(id),
+                };
+            }
+            _ => {}
+        }
+    }
+    Reapproval::Undecided
 }
 
 pub async fn diff_force_push(
@@ -244,5 +306,65 @@ impl worker::Runner<ForcePushRequest> for Runner {
         if let Err(e) = comment {
             error!("Error diffing force push: {}", e);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use github::{DismissedReview, TimelineEvent, User};
+
+    const BEFORE: &str = "before-hash";
+    const AFTER: &str = "after-hash";
+
+    fn approval() -> TimelineEvent {
+        TimelineEvent::new_review(BEFORE, 1234, User::new("joe"), "http://the-review")
+    }
+
+    fn push_dismissal() -> TimelineEvent {
+        TimelineEvent::new_dismissed_review(DismissedReview::by_commit("approved", AFTER, 1234))
+    }
+
+    #[test]
+    fn test_find_reapproval_needs_older_events_until_the_approval() {
+        let newest_first = vec![TimelineEvent::new("labeled"), push_dismissal()];
+        assert_eq!(
+            Reapproval::Undecided,
+            find_reapproval(&newest_first, BEFORE, AFTER)
+        );
+    }
+
+    #[test]
+    fn test_find_reapproval_needs_older_events_until_a_dismissal() {
+        let newest_first = vec![TimelineEvent::new("labeled")];
+        assert_eq!(
+            Reapproval::Undecided,
+            find_reapproval(&newest_first, BEFORE, AFTER)
+        );
+    }
+
+    #[test]
+    fn test_find_reapproval_finds_the_dismissed_approval() {
+        let newest_first = vec![push_dismissal(), TimelineEvent::new("labeled"), approval()];
+        assert_eq!(
+            Reapproval::Review {
+                id: 1234,
+                reviewer: "[joe](http://the-review)".into()
+            },
+            find_reapproval(&newest_first, BEFORE, AFTER)
+        );
+    }
+
+    #[test]
+    fn test_find_reapproval_stops_at_a_later_unrelated_dismissal() {
+        let newest_first = vec![
+            TimelineEvent::new_dismissed_review(DismissedReview::by_user("approved", "nope")),
+            push_dismissal(),
+            approval(),
+        ];
+        assert_eq!(
+            Reapproval::No,
+            find_reapproval(&newest_first, BEFORE, AFTER)
+        );
     }
 }

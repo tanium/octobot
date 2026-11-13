@@ -464,6 +464,9 @@ pub struct Review {
     pub body: Option<String>,
     pub html_url: String,
     pub user: User,
+    // The commit reviewed.
+    #[serde(default)]
+    pub commit_id: Option<String>,
 }
 
 impl Review {
@@ -474,6 +477,7 @@ impl Review {
             body: Some(body.into()),
             html_url: String::new(),
             user,
+            commit_id: None,
         }
     }
 }
