@@ -6,9 +6,11 @@ use tokio::time::Instant;
 
 use octobot_lib::github;
 
-// Each PR's commits, keyed by its head and base. Those fix the commits, so a push
-// or a base change makes a new key rather than changing an old one. The TTL
-// bounds how long the cache holds keys no event asks for again.
+// Each PR's commits, keyed by its head and base, so a push or a base change makes
+// a new key rather than changing an old one. GitHub moves a PR's base only when
+// the PR changes, not when its base branch does, so busy base branches still hit.
+// That same base may hide commits that land in the base branch through a merge
+// commit and leave the PR's list; the TTL bounds how long those linger.
 pub struct CommitsCache {
     entries: Mutex<HashMap<Key, (Vec<github::Commit>, Instant)>>,
     ttl: Duration,
