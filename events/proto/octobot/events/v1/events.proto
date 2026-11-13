@@ -73,6 +73,7 @@ enum Kind {
   KIND_COMMIT_COMMENT = 4;
   KIND_ISSUE_COMMENT = 5;
   KIND_PUSH = 6;
+  // Neither check kind covers octobot's own checks, such as its Jira check.
   // Only for runs that complete with a failure
   KIND_CHECK_RUN = 7;
   // For every action: requested, rerequested, and completed once all its runs are

@@ -108,8 +108,9 @@ publish one, including on drafts and for actions octobot posts only to a
 channel or not at all. The exceptions are `synchronize`, which the push hint
 covers, edited or deleted comments, and comments and reviews octobot ignores
 (empty, its own, or from ignored users). Check suites and failed check
-runs publish hints to the participants of each pull request at the checked
-commit, except pull requests from forks, which GitHub does not list on checks.
+runs from other apps publish hints to the participants of each pull request at
+the checked commit, except pull requests from forks, which GitHub does not list
+on checks.
 They need the GitHub App subscribed to check suite and check run events. Only
 octobot users can subscribe.
 They authenticate by signing a challenge with an SSH key registered to their

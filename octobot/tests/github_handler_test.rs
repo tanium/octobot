@@ -3276,6 +3276,8 @@ fn some_check(conclusion: Option<&str>) -> CheckHook {
         repo: CheckRepo { id: the_repo().id },
     };
     CheckHook {
+        // Not octobot's: MockGithub's app id is 2
+        app: CheckApp { id: 15368 },
         conclusion: conclusion.map(String::from),
         pull_requests: vec![CheckPullRequest {
             number: pr.number,
@@ -3353,6 +3355,38 @@ async fn test_check_suite_reuses_cached_participants() {
     assert_eq!((StatusCode::OK, "check_suite".into()), resp);
     let cached = receiver.try_recv().expect("published a hint");
     assert_eq!(looked_up, cached);
+}
+
+#[tokio::test]
+async fn test_check_suite_ignores_octobots_own() {
+    let mut test = new_test();
+    test.handler.event = "check_suite".into();
+    test.handler.action = "completed".into();
+    let mut check = some_check(Some("success"));
+    check.app.id = test.github.github_app_id().unwrap();
+    test.handler.data.check_suite = Some(check);
+    let mut receiver = test.subscribe_events(Kind::CheckSuite);
+
+    // no github mocks
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_suite [ignored]".into()), resp);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn test_check_run_ignores_octobots_own() {
+    let mut test = new_test();
+    test.handler.event = "check_run".into();
+    test.handler.action = "completed".into();
+    let mut check = some_check(Some("failure"));
+    check.app.id = test.github.github_app_id().unwrap();
+    test.handler.data.check_run = Some(check);
+    let mut receiver = test.subscribe_events(Kind::CheckRun);
+
+    let resp = test.handler.handle_event().await.unwrap();
+    assert_eq!((StatusCode::OK, "check_run [ignored]".into()), resp);
+    assert!(receiver.try_recv().is_err());
 }
 
 #[tokio::test]
