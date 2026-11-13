@@ -76,7 +76,7 @@ enum Kind {
   KIND_PUSH = 6;
   // Only for runs that complete with a failure
   KIND_CHECK_RUN = 7;
-  // For every action: requested, rerequested, and completed once all its runs are
+  // For every action GitHub sends, such as completed once all its runs are
   KIND_CHECK_SUITE = 8;
 }
 
