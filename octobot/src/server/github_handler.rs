@@ -1423,10 +1423,13 @@ impl GithubEventHandler {
         let people = self.people_cache.get(&self.repository, pr.number);
         self.count_cache_lookup("people", people.is_some());
         let people = people?;
-        // Misses go uncounted here: the lookup that follows counts them.
-        let reviewers = self.reviewers_cache.get(&self.repository, pr.number)?;
+        // Counted only on a full hit: otherwise the fallback reads them again and counts that.
+        let reviewers = self.reviewers_cache.get(&self.repository, pr.number);
+        let commits = self.commits_cache.get_for_check(&self.repository, pr);
+        let (Some(reviewers), Some(commits)) = (reviewers, commits) else {
+            return None;
+        };
         self.count_cache_lookup("reviewers", true);
-        let commits = self.commits_cache.get_for_check(&self.repository, pr)?;
         self.count_cache_lookup("commits", true);
 
         let mut assignees_and_reviewers = people.assignees;

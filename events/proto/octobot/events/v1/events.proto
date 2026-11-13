@@ -64,7 +64,8 @@ message Change {
   optional uint64 number = 4;
 }
 
-// The GitHub webhook events (X-GitHub-Event) octobot publishes hints for
+// The GitHub webhook events (X-GitHub-Event) octobot publishes hints for. The check kinds
+// leave out octobot's own checks, such as its Jira check.
 enum Kind {
   KIND_UNSPECIFIED = 0;
   KIND_PULL_REQUEST = 1;
@@ -73,7 +74,6 @@ enum Kind {
   KIND_COMMIT_COMMENT = 4;
   KIND_ISSUE_COMMENT = 5;
   KIND_PUSH = 6;
-  // Neither check kind covers octobot's own checks, such as its Jira check.
   // Only for runs that complete with a failure
   KIND_CHECK_RUN = 7;
   // For every action: requested, rerequested, and completed once all its runs are
