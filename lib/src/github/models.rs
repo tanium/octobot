@@ -41,8 +41,6 @@ pub struct HookBody {
 /// `CheckRun` models reject statuses webhooks send, such as "requested".
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct CheckHook {
-    /// The GitHub App that made the check
-    pub app: CheckApp,
     /// Kept as a string: webhooks send conclusions `Conclusion` does not parse, such as "skipped".
     pub conclusion: Option<String>,
     /// Open pull requests whose head is the checked branch and commit. These may belong to
@@ -77,11 +75,6 @@ pub struct CheckRef {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct CheckRepo {
     pub id: u64,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct CheckApp {
-    pub id: u32,
 }
 
 impl HookBody {
@@ -1072,7 +1065,6 @@ mod tests {
         .unwrap();
 
         let suite = body.check_suite.unwrap();
-        assert_eq!(CheckApp { id: 15368 }, suite.app);
         assert_eq!(Some("skipped"), suite.conclusion.as_deref());
         let check_ref = |sha: &str| CheckRef {
             sha: sha.into(),
@@ -1091,7 +1083,6 @@ mod tests {
     #[test]
     fn test_check_hook_failed() {
         let check = |conclusion: Option<&str>| CheckHook {
-            app: CheckApp { id: 1 },
             conclusion: conclusion.map(String::from),
             pull_requests: vec![],
         };
