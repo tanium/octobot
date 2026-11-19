@@ -19,6 +19,7 @@ pub struct Metrics {
 
     pub slack_api_responses: IntCounterVec,
     pub slack_api_duration: HistogramVec,
+    pub slack_messages: IntCounterVec,
 
     pub jira_api_responses: IntCounterVec,
     pub jira_api_duration: HistogramVec,
@@ -100,8 +101,18 @@ impl Metrics {
             slack_api_duration: register_histogram_vec_with_registry!(
                 "slack_api_request_duration",
                 "Duration of slack API requests",
-                &["method", "path"],
+                &["method"],
                 http_duration_buckets(),
+                registry.as_ref()
+            )
+            .unwrap(),
+
+            // Slack rejects a message with HTTP 200 and an error code, so slack_api_responses
+            // counts it as a success.
+            slack_messages: register_int_counter_vec_with_registry!(
+                "slack_messages",
+                "Slack messages, by whether each was sent",
+                &["outcome"],
                 registry.as_ref()
             )
             .unwrap(),
@@ -117,7 +128,7 @@ impl Metrics {
             jira_api_duration: register_histogram_vec_with_registry!(
                 "jira_api_request_duration",
                 "Duration of jira API requests",
-                &["method", "path"],
+                &["method"],
                 http_duration_buckets(),
                 registry.as_ref()
             )
@@ -134,7 +145,7 @@ impl Metrics {
             github_api_duration: register_histogram_vec_with_registry!(
                 "github_api_request_duration",
                 "Duration of github API requests",
-                &["method", "path"],
+                &["method"],
                 http_duration_buckets(),
                 registry.as_ref()
             )
@@ -208,7 +219,7 @@ impl Metrics {
             jobs_queued: register_gauge_vec_with_registry!(
                 "jobs_queued",
                 "Background jobs not yet started on a job thread",
-                &["job"],
+                &["kind"],
                 registry.as_ref()
             )
             .unwrap(),
@@ -216,7 +227,7 @@ impl Metrics {
             jobs_finished: register_int_counter_vec_with_registry!(
                 "jobs_finished",
                 "Background jobs finished, by outcome",
-                &["job", "outcome"],
+                &["kind", "outcome"],
                 registry.as_ref()
             )
             .unwrap(),
@@ -417,5 +428,30 @@ mod tests {
         drop(RequestTimer::start(&metrics.http_duration, "GET", "/hooks"));
 
         assert_eq!(1, count(&metrics, "cancelled"));
+    }
+
+    // Prometheus attaches these to every scraped series and renames a clashing label to
+    // `exported_<name>`, which breaks dashboard queries on it.
+    #[test]
+    fn test_no_label_clashes_with_scrape_labels() {
+        let metrics = Metrics::new();
+        metrics.jobs_queued.with_label_values(&["slack"]).inc();
+        metrics
+            .jobs_finished
+            .with_label_values(&["slack", "success"])
+            .inc();
+
+        for family in metrics.registry.gather() {
+            for metric in family.get_metric() {
+                for label in metric.get_label() {
+                    assert!(
+                        !["job", "instance"].contains(&label.name()),
+                        "{} has label {}",
+                        family.name(),
+                        label.name()
+                    );
+                }
+            }
+        }
     }
 }
