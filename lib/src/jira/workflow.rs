@@ -3,8 +3,6 @@
 //! - `Fixes ABC-123` (anywhere): comment + pending version + transition; resolved as fixed
 //!   on merge.
 //! - `Part of ABC-123` (anywhere): comment + pending version + transition.
-//! - `Relates to ABC-123` (only at the start of a line): same as "part of";
-//!   a temporary migration measure.
 //! - `See ABC-123` (anywhere): comment only.
 //! - Bare `ABC-123` in the commit title: same as "part of".
 //! - Bare `ABC-123` in the commit body: no action.
@@ -83,7 +81,7 @@ struct JiraKeys {
     // Marked with "fix": commented, given a pending version, transitioned to
     // pending-review on submit, and resolved as fixed on merge.
     fixed: Vec<String>,
-    // Marked with "part of" (or line-start "relates to"), or bare in a commit title:
+    // Marked with "part of", or bare in a commit title:
     // commented, given a pending version, and transitioned to in-progress on submit.
     referenced: Vec<String>,
     // Marked with "see": commented, nothing else.
@@ -94,11 +92,9 @@ fn classify_jira_keys<T: CommitLike>(commits: &[T], projects: &[String]) -> Jira
     let fixed = get_marked_jira_keys(commits, r"(?i)\bFix(?:es|ed)?", projects);
 
     let part_of = get_marked_jira_keys(commits, r"(?i)\bPart of", projects);
-    // Temporary migration measure: lines starting with "relates to" act like "part of"
-    let relates_to = get_marked_jira_keys(commits, r"(?im)^\s*Relates to", projects);
     let titled = get_title_jira_keys(commits, projects);
 
-    let mut referenced = merge_keys(merge_keys(part_of, relates_to), titled);
+    let mut referenced = merge_keys(part_of, titled);
     referenced.retain(|key| !fixed.contains(key));
 
     // "See" keys get a plain comment, with no transition or pending version.
@@ -665,19 +661,6 @@ mod tests {
         // "hotfix" and "counterpart of" are not markers, so these are bare keys: no action
         assert_eq!(Vec::<String>::new(), keys.fixed);
         assert_eq!(Vec::<String>::new(), keys.referenced);
-        assert_eq!(Vec::<String>::new(), keys.commented);
-    }
-
-    #[test]
-    pub fn test_get_relates_to_jira_keys_only_at_line_start() {
-        let projects = vec!["KEY".to_string()];
-        let mut commit = Commit::new();
-        commit.commit.message =
-            "Add the thing\n\nRelates to [KEY-1], KEY-2\nrelates to: KEY-4\nthis somehow relates to KEY-3"
-                .into();
-        let keys = classify_jira_keys(&[commit], &projects);
-        assert_eq!(vec!["KEY-1", "KEY-2", "KEY-4"], keys.referenced);
-        // "relates to" mid-line does not count: KEY-3 is a bare key, so it gets no action
         assert_eq!(Vec::<String>::new(), keys.commented);
     }
 

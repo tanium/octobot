@@ -173,7 +173,6 @@ How a JIRA key is mentioned in a commit message determines what octobot does wit
 |--------------------------------------------|----------------------|
 | `Fixes ABC-123` (anywhere)                 | reference + resolve  |
 | `Part of ABC-123` (anywhere)               | reference            |
-| `Relates to ABC-123` (at start of a line)  | reference            |
 | `See ABC-123` (anywhere)                   | comment only         |
 | Bare `ABC-123` in the commit title         | reference            |
 | Bare `ABC-123` in the commit body          | no action            |
@@ -190,9 +189,6 @@ Markers are case-insensitive, allow an optional colon, and accept multiple keys,
 e.g. `Fixes: [ABC-123][ABC-456], ABC-789`. Keys must directly follow the marker:
 prose in between (e.g. `part of the ABC-123 epic`) does not count, and the key is
 treated as a bare mention.
-
-Note: `Relates to` is a temporary migration measure and is only recognized at the
-start of a line; treat it as deprecated in favor of `Part of`.
 
 Addenda
 -------

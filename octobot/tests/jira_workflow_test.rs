@@ -274,7 +274,7 @@ async fn test_transition_issues_only_if_necessary() {
     let pr = new_pr();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     let commit = new_commit(
-        "Fix [SER-1][SER-2][SER-3] I fixed it. See [CLI-1]\n\nRelates to [CLI-9999][CLI-9998][OTHER-999]\nthis also relates to CLI-55 somehow",
+        "Fix [SER-1][SER-2][SER-3] I fixed it. See [CLI-1]\n\nPart of [CLI-9999][CLI-9998][OTHER-999]\nRelates to CLI-55 somehow",
         "aabbccddee",
     );
 
@@ -310,8 +310,8 @@ async fn test_transition_issues_only_if_necessary() {
         "Referenced by review submitted for branch master: http://the-pr",
         Ok(()),
     );
-    // "relates to" mid-line does not count: CLI-55 is a bare key in the commit body,
-    // so it gets no action at all
+    // "relates to" is not a marker: CLI-55 is a bare key in the commit body, so it gets
+    // no action at all
 
     test.jira
         .mock_get_issue("SER-1", Ok(new_issue("SER-1", Some("reviewing1"))));
@@ -355,16 +355,14 @@ async fn test_add_pending_version() {
     let test = new_test();
     let projects = vec!["SER".to_string(), "CLI".to_string()];
     // Bare CLI-123 gets no action and so no pending version; only the fixed and
-    // referenced (part of / relates to) keys get one.
+    // referenced (part of) keys get one.
     let commit = new_push_commit(
-        "Fix [SER-1] I fixed it.\n\nPart of [CLI-45][OTHER-999]\nRelates to CLI-77\n\nAlso mentions bare CLI-123 in the body",
+        "Fix [SER-1] I fixed it.\n\nPart of [CLI-45][OTHER-999]\n\nAlso mentions bare CLI-123 in the body",
         "aabbccddee",
     );
 
     test.jira
         .mock_add_pending_version("CLI-45", "5.6.7", Ok(()));
-    test.jira
-        .mock_add_pending_version("CLI-77", "5.6.7", Ok(()));
     test.jira.mock_add_pending_version("SER-1", "5.6.7", Ok(()));
 
     jira::workflow::add_pending_version(Some("5.6.7"), &[commit], &projects, &test.jira).await;
