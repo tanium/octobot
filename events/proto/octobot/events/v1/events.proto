@@ -64,8 +64,7 @@ message Change {
   optional uint64 number = 4;
 }
 
-// The GitHub webhook events (X-GitHub-Event) octobot publishes hints for. The check kinds
-// leave out octobot's own checks, such as its Jira check.
+// The GitHub webhook events (X-GitHub-Event) octobot publishes hints for
 enum Kind {
   KIND_UNSPECIFIED = 0;
   KIND_PULL_REQUEST = 1;

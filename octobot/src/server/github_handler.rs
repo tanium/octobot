@@ -1411,7 +1411,7 @@ impl GithubEventHandler {
 
     async fn handle_check_suite(&self) -> EventResponse {
         match self.data.check_suite {
-            Some(ref suite) if !self.is_own_check(suite) => {
+            Some(ref suite) => {
                 self.publish_check(suite).await;
                 (StatusCode::OK, "check_suite".into())
             }
@@ -1423,19 +1423,12 @@ impl GithubEventHandler {
     // when it completes.
     async fn handle_check_run(&self) -> EventResponse {
         match self.data.check_run {
-            Some(ref run)
-                if self.action == "completed" && run.failed() && !self.is_own_check(run) =>
-            {
+            Some(ref run) if self.action == "completed" && run.failed() => {
                 self.publish_check(run).await;
                 (StatusCode::OK, "check_run".into())
             }
             _ => (StatusCode::OK, "check_run [ignored]".into()),
         }
-    }
-
-    // Octobot's own checks, like its Jira check, come from events that already publish hints.
-    fn is_own_check(&self, check: &github::CheckHook) -> bool {
-        self.github_session.github_app_id() == Some(check.app.id)
     }
 
     // Checks message nobody in Slack.
