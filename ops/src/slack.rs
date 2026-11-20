@@ -102,6 +102,7 @@ pub struct Slack {
     recent_messages: Mutex<Vec<SlackMessage>>,
     slack_db: Mutex<SlackDatabase>,
     thread_locks: Mutex<HashMap<ThreadKey, Arc<tokio::sync::Mutex<()>>>>,
+    metrics: Arc<Metrics>,
 }
 
 type ThreadKey = (String, String);
@@ -110,15 +111,29 @@ enum Posted {
     Sent(String),
     /// Skipped: the same message was just sent.
     Duplicate,
-    Rejected,
+    /// Slack answered with this error code.
+    Rejected(String),
     Failed,
 }
 
+/// Rejections that mean the channel needs fixing, not the message, each counted by name.
+const CHANNEL_ERRORS: [&str; 3] = ["not_in_channel", "channel_not_found", "is_archived"];
+
 impl Posted {
+    fn outcome(&self) -> &str {
+        match self {
+            Posted::Sent(_) => "sent",
+            Posted::Duplicate => "duplicate",
+            Posted::Rejected(error) if CHANNEL_ERRORS.contains(&error.as_str()) => error,
+            Posted::Rejected(_) => "rejected",
+            Posted::Failed => "failed",
+        }
+    }
+
     fn into_result(self, channel_name: &str) -> Result<()> {
         match self {
             Posted::Sent(_) | Posted::Duplicate => Ok(()),
-            Posted::Rejected | Posted::Failed => {
+            Posted::Rejected(_) | Posted::Failed => {
                 Err(anyhow!("message to {} was not sent", channel_name))
             }
         }
@@ -160,6 +175,7 @@ impl Slack {
             slack_db: Mutex::new(slack_db),
             recent_messages: Mutex::new(Vec::new()),
             thread_locks: Mutex::new(HashMap::new()),
+            metrics,
         }
     }
 
@@ -175,6 +191,24 @@ impl Slack {
         attachments: Vec<SlackAttachment>,
         threading: Threading,
     ) -> Result<()> {
+        let posted = self
+            .send_message(channel_id, channel_name, msg, attachments, threading)
+            .await;
+        self.metrics
+            .slack_messages
+            .with_label_values(&[posted.outcome()])
+            .inc();
+        posted.into_result(channel_name)
+    }
+
+    async fn send_message(
+        &self,
+        channel_id: &str,
+        channel_name: &str,
+        msg: &str,
+        attachments: Vec<SlackAttachment>,
+        threading: Threading,
+    ) -> Posted {
         let Some(thread_guid) = threading.guid().map(str::to_string) else {
             let slack_msg = SlackMessage {
                 text: msg.to_string(),
@@ -182,10 +216,7 @@ impl Slack {
                 channel: channel_id.to_string(),
                 thread_ts: None,
             };
-            return self
-                .post_unique(&slack_msg, channel_name)
-                .await
-                .into_result(channel_name);
+            return self.post_unique(&slack_msg, channel_name).await;
         };
 
         // Held from lookup through save so concurrent sends for one PR agree on its thread.
@@ -225,7 +256,7 @@ impl Slack {
         attachments: Vec<SlackAttachment>,
         thread_guid: &str,
         threading: Threading,
-    ) -> Result<()> {
+    ) -> Posted {
         let mut parent_thread = self.lookup_thread(thread_guid, channel_id);
         let mut start_with_msg = false;
 
@@ -248,7 +279,7 @@ impl Slack {
             thread_ts: parent_thread.clone(),
         };
 
-        let posted = match self.post_unique(&slack_msg, channel_name).await {
+        match self.post_unique(&slack_msg, channel_name).await {
             Posted::Sent(thread) if parent_thread.is_some() => {
                 self.touch_thread(thread_guid, channel_id);
                 Posted::Sent(thread)
@@ -257,7 +288,7 @@ impl Slack {
                 self.save_thread(thread_guid, channel_id, &thread);
                 Posted::Sent(thread)
             }
-            Posted::Rejected if parent_thread.is_some() => {
+            Posted::Rejected(_) if parent_thread.is_some() => {
                 // A thread Slack won't reply to shouldn't swallow the message.
                 let top_level = SlackMessage {
                     thread_ts: None,
@@ -266,8 +297,7 @@ impl Slack {
                 self.post(&top_level, channel_name).await
             }
             posted => posted,
-        };
-        posted.into_result(channel_name)
+        }
     }
 
     fn lookup_thread(&self, thread_guid: &str, channel_id: &str) -> Option<String> {
@@ -337,13 +367,12 @@ impl Slack {
                 Posted::Sent(thread)
             }
             Ok(r) => {
+                let error = r.error.unwrap_or_default();
                 error!(
                     "Error sending slack message to {}: {} ({})",
-                    channel_name,
-                    slack_msg.channel,
-                    r.error.unwrap_or_default(),
+                    channel_name, slack_msg.channel, error,
                 );
-                Posted::Rejected
+                Posted::Rejected(error)
             }
             Err(e) => {
                 error!(
@@ -574,6 +603,14 @@ mod tests {
         }
     }
 
+    fn counted(slack: &Slack, outcome: &str) -> u64 {
+        slack
+            .metrics
+            .slack_messages
+            .with_label_values(&[outcome])
+            .get()
+    }
+
     fn saved_thread(slack: &Slack) -> Option<String> {
         let db = slack.slack_db.lock().unwrap();
         db.lookup_previous_thread(GUID, CHANNEL).unwrap()
@@ -744,6 +781,8 @@ mod tests {
 
         reply.assert_async().await;
         top_level.assert_async().await;
+        assert_eq!(1, counted(&slack, "sent"));
+        assert_eq!(0, counted(&slack, "rejected"));
     }
 
     #[tokio::test]
@@ -763,6 +802,74 @@ mod tests {
 
         post.assert_async().await;
         assert!(sent.is_err());
+        assert_eq!(1, counted(&slack, "channel_not_found"));
+    }
+
+    #[tokio::test]
+    async fn test_message_not_in_channel_is_counted() {
+        let mut server = Server::new_async().await;
+        let (slack, _dir) = new_test(&server);
+        let root_post = expect_post(
+            &mut server,
+            json!({"text": "root"}),
+            r#"{"ok": false, "error": "not_in_channel"}"#,
+        )
+        .await;
+        let post = expect_post(
+            &mut server,
+            json!({"text": "hello"}),
+            r#"{"ok": false, "error": "not_in_channel"}"#,
+        )
+        .await;
+
+        let threading = Threading::ReplyOrStart(GUID.into(), root());
+        let sent = slack
+            .send(CHANNEL, "chan", "hello", vec![], threading)
+            .await;
+
+        root_post.assert_async().await;
+        post.assert_async().await;
+        assert!(sent.is_err());
+        assert_eq!(1, counted(&slack, "not_in_channel"));
+    }
+
+    #[tokio::test]
+    async fn test_unlisted_rejection_is_counted_as_rejected() {
+        let mut server = Server::new_async().await;
+        let (slack, _dir) = new_test(&server);
+        let post = expect_post(
+            &mut server,
+            json!({"text": "hello"}),
+            r#"{"ok": false, "error": "msg_too_long"}"#,
+        )
+        .await;
+
+        let sent = slack
+            .send(CHANNEL, "chan", "hello", vec![], Threading::Flat)
+            .await;
+
+        post.assert_async().await;
+        assert!(sent.is_err());
+        assert_eq!(1, counted(&slack, "rejected"));
+    }
+
+    #[tokio::test]
+    async fn test_unreachable_slack_is_counted_as_failed() {
+        let server = Server::new_async().await;
+        let (slack, _dir) = new_test(&server);
+        let url = server.url();
+        drop(server);
+
+        let slack = Slack {
+            client: Arc::new(HTTPClient::new(&url).unwrap()),
+            ..slack
+        };
+        let sent = slack
+            .send(CHANNEL, "chan", "hello", vec![], Threading::Flat)
+            .await;
+
+        assert!(sent.is_err());
+        assert_eq!(1, counted(&slack, "failed"));
     }
 
     #[tokio::test]
@@ -784,5 +891,7 @@ mod tests {
         }
 
         post.expect(1).assert_async().await;
+        assert_eq!(1, counted(&slack, "sent"));
+        assert_eq!(1, counted(&slack, "duplicate"));
     }
 }

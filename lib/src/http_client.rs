@@ -8,7 +8,6 @@ use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
 use crate::errors::*;
-use crate::metrics;
 
 pub use reqwest::Response;
 pub use reqwest::header::HeaderMap;
@@ -120,7 +119,7 @@ impl HTTPClient {
 
     /// A successful response is counted once `parse_json` parses it.
     pub async fn get_raw(&self, path: &str) -> Result<Response> {
-        let _timer = self.maybe_start_timer("get", path);
+        let _timer = self.maybe_start_timer("get");
         let res = self.request(reqwest::Method::GET, path)?.send().await;
         self.process_resp(res).await
     }
@@ -137,7 +136,7 @@ impl HTTPClient {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let _timer = self.maybe_start_timer("post", path);
+        let _timer = self.maybe_start_timer("post");
         let res = self
             .request(reqwest::Method::POST, path)?
             .json(body)
@@ -148,7 +147,7 @@ impl HTTPClient {
     }
 
     pub async fn post_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
-        let _timer = self.maybe_start_timer("post", path);
+        let _timer = self.maybe_start_timer("post");
         let res = self
             .request(reqwest::Method::POST, path)?
             .json(body)
@@ -161,7 +160,7 @@ impl HTTPClient {
     }
 
     pub async fn post_void_opt<U: Serialize>(&self, path: &str, body: Option<&U>) -> Result<()> {
-        let _timer = self.maybe_start_timer("post", path);
+        let _timer = self.maybe_start_timer("post");
         let res = self.request(reqwest::Method::POST, path)?;
         let res = match body {
             None => res,
@@ -178,7 +177,7 @@ impl HTTPClient {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let _timer = self.maybe_start_timer("put", path);
+        let _timer = self.maybe_start_timer("put");
         let res = self
             .request(reqwest::Method::PUT, path)?
             .json(body)
@@ -189,7 +188,7 @@ impl HTTPClient {
     }
 
     pub async fn put_void<U: Serialize>(&self, path: &str, body: &U) -> Result<()> {
-        let _timer = self.maybe_start_timer("put", path);
+        let _timer = self.maybe_start_timer("put");
         let res = self
             .request(reqwest::Method::PUT, path)?
             .json(body)
@@ -202,7 +201,7 @@ impl HTTPClient {
     }
 
     pub async fn delete_void(&self, path: &str) -> Result<()> {
-        let _timer = self.maybe_start_timer("delete", path);
+        let _timer = self.maybe_start_timer("delete");
         let res = self.request(reqwest::Method::DELETE, path)?.send().await;
         self.process_resp(res).await?;
 
@@ -220,19 +219,10 @@ impl HTTPClient {
         self.maybe_record_status(reqwest::StatusCode::OK.as_str());
     }
 
-    fn maybe_start_timer(&self, method: &str, path: &str) -> Option<HistogramTimer> {
-        self.metric_api_duration.clone().map(|ref m| {
-            let path = if self.secret_path.is_some() {
-                String::new()
-            } else {
-                metrics::cleanup_path(path)
-            };
-            m.with(&hashmap! {
-                "method" => method,
-                "path" => &path,
-            })
-            .start_timer()
-        })
+    fn maybe_start_timer(&self, method: &str) -> Option<HistogramTimer> {
+        self.metric_api_duration
+            .as_ref()
+            .map(|m| m.with_label_values(&[method]).start_timer())
     }
 
     fn make_clean_err<T>(&self, e: impl std::error::Error) -> Result<T> {
@@ -299,6 +289,7 @@ impl HTTPClient {
 mod tests {
     use super::*;
     use crate::metrics::Metrics;
+    use mockito::Matcher;
 
     #[tokio::test]
     async fn test_get_records_one_response() {
@@ -318,6 +309,27 @@ mod tests {
 
         let ok = metrics.github_api_responses.with_label_values(&["200"]);
         assert_eq!(1, ok.get());
+    }
+
+    #[tokio::test]
+    async fn test_request_duration_is_labeled_by_method_only() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", Matcher::Regex("^/issue/".into()))
+            .with_body("{}")
+            .create_async()
+            .await;
+        let metrics = Metrics::new();
+        let client = HTTPClient::new(&server.url()).unwrap().with_metrics(
+            metrics.jira_api_responses.clone(),
+            metrics.jira_api_duration.clone(),
+        );
+
+        let _: serde_json::Value = client.get("/issue/AA-1").await.unwrap();
+        let _: serde_json::Value = client.get("/issue/AA-2").await.unwrap();
+
+        let get = metrics.jira_api_duration.with_label_values(&["get"]);
+        assert_eq!(2, get.get_sample_count());
     }
 
     #[tokio::test]
